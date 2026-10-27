@@ -32,20 +32,39 @@ pub struct AccountState<'a> {
     pub display_name: Option<&'a str>,
 }
 
-/// The workspace's account, connected or not.
+/// The workspace's connected account, else the one it last had.
 pub async fn account(conn: &mut PgConnection) -> Result<Option<StripeAccount>> {
     Ok(sqlx::query_as!(
         StripeAccount,
         r#"SELECT account_id, livemode, charges_enabled, details_submitted,
                   default_currency::text AS default_currency, display_name, connected_at,
                   connected_by AS "connected_by: UserId", disconnected_at
-           FROM stripe_accounts WHERE workspace_id = app_workspace_id()"#
+           FROM stripe_accounts WHERE workspace_id = app_workspace_id()
+           ORDER BY disconnected_at IS NULL DESC, connected_at DESC LIMIT 1"#
     )
     .fetch_optional(conn)
     .await?)
 }
 
-/// The workspace an account is connected to, from any workspace.
+/// One account the workspace has or had.
+pub async fn account_by_id(
+    conn: &mut PgConnection,
+    account_id: &str,
+) -> Result<Option<StripeAccount>> {
+    Ok(sqlx::query_as!(
+        StripeAccount,
+        r#"SELECT account_id, livemode, charges_enabled, details_submitted,
+                  default_currency::text AS default_currency, display_name, connected_at,
+                  connected_by AS "connected_by: UserId", disconnected_at
+           FROM stripe_accounts WHERE workspace_id = app_workspace_id() AND account_id = $1"#,
+        account_id
+    )
+    .fetch_optional(conn)
+    .await?)
+}
+
+/// The workspace an account's events belong to, from any workspace: the
+/// one it is connected to, else the one it was last connected to.
 pub async fn account_workspace(
     conn: &mut PgConnection,
     account_id: &str,
@@ -58,7 +77,32 @@ pub async fn account_workspace(
     .await?)
 }
 
-/// Connects an account, replacing whichever was connected before.
+/// The workspace an account is connected to now, from any workspace.
+pub async fn account_live_workspace(
+    conn: &mut PgConnection,
+    account_id: &str,
+) -> Result<Option<WorkspaceId>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT stripe_account_live_workspace($1) AS "w: WorkspaceId""#,
+        account_id
+    )
+    .fetch_one(conn)
+    .await?)
+}
+
+/// Whether a kept event still waits to be processed.
+pub async fn event_pending(conn: &mut PgConnection, id: &str) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT processed_at IS NULL AS "p!" FROM stripe_events
+           WHERE workspace_id = app_workspace_id() AND id = $1"#,
+        id
+    )
+    .fetch_optional(conn)
+    .await?
+    .unwrap_or(false))
+}
+
+/// Connects an account (again). The caller disconnects any other first.
 pub async fn connect(
     conn: &mut PgConnection,
     account_id: &str,
@@ -71,13 +115,12 @@ pub async fn connect(
                (workspace_id, account_id, livemode, charges_enabled, details_submitted,
                 default_currency, display_name, connected_by)
            VALUES (app_workspace_id(), $1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (workspace_id) DO UPDATE SET
-               account_id = EXCLUDED.account_id, livemode = EXCLUDED.livemode,
-               charges_enabled = EXCLUDED.charges_enabled,
+           ON CONFLICT (workspace_id, account_id) DO UPDATE SET
+               livemode = EXCLUDED.livemode, charges_enabled = EXCLUDED.charges_enabled,
                details_submitted = EXCLUDED.details_submitted,
                default_currency = EXCLUDED.default_currency,
                display_name = EXCLUDED.display_name, connected_by = EXCLUDED.connected_by,
-               connected_at = now(), disconnected_at = NULL"#,
+               connected_at = now(), state_at = now(), disconnected_at = NULL"#,
         account_id,
         livemode,
         state.charges_enabled,
@@ -91,21 +134,25 @@ pub async fn connect(
     Ok(())
 }
 
-/// Stripe's latest word on the connected account.
+/// Stripe's word on the connected account as of `at`; an older word than
+/// the one kept changes nothing.
 pub async fn update_account(
     conn: &mut PgConnection,
     account_id: &str,
     state: &AccountState<'_>,
+    at: DateTime<Utc>,
 ) -> Result<bool> {
     let n = sqlx::query!(
         r#"UPDATE stripe_accounts SET charges_enabled = $2, details_submitted = $3,
-               default_currency = $4, display_name = $5
-           WHERE workspace_id = app_workspace_id() AND account_id = $1"#,
+               default_currency = $4, display_name = $5, state_at = $6
+           WHERE workspace_id = app_workspace_id() AND account_id = $1
+             AND disconnected_at IS NULL AND state_at <= $6"#,
         account_id,
         state.charges_enabled,
         state.details_submitted,
         state.default_currency,
         state.display_name,
+        at,
     )
     .execute(conn)
     .await?
@@ -186,6 +233,8 @@ pub struct InvoiceSession {
     pub url: String,
     pub amount_minor: i64,
     pub expires_at: DateTime<Utc>,
+    /// The connected account it was made on.
+    pub account_id: String,
 }
 
 pub async fn invoice_session(
@@ -194,7 +243,7 @@ pub async fn invoice_session(
 ) -> Result<Option<InvoiceSession>> {
     let row = sqlx::query!(
         r#"SELECT stripe_session_id, stripe_session_url, stripe_session_amount,
-                  stripe_session_expires_at
+                  stripe_session_expires_at, stripe_session_account
            FROM invoices WHERE workspace_id = app_workspace_id() AND id = $1"#,
         invoice_id
     )
@@ -206,6 +255,7 @@ pub async fn invoice_session(
             url: r.stripe_session_url?,
             amount_minor: r.stripe_session_amount?,
             expires_at: r.stripe_session_expires_at?,
+            account_id: r.stripe_session_account?,
         })
     }))
 }
@@ -218,13 +268,15 @@ pub async fn set_invoice_session(
 ) -> Result<()> {
     sqlx::query!(
         r#"UPDATE invoices SET stripe_session_id = $2, stripe_session_url = $3,
-               stripe_session_amount = $4, stripe_session_expires_at = $5
+               stripe_session_amount = $4, stripe_session_expires_at = $5,
+               stripe_session_account = $6
            WHERE workspace_id = app_workspace_id() AND id = $1"#,
         invoice_id,
         session.map(|s| s.id.as_str()),
         session.map(|s| s.url.as_str()),
         session.map(|s| s.amount_minor),
         session.map(|s| s.expires_at),
+        session.map(|s| s.account_id.as_str()),
     )
     .execute(conn)
     .await?;
@@ -239,7 +291,8 @@ pub async fn clear_invoice_session(
 ) -> Result<()> {
     sqlx::query!(
         r#"UPDATE invoices SET stripe_session_id = NULL, stripe_session_url = NULL,
-               stripe_session_amount = NULL, stripe_session_expires_at = NULL
+               stripe_session_amount = NULL, stripe_session_expires_at = NULL,
+               stripe_session_account = NULL
            WHERE workspace_id = app_workspace_id() AND id = $1 AND stripe_session_id = $2"#,
         invoice_id,
         session_id
@@ -276,14 +329,48 @@ pub async fn set_payment_intent(
     Ok(())
 }
 
-/// Forgets every invoice's session, when the account changes.
-pub async fn clear_all_sessions(conn: &mut PgConnection) -> Result<()> {
-    sqlx::query!(
-        r#"UPDATE invoices SET stripe_session_id = NULL, stripe_session_url = NULL,
-               stripe_session_amount = NULL, stripe_session_expires_at = NULL
-           WHERE workspace_id = app_workspace_id() AND stripe_session_id IS NOT NULL"#
+/// Every open session made on an account, to close when it is disconnected.
+pub async fn sessions_on(conn: &mut PgConnection, account_id: &str) -> Result<Vec<(Uuid, String)>> {
+    Ok(sqlx::query!(
+        r#"SELECT id, stripe_session_id AS "session!" FROM invoices
+           WHERE workspace_id = app_workspace_id() AND stripe_session_account = $1
+             AND stripe_session_id IS NOT NULL"#,
+        account_id
     )
-    .execute(conn)
-    .await?;
-    Ok(())
+    .fetch_all(conn)
+    .await?
+    .into_iter()
+    .map(|r| (r.id, r.session))
+    .collect())
+}
+
+/// What has been recorded as refunded in Stripe of a card payment: its
+/// live refunds made through Stripe, not ones recorded by hand.
+pub async fn refunded_in_stripe(
+    conn: &mut PgConnection,
+    payment_id: Uuid,
+    intent: &str,
+) -> Result<i64> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT coalesce(sum(amount_minor), 0)::bigint AS "s!" FROM payments
+           WHERE workspace_id = app_workspace_id() AND refund_of = $1 AND kind = 'refund'
+             AND method = 'stripe' AND reference = $2 AND voided_at IS NULL"#,
+        payment_id,
+        intent
+    )
+    .fetch_one(conn)
+    .await?)
+}
+
+/// Whether a payment event for a PaymentIntent is kept but not yet processed.
+pub async fn payment_event_pending(conn: &mut PgConnection, intent: &str) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT EXISTS (SELECT 1 FROM stripe_events
+             WHERE workspace_id = app_workspace_id() AND processed_at IS NULL
+               AND type LIKE 'checkout.session.%'
+               AND payload #>> '{data,object,payment_intent}' = $1) AS "p!""#,
+        intent
+    )
+    .fetch_one(conn)
+    .await?)
 }

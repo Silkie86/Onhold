@@ -22,12 +22,14 @@ pub const SIGNATURE_HEADER: &str = "stripe-signature";
 /// How old a webhook's signed timestamp may be, as Stripe's libraries allow.
 pub const SIGNATURE_TOLERANCE_SECS: i64 = 300;
 
-/// Currencies Stripe counts in other units than ISO 4217 minor units, or
-/// takes only in multiples (three-decimal ones must end in 0). Invoices in
-/// them are paid by bank transfer instead.
-const UNSUPPORTED_CURRENCIES: &[&str] = &[
-    "BHD", "HUF", "ISK", "JOD", "KWD", "OMR", "TND", "TWD", "UGX",
+/// Currencies Stripe counts without minor units.
+const ZERO_DECIMAL: &[&str] = &[
+    "BIF", "CLP", "DJF", "GNF", "JPY", "KMF", "KRW", "MGA", "PYG", "RWF", "UGX", "VND", "VUV",
+    "XAF", "XOF", "XPF",
 ];
+/// Currencies Stripe takes only in whole multiples or with special rules
+/// (HUF, ISK, TWD, UGX). Invoices in them are paid by bank transfer instead.
+const SPECIAL_CASES: &[&str] = &["HUF", "ISK", "TWD", "UGX"];
 
 #[derive(Debug, Clone)]
 pub struct StripeConfig {
@@ -130,6 +132,28 @@ pub struct CheckoutSession {
     pub expires_at: Option<i64>,
     #[serde(default)]
     pub metadata: serde_json::Map<String, Value>,
+    /// Set when the payer paid in their own currency (Adaptive Pricing):
+    /// the amount in the currency the session was made in.
+    pub currency_conversion: Option<CurrencyConversion>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CurrencyConversion {
+    pub amount_total: i64,
+    pub source_currency: String,
+}
+
+impl CheckoutSession {
+    /// What was paid, in the currency the session was made in.
+    pub fn paid_amount(&self) -> Option<(i64, String)> {
+        match &self.currency_conversion {
+            Some(c) => Some((c.amount_total, c.source_currency.to_ascii_uppercase())),
+            None => Some((
+                self.amount_total?,
+                self.currency.as_deref()?.to_ascii_uppercase(),
+            )),
+        }
+    }
 }
 
 /// A Checkout session for one invoice.
@@ -167,9 +191,25 @@ pub struct EventData {
     pub object: Value,
 }
 
-/// Whether Stripe takes payments in a currency with the same minor units as OnHold.
-pub fn supports_currency(currency: &str) -> bool {
-    currency.len() == 3 && !UNSUPPORTED_CURRENCIES.contains(&currency.to_ascii_uppercase().as_str())
+/// The decimal places Stripe counts a currency in: none for its
+/// zero-decimal currencies, else two (three-decimal currencies are sent in
+/// thousandths but must end in 0, so they are not supported here).
+fn stripe_exponent(currency: &str) -> u32 {
+    if ZERO_DECIMAL.contains(&currency) {
+        0
+    } else {
+        2
+    }
+}
+
+/// Whether Stripe takes payments in a currency in the same minor units as
+/// OnHold counts it in (`exponent` decimal places).
+pub fn supports_currency(currency: &str, exponent: u32) -> bool {
+    let c = currency.to_ascii_uppercase();
+    c.len() == 3
+        && c.bytes().all(|b| b.is_ascii_uppercase())
+        && !SPECIAL_CASES.contains(&c.as_str())
+        && stripe_exponent(&c) == exponent
 }
 
 /// The platform's fee on a payment, rounded down.
@@ -257,6 +297,9 @@ impl StripeClient {
         let amount = new.amount_minor.to_string();
         let mut form: Vec<(String, String)> = vec![
             ("mode".into(), "payment".into()),
+            // Cards settle at once, so an invoice is never left with a
+            // payment pending for days while its link offers another.
+            ("payment_method_types[0]".into(), "card".into()),
             ("success_url".into(), new.success_url.into()),
             ("cancel_url".into(), new.cancel_url.into()),
             ("line_items[0][quantity]".into(), "1".into()),
@@ -295,19 +338,37 @@ impl StripeClient {
         .await
     }
 
-    /// Closes a session so it can no longer be paid. Already closed is fine.
-    pub async fn expire_checkout(&self, account: &str, session: &str) -> Result<(), StripeError> {
+    pub async fn checkout(
+        &self,
+        account: &str,
+        session: &str,
+    ) -> Result<CheckoutSession, StripeError> {
+        let url = endpoint(
+            &self.config.api_base,
+            &format!("/v1/checkout/sessions/{}", path_part(session)?),
+        );
+        self.send(self.http.get(url), Some(account), None, &[])
+            .await
+    }
+
+    /// Closes a session so it can no longer be paid, and returns it as it
+    /// now stands: `expired`, or `complete` if the payer got there first.
+    pub async fn expire_checkout(
+        &self,
+        account: &str,
+        session: &str,
+    ) -> Result<CheckoutSession, StripeError> {
         let url = endpoint(
             &self.config.api_base,
             &format!("/v1/checkout/sessions/{}/expire", path_part(session)?),
         );
-        let res: Result<Value, _> = self
+        match self
             .send(self.http.post(url), Some(account), None, &[])
-            .await;
-        match res {
-            Ok(_) => Ok(()),
-            Err(StripeError::Refused { status: 400, .. }) => Ok(()),
-            Err(e) => Err(e),
+            .await
+        {
+            // Only an open session can be expired; see why this one is not.
+            Err(StripeError::Refused { status: 400, .. }) => self.checkout(account, session).await,
+            other => other,
         }
     }
 
@@ -403,10 +464,12 @@ mod tests {
         assert_eq!(application_fee(10_000, 0), 0);
         assert_eq!(application_fee(10_000, 150), 150);
         assert_eq!(application_fee(999, 150), 14);
-        assert!(supports_currency("gbp"));
-        assert!(supports_currency("JPY"));
-        assert!(!supports_currency("KWD"));
-        assert!(!supports_currency("huf"));
+        assert!(supports_currency("gbp", 2));
+        assert!(supports_currency("JPY", 0));
+        assert!(!supports_currency("KWD", 3));
+        assert!(!supports_currency("huf", 2));
+        // Two decimals in ISO 4217, none at Stripe.
+        assert!(!supports_currency("MGA", 2));
 
         let client = StripeClient::new(StripeConfig::new(
             "sk_test_x".into(),

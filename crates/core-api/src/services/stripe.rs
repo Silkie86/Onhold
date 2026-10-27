@@ -219,7 +219,7 @@ pub async fn finish_connect(
     }
     let (currency, name) = account_state(&account);
     let mut tx = begin(state, ctx).await?;
-    if let Some(other) = core_db::stripe::account_workspace(&mut tx, &account.id).await?
+    if let Some(other) = core_db::stripe::account_live_workspace(&mut tx, &account.id).await?
         && other != ctx.workspace_id
     {
         return Err(ApiError::conflict(
@@ -227,7 +227,19 @@ pub async fn finish_connect(
             "this Stripe account is connected to another workspace; disconnect it there first",
         ));
     }
-    let before = status_of(state, core_db::stripe::account(&mut tx).await?);
+    let previous = core_db::stripe::account(&mut tx).await?;
+    let before = status_of(state, previous.clone());
+    // Another account was connected: close it first, so its payment links
+    // stop working. Payments it reports later are still recorded.
+    if let Some(old) =
+        previous.filter(|a| a.disconnected_at.is_none() && a.account_id != account.id)
+    {
+        close_account(client, &mut tx, &old.account_id).await;
+        if let Err(e) = client.deauthorize(&old.account_id).await {
+            tracing::warn!(error = %e, account = %old.account_id, "could not disconnect the previous Stripe account");
+        }
+        core_db::stripe::disconnect(&mut tx, &old.account_id).await?;
+    }
     core_db::stripe::connect(
         &mut tx,
         &account.id,
@@ -241,8 +253,6 @@ pub async fn finish_connect(
         ctx.user_id(),
     )
     .await?;
-    // Sessions on a previous account are no use now.
-    core_db::stripe::clear_all_sessions(&mut tx).await?;
     let after = status_of(state, core_db::stripe::account(&mut tx).await?);
     record(
         &mut tx,
@@ -261,8 +271,29 @@ pub async fn finish_connect(
     Ok(after)
 }
 
+/// Closes every open payment link made on an account and forgets them. A
+/// link Stripe cannot close now stays forgotten here; if the payer still
+/// pays it, the payment is recorded all the same.
+async fn close_account(client: &StripeClient, tx: &mut Tx, account_id: &str) {
+    let sessions = match core_db::stripe::sessions_on(tx, account_id).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(error = %e, "could not list open Checkout sessions");
+            return;
+        }
+    };
+    for (invoice, session) in sessions {
+        if let Err(e) = client.expire_checkout(account_id, &session).await {
+            tracing::warn!(error = %e, %session, "could not expire a Checkout session");
+        }
+        if let Err(e) = core_db::stripe::clear_invoice_session(tx, invoice, &session).await {
+            tracing::warn!(error = %e, %session, "could not forget a Checkout session");
+        }
+    }
+}
+
 /// Disconnects the account from OnHold (in Stripe too). Payments already
-/// recorded stay; open payment links stop being offered.
+/// recorded stay; open payment links are closed.
 pub async fn disconnect(state: &AppState, ctx: &Ctx) -> ApiResult<StripeStatus> {
     ctx.authorize(Permission::FinanceConfig)?;
     let mut tx = begin(state, ctx).await?;
@@ -273,6 +304,8 @@ pub async fn disconnect(state: &AppState, ctx: &Ctx) -> ApiResult<StripeStatus> 
         return Ok(status_of(state, Some(a)));
     }
     if let Some(client) = state.config.stripe.as_ref() {
+        // Links first: once disconnected, OnHold can no longer close them.
+        close_account(client, &mut tx, &a.account_id).await;
         client
             .deauthorize(&a.account_id)
             .await
@@ -280,7 +313,6 @@ pub async fn disconnect(state: &AppState, ctx: &Ctx) -> ApiResult<StripeStatus> 
     }
     let before = status_of(state, Some(a.clone()));
     core_db::stripe::disconnect(&mut tx, &a.account_id).await?;
-    core_db::stripe::clear_all_sessions(&mut tx).await?;
     let after = status_of(state, core_db::stripe::account(&mut tx).await?);
     record(
         &mut tx,
@@ -311,7 +343,10 @@ pub(crate) async fn card_payments_open(
         || inv.kind != "invoice"
         || !inv.status.is_issued()
         || inv.outstanding.minor <= 0
-        || !api::supports_currency(&inv.currency)
+        || !api::supports_currency(
+            &inv.currency,
+            core_domain::money::minor_unit_exponent(&inv.currency),
+        )
     {
         return Ok(false);
     }
@@ -326,19 +361,28 @@ pub struct PaymentLink {
     pub url: String,
 }
 
-/// A Stripe Checkout session for what the invoice still owes. The open
-/// session is reused while it is for the same amount, so pressing Pay twice
-/// gives one session.
-pub async fn public_pay(state: &AppState, token: &str) -> ApiResult<PaymentLink> {
-    let client = client(state)?;
-    let (mut tx, ctx, id) = super::invoices::open_public(state, token, Default::default()).await?;
-    core_db::invoices::lock(&mut tx, id)
+fn reusable(s: &InvoiceSession, amount: i64, account: &str, now: DateTime<Utc>) -> bool {
+    s.amount_minor == amount
+        && s.account_id == account
+        && s.expires_at > now + Duration::minutes(SESSION_MARGIN_MINS)
+}
+
+/// What a payer's Pay press finds: the invoice, its account and session.
+struct PayState {
+    inv: super::invoices::InvoiceView,
+    account: StripeAccount,
+    current: Option<InvoiceSession>,
+    workspace_name: String,
+}
+
+async fn pay_state(state: &AppState, tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<PayState> {
+    core_db::invoices::lock(tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    let inv = super::invoices::load(&mut tx, id)
+    let inv = super::invoices::load(tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    if !card_payments_open(state, &mut tx, &inv).await? {
+    if !card_payments_open(state, tx, &inv).await? {
         return Err(ApiError::conflict(
             "card_payments_closed",
             if inv.outstanding.minor <= 0 {
@@ -348,28 +392,53 @@ pub async fn public_pay(state: &AppState, token: &str) -> ApiResult<PaymentLink>
             },
         ));
     }
-    let Some(account) = core_db::stripe::account(&mut tx).await? else {
-        return Err(ApiError::NotFound);
-    };
-    let now = Utc::now();
-    let current = core_db::stripe::invoice_session(&mut tx, id).await?;
-    if let Some(s) = &current {
-        if s.amount_minor == inv.outstanding.minor
-            && s.expires_at > now + Duration::minutes(SESSION_MARGIN_MINS)
-        {
-            tx.commit().await?;
-            return Ok(PaymentLink { url: s.url.clone() });
-        }
-        // An older amount: close it so it cannot also be paid.
-        if let Err(e) = client.expire_checkout(&account.account_id, &s.id).await {
-            tracing::warn!(error = %e, session = %s.id, "could not expire an old Checkout session");
-        }
-    }
-    let w = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+    let account = core_db::stripe::account(tx)
         .await?
         .ok_or(ApiError::NotFound)?;
+    let current = core_db::stripe::invoice_session(tx, id).await?;
+    let w = core_db::workspaces::get(tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(PayState {
+        inv,
+        account,
+        current,
+        workspace_name: w.name,
+    })
+}
+
+/// A Stripe Checkout session for what the invoice still owes. The open
+/// session is reused while it is for the same amount, so pressing Pay twice
+/// gives one session. Stripe is called outside any transaction, so a slow
+/// Stripe holds no lock on the invoice.
+pub async fn public_pay(state: &AppState, token: &str) -> ApiResult<PaymentLink> {
+    let client = client(state)?;
+    let now = Utc::now();
+    let (mut tx, ctx, id) = super::invoices::open_public(state, token, Default::default()).await?;
+    let first = pay_state(state, &mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    let amount = first.inv.outstanding.minor;
+    if let Some(s) = &first.current {
+        if reusable(s, amount, &first.account.account_id, now) {
+            return Ok(PaymentLink { url: s.url.clone() });
+        }
+        // An older amount: close it so it cannot also be paid. If the payer
+        // already paid it, that payment is on its way and no second link
+        // is made.
+        let old = client
+            .expire_checkout(&s.account_id, &s.id)
+            .await
+            .map_err(stripe_error)?;
+        if old.status.as_deref() == Some("complete") {
+            return Err(ApiError::conflict(
+                "card_payment_in_progress",
+                "a card payment for this invoice is being confirmed; check back in a few minutes",
+            ));
+        }
+    }
+    let inv = &first.inv;
     let reference = inv.reference.clone().unwrap_or_default();
-    let description: String = format!("Invoice {reference} from {}", w.name)
+    let description: String = format!("Invoice {reference} from {}", first.workspace_name)
         .chars()
         .take(250)
         .collect();
@@ -382,11 +451,12 @@ pub async fn public_pay(state: &AppState, token: &str) -> ApiResult<PaymentLink>
         ("reference", reference),
     ];
     let key = core_domain::ids::new_id().to_string();
+    let account_id = first.account.account_id.clone();
     let session = client
         .create_checkout(
-            &account.account_id,
+            &account_id,
             &NewCheckout {
-                amount_minor: inv.outstanding.minor,
+                amount_minor: amount,
                 currency: &inv.currency,
                 description: &description,
                 success_url: &success,
@@ -403,30 +473,63 @@ pub async fn public_pay(state: &AppState, token: &str) -> ApiResult<PaymentLink>
         .clone()
         .filter(|u| u.starts_with("https://") || cfg!(debug_assertions))
         .ok_or_else(|| ApiError::internal("stripe: the session has no payment page"))?;
-    let expires_at = session
-        .expires_at
-        .and_then(|t| DateTime::from_timestamp(t, 0))
-        .unwrap_or(now + Duration::hours(23));
-    core_db::stripe::set_invoice_session(
-        &mut tx,
-        id,
-        Some(&InvoiceSession {
-            id: session.id.clone(),
-            url: url.clone(),
-            amount_minor: inv.outstanding.minor,
-            expires_at,
-        }),
-    )
-    .await?;
-    tx.commit().await?;
-    Ok(PaymentLink { url })
+    let made = InvoiceSession {
+        id: session.id.clone(),
+        url: url.clone(),
+        amount_minor: amount,
+        expires_at: session
+            .expires_at
+            .and_then(|t| DateTime::from_timestamp(t, 0))
+            .unwrap_or(now + Duration::hours(23)),
+        account_id: account_id.clone(),
+    };
+
+    // Keep it, unless things moved on while Stripe was asked.
+    let (mut tx, ctx, _) = super::invoices::open_public(state, token, Default::default()).await?;
+    let outcome = match pay_state(state, &mut tx, &ctx, id).await {
+        Ok(now_state) => {
+            let theirs = now_state.current.filter(|s| {
+                s.id != first.current.as_ref().map_or("", |c| c.id.as_str())
+                    && reusable(s, now_state.inv.outstanding.minor, &account_id, now)
+            });
+            match theirs {
+                // Another press made one meanwhile: use that.
+                Some(s) => Err(Ok(s.url)),
+                None if now_state.inv.outstanding.minor != amount
+                    || now_state.account.account_id != account_id =>
+                {
+                    Err(Err(ApiError::conflict(
+                        "invoice_changed",
+                        "this invoice changed while the payment page was being made; try again",
+                    )))
+                }
+                None => {
+                    core_db::stripe::set_invoice_session(&mut tx, id, Some(&made)).await?;
+                    tx.commit().await?;
+                    Ok(())
+                }
+            }
+        }
+        Err(e) => Err(Err(e)),
+    };
+    match outcome {
+        Ok(()) => Ok(PaymentLink { url }),
+        Err(other) => {
+            // Ours is not kept: close it so only the kept one can be paid.
+            if let Err(e) = client.expire_checkout(&account_id, &made.id).await {
+                tracing::warn!(error = %e, session = %made.id, "could not expire an unused Checkout session");
+            }
+            other.map(|url| PaymentLink { url })
+        }
+    }
 }
 
 // Webhooks --------------------------------------------------------------------------------------
 
 /// Checks and keeps an event Stripe sent; a job processes it. Events for
-/// accounts no workspace has connected are acknowledged and dropped, so
-/// Stripe stops retrying them.
+/// accounts no workspace has had are acknowledged and dropped, so Stripe
+/// stops retrying them. An event Stripe sends again while it still waits
+/// (its job may have died) is queued again.
 pub async fn receive_webhook(
     state: &AppState,
     signature: Option<&str>,
@@ -475,15 +578,18 @@ pub async fn receive_webhook(
         return Ok(());
     };
     core_db::set_context(&mut tx, Some(workspace), None).await?;
+    let job = json!({ "event_id": event.id });
     if core_db::stripe::insert_event(&mut tx, &event.id, &event.kind, &payload).await? {
         core_db::jobs::enqueue(
             &mut tx,
-            core_db::jobs::NewJob::new(
-                Some(workspace),
-                JOB_EVENT,
-                &json!({ "event_id": event.id }),
-            )
-            .dedupe(&event.id),
+            core_db::jobs::NewJob::new(Some(workspace), JOB_EVENT, &job).dedupe(&event.id),
+        )
+        .await?;
+    } else if core_db::stripe::event_pending(&mut tx, &event.id).await? {
+        // Processing is once per event whatever the number of jobs.
+        core_db::jobs::enqueue(
+            &mut tx,
+            core_db::jobs::NewJob::new(Some(workspace), JOB_EVENT, &job),
         )
         .await?;
     }
@@ -507,21 +613,30 @@ pub async fn process_event(
     }
     let outcome = match serde_json::from_value::<Event>(stored.payload) {
         Err(_) => "not understood".to_owned(),
-        Ok(event) => match core_db::stripe::account(&mut tx).await? {
-            None => "no account is connected".to_owned(),
-            Some(a) if event.account.as_deref() != Some(a.account_id.as_str()) => {
-                "for an account no longer connected".to_owned()
-            }
-            Some(a) if a.disconnected_at.is_some() => "the account is disconnected".to_owned(),
-            Some(a) if a.livemode != event.livemode => {
-                "a test-mode event for a live account, or the other way round".to_owned()
-            }
-            Some(a) => handle(state, &mut tx, &ctx, &a, &event).await?,
+        // Any account the workspace has had: money moved on an account
+        // since disconnected is still recorded.
+        Ok(event) => match event.account.as_deref() {
+            None => "for no connected account".to_owned(),
+            Some(id) => match core_db::stripe::account_by_id(&mut tx, id).await? {
+                None => "for an account this workspace never had".to_owned(),
+                Some(a) if a.livemode != event.livemode => {
+                    "a test-mode event for a live account, or the other way round".to_owned()
+                }
+                Some(a) => handle(state, &mut tx, &ctx, &a, &event).await?,
+            },
         },
     };
     core_db::stripe::finish_event(&mut tx, event_id, &outcome).await?;
     tx.commit().await?;
     Ok(outcome)
+}
+
+/// When Stripe made the event; now if it does not say.
+fn created_at(event: &Event) -> DateTime<Utc> {
+    event
+        .created
+        .and_then(|t| DateTime::from_timestamp(t, 0))
+        .unwrap_or_else(Utc::now)
 }
 
 fn invoice_of(session: &CheckoutSession) -> Option<Uuid> {
@@ -568,9 +683,12 @@ async fn handle(
             if a.id != account.account_id {
                 return Ok("for another account".into());
             }
+            if account.disconnected_at.is_some() {
+                return Ok("the account is disconnected".into());
+            }
             let (currency, name) = account_state(&a);
             let before = status_of(state, Some(account.clone()));
-            core_db::stripe::update_account(
+            let changed = core_db::stripe::update_account(
                 tx,
                 &a.id,
                 &AccountState {
@@ -579,8 +697,12 @@ async fn handle(
                     default_currency: currency.as_deref(),
                     display_name: name.as_deref(),
                 },
+                created_at(event),
             )
             .await?;
+            if !changed {
+                return Ok("older than what is kept".into());
+            }
             let after = status_of(state, core_db::stripe::account(tx).await?);
             record(
                 tx,
@@ -598,9 +720,18 @@ async fn handle(
             Ok("account updated".into())
         }
         "account.application.deauthorized" => {
+            // Sent before the account was connected again: it no longer holds.
+            if created_at(event) < account.connected_at {
+                return Ok("from before the account was connected again".into());
+            }
             let before = status_of(state, Some(account.clone()));
             if core_db::stripe::disconnect(tx, &account.account_id).await? {
-                core_db::stripe::clear_all_sessions(tx).await?;
+                // OnHold can no longer close the links; forget them.
+                for (invoice, session) in
+                    core_db::stripe::sessions_on(tx, &account.account_id).await?
+                {
+                    core_db::stripe::clear_invoice_session(tx, invoice, &session).await?;
+                }
                 let after = status_of(state, core_db::stripe::account(tx).await?);
                 record(
                     tx,
@@ -629,7 +760,7 @@ async fn record_payment(tx: &mut Tx, ctx: &Ctx, session: &CheckoutSession) -> Ap
     let Some(intent) = session.payment_intent.as_deref() else {
         return Ok("the session has no payment".into());
     };
-    let (Some(amount), Some(currency)) = (session.amount_total, session.currency.as_deref()) else {
+    let Some((amount, currency)) = session.paid_amount() else {
         return Ok("the session has no amount".into());
     };
     let Some(invoice_id) = invoice_of(session) else {
@@ -638,7 +769,6 @@ async fn record_payment(tx: &mut Tx, ctx: &Ctx, session: &CheckoutSession) -> Ap
     if amount <= 0 {
         return Ok("nothing was paid".into());
     }
-    let currency = currency.to_ascii_uppercase();
     let inv = match core_db::invoices::lock(tx, invoice_id).await? {
         Some(_) => super::invoices::load(tx, invoice_id).await?,
         None => None,
@@ -704,7 +834,14 @@ async fn record_refund(tx: &mut Tx, ctx: &Ctx, object: &Value) -> ApiResult<Stri
         return Ok("the charge has no payment".into());
     };
     let Some(payment_id) = core_db::stripe::payment_for_intent(tx, intent).await? else {
-        return Ok("no payment was recorded for it".into());
+        // The payment's own event may still be on its way through: wait.
+        if core_db::stripe::payment_event_pending(tx, intent).await? {
+            return Err(ApiError::conflict(
+                "stripe_payment_pending",
+                "the payment this refund is for is not recorded yet",
+            ));
+        }
+        return Ok("not a payment made through OnHold".into());
     };
     core_db::payments::lock(tx, payment_id)
         .await?
@@ -715,12 +852,18 @@ async fn record_refund(tx: &mut Tx, ctx: &Ctx, object: &Value) -> ApiResult<Stri
     if payment.voided_at.is_some() {
         return Ok("the payment was voided here".into());
     }
-    let already = core_db::payments::refunded(tx, payment_id).await?;
+    // Only refunds recorded from Stripe count: one recorded by hand is
+    // another refund, not this one.
+    let already = core_db::stripe::refunded_in_stripe(tx, payment_id, intent).await?;
     let delta = charge.amount_refunded - already;
     if delta <= 0 {
         return Ok("already recorded".into());
     }
-    let delta = delta.min(payment.amount.minor - already);
+    let all = core_db::payments::refunded(tx, payment_id).await?;
+    let delta = delta.min(payment.amount.minor - all);
+    if delta <= 0 {
+        return Ok("the payment is already refunded in full here".into());
+    }
     // Free enough of the payment from its invoices, newest allocation first.
     let mut free = payment.unallocated.minor;
     let mut touched = Vec::new();

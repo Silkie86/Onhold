@@ -1464,12 +1464,19 @@ export function PublicInvoicePage() {
   const { paid } = useSearch({ from: "/invoice/$token" });
   const [error, setError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
+  // Back from paying by card: look again for two minutes while Stripe's
+  // confirmation lands, then offer the Pay button again.
+  const [waiting, setWaiting] = useState(Boolean(paid));
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setTimeout(() => setWaiting(false), 120_000);
+    return () => clearTimeout(t);
+  }, [waiting]);
   const invoice = useQuery({
     queryKey: ["public-invoice", token],
     queryFn: () => ok(api.GET("/api/v1/public/invoices/{token}", { params: { path: { token } } })),
     retry: false,
-    // Back from paying by card: look again until Stripe's confirmation lands.
-    refetchInterval: (q) => (paid && q.state.data && q.state.data.outstanding.minor > 0 ? 5000 : false),
+    refetchInterval: (q) => (waiting && q.state.data && q.state.data.outstanding.minor > 0 ? 5000 : false),
   });
   useEffect(() => {
     const b = invoice.data?.branding as { colours?: Branding } | undefined;
@@ -1543,7 +1550,11 @@ export function PublicInvoicePage() {
           </tfoot>
         </table>
         {paid && i.status !== "paid" && (
-          <Alert tone="success">Thank you. Your card payment is being confirmed; this page will show it as paid shortly.</Alert>
+          <Alert tone={waiting ? "success" : "info"}>
+            {waiting
+              ? "Thank you. Your card payment is being confirmed; this page will show it as paid shortly."
+              : "Your card payment has not shown here yet. It can take a few minutes; refresh this page later before paying again."}
+          </Alert>
         )}
         {i.status === "paid" ? (
           <Alert tone="success">Paid in full. Thank you.</Alert>
@@ -1555,7 +1566,7 @@ export function PublicInvoicePage() {
             </p>
           )
         )}
-        {i.card_payments && !paid && (
+        {i.card_payments && !waiting && (
           <div>
             <Button
               disabled={paying}

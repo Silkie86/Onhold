@@ -4,8 +4,8 @@
 -- account; Stripe's webhooks record the payment (and any refund) here.
 
 CREATE TABLE stripe_accounts (
-    workspace_id      uuid PRIMARY KEY REFERENCES workspaces (id),
-    account_id        text NOT NULL UNIQUE CHECK (account_id ~ '^acct_[A-Za-z0-9]{1,64}$'),
+    workspace_id      uuid NOT NULL REFERENCES workspaces (id),
+    account_id        text NOT NULL CHECK (account_id ~ '^acct_[A-Za-z0-9]{1,64}$'),
     livemode          boolean NOT NULL DEFAULT false,
     charges_enabled   boolean NOT NULL DEFAULT false,
     details_submitted boolean NOT NULL DEFAULT false,
@@ -13,20 +13,42 @@ CREATE TABLE stripe_accounts (
     display_name      text CHECK (length(display_name) <= 200),
     connected_at      timestamptz NOT NULL DEFAULT now(),
     connected_by      uuid REFERENCES users (id),
-    -- Set when the client disconnects (here or from Stripe's side).
+    -- Set when the client disconnects (here or from Stripe's side). The row
+    -- stays, so payments and refunds Stripe reports later still find it.
     disconnected_at   timestamptz,
-    updated_at        timestamptz NOT NULL DEFAULT now()
+    -- When Stripe's latest account state was true, so an older
+    -- `account.updated` arriving late does not overwrite a newer one.
+    state_at          timestamptz NOT NULL DEFAULT now(),
+    updated_at        timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (workspace_id, account_id)
 );
+-- One connected account per workspace, and one workspace per connected account.
+CREATE UNIQUE INDEX stripe_accounts_live_workspace ON stripe_accounts (workspace_id)
+    WHERE disconnected_at IS NULL;
+CREATE UNIQUE INDEX stripe_accounts_live_account ON stripe_accounts (account_id)
+    WHERE disconnected_at IS NULL;
+CREATE INDEX stripe_accounts_account ON stripe_accounts (account_id, connected_at DESC);
 CREATE TRIGGER stripe_accounts_updated_at BEFORE UPDATE ON stripe_accounts
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Which workspace a Stripe account belongs to, for webhooks (which arrive
--- signed by Stripe, not by a signed-in person).
+-- Which workspace a Stripe account's events belong to, for webhooks (which
+-- arrive signed by Stripe, not by a signed-in person): the one it is
+-- connected to, else the one it was last connected to.
 CREATE FUNCTION stripe_account_workspace(p_account_id text)
     RETURNS uuid
     LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
     AS $$
         SELECT workspace_id FROM stripe_accounts WHERE account_id = p_account_id
+        ORDER BY disconnected_at IS NULL DESC, connected_at DESC LIMIT 1
+    $$;
+
+-- The workspace an account is connected to now, if any.
+CREATE FUNCTION stripe_account_live_workspace(p_account_id text)
+    RETURNS uuid
+    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+    AS $$
+        SELECT workspace_id FROM stripe_accounts
+        WHERE account_id = p_account_id AND disconnected_at IS NULL
     $$;
 
 -- Every event Stripe sent, once: Stripe retries, and may send one twice.
@@ -47,7 +69,9 @@ ALTER TABLE invoices
     ADD COLUMN stripe_session_id         text CHECK (length(stripe_session_id) <= 200),
     ADD COLUMN stripe_session_url        text CHECK (length(stripe_session_url) <= 2000),
     ADD COLUMN stripe_session_amount     bigint,
-    ADD COLUMN stripe_session_expires_at timestamptz;
+    ADD COLUMN stripe_session_expires_at timestamptz,
+    -- The account it was made on, to close it if the account changes.
+    ADD COLUMN stripe_session_account    text CHECK (length(stripe_session_account) <= 100);
 
 -- A payment made through Stripe, by its PaymentIntent, so it is recorded once.
 ALTER TABLE payments ADD COLUMN stripe_payment_intent text CHECK (length(stripe_payment_intent) <= 200);
@@ -62,5 +86,5 @@ CREATE POLICY stripe_events_tenant ON stripe_events FOR ALL TO onhold_app
     USING (workspace_id = app_workspace_id()) WITH CHECK (workspace_id = app_workspace_id());
 
 GRANT SELECT, INSERT, UPDATE ON stripe_accounts, stripe_events TO onhold_app;
-REVOKE ALL ON FUNCTION stripe_account_workspace(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION stripe_account_workspace(text) TO onhold_app;
+REVOKE ALL ON FUNCTION stripe_account_workspace(text), stripe_account_live_workspace(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION stripe_account_workspace(text), stripe_account_live_workspace(text) TO onhold_app;

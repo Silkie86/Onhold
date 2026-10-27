@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT stripe_session_id, stripe_session_url, stripe_session_amount,\n                  stripe_session_expires_at\n           FROM invoices WHERE workspace_id = app_workspace_id() AND id = $1",
+  "query": "SELECT stripe_session_id, stripe_session_url, stripe_session_amount,\n                  stripe_session_expires_at, stripe_session_account\n           FROM invoices WHERE workspace_id = app_workspace_id() AND id = $1",
   "describe": {
     "columns": [
       {
@@ -46,6 +46,17 @@
             "name": "stripe_session_expires_at"
           }
         }
+      },
+      {
+        "ordinal": 4,
+        "name": "stripe_session_account",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "stripe_session_account"
+          }
+        }
       }
     ],
     "parameters": {
@@ -57,8 +68,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "fec4a993fd4b206908cd8d72422b940763f247092773663e39b9d0c2c97300b8"
+  "hash": "ff5ef339459a4a6583f1d2ef52bcb9cf5bff0d47cd284e91597aba345c178086"
 }

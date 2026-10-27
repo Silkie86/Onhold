@@ -44,6 +44,11 @@ export function PaymentsSettingsPage() {
       });
   }, [admin, search.code, search.state, navigate, qc]);
 
+  // Stripe sent back a refusal: keep the message, drop it from the address bar.
+  useEffect(() => {
+    if (search.error && !search.code) void navigate({ to: "/settings/payments", search: {}, replace: true });
+  }, [search.error, search.code, navigate]);
+
   if (!admin) {
     return (
       <div className="mx-auto max-w-3xl p-4 sm:p-6">

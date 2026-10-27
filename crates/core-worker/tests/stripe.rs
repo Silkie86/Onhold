@@ -29,6 +29,7 @@ use url::Url;
 
 const WEBHOOK_SECRET: &str = "whsec_test_onhold";
 const ACCOUNT: &str = "acct_1QOwlsTestAccount";
+const OTHER_ACCOUNT: &str = "acct_1QOwlsNewAccount";
 
 fn fixture(name: &str) -> Value {
     let path = format!(
@@ -44,6 +45,8 @@ struct Calls {
     checkouts: Vec<(HashMap<String, String>, HashMap<String, String>)>,
     expired: Vec<String>,
     deauthorized: Vec<String>,
+    /// Sessions the payer has paid, which can no longer be expired.
+    completed: Vec<String>,
 }
 
 type Shared = Arc<Mutex<Calls>>;
@@ -67,14 +70,19 @@ async fn fake_stripe() -> (Url, Shared) {
             "/oauth/token",
             post(|body: String| async move {
                 let f = form(&body);
-                if f.get("code").map(String::as_str) != Some("ac_test_owls") {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        axum::Json(json!({ "error": "invalid_grant",
-                            "error_description": "Authorization code does not exist" })),
-                    );
+                let mut token = fixture("oauth_token");
+                match f.get("code").map(String::as_str) {
+                    Some("ac_test_owls") => {}
+                    Some("ac_test_other") => token["stripe_user_id"] = json!(OTHER_ACCOUNT),
+                    _ => {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            axum::Json(json!({ "error": "invalid_grant",
+                                "error_description": "Authorization code does not exist" })),
+                        );
+                    }
                 }
-                (StatusCode::OK, axum::Json(fixture("oauth_token")))
+                (StatusCode::OK, axum::Json(token))
             }),
         )
         .route(
@@ -92,8 +100,10 @@ async fn fake_stripe() -> (Url, Shared) {
         .route(
             "/v1/accounts/{id}",
             get(|Path(id): Path<String>| async move {
-                assert_eq!(id, ACCOUNT);
-                axum::Json(fixture("account"))
+                assert!(id == ACCOUNT || id == OTHER_ACCOUNT, "{id}");
+                let mut account = fixture("account");
+                account["id"] = json!(id);
+                axum::Json(account)
             }),
         )
         .route(
@@ -123,10 +133,31 @@ async fn fake_stripe() -> (Url, Shared) {
             "/v1/checkout/sessions/{id}/expire",
             post(
                 |State(calls): State<Shared>, Path(id): Path<String>| async move {
-                    calls.lock().unwrap().expired.push(id.clone());
-                    axum::Json(
-                        json!({ "id": id, "object": "checkout.session", "status": "expired" }),
+                    let mut c = calls.lock().unwrap();
+                    if c.completed.contains(&id) {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            axum::Json(json!({ "error": { "type": "invalid_request_error",
+                                "message": "Only Checkout Sessions with a status in [\"open\"] can be expired." } })),
+                        );
+                    }
+                    c.expired.push(id.clone());
+                    (
+                        StatusCode::OK,
+                        axum::Json(
+                            json!({ "id": id, "object": "checkout.session", "status": "expired" }),
+                        ),
                     )
+                },
+            ),
+        )
+        .route(
+            "/v1/checkout/sessions/{id}",
+            get(
+                |State(calls): State<Shared>, Path(id): Path<String>| async move {
+                    let complete = calls.lock().unwrap().completed.contains(&id);
+                    axum::Json(json!({ "id": id, "object": "checkout.session",
+                        "status": if complete { "complete" } else { "expired" } }))
                 },
             ),
         )
@@ -222,6 +253,12 @@ impl Harness {
             .unwrap()
             .flatten()
     }
+}
+
+/// An event as Stripe would send it now, after the account was connected.
+fn now(mut event: Value) -> Value {
+    event["created"] = json!(chrono::Utc::now().timestamp() + 1);
+    event
 }
 
 fn query(url: &str) -> HashMap<String, String> {
@@ -405,6 +442,7 @@ async fn invoices_are_paid_and_refunded_through_stripe(pool: PgPool) {
         assert_eq!(headers["authorization"], "Bearer sk_test_platform");
         assert!(headers.contains_key("idempotency-key"));
         assert_eq!(f["mode"], "payment");
+        assert_eq!(f["payment_method_types[0]"], "card");
         assert_eq!(f["line_items[0][price_data][currency]"], "gbp");
         assert_eq!(
             f["line_items[0][price_data][unit_amount]"],
@@ -548,7 +586,9 @@ async fn invoices_are_paid_and_refunded_through_stripe(pool: PgPool) {
 
     // Stripe turns charges off until the client sends more details.
     assert_eq!(
-        h.webhook(&fixture("event_account_updated")).await.status,
+        h.webhook(&now(fixture("event_account_updated")))
+            .await
+            .status,
         StatusCode::NO_CONTENT
     );
     h.drain().await;
@@ -586,7 +626,7 @@ async fn invoices_are_paid_and_refunded_through_stripe(pool: PgPool) {
 
     // The client disconnects OnHold from their Stripe dashboard.
     assert_eq!(
-        h.webhook(&fixture("event_account_application_deauthorized"))
+        h.webhook(&now(fixture("event_account_application_deauthorized")))
             .await
             .status,
         StatusCode::NO_CONTENT
@@ -671,4 +711,235 @@ async fn disconnecting_here_tells_stripe_and_stops_card_payments(pool: PgPool) {
         .ok()
         .body;
     assert_eq!(back["connected"], true, "{back}");
+}
+
+/// Connects the fake account through the whole round trip.
+async fn connect(h: &Harness, who: &Client, code: &str) -> common::Resp {
+    let start = h
+        .post(who, "/api/v1/finance/stripe/connect", json!({}))
+        .await
+        .ok()
+        .body;
+    let state = query(start["url"].as_str().unwrap())["state"].clone();
+    h.post(
+        who,
+        "/api/v1/finance/stripe/connect/finish",
+        json!({ "code": code, "state": state }),
+    )
+    .await
+}
+
+/// An issued invoice sent to the payer: its id, total and payer link token.
+async fn sent_invoice(h: &Harness, owner: &Client) -> (String, i64, String) {
+    let organisation = h
+        .post(
+            owner,
+            "/api/v1/organisations",
+            json!({ "name": "The Grand Hall" }),
+        )
+        .await
+        .ok()
+        .id("/id");
+    let id = h
+        .post(
+            owner,
+            "/api/v1/invoices",
+            json!({ "payer": { "organisation_id": organisation },
+                    "line_items": [{ "description": "Performance", "unit_minor": 100_000 }] }),
+        )
+        .await
+        .ok()
+        .id("/id")
+        .to_string();
+    let issued = h
+        .post(owner, &format!("/api/v1/invoices/{id}/issue"), json!({}))
+        .await
+        .ok()
+        .body;
+    let sent = h
+        .post(
+            owner,
+            &format!("/api/v1/invoices/{id}/send"),
+            json!({ "to": "bea@grand.test" }),
+        )
+        .await
+        .ok()
+        .body;
+    let token = sent["link"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    (id, issued["total"]["minor"].as_i64().unwrap(), token)
+}
+
+async fn pay(h: &Harness, token: &str) -> common::Resp {
+    h.app
+        .post(&format!("/api/v1/public/invoices/{token}/pay"))
+        .json(json!({}))
+        .send()
+        .await
+}
+
+fn completed(session: &str, invoice: &str, amount: i64, event: &str, account: &str) -> Value {
+    let mut e = now(fixture("event_checkout_session_completed"));
+    e["id"] = json!(event);
+    e["account"] = json!(account);
+    e["data"]["object"]["id"] = json!(session);
+    e["data"]["object"]["amount_total"] = json!(amount);
+    e["data"]["object"]["metadata"] = json!({ "invoice_id": invoice });
+    e
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn payments_on_a_replaced_account_still_count(pool: PgPool) {
+    let h = harness(pool).await;
+    let (_, owner) = h.app.workspace_with_owner("owls").await;
+    connect(&h, &owner, "ac_test_owls").await.ok();
+    let (invoice, total, token) = sent_invoice(&h, &owner).await;
+    pay(&h, &token).await.ok();
+    let old_session = "cs_test_a1Owls1".to_owned();
+
+    // The client switches to another Stripe account: the old one is
+    // disconnected and its open payment link closed.
+    let switched = connect(&h, &owner, "ac_test_other").await.ok().body;
+    assert_eq!(switched["account_id"], OTHER_ACCOUNT, "{switched}");
+    {
+        let calls = h.calls.lock().unwrap();
+        assert_eq!(calls.expired, vec![old_session.clone()]);
+        assert_eq!(calls.deauthorized, vec![ACCOUNT.to_owned()]);
+    }
+    // A payer who got through on the old link before it closed is still
+    // recorded, against the right invoice.
+    let late = completed(
+        &old_session,
+        &invoice,
+        total,
+        "evt_1QOldAccountPaid",
+        ACCOUNT,
+    );
+    assert_eq!(h.webhook(&late).await.status, StatusCode::NO_CONTENT);
+    h.drain().await;
+    let inv = h.get(&owner, &format!("/api/v1/invoices/{invoice}")).await;
+    assert_eq!(inv["status"], "paid", "{inv}");
+
+    // The old account, disconnected here, can be connected to another workspace.
+    let (_, other) = h.app.workspace_with_owner("hall").await;
+    let theirs = connect(&h, &other, "ac_test_owls").await.ok().body;
+    assert_eq!(theirs["connected"], true, "{theirs}");
+    assert_eq!(theirs["account_id"], ACCOUNT);
+    // But not the one this workspace has now.
+    connect(&h, &other, "ac_test_other")
+        .await
+        .expect(StatusCode::CONFLICT, "stripe_account_in_use");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn refunds_events_and_links_hold_up_out_of_order(pool: PgPool) {
+    let h = harness(pool).await;
+    let (_, owner) = h.app.workspace_with_owner("owls").await;
+    connect(&h, &owner, "ac_test_owls").await.ok();
+    let (invoice, total, token) = sent_invoice(&h, &owner).await;
+    pay(&h, &token).await.ok();
+    let session = "cs_test_a1Owls1";
+
+    // The refund's event is processed before the payment's: it waits for it.
+    let mut refunded = now(fixture("event_charge_refunded"));
+    refunded["data"]["object"]["amount_refunded"] = json!(20_000);
+    assert_eq!(h.webhook(&refunded).await.status, StatusCode::NO_CONTENT);
+    let paid = completed(session, &invoice, total, "evt_1QPaid", ACCOUNT);
+    assert_eq!(h.webhook(&paid).await.status, StatusCode::NO_CONTENT);
+    h.drain().await;
+    let inv = h.get(&owner, &format!("/api/v1/invoices/{invoice}")).await;
+    assert_eq!(inv["outstanding"]["minor"], 20_000, "{inv}");
+    assert!(
+        h.processed("evt_3QOwlsRefunded")
+            .await
+            .unwrap()
+            .contains("recorded")
+    );
+
+    // A refund recorded by hand is not mistaken for Stripe's next one.
+    let payment = h.get(&owner, "/api/v1/payments?kind=payment").await["items"][0].clone();
+    let payment_id = payment["id"].as_str().unwrap().to_owned();
+    let allocation = payment["allocations"][0]["id"].as_str().unwrap().to_owned();
+    h.app
+        .delete(&format!(
+            "/api/v1/payments/{payment_id}/allocations/{allocation}"
+        ))
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    h.post(
+        &owner,
+        &format!("/api/v1/payments/{payment_id}/refunds"),
+        json!({ "amount_minor": 5_000, "method": "bank_transfer" }),
+    )
+    .await
+    .ok();
+    let mut more = now(fixture("event_charge_refunded"));
+    more["id"] = json!("evt_3QOwlsRefundedMore");
+    more["data"]["object"]["amount_refunded"] = json!(30_000);
+    assert_eq!(h.webhook(&more).await.status, StatusCode::NO_CONTENT);
+    h.drain().await;
+    let refunds = h.get(&owner, "/api/v1/payments?kind=refund").await;
+    let mut amounts: Vec<i64> = refunds["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["amount"]["minor"].as_i64().unwrap())
+        .collect();
+    amounts.sort_unstable();
+    assert_eq!(amounts, vec![5_000, 10_000, 20_000], "{refunds}");
+
+    // An old account.updated arriving late does not undo a newer one.
+    let mut newer = now(fixture("event_account_updated"));
+    newer["id"] = json!("evt_1QNewer");
+    newer["data"]["object"]["charges_enabled"] = json!(true);
+    assert_eq!(h.webhook(&newer).await.status, StatusCode::NO_CONTENT);
+    h.drain().await;
+    let older = fixture("event_account_updated");
+    assert_eq!(h.webhook(&older).await.status, StatusCode::NO_CONTENT);
+    h.drain().await;
+    let status = h.get(&owner, "/api/v1/finance/stripe").await;
+    assert_eq!(status["charges_enabled"], true, "{status}");
+
+    // A deauthorization from before the account was connected (again) is old news.
+    let stale = fixture("event_account_application_deauthorized");
+    assert_eq!(h.webhook(&stale).await.status, StatusCode::NO_CONTENT);
+    h.drain().await;
+    let status = h.get(&owner, "/api/v1/finance/stripe").await;
+    assert_eq!(status["connected"], true, "{status}");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_paid_link_is_not_replaced_by_a_second_one(pool: PgPool) {
+    let h = harness(pool).await;
+    let (_, owner) = h.app.workspace_with_owner("owls").await;
+    connect(&h, &owner, "ac_test_owls").await.ok();
+    let (invoice, _, token) = sent_invoice(&h, &owner).await;
+    pay(&h, &token).await.ok();
+
+    // Part is paid by bank, so the next press wants a smaller link; but the
+    // payer already paid the first one at Stripe, which OnHold has yet to hear.
+    h.post(
+        &owner,
+        "/api/v1/payments",
+        json!({ "amount": { "minor": 10_000, "currency": "GBP" },
+                "allocations": [{ "invoice_id": invoice }] }),
+    )
+    .await
+    .ok();
+    h.calls
+        .lock()
+        .unwrap()
+        .completed
+        .push("cs_test_a1Owls1".into());
+    pay(&h, &token)
+        .await
+        .expect(StatusCode::CONFLICT, "card_payment_in_progress");
+    assert_eq!(h.calls.lock().unwrap().checkouts.len(), 1);
 }

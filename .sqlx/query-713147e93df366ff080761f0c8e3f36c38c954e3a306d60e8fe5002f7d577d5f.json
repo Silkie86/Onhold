@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (SELECT 1 FROM stripe_events\n             WHERE workspace_id = app_workspace_id() AND processed_at IS NULL\n               AND type LIKE 'checkout.session.%'\n               AND payload #>> '{data,object,payment_intent}' = $1) AS \"p!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "p!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "713147e93df366ff080761f0c8e3f36c38c954e3a306d60e8fe5002f7d577d5f"
+}
