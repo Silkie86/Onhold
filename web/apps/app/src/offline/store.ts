@@ -46,6 +46,14 @@ export interface OutboxItem {
   error?: string;
   /** The server's copy, when someone else changed the record meanwhile. */
   server?: RecordJson;
+  /**
+   * How many times the server said it was still working on this change (or
+   * gave up waiting); 0 once it was sent and may have arrived. Once set,
+   * nothing is folded into it again: its key may belong to exactly this body.
+   */
+  tries?: number;
+  /** Not sent again before this time. */
+  retryAt?: string;
 }
 
 interface OfflineDb extends DBSchema {
@@ -128,6 +136,22 @@ export async function removeOutbox(seq: number): Promise<void> {
 }
 
 /**
+ * Changes a workspace's queue in one transaction: `change` is given the
+ * queue as it is now and returns it as it should be. Returns the new queue.
+ */
+export async function changeOutbox(ws: string, change: (queue: OutboxItem[]) => OutboxItem[]): Promise<OutboxItem[]> {
+  const tx = (await db()).transaction("outbox", "readwrite");
+  const before = (await tx.store.index("by_ws").getAll(ws)).sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  const after = change(before);
+  const kept = new Set(after.map((q) => q.seq));
+  for (const q of before) if (!kept.has(q.seq)) await tx.store.delete(q.seq as number);
+  const saved: OutboxItem[] = [];
+  for (const q of after) saved.push({ ...q, seq: await tx.store.put(q) });
+  await tx.done;
+  return saved;
+}
+
+/**
  * When the session ends without the person signing out here (it expired, or
  * was signed out from another device, perhaps because this one was lost):
  * the copy of the workspace goes, but changes not yet sent stay, marked with
@@ -197,19 +221,31 @@ export function mergePatches(a: Record<string, unknown>, b: Record<string, unkno
  * creation, repeated edits become one, and deleting a record that never
  * reached the server simply forgets it. A booking's status move stays a step
  * of its own, in order, so edits after it are not folded into what came
- * before. Returns the queue as it should be.
+ * before. The change being sent (`sending`, its seq) and any that may have
+ * reached the server under its key stay exactly as they are; what comes
+ * after them is a step of its own, and such a change is never folded into
+ * what waits either. Returns the queue as it should be.
  */
-export function enqueue(queue: OutboxItem[], next: OutboxItem): OutboxItem[] {
+export function enqueue(queue: OutboxItem[], next: OutboxItem, sending?: number): OutboxItem[] {
   const same = (q: OutboxItem) => q.entity === next.entity && q.id === next.id && q.ws === next.ws && q.state === "pending";
-  const waiting = queue.filter(same);
+  const fixed = (q: OutboxItem) => (q.seq !== undefined && q.seq === sending) || q.tries !== undefined;
+  // A change that may already have reached the server goes as it is, after what waits.
+  if (fixed(next)) return [...queue, next];
+  const settled = queue.filter((q) => same(q) && fixed(q));
+  const waiting = queue.filter((q) => same(q) && !fixed(q));
   const last = waiting[waiting.length - 1];
   if (next.op === "update") {
-    if (!last) return [...queue, next];
+    if (!last) return settled.some((q) => q.op === "delete") ? queue : [...queue, next];
     if (last.op === "delete") return queue;
     if (last.op === "status") return [...queue, next];
     return queue.map((q) => (q === last ? { ...q, body: mergePatches(q.body, next.body) } : q));
   }
   if (next.op === "delete") {
+    if (settled.length) {
+      // What is on its way stays, and the delete follows it in place of what waits.
+      const rest = queue.filter((q) => !waiting.includes(q));
+      return settled.some((q) => q.op === "delete") ? rest : [...rest, next];
+    }
     if (waiting.some((q) => q.op === "create")) return queue.filter((q) => !same(q));
     const first = waiting[0];
     if (!first) return [...queue, next];
