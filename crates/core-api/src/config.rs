@@ -1,8 +1,10 @@
 //! API configuration, built by the binary from the environment.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use core_domain::crypto::Keyring;
+use core_integrations::storage::S3Config;
 use url::Url;
 
 use crate::oidc::OidcProvider;
@@ -14,6 +16,27 @@ pub const APP_ORIGINS: &[&str] = &[
     "http://tauri.localhost",
     "https://tauri.localhost",
 ];
+
+/// Where files' bytes are kept.
+#[derive(Debug, Clone)]
+pub enum StorageConfig {
+    /// In Postgres, next to everything else: nothing more to run or back up.
+    Database,
+    /// Under a local directory (a mounted volume).
+    Directory(PathBuf),
+    /// An S3-compatible bucket: Cloudflare R2, AWS S3, MinIO.
+    S3(S3Config),
+}
+
+/// How documents become PDFs.
+#[derive(Debug, Clone)]
+pub enum PdfConfig {
+    /// Chromium if one can be found, plain text otherwise.
+    Auto { no_sandbox: bool },
+    Chromium { path: PathBuf, no_sandbox: bool },
+    /// The plain-text layout only (tests, and machines without a browser).
+    Plain,
+}
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -50,6 +73,10 @@ pub struct Config {
     /// Let webhooks reach private and local addresses. Development and
     /// tests only: in production it would let tenants probe the network.
     pub webhooks_allow_private: bool,
+    pub storage: StorageConfig,
+    pub pdf: PdfConfig,
+    /// The largest file one upload may be.
+    pub max_upload_bytes: usize,
 }
 
 impl Config {
@@ -74,6 +101,9 @@ impl Config {
             keyring,
             oidc: Vec::new(),
             webhooks_allow_private: false,
+            storage: StorageConfig::Database,
+            pdf: PdfConfig::Auto { no_sandbox: false },
+            max_upload_bytes: 25 * 1024 * 1024,
         }
     }
 
@@ -85,6 +115,7 @@ impl Config {
         Self {
             cookie_secure: false,
             webhooks_allow_private: true,
+            pdf: PdfConfig::Plain,
             ..Self::new(url, Keyring::ephemeral())
         }
     }

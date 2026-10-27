@@ -8,12 +8,14 @@ license.workspace = true
 
 [dependencies]
 argon2.workspace = true
+async-trait.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
 chrono.workspace = true
 core-db.workspace = true
 core-domain.workspace = true
 core-engines.workspace = true
+core-pdf.workspace = true
 core-integrations.workspace = true
 chrono-tz.workspace = true
 futures-util.workspace = true
@@ -37,6 +39,7 @@ url.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 uuid.workspace = true
+zip.workspace = true
 
 [dev-dependencies]
 # A throwaway signing key for the mock identity provider in tests/oidc.rs.

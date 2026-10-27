@@ -74,6 +74,7 @@ minijinja = { version = "3", default-features = false, features = ["builtins", "
 proptest = "1"
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

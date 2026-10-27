@@ -87,16 +87,49 @@ pub struct AppState {
     pub oidc: oidc::SharedRegistry,
     /// Live event notifications for server-sent event streams.
     pub events: Arc<services::events::Hub>,
+    /// Where new files' bytes go.
+    pub storage: Arc<services::files::Storage>,
+    /// How documents become PDFs.
+    pub renderer: Arc<dyn core_pdf::write::Renderer>,
+}
+
+/// The PDF renderer the configuration asks for: Chromium when it can be
+/// found (or is named), else the plain-text layout.
+fn renderer(pdf: &config::PdfConfig) -> Arc<dyn core_pdf::write::Renderer> {
+    use core_pdf::write::{Chromium, PlainText};
+    match pdf {
+        config::PdfConfig::Plain => Arc::new(PlainText),
+        config::PdfConfig::Chromium { path, no_sandbox } => {
+            let mut c = Chromium::new(path.clone());
+            c.no_sandbox = *no_sandbox;
+            Arc::new(c)
+        }
+        config::PdfConfig::Auto { no_sandbox } => match Chromium::find() {
+            Some(mut c) => {
+                c.no_sandbox = *no_sandbox;
+                tracing::info!(browser = %c.program.display(), "documents print with Chromium");
+                Arc::new(c)
+            }
+            None => {
+                tracing::warn!("no Chromium found: documents print in the plain layout (set CHROMIUM_PATH)");
+                Arc::new(PlainText)
+            }
+        },
+    }
 }
 
 impl AppState {
     pub fn new(db: PgPool, config: Config) -> Result<Self, error::ApiError> {
         let oidc = Arc::new(oidc::Registry::new(config.oidc.clone())?);
+        let storage = Arc::new(services::files::Storage::from_config(&config.storage)?);
+        let renderer = renderer(&config.pdf);
         Ok(Self {
             db,
             config: Arc::new(config),
             oidc,
             events: Arc::default(),
+            storage,
+            renderer,
         })
     }
 }

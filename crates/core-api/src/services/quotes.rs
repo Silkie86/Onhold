@@ -208,7 +208,7 @@ pub async fn get(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<QuoteView> 
 }
 
 /// Checks lines and works out their amounts and the total.
-fn check_lines(check: &mut Check, lines: &[LineInput]) -> (Vec<Line>, i64) {
+pub(crate) fn check_lines(check: &mut Check, lines: &[LineInput]) -> (Vec<Line>, i64) {
     if lines.len() > MAX_LINES {
         check.issue("line_items", format!("give at most {MAX_LINES} lines"));
     }
