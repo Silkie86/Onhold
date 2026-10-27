@@ -106,7 +106,41 @@ struct World {
     b_crm: Crm,
     b_work: Work,
     b_money: Money,
+    b_inbox: Inbox,
     b_markers: Vec<String>,
+}
+
+/// One of everything M6 adds, in `owner`'s workspace.
+struct Inbox {
+    thread: uuid::Uuid,
+    mailbox: uuid::Uuid,
+}
+
+async fn inbox(app: &TestApp, owner: &Client, slug: &str) -> Inbox {
+    // Written through OnHold's own sender, so no mail server is needed.
+    let thread = app
+        .post("/api/v1/inbox/threads")
+        .signed_in(owner)
+        .json(json!({ "to": [format!("booker@{slug}.test")], "subject": format!("{slug} secret subject"),
+                      "body": format!("{slug} secret message") }))
+        .send()
+        .await
+        .ok()
+        .id("/thread/id");
+    // A connected mailbox, as connecting would leave it.
+    let mailbox = uuid::Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO integrations (id, workspace_id, provider, purposes, owner_id, account, secret, mail_since)
+         SELECT $1, $2, 'imap', '{mail}', m.user_id, $3, '\\x00', now()
+         FROM memberships m WHERE m.workspace_id = $2 AND m.role = 'owner'",
+    )
+    .bind(mailbox)
+    .bind(owner.workspace.unwrap().0)
+    .bind(format!("mail@{slug}.test"))
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    Inbox { thread, mailbox }
 }
 
 /// One of everything M5 adds, in `owner`'s workspace, named after `slug`.
@@ -427,7 +461,10 @@ async fn world(app: &TestApp) -> World {
         "invoice:write",
         "payment:write",
         "report:read",
-        "finance:config"
+        "finance:config",
+        "inbox:read",
+        "inbox:write",
+        "integration:manage"
     ]);
     let mut keys = Vec::new();
     let mut invitations = Vec::new();
@@ -436,6 +473,7 @@ async fn world(app: &TestApp) -> World {
     let mut crms = Vec::new();
     let mut works = Vec::new();
     let mut moneys = Vec::new();
+    let mut inboxes = Vec::new();
     for slug in ["alpha", "bravo"] {
         let (_, owner) = app.workspace_with_owner(slug).await;
         app.add_member(&owner, &format!("agent@{slug}.test"), "agent")
@@ -463,6 +501,7 @@ async fn world(app: &TestApp) -> World {
         let c = crm(app, &owner, slug).await;
         let wk = work(app, &owner, slug, &c).await;
         moneys.push(money(app, &owner, slug, &c, &wk).await);
+        inboxes.push(inbox(app, &owner, slug).await);
         works.push(wk);
         crms.push(c);
         clients.push(owner);
@@ -473,6 +512,7 @@ async fn world(app: &TestApp) -> World {
     let b_crm = crms.pop().unwrap();
     let b_work = works.pop().unwrap();
     let b_money = moneys.pop().unwrap();
+    let b_inbox = inboxes.pop().unwrap();
     app.publish_all().await;
     let b_event: uuid::Uuid = sqlx::query_scalar(
         "SELECT id FROM outbox WHERE workspace_id = $1 AND topic = 'thing.created'",
@@ -521,10 +561,14 @@ async fn world(app: &TestApp) -> World {
             b_money.document.to_string(),
             b_money.file.to_string(),
             b_money.pdf_import.to_string(),
+            b_inbox.thread.to_string(),
+            b_inbox.mailbox.to_string(),
+            "mail@bravo.test".into(),
         ],
         b_crm,
         b_work,
         b_money,
+        b_inbox,
         b_field: bc.field,
         b_pipeline: bc.pipeline,
         b_template: bc.template,
@@ -630,12 +674,30 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
         ("POST", "/api/v1/pdf-imports") => json!({ "file_ids": [w.b_money.file] }),
         ("POST", "/api/v1/documents/{id}/versions") => json!({ "file_id": w.b_money.file }),
         ("POST", "/api/v1/pdf-imports/{id}/confirm") => json!({ "kind": "misc" }),
+        ("POST", "/api/v1/inbox/threads") => json!({
+            "to": ["intruder@alpha.test"], "subject": "x", "body": "x", "contact_id": w.b_crm.contact
+        }),
+        ("POST", "/api/v1/inbox/threads/{id}/reply") => json!({ "body": "x" }),
+        ("POST", "/api/v1/inbox/threads/{id}/enquiry") => json!({ "title": "Intruder" }),
+        ("PATCH", "/api/v1/inbox/threads/{id}") => json!({ "status": "resolved" }),
+        ("PATCH", "/api/v1/inbox/mailboxes/{id}") => json!({ "shared": true }),
+        ("POST", "/api/v1/inbox/mailboxes/connect") => json!({ "provider": "google" }),
+        ("POST", "/api/v1/inbox/mailboxes/connect/finish") => json!({ "code": "x", "state": "x" }),
+        ("POST", "/api/v1/inbox/mailboxes/imap") => json!({
+            "address": "intruder@alpha.test", "password": "x",
+            "imap": { "host": "imap.alpha.test", "port": 993, "security": "tls" },
+            "smtp": { "host": "smtp.alpha.test", "port": 465, "security": "tls" }
+        }),
         _ => json!({}),
     }
 }
 
 fn fill_path(path: &str, w: &World) -> String {
-    let object = if path.contains("/talent/") {
+    let object = if path.contains("/inbox/threads/") {
+        w.b_inbox.thread
+    } else if path.contains("/inbox/mailboxes/") {
+        w.b_inbox.mailbox
+    } else if path.contains("/talent/") {
         w.b_crm.talent
     } else if path.contains("/enquiries/") {
         w.b_work.enquiry
@@ -700,6 +762,7 @@ fn fill_path(path: &str, w: &World) -> String {
         .replace("{id}", &object.to_string())
         .replace("{member_id}", &w.b_crm.member.to_string())
         .replace("{allocation_id}", &w.b_money.allocation.to_string())
+        .replace("{file_id}", &w.b_money.file.to_string())
         // B's own email template: not a document template A can see.
         .replace("{key}", "bravo.secret")
         .replace("{table}", "invoices")

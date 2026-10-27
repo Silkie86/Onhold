@@ -334,9 +334,10 @@ pub async fn refresh(conn: &mut PgConnection, id: Uuid, reopen: bool) -> Result<
                       max(sent_at) AS last_at,
                       max(sent_at) FILTER (WHERE direction = 'inbound') AS last_in,
                       max(sent_at) FILTER (WHERE direction = 'outbound' AND status <> 'failed') AS last_out,
-                      (SELECT left(regexp_replace(m2.body_text, '\s+', ' ', 'g'), 300) FROM thread_messages m2
+                      -- The latest message a person wrote, else the latest of all.
+                      (SELECT btrim(left(regexp_replace(m2.body_text, '\s+', ' ', 'g'), 300)) FROM thread_messages m2
                        WHERE m2.thread_id = $1 AND m2.workspace_id = app_workspace_id()
-                       ORDER BY m2.sent_at DESC, m2.id DESC LIMIT 1) AS preview,
+                       ORDER BY m2.automatic, m2.sent_at DESC, m2.id DESC LIMIT 1) AS preview,
                       (SELECT coalesce(array_agg(DISTINCT a ORDER BY a), '{}') FROM (
                            SELECT unnest(ARRAY[m3.from_address] || m3.to_addresses || m3.cc_addresses) AS a
                            FROM thread_messages m3

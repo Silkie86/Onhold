@@ -258,7 +258,8 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
 
     // The queue tables, plus the few columns scheduling, cleanup and the
     // bookings sweep (holds lapsing, bookings ending, quotes expiring),
-    // invoices falling overdue, file cleanup and exchange rates need.
+    // invoices falling overdue, file cleanup, exchange rates, mailboxes due
+    // to be read and snoozed conversations coming back need.
     let queue = [
         "bookings",
         "quotes",
@@ -273,6 +274,8 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "files",
         "invoices",
         "fx_rates",
+        "integrations",
+        "threads",
     ];
     for table in tables(&app.owner).await {
         let read =
@@ -298,6 +301,13 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "UPDATE bookings SET status = 'expired'",
         "SELECT line_items FROM quotes",
         "SELECT text_content FROM files",
+        "SELECT secret FROM integrations",
+        "SELECT mail_cursor FROM integrations",
+        "SELECT account FROM integrations",
+        "UPDATE integrations SET next_poll_at = now()",
+        "SELECT subject FROM threads",
+        "SELECT participants FROM threads",
+        "UPDATE threads SET status = 'open'",
         "SELECT total_minor FROM invoices",
         "UPDATE invoices SET status = 'paid'",
     ] {

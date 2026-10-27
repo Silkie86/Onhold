@@ -1,0 +1,8 @@
+{
+  "token_type": "Bearer",
+  "scope": "Mail.Read Mail.Send User.Read profile openid email",
+  "expires_in": 3897,
+  "ext_expires_in": 3897,
+  "access_token": "eyJ0eXAiOiJKV1QiLCJub25jZSI6InRlc3Qtb3dscyJ9.test",
+  "refresh_token": "0.AXoAtest-owls-refresh"
+}

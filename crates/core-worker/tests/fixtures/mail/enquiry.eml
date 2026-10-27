@@ -1,0 +1,30 @@
+Return-Path: <bea@grand.test>
+From: Bea Grand <Bea@Grand.test>
+To: Ana Owl <ana@owls.test>
+Subject: Booking enquiry for 12 June
+Message-ID: <bea-1@grand.test>
+Date: Tue, 20 Oct 2026 09:15:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mixed-b1"
+
+--mixed-b1
+Content-Type: multipart/alternative; boundary="alt-b1"
+
+--alt-b1
+Content-Type: text/plain; charset=utf-8
+
+Hi Ana, is the band free on 12 June?
+
+Bea
+--alt-b1
+Content-Type: text/html; charset=utf-8
+
+<p>Hi Ana, is the band free on <b>12 June</b>?</p><script>alert(1)</script><img src="https://track.test/open.gif"><p><a href="https://grand.test/">The Grand Hall</a></p>
+--alt-b1--
+
+--mixed-b1
+Content-Type: text/plain; name="rider.txt"
+Content-Disposition: attachment; filename="rider.txt"
+
+Two vocal mics, one DI.
+--mixed-b1--

@@ -557,14 +557,47 @@ pub struct ImapConnect {
     /// The address mail is sent as.
     pub address: String,
     pub display_name: Option<String>,
-    #[schema(value_type = Object)]
-    pub imap: imap::Server,
-    #[schema(value_type = Object)]
-    pub smtp: imap::Server,
+    pub imap: MailServer,
+    pub smtp: MailServer,
     /// Default: the address.
     pub username: Option<String>,
     /// Often an app password made in the mail provider's settings.
     pub password: String,
+}
+
+/// An IMAP or SMTP server.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MailServer {
+    pub host: String,
+    /// IMAP: 993 or 143. SMTP: 465, 587, 25 or 2525.
+    pub port: u16,
+    pub security: MailSecurity,
+}
+
+/// How the connection is protected.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MailSecurity {
+    /// TLS from the first byte (IMAP 993, SMTP 465).
+    Tls,
+    /// Upgraded with STARTTLS before signing in (IMAP 143, SMTP 587).
+    Starttls,
+    /// None: development servers only.
+    None,
+}
+
+impl From<MailServer> for imap::Server {
+    fn from(s: MailServer) -> Self {
+        Self {
+            host: s.host.trim().to_ascii_lowercase(),
+            port: s.port,
+            security: match s.security {
+                MailSecurity::Tls => imap::Security::Tls,
+                MailSecurity::Starttls => imap::Security::Starttls,
+                MailSecurity::None => imap::Security::None,
+            },
+        }
+    }
 }
 
 /// Connects a mailbox by IMAP and SMTP. The servers are tried before it is saved.
@@ -586,14 +619,8 @@ pub async fn connect_imap(
         return Err(ApiError::invalid("password", "is required"));
     }
     let settings = imap::Settings {
-        imap: imap::Server {
-            host: req.imap.host.trim().to_ascii_lowercase(),
-            ..req.imap
-        },
-        smtp: imap::Server {
-            host: req.smtp.host.trim().to_ascii_lowercase(),
-            ..req.smtp
-        },
+        imap: req.imap.into(),
+        smtp: req.smtp.into(),
         username: req
             .username
             .map(|u| u.trim().to_owned())

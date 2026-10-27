@@ -23,6 +23,7 @@ import { FinanceSettingsPage, InvoicePage, InvoicesPage, PaymentsPage, PublicInv
 import { DocumentPage, DocumentsPage, PdfImportsPage, PublicSigningPage } from "./pages/documents.tsx";
 import { TasksPage, validateTasksSearch } from "./pages/tasks.tsx";
 import { SyncPage } from "./pages/sync.tsx";
+import { InboxPage, validateInboxSearch } from "./pages/inbox.tsx";
 import { AppShell } from "./shell.tsx";
 
 const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
@@ -133,6 +134,20 @@ const calendarSettings = createRoute({
   component: lazyRouteComponent(() => import("./pages/calendar-settings.tsx"), "CalendarSettingsPage"),
 });
 
+const inbox = createRoute({ getParentRoute: () => app, path: "/inbox", validateSearch: validateInboxSearch, component: InboxPage });
+const emailSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/email",
+  // Google and Microsoft send the member back here with these.
+  validateSearch: (s: Record<string, unknown>): { code?: string; state?: string; error?: string; error_description?: string } => ({
+    code: str(s.code),
+    state: str(s.state),
+    error: str(s.error),
+    error_description: str(s.error_description),
+  }),
+  component: lazyRouteComponent(() => import("./pages/email-settings.tsx"), "EmailSettingsPage"),
+});
+
 const sync = createRoute({ getParentRoute: () => app, path: "/sync", component: SyncPage });
 
 const invoices = createRoute({ getParentRoute: () => app, path: "/finance/invoices", component: InvoicesPage });
@@ -171,6 +186,8 @@ const tree = root.addChildren([
   publicSigning,
   app.addChildren([
     home,
+    inbox,
+    emailSettings,
     calendar,
     enquiries,
     enquiry,

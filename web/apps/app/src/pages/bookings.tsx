@@ -62,6 +62,7 @@ import { QuotesPanel } from "./quotes.tsx";
 import { BookingFinancePanel } from "./finance.tsx";
 import { BookingDocumentsPanel } from "./documents.tsx";
 import { RelatedTasks } from "./tasks.tsx";
+import { RelatedConversations } from "./inbox.tsx";
 
 type Money = Schemas["Money"];
 
@@ -705,6 +706,7 @@ export function BookingPage() {
         </section>
         <section aria-label="Tasks and activity" className="flex flex-col gap-6">
           <RelatedTasks entity="booking" id={id} />
+          <RelatedConversations filter={{ booking_id: id }} />
           <RecordTimeline path="bookings" id={id} schema={schema.data} offline={offline} />
         </section>
       </div>
