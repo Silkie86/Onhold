@@ -90,16 +90,6 @@ pub enum Credential {
     },
 }
 
-impl Credential {
-    /// The raw secret, used to scope idempotency keys to this caller.
-    pub fn secret(&self) -> &str {
-        match self {
-            Credential::Session { token, .. } => token,
-            Credential::ApiKey { secret, .. } => secret,
-        }
-    }
-}
-
 /// Reads the bearer token or session cookie. A malformed bearer is an error;
 /// a missing credential is `None`.
 pub fn read_credential(headers: &HeaderMap) -> ApiResult<Option<Credential>> {

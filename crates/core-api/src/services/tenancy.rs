@@ -163,12 +163,15 @@ pub async fn create_workspace(
     })
 }
 
+/// The workspace as the audit log and webhooks see it. The billing contact is
+/// left out: audit readers need not hold `billing:read`, so an update records
+/// only that it changed.
 fn workspace_audit_view(w: &core_db::workspaces::Workspace) -> Value {
     json!({
         "slug": w.slug, "name": w.name, "plan": w.plan, "status": w.status, "perspective": w.perspective,
         "country": w.country, "default_currency": w.default_currency, "default_timezone": w.default_timezone,
         "locale": w.locale, "enabled_modules": w.enabled_modules, "branding": w.branding,
-        "billing_contact": w.billing_contact, "plugin_slug": w.plugin_slug,
+        "plugin_slug": w.plugin_slug,
         "require_staff_2fa": w.require_staff_2fa, "hold_days": w.hold_days,
     })
 }
@@ -316,7 +319,13 @@ pub async fn update_workspace(
             resource: "workspace",
             object_id: Some(ctx.workspace_id.0),
             before: Some(workspace_audit_view(&before)),
-            after: Some(workspace_audit_view(&after)),
+            after: Some({
+                let mut view = workspace_audit_view(&after);
+                if after.billing_contact != before.billing_contact {
+                    view["billing_contact_changed"] = json!(true);
+                }
+                view
+            }),
             event_extra: None,
         },
     )

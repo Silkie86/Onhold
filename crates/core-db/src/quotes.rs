@@ -332,6 +332,22 @@ pub async fn open_for_booking(conn: &mut PgConnection, booking_id: Uuid) -> Resu
     .await?)
 }
 
+/// The quote numbers with an accepted revision on a booking.
+pub async fn accepted_numbers_for_booking(
+    conn: &mut PgConnection,
+    booking_id: Uuid,
+) -> Result<Vec<i64>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT DISTINCT number FROM quotes
+           WHERE workspace_id = app_workspace_id() AND booking_id = $1 AND deleted_at IS NULL
+             AND status = 'accepted'
+           ORDER BY number"#,
+        booking_id
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
 /// The latest revision number of a quote number.
 pub async fn latest_revision(conn: &mut PgConnection, number: i64) -> Result<i32> {
     Ok(sqlx::query_scalar!(
