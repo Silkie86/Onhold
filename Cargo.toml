@@ -9,6 +9,7 @@ members = [
     "crates/core-api",
     "crates/core-worker",
     "crates/plugin-sdk",
+    "crates/core-pdf",
     "crates/onhold",
 ]
 
@@ -23,6 +24,7 @@ license = "UNLICENSED"
 core-domain = { path = "crates/core-domain" }
 core-db = { path = "crates/core-db" }
 core-engines = { path = "crates/core-engines" }
+core-pdf = { path = "crates/core-pdf" }
 core-modules = { path = "crates/core-modules" }
 core-integrations = { path = "crates/core-integrations" }
 core-api = { path = "crates/core-api" }
