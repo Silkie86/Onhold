@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT i.id, i.reference, coalesce(i.payer_name, o.name, t.name, '') AS \"payer!\", i.booking_id, i.currency,\n                  (i.total_minor - i.paid_minor - i.credited_minor) AS \"outstanding_minor!\",\n                  round((i.total_minor - i.paid_minor - i.credited_minor)::numeric * i.base_total_minor\n                        / nullif(i.total_minor, 0))::bigint AS base_outstanding_minor,\n                  i.issue_date, i.due_date, i.status::text AS \"status!\"\n           FROM invoices i\n           LEFT JOIN organisations o ON o.id = i.payer_organisation_id\n           LEFT JOIN talent t ON t.id = i.payer_talent_id\n           WHERE i.workspace_id = app_workspace_id() AND i.deleted_at IS NULL AND i.kind = 'invoice'\n             AND i.status IN ('issued', 'part_paid', 'overdue')\n           ORDER BY i.due_date NULLS LAST, i.issue_date\n           LIMIT 1000",
+  "query": "SELECT i.id, i.reference, coalesce(i.payer_name, o.name, t.name, '') AS \"payer!\", i.booking_id, i.currency,\n                  (i.total_minor - i.paid_minor - i.credited_minor) AS \"outstanding_minor!\",\n                  CASE WHEN i.base_currency = $1 THEN\n                      round((i.total_minor - i.paid_minor - i.credited_minor)::numeric * i.base_total_minor\n                            / nullif(i.total_minor, 0))::bigint END AS base_outstanding_minor,\n                  i.issue_date, i.due_date, i.status::text AS \"status!\"\n           FROM invoices i\n           LEFT JOIN organisations o ON o.id = i.payer_organisation_id\n           LEFT JOIN talent t ON t.id = i.payer_talent_id\n           WHERE i.workspace_id = app_workspace_id() AND i.deleted_at IS NULL AND i.kind = 'invoice'\n             AND i.status IN ('issued', 'part_paid', 'overdue')\n           ORDER BY i.due_date NULLS LAST, i.issue_date\n           LIMIT 1000",
   "describe": {
     "columns": [
       {
@@ -95,7 +95,9 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Bpchar"
+      ]
     },
     "nullable": [
       false,
@@ -110,5 +112,5 @@
       null
     ]
   },
-  "hash": "30fd552a86c3f630e67f6cddfd9b45d8838be4beadc5d1479b86cecfded4e65c"
+  "hash": "d4d58701a3462981a5b297886e50e179b17a0e9804531115dbd804a83483ef7c"
 }

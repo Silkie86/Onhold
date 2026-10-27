@@ -84,16 +84,34 @@ function invoiceName(i: Invoice): string {
   return i.reference ? `${kind} ${i.reference}` : `${kind} (draft)`;
 }
 
+const EXTENSIONS: Record<string, string> = {
+  "application/pdf": "pdf",
+  "application/zip": "zip",
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "text/csv": "csv",
+};
+
+/** A fallback name's extension, made to match what was actually sent. */
+function withExtension(name: string, type: string): string {
+  const ext = EXTENSIONS[type.split(";")[0]?.trim() ?? ""];
+  if (!ext) return name.replace(/\.pdf$/i, "");
+  return name.replace(/\.[a-z0-9]+$/i, "") + "." + ext;
+}
+
 /** Saves what a download call returns as a file (works with cookies and app tokens alike). */
 export async function saveDownload(call: Promise<{ data?: unknown; response: Response }>, fallbackName: string) {
   const { data, response } = await call;
   if (!response.ok) throw new ApiFailure(response.status, "download_failed", `${response.status} ${response.statusText}`, []);
   const disposition = response.headers.get("content-disposition") ?? "";
   const name = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
-  const url = URL.createObjectURL(data as Blob);
+  const blob = data as Blob;
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = name ? decodeURIComponent(name) : fallbackName;
+  a.download = name ? decodeURIComponent(name) : withExtension(fallbackName, blob.type);
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
@@ -106,11 +124,16 @@ function useOnline(): boolean {
 // Lines ----------------------------------------------------------------------------------------
 
 interface LineDraft {
+  /** Keeps each line's inputs with it when another is removed. */
+  key: string;
   description: string;
   quantity: string;
   unit_minor: number | null;
   tax_code_id: string;
 }
+
+let lineCount = 0;
+const newLine = (): LineDraft => ({ key: `line-${++lineCount}`, description: "", quantity: "1", unit_minor: null, tax_code_id: "" });
 
 function useTaxCodes() {
   const sync = useOffline();
@@ -138,10 +161,12 @@ function LinesEditor({
     <fieldset className="flex flex-col gap-2">
       <legend className="mb-1 text-sm font-medium">Lines (prices before tax)</legend>
       {lines.map((l, i) => (
-        <div key={i} className="grid grid-cols-[1fr_4rem_7.5rem_8rem_auto] items-start gap-2">
+        <div key={l.key} className="grid grid-cols-[1fr_4rem_7.5rem_8rem_auto] items-start gap-2">
           <Input aria-label={`Line ${i + 1} description`} value={l.description} onChange={(e) => set(i, { description: e.target.value })} />
           <Input aria-label={`Line ${i + 1} quantity`} inputMode="decimal" value={l.quantity} onChange={(e) => set(i, { quantity: e.target.value })} />
           <MoneyInput
+            // Typed in another currency's units, a price must be read again.
+            key={currency}
             aria-label={`Line ${i + 1} price`}
             value={l.unit_minor === null ? null : { minor: l.unit_minor, currency }}
             currency={currency}
@@ -166,7 +191,7 @@ function LinesEditor({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setLines((ls) => [...ls, { description: "", quantity: "1", unit_minor: null, tax_code_id: "" }])}
+          onClick={() => setLines((ls) => [...ls, newLine()])}
         >
           <Plus /> Add a line
         </Button>
@@ -289,7 +314,7 @@ function NewInvoiceDialog({ onClose, onCreated }: { onClose: () => void; onCreat
   const [payer, setPayer] = useState<Named | null>(null);
   const [payerName, setPayerName] = useState("");
   const [currency, setCurrency] = useState("");
-  const [lines, setLines] = useState<LineDraft[]>([{ description: "", quantity: "1", unit_minor: null, tax_code_id: "" }]);
+  const [lines, setLines] = useState<LineDraft[]>([newLine()]);
   const [issues, setIssues] = useState<FieldIssue[]>([]);
   const [error, setError] = useState<string | null>(null);
   const code = (currency || workspaceCurrency).toUpperCase();
@@ -798,7 +823,7 @@ export function PaymentDialog({ invoices, onClose, onDone }: { invoices: Invoice
 
 function CreditDialog({ invoice: i, onClose, onDone }: { invoice: Invoice; onClose: () => void; onDone: (c: Invoice) => void }) {
   const [full, setFull] = useState(true);
-  const [lines, setLines] = useState<LineDraft[]>([{ description: "", quantity: "1", unit_minor: null, tax_code_id: "" }]);
+  const [lines, setLines] = useState<LineDraft[]>([newLine()]);
   const [notes, setNotes] = useState("");
   const [issues, setIssues] = useState<FieldIssue[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1285,15 +1310,20 @@ export function FinanceSettingsPage() {
                   invoice_footer: text("invoice_footer"),
                   late_fee_text: text("late_fee_text"),
                   address: {
+                    ...(s.address as object | null),
                     line1: text("line1"),
                     line2: text("line2"),
                     city: text("city"),
                     postcode: text("postcode"),
                     country: text("country"),
                   } as never,
-                  bank_accounts: text("bank_details")
-                    ? [{ currency: text("bank_currency") ?? s.base_currency, label: text("bank_name"), details: text("bank_details") ?? "" }]
-                    : [],
+                  // Only the first account is edited here; the others stay.
+                  bank_accounts: [
+                    ...(text("bank_details")
+                      ? [{ currency: text("bank_currency") ?? s.base_currency, label: text("bank_name"), details: text("bank_details") ?? "" }]
+                      : []),
+                    ...s.bank_accounts.slice(1),
+                  ],
                 },
               }),
             );
@@ -1462,7 +1492,7 @@ export function PublicInvoicePage() {
   }
   const i = invoice.data;
   const logo = (i.branding as { logo_url?: string } | null)?.logo_url;
-  const bank = i.bank_account as { name?: string; details?: string } | null;
+  const bank = i.bank_account as { label?: string | null; details?: string } | null;
   const issuer = i.issuer as { name?: string } | null;
   const payer = i.payer as { name?: string } | null;
   return (
@@ -1522,7 +1552,7 @@ export function PublicInvoicePage() {
           <div>
             <p className="font-medium">Pay by bank transfer</p>
             <p className="whitespace-pre-line">
-              {bank.name && `${bank.name}\n`}
+              {bank.label && `${bank.label}\n`}
               {bank.details}
               {`\nReference: ${i.reference}`}
             </p>

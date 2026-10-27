@@ -634,7 +634,7 @@ export function PdfImportsPage() {
         <ul className="flex flex-col gap-3">
           {imports.data.map((i) => (
             <li key={i.id}>
-              <ImportCard item={i} onChanged={refresh} />
+              <ImportCard key={`${i.id}:${i.status}`} item={i} onChanged={refresh} />
             </li>
           ))}
         </ul>
@@ -750,7 +750,7 @@ function ImportCard({ item: i, onChanged }: { item: PdfImport; onChanged: () => 
                     related_id: relId ?? null,
                     document_date: issueDate || null,
                     invoice:
-                      asInvoice && total
+                      kind === "invoice" && asInvoice && total
                         ? {
                             reference,
                             payer: payerOrg ? { organisation_id: payerOrg.id } : { name: String(best("party")?.value.value ?? "Unknown") },

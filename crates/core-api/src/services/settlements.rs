@@ -7,7 +7,7 @@
 
 use chrono::{DateTime, NaiveDate, Utc};
 use core_db::Tx;
-use core_domain::finance::settle;
+use core_domain::finance::{InvoiceStatus, settle};
 use core_domain::{Ctx, Money, Permission};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -492,6 +492,37 @@ pub async fn reopen(
             "settlement_paid",
             "payouts are recorded against it; void them first",
         ));
+    }
+    // Finalising again makes a new commission invoice: a draft one goes,
+    // an issued one must be voided or credited first.
+    if let Some(cid) = before.commission_invoice_id
+        && let Some(inv) = super::invoices::load(&mut tx, cid).await?
+    {
+        match inv.status {
+            InvoiceStatus::Draft => {
+                core_db::invoices::delete_draft(&mut tx, cid, ctx.user_id()).await?;
+                record(
+                    &mut tx,
+                    ctx,
+                    Change {
+                        topic: "invoice.deleted",
+                        resource: super::invoices::ENTITY,
+                        object_id: Some(cid),
+                        before: Some(super::invoices::to_json(&inv)),
+                        after: None,
+                        event_extra: None,
+                    },
+                )
+                .await?;
+            }
+            InvoiceStatus::Void | InvoiceStatus::Credited => {}
+            _ => {
+                return Err(ApiError::conflict(
+                    "commission_invoiced",
+                    "its commission invoice is issued; void or credit it first",
+                ));
+            }
+        }
     }
     core_db::settlements::reopen(&mut tx, id, ctx.user_id()).await?;
     let after = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;

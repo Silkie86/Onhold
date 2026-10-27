@@ -356,16 +356,26 @@ impl Renderer for Chromium {
 
 // Appending pages --------------------------------------------------------------------
 
-/// `original` with every page of `extra` added at the end, the original's
-/// own pages untouched. Used to put a signing certificate after a document.
-pub fn append_pages(original: &[u8], extra: &[u8]) -> Result<Vec<u8>, RenderError> {
-    let bad = |e: pdf_extract::Error| RenderError::Failed(e.to_string());
-    let mut doc = Document::load_mem(original).map_err(bad)?;
+/// Whether [`append_pages`] can add pages to `original`.
+pub fn can_append(original: &[u8]) -> Result<(), RenderError> {
+    open_for_append(original).map(|_| ())
+}
+
+fn open_for_append(original: &[u8]) -> Result<Document, RenderError> {
+    let doc = Document::load_mem(original).map_err(|e| RenderError::Failed(e.to_string()))?;
     if doc.is_encrypted() {
         return Err(RenderError::Failed(
             "the document is password-protected".into(),
         ));
     }
+    Ok(doc)
+}
+
+/// `original` with every page of `extra` added at the end, the original's
+/// own pages untouched. Used to put a signing certificate after a document.
+pub fn append_pages(original: &[u8], extra: &[u8]) -> Result<Vec<u8>, RenderError> {
+    let bad = |e: pdf_extract::Error| RenderError::Failed(e.to_string());
+    let mut doc = open_for_append(original)?;
     let mut add = Document::load_mem(extra).map_err(bad)?;
     add.renumber_objects_with(doc.max_id + 1);
     let root_pages = doc

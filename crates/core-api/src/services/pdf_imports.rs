@@ -123,7 +123,14 @@ pub async fn create(
     }
     let mut tx = begin(state, ctx).await?;
     let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     for (i, file_id) in req.file_ids.iter().enumerate() {
+        if !seen.insert(*file_id) {
+            continue;
+        }
+        // Attaching locks the file first, so a read finishing meanwhile is
+        // either seen below or finds this import when it commits.
+        core_db::files::attach(&mut tx, *file_id).await?;
         let file = core_db::files::get(&mut tx, *file_id)
             .await?
             .ok_or_else(|| ApiError::invalid(format!("file_ids[{i}]"), "there is no such file"))?;
@@ -135,7 +142,6 @@ pub async fn create(
         }
         let id = core_domain::ids::new_id();
         core_db::pdf_imports::insert(&mut tx, id, file.id, ctx.user_id()).await?;
-        core_db::files::attach(&mut tx, file.id).await?;
         // Already read (a file used twice): match it now.
         if file.read_state != "pending" {
             let text = core_db::files::text(&mut tx, file.id).await?;
@@ -401,6 +407,12 @@ pub async fn confirm(
     ctx.authorize(Permission::DocumentWrite)?;
     if req.invoice.is_some() {
         ctx.authorize(Permission::InvoiceWrite)?;
+        if req.kind != "invoice" {
+            return Err(ApiError::invalid(
+                "invoice",
+                "only an invoice can be kept as a past invoice",
+            ));
+        }
     }
     let mut tx = begin(state, ctx).await?;
     let (version, status) = core_db::pdf_imports::lock(&mut tx, id)

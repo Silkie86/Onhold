@@ -142,12 +142,12 @@ pub async fn discard(conn: &mut PgConnection, id: Uuid, by: Option<UserId>) -> R
 }
 
 /// The import waiting on a file's reading, if any.
-pub async fn for_file(conn: &mut PgConnection, file_id: Uuid) -> Result<Option<Uuid>> {
+pub async fn for_file(conn: &mut PgConnection, file_id: Uuid) -> Result<Vec<Uuid>> {
     Ok(sqlx::query_scalar!(
         r#"SELECT id FROM pdf_imports WHERE workspace_id = app_workspace_id() AND file_id = $1 AND status = 'reading'"#,
         file_id
     )
-    .fetch_optional(conn)
+    .fetch_all(conn)
     .await?)
 }
 

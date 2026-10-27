@@ -34,6 +34,8 @@ use crate::routes::nullable;
 
 pub const ENTITY: &str = "document";
 pub const JOB_RENDER: &str = "document.render";
+/// Seals a document whose signers have all signed (`document_id`, `round_id`).
+pub const JOB_SEAL: &str = "document.seal";
 /// Records a document can belong to.
 pub const RELATED: &[&str] = &[
     "talent",
@@ -902,7 +904,7 @@ pub async fn regenerate(
             "only documents made from a template can be made again",
         ));
     };
-    if entity == super::invoices::ENTITY {
+    if entity == super::invoices::ENTITY || core_db::documents::kept_by_record(&mut tx, id).await? {
         return Err(ApiError::conflict(
             "document_locked",
             "an invoice's PDF is fixed when it is issued",
@@ -1224,6 +1226,16 @@ pub async fn update(
         .map(|e| e.trim().to_owned());
     let related_id = p.related_id.unwrap_or(before.related_id);
     if p.related_entity.is_some() || p.related_id.is_some() {
+        let moved = related_entity != before.related_entity || related_id != before.related_id;
+        if moved
+            && (before.related_entity.as_deref() == Some(super::invoices::ENTITY)
+                || core_db::documents::kept_by_record(&mut tx, id).await?)
+        {
+            return Err(ApiError::conflict(
+                "document_locked",
+                "an invoice's or settlement's PDF stays with it",
+            ));
+        }
         check_related(&mut tx, state, related_entity.as_deref(), related_id).await?;
     }
     core_db::documents::update(
@@ -1271,10 +1283,11 @@ pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.related_entity.as_deref() == Some(super::invoices::ENTITY)
         && before.source == "generated"
+        || core_db::documents::kept_by_record(&mut tx, id).await?
     {
         return Err(ApiError::conflict(
             "document_locked",
-            "an issued invoice's PDF is kept with the invoice",
+            "an issued invoice's or settlement's PDF is kept with it",
         ));
     }
     core_db::documents::cancel_pending(&mut tx, id).await?;
@@ -1373,7 +1386,23 @@ pub async fn request_signatures(
         clean.push((name, email));
     }
     check.finish()?;
+    // The signing certificate is added to the PDF when everyone has signed;
+    // find out now if this one cannot take it.
+    let file = core_db::files::get(&mut tx, current.file_id.ok_or(ApiError::NotFound)?)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let bytes = files::bytes(state, &mut tx, &file).await?;
+    let readable = tokio::task::spawn_blocking(move || core_pdf::write::can_append(&bytes))
+        .await
+        .map_err(ApiError::internal)?;
+    if let Err(e) = readable {
+        return Err(ApiError::conflict(
+            "pdf_unsignable",
+            format!("this PDF cannot be signed here ({e}); upload an unprotected copy"),
+        ));
+    }
     core_db::documents::cancel_pending(&mut tx, id).await?;
+    let round_id = core_domain::ids::new_id();
     let w = core_db::workspaces::get(&mut tx, ctx.workspace_id)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -1386,6 +1415,7 @@ pub async fn request_signatures(
                 id: sid,
                 document_id: id,
                 version_number: current.number,
+                round_id,
                 position: position as i32,
                 signer_name: name,
                 signer_email: email,
@@ -1477,6 +1507,7 @@ async fn open_public(
     state: &AppState,
     token: &str,
     meta: core_domain::authz::RequestMeta,
+    deciding: bool,
 ) -> ApiResult<(Tx, Ctx, Signature)> {
     let mut tx = core_db::begin(&state.db, None, None).await?;
     let (id, workspace) = core_db::documents::find_public_signature(&mut tx, &hash_token(token))
@@ -1485,6 +1516,12 @@ async fn open_public(
     core_db::set_context(&mut tx, Some(workspace), None).await?;
     let mut ctx = Ctx::system(workspace);
     ctx.meta = meta;
+    // Signers answer one at a time per document (locked before the
+    // request, as everywhere else), so the last one always sees the
+    // others' signatures and seals.
+    if deciding && let Some(doc) = core_db::documents::signature_document(&mut tx, id).await? {
+        core_db::documents::lock(&mut tx, doc).await?;
+    }
     let s = core_db::documents::signature(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -1525,7 +1562,7 @@ pub async fn public_get(
     token: &str,
     meta: core_domain::authz::RequestMeta,
 ) -> ApiResult<PublicSigning> {
-    let (mut tx, ctx, s) = open_public(state, token, meta).await?;
+    let (mut tx, ctx, s) = open_public(state, token, meta, false).await?;
     if s.viewed_at.is_none() && s.status == "pending" {
         core_db::documents::mark_signature_viewed(&mut tx, s.id).await?;
         record(
@@ -1549,12 +1586,14 @@ pub async fn public_get(
 
 /// The PDF the signer is asked to sign (or the signed copy, once made).
 pub async fn public_pdf(state: &AppState, token: &str) -> ApiResult<files::Download> {
-    let (mut tx, _ctx, s) = open_public(state, token, Default::default()).await?;
+    let (mut tx, _ctx, s) = open_public(state, token, Default::default(), false).await?;
     let doc = load(&mut tx, s.document_id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    // Once everyone has signed, the signer may keep the signed copy.
-    let number = if s.status == "signed" && doc.signature_status == "signed" {
+    // Once everyone in their round has signed, the signer may keep the
+    // signed copy; never one sealed from a later round.
+    let sealed = core_db::documents::signed_round(&mut tx, s.document_id).await?;
+    let number = if s.status == "signed" && sealed == Some(s.round_id) {
         doc.current_version
     } else {
         s.version_number
@@ -1595,7 +1634,7 @@ pub async fn public_decide(
 ) -> ApiResult<PublicSigning> {
     let ip = meta.ip;
     let user_agent = meta.user_agent.clone();
-    let (mut tx, ctx, s) = open_public(state, token, meta).await?;
+    let (mut tx, ctx, s) = open_public(state, token, meta, true).await?;
     if s.status != "pending" {
         return Err(ApiError::conflict(
             "signature_closed",
@@ -1605,7 +1644,7 @@ pub async fn public_decide(
             },
         ));
     }
-    let doc = load(&mut tx, s.document_id)
+    load(&mut tx, s.document_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let v = signed_version(&mut tx, &s).await?;
@@ -1662,22 +1701,82 @@ pub async fn public_decide(
     if !d.sign {
         core_db::documents::cancel_pending(&mut tx, s.document_id).await?;
         core_db::documents::set_signature_status(&mut tx, s.document_id, "declined", None).await?;
-    } else {
-        let all = core_db::documents::signatures(&mut tx, s.document_id).await?;
-        let round: Vec<&Signature> = all
+    }
+    // The signature is kept even if sealing fails: the seal is a job,
+    // tried at once and retried by the worker.
+    let complete = d.sign
+        && core_db::documents::signatures(&mut tx, s.document_id)
+            .await?
             .iter()
-            .filter(|x| x.version_number == s.version_number && x.status != "cancelled")
-            .collect();
-        if round.iter().all(|x| x.status == "signed") {
-            seal(state, &mut tx, &ctx, &doc, &v, &round).await?;
-        }
+            .filter(|x| x.round_id == s.round_id && x.status != "cancelled")
+            .all(|x| x.status == "signed");
+    if complete {
+        core_db::jobs::enqueue(
+            &mut tx,
+            NewJob::new(
+                Some(ctx.workspace_id),
+                JOB_SEAL,
+                &json!({ "document_id": s.document_id, "round_id": s.round_id }),
+            )
+            .dedupe(&s.round_id.to_string()),
+        )
+        .await?;
     }
     let s = core_db::documents::signature(&mut tx, s.id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    let view = public_view(&mut tx, &ctx, &s).await?;
+    let mut view = public_view(&mut tx, &ctx, &s).await?;
     tx.commit().await?;
+    if complete {
+        match seal_round(state, ctx.workspace_id, s.document_id, s.round_id).await {
+            Ok(()) => {
+                let (mut tx, ctx, s) = open_public(state, token, Default::default(), false).await?;
+                view = public_view(&mut tx, &ctx, &s).await?;
+                tx.commit().await?;
+            }
+            Err(e) => tracing::warn!(error = %e, "sealing failed; the worker will retry"),
+        }
+    }
     Ok(view)
+}
+
+/// Seals a document once every signer in a round has signed; does nothing
+/// if it is already sealed or the round was replaced (the `document.seal` job).
+pub async fn seal_round(
+    state: &AppState,
+    workspace: WorkspaceId,
+    document_id: Uuid,
+    round_id: Uuid,
+) -> ApiResult<()> {
+    let ctx = Ctx::system(workspace);
+    let mut tx = begin(state, &ctx).await?;
+    if core_db::documents::lock(&mut tx, document_id)
+        .await?
+        .is_none()
+    {
+        return Ok(());
+    }
+    let doc = load(&mut tx, document_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if doc.signature_status != "awaiting" {
+        return Ok(());
+    }
+    let all = core_db::documents::signatures(&mut tx, document_id).await?;
+    let round: Vec<&Signature> = all
+        .iter()
+        .filter(|x| x.round_id == round_id && x.status != "cancelled")
+        .collect();
+    let Some(first) = round.first() else {
+        return Ok(());
+    };
+    if !round.iter().all(|x| x.status == "signed") {
+        return Ok(());
+    }
+    let v = signed_version(&mut tx, first).await?;
+    seal(state, &mut tx, &ctx, &doc, &v, &round).await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 /// Everyone signed: the signed copy is the PDF they signed with the signing
@@ -1730,7 +1829,7 @@ async fn seal(
         None,
     )
     .await?;
-    core_db::documents::set_signature_status(tx, doc.id, "signed", None).await?;
+    core_db::documents::set_signed_round(tx, doc.id, round[0].round_id).await?;
     let after = load(tx, doc.id).await?.ok_or(ApiError::NotFound)?;
     record(
         tx,

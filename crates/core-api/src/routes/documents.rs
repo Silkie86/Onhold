@@ -4,7 +4,7 @@
 
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::{Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
@@ -28,8 +28,13 @@ use crate::services::pdf_imports::{
 };
 
 pub fn router() -> OpenApiRouter<AppState> {
-    OpenApiRouter::new()
+    // The body extractor's own 2 MB cap would otherwise apply; the size is
+    // checked against MAX_UPLOAD_MB in the service.
+    let uploads = OpenApiRouter::new()
         .routes(routes!(upload_file))
+        .layer(DefaultBodyLimit::max(crate::MAX_FILE_BODY_BYTES));
+    OpenApiRouter::new()
+        .merge(uploads)
         .routes(routes!(get_file))
         .routes(routes!(download_file))
         .routes(routes!(read_file))

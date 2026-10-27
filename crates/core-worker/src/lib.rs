@@ -398,7 +398,9 @@ impl Worker {
         if latest == Some(today) {
             return Ok(0);
         }
-        let gap = latest.is_none_or(|d| (today - d).num_days() > 4);
+        // The daily feed has one day: anything older than yesterday's
+        // means days may be missing, which the 90-day feed fills.
+        let gap = latest.is_none_or(|d| (today - d).num_days() > 1);
         let url = if gap { &feeds.history } else { &feeds.daily };
         let days = match core_integrations::fx::fetch_ecb(url).await {
             Ok(days) => days,
@@ -407,11 +409,16 @@ impl Worker {
                 return Ok(0);
             }
         };
+        // Every day in the feed, all or none, so a failure cannot leave
+        // older days missing behind newer ones.
+        let mut tx = sqlx::Connection::begin(&mut *conn).await?;
         let mut stored = 0;
-        for day in days.iter().filter(|d| latest.is_none_or(|l| d.date > l)) {
-            core_db::finance::store_rates(&mut conn, day.date, &day.rates, "ecb").await?;
-            stored += 1;
+        for day in &days {
+            if core_db::finance::store_rates(&mut tx, day.date, &day.rates, "ecb").await? > 0 {
+                stored += 1;
+            }
         }
+        tx.commit().await?;
         if stored > 0 {
             tracing::info!(days = stored, "stored exchange rates");
         }

@@ -257,10 +257,10 @@ pub async fn insert(
         r#"INSERT INTO invoices (id, workspace_id, kind, purpose, status, reference, historical, issuer_kind,
                                  issuer_talent_id, payer_kind, payer_organisation_id, payer_talent_id,
                                  payer_contact_id, payer_name, booking_id, credits_invoice_id, currency, line_items,
-                                 tax_lines, subtotal_minor, tax_minor, total_minor, paid_minor, issue_date,
-                                 due_date, notes, terms, document_id, tags, custom, created_by, updated_by)
+                                 tax_lines, subtotal_minor, tax_minor, total_minor, paid_minor, paid_before_minor,
+                                 issue_date, due_date, notes, terms, document_id, tags, custom, created_by, updated_by)
            VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-                   $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $30)"#,
+                   $18, $19, $20, $21, $22, $22, $23, $24, $25, $26, $27, $28, $29, $30, $30)"#,
         c.id,
         c.kind,
         v.purpose,
@@ -419,6 +419,17 @@ pub async fn set_document(conn: &mut PgConnection, id: Uuid, document_id: Uuid) 
 }
 
 /// Moves the payment state on: amounts and the status they give.
+/// What a past invoice had been paid before it was imported.
+pub async fn paid_before(conn: &mut PgConnection, id: Uuid) -> Result<i64> {
+    Ok(sqlx::query_scalar!(
+        "SELECT paid_before_minor FROM invoices WHERE workspace_id = app_workspace_id() AND id = $1",
+        id
+    )
+    .fetch_optional(conn)
+    .await?
+    .unwrap_or(0))
+}
+
 pub async fn set_amounts(
     conn: &mut PgConnection,
     id: Uuid,
@@ -592,7 +603,7 @@ pub async fn overdue(
         DueItem,
         r#"SELECT i.id, i.workspace_id AS "workspace_id: WorkspaceId", i.due_date AS "due_date!"
            FROM invoices i JOIN workspaces w ON w.id = i.workspace_id
-           WHERE i.status IN ('issued', 'part_paid') AND i.deleted_at IS NULL
+           WHERE i.kind = 'invoice' AND i.status IN ('issued', 'part_paid') AND i.deleted_at IS NULL
              AND i.due_date < ($1 AT TIME ZONE w.default_timezone)::date
              AND w.status IN ('trial', 'active')
            ORDER BY i.due_date

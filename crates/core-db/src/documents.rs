@@ -258,6 +258,44 @@ pub async fn set_signature_status(
     Ok(())
 }
 
+/// Whether an issued invoice or a settlement keeps this document as its PDF.
+pub async fn kept_by_record(conn: &mut PgConnection, id: Uuid) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT EXISTS (SELECT 1 FROM invoices WHERE workspace_id = app_workspace_id() AND document_id = $1
+                            AND status <> 'draft' AND deleted_at IS NULL)
+               OR EXISTS (SELECT 1 FROM settlements WHERE workspace_id = app_workspace_id() AND document_id = $1
+                            AND deleted_at IS NULL) AS "kept!""#,
+        id
+    )
+    .fetch_one(conn)
+    .await?)
+}
+
+/// Marks the document signed by one round of signatures.
+pub async fn set_signed_round(conn: &mut PgConnection, id: Uuid, round_id: Uuid) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE documents SET signature_status = 'signed', signed_round_id = $2
+           WHERE workspace_id = app_workspace_id() AND id = $1"#,
+        id,
+        round_id
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// The round the signed copy was sealed from, if it is signed.
+pub async fn signed_round(conn: &mut PgConnection, id: Uuid) -> Result<Option<Uuid>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT signed_round_id FROM documents
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND signature_status = 'signed'"#,
+        id
+    )
+    .fetch_optional(conn)
+    .await?
+    .flatten())
+}
+
 // Versions ----------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
@@ -382,6 +420,7 @@ pub struct Signature {
     pub id: Uuid,
     pub document_id: Uuid,
     pub version_number: i32,
+    pub round_id: Uuid,
     pub position: i32,
     pub signer_name: String,
     pub signer_email: String,
@@ -400,7 +439,7 @@ pub struct Signature {
 pub async fn signatures(conn: &mut PgConnection, document_id: Uuid) -> Result<Vec<Signature>> {
     Ok(sqlx::query_as!(
         Signature,
-        r#"SELECT id, document_id, version_number, position, signer_name, signer_email, status, sent_at, viewed_at,
+        r#"SELECT id, document_id, version_number, round_id, position, signer_name, signer_email, status, sent_at, viewed_at,
                   decided_at, signed_name, signed_ip AS "signed_ip: IpAddr", signed_user_agent, pdf_sha256,
                   decline_reason, version
            FROM signature_requests WHERE workspace_id = app_workspace_id() AND document_id = $1
@@ -411,10 +450,20 @@ pub async fn signatures(conn: &mut PgConnection, document_id: Uuid) -> Result<Ve
     .await?)
 }
 
+/// The document a signing request is for, without locking anything.
+pub async fn signature_document(conn: &mut PgConnection, id: Uuid) -> Result<Option<Uuid>> {
+    Ok(sqlx::query_scalar!(
+        "SELECT document_id FROM signature_requests WHERE workspace_id = app_workspace_id() AND id = $1",
+        id
+    )
+    .fetch_optional(conn)
+    .await?)
+}
+
 pub async fn signature(conn: &mut PgConnection, id: Uuid) -> Result<Option<Signature>> {
     Ok(sqlx::query_as!(
         Signature,
-        r#"SELECT id, document_id, version_number, position, signer_name, signer_email, status, sent_at, viewed_at,
+        r#"SELECT id, document_id, version_number, round_id, position, signer_name, signer_email, status, sent_at, viewed_at,
                   decided_at, signed_name, signed_ip AS "signed_ip: IpAddr", signed_user_agent, pdf_sha256,
                   decline_reason, version
            FROM signature_requests WHERE workspace_id = app_workspace_id() AND id = $1 FOR UPDATE"#,
@@ -428,6 +477,7 @@ pub struct NewSignature<'a> {
     pub id: Uuid,
     pub document_id: Uuid,
     pub version_number: i32,
+    pub round_id: Uuid,
     pub position: i32,
     pub signer_name: &'a str,
     pub signer_email: &'a str,
@@ -440,12 +490,13 @@ pub async fn insert_signature(
     by: Option<UserId>,
 ) -> Result<()> {
     sqlx::query!(
-        r#"INSERT INTO signature_requests (id, workspace_id, document_id, version_number, position, signer_name,
-                                           signer_email, token_hash, created_by)
-           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8)"#,
+        r#"INSERT INTO signature_requests (id, workspace_id, document_id, version_number, round_id, position,
+                                           signer_name, signer_email, token_hash, created_by)
+           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9)"#,
         s.id,
         s.document_id,
         s.version_number,
+        s.round_id,
         s.position,
         s.signer_name,
         s.signer_email,

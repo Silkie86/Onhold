@@ -571,3 +571,184 @@ async fn a_settlement_pays_the_talent_their_share(pool: PgPool) {
     let report = get(&app, &c.owner, "/api/v1/reports/finance").await;
     assert_eq!(report["cash"][0]["paid_out_minor"], 150_000, "{report}");
 }
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn imported_numbers_payments_and_credits_are_respected(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let c = cast(&app).await;
+    let year = chrono::Utc::now().format("%Y").to_string();
+
+    // A past invoice already used the first number: a new one skips it.
+    let past = post(
+        &app,
+        &c.owner,
+        "/api/v1/invoices/historical",
+        json!({ "reference": format!("INV-{year}-0001"), "payer": { "organisation_id": c.organisation },
+                "currency": "GBP", "issue_date": "2024-03-01", "due_date": "2024-04-01",
+                "total_minor": 100_000, "paid_minor": 60_000 }),
+    )
+    .await;
+    assert_eq!(past.status, StatusCode::CREATED, "{}", past.body);
+    assert_eq!(past.body["status"], "overdue", "{}", past.body);
+    assert_eq!(past.body["paid"]["minor"], 60_000, "{}", past.body);
+    let d = draft(
+        &app,
+        &c,
+        json!([{ "description": "Fee", "unit_minor": 10_000 }]),
+    )
+    .await;
+    let issued = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{}/issue", id(&d)),
+        json!({}),
+    )
+    .await
+    .ok()
+    .body;
+    assert_eq!(issued["reference"], format!("INV-{year}-0002"), "{issued}");
+
+    // What was paid before the import still counts once payments arrive.
+    let past_id = id(&past.body);
+    let pay = post(
+        &app,
+        &c.owner,
+        "/api/v1/payments",
+        json!({ "amount": { "minor": 40_000, "currency": "GBP" },
+                "allocations": [{ "invoice_id": past_id }] }),
+    )
+    .await;
+    assert_eq!(pay.status, StatusCode::CREATED, "{}", pay.body);
+    let i = get(&app, &c.owner, &format!("/api/v1/invoices/{past_id}")).await;
+    assert_eq!(i["paid"]["minor"], 100_000, "{i}");
+    assert_eq!(i["status"], "paid", "{i}");
+
+    // A fully credited deposit no longer counts: a new deposit can be
+    // raised, and the balance does not take the credited one off.
+    let booking = post(
+        &app,
+        &c.owner,
+        "/api/v1/bookings",
+        json!({ "title": "Gala", "talent_ids": [c.talent], "status": "confirmed",
+                "organisation_id": c.organisation, "fee": { "minor": 100_000, "currency": "GBP" },
+                "deposit_percent": 50.0,
+                "starts_at": "2031-06-01T19:00:00Z", "ends_at": "2031-06-01T23:00:00Z" }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let deposit = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/bookings/{booking}/invoices"),
+        json!({ "purpose": "deposit", "issue": true }),
+    )
+    .await
+    .ok()
+    .body;
+    let deposit_total = deposit["total"]["minor"].as_i64().unwrap();
+    let credit = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{}/credit-notes", id(&deposit)),
+        json!({}),
+    )
+    .await;
+    assert_eq!(credit.status, StatusCode::CREATED, "{}", credit.body);
+    let d = get(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{}", id(&deposit)),
+    )
+    .await;
+    assert_eq!(d["status"], "credited", "{d}");
+    let balance = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/bookings/{booking}/invoices"),
+        json!({ "purpose": "balance" }),
+    )
+    .await
+    .ok()
+    .body;
+    assert_eq!(balance["total"]["minor"], deposit_total * 2, "{balance}");
+    post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/bookings/{booking}/invoices"),
+        json!({ "purpose": "deposit" }),
+    )
+    .await
+    .ok();
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn reopening_a_settlement_does_not_bill_commission_twice(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let c = cast(&app).await;
+    app.put("/api/v1/finance/settings")
+        .signed_in(&c.owner)
+        .json(json!({ "invoicing_model": "talent" }))
+        .send()
+        .await
+        .ok();
+    let booking = post(
+        &app,
+        &c.owner,
+        "/api/v1/bookings",
+        json!({ "title": "Gala", "talent_ids": [c.talent], "status": "confirmed",
+                "organisation_id": c.organisation, "fee": { "minor": 200_000, "currency": "GBP" },
+                "starts_at": "2031-06-01T19:00:00Z", "ends_at": "2031-06-01T23:00:00Z" }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let made = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/bookings/{booking}/settlements"),
+        json!({}),
+    )
+    .await
+    .ok()
+    .body;
+    let sid = id(&made[0]);
+    let finalise = format!("/api/v1/settlements/{sid}/finalise");
+    let first = post(&app, &c.owner, &finalise, json!({})).await.ok().body;
+    let commission = first["commission_invoice_id"].as_str().unwrap().to_owned();
+
+    // Reopening removes the draft commission invoice; finalising makes one.
+    post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/settlements/{sid}/reopen"),
+        json!({}),
+    )
+    .await
+    .ok();
+    app.get(&format!("/api/v1/invoices/{commission}"))
+        .signed_in(&c.owner)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+    let second = post(&app, &c.owner, &finalise, json!({})).await.ok().body;
+    let commission = second["commission_invoice_id"].as_str().unwrap().to_owned();
+
+    // Once issued, it must be voided or credited before reopening.
+    post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{commission}/issue"),
+        json!({}),
+    )
+    .await
+    .ok();
+    post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/settlements/{sid}/reopen"),
+        json!({}),
+    )
+    .await
+    .expect(StatusCode::CONFLICT, "commission_invoiced");
+}

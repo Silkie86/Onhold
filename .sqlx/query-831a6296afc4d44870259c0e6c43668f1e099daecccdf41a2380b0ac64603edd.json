@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT i.id, i.workspace_id AS \"workspace_id: WorkspaceId\", i.due_date AS \"due_date!\"\n           FROM invoices i JOIN workspaces w ON w.id = i.workspace_id\n           WHERE i.status IN ('issued', 'part_paid') AND i.deleted_at IS NULL\n             AND i.due_date < ($1 AT TIME ZONE w.default_timezone)::date\n             AND w.status IN ('trial', 'active')\n           ORDER BY i.due_date\n           LIMIT $2",
+  "query": "SELECT i.id, i.workspace_id AS \"workspace_id: WorkspaceId\", i.due_date AS \"due_date!\"\n           FROM invoices i JOIN workspaces w ON w.id = i.workspace_id\n           WHERE i.kind = 'invoice' AND i.status IN ('issued', 'part_paid') AND i.deleted_at IS NULL\n             AND i.due_date < ($1 AT TIME ZONE w.default_timezone)::date\n             AND w.status IN ('trial', 'active')\n           ORDER BY i.due_date\n           LIMIT $2",
   "describe": {
     "columns": [
       {
@@ -49,5 +49,5 @@
       true
     ]
   },
-  "hash": "c77b5cf1d1b66f4ad0297f75c1bf0d13ec4d9336c5f1a872e0911ee5e92fa2cb"
+  "hash": "831a6296afc4d44870259c0e6c43668f1e099daecccdf41a2380b0ac64603edd"
 }

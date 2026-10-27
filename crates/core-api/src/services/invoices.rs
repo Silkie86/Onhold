@@ -962,11 +962,18 @@ pub(crate) async fn from_booking_in(
     }
     let settings = core_db::finance::settings(tx).await?;
     let (currency, full) = booking_lines(tx, &booking).await?;
-    let existing = core_db::invoices::for_booking(tx, booking_id).await?;
-    let live: Vec<InvoiceView> = existing
+    let existing: Vec<InvoiceView> = core_db::invoices::for_booking(tx, booking_id)
+        .await?
         .into_iter()
         .map(InvoiceView::from)
-        .filter(|i| i.kind == "invoice" && i.status != InvoiceStatus::Void)
+        .collect();
+    // A fully credited invoice is cancelled as surely as a void one.
+    let live: Vec<&InvoiceView> = existing
+        .iter()
+        .filter(|i| {
+            i.kind == "invoice"
+                && !matches!(i.status, InvoiceStatus::Void | InvoiceStatus::Credited)
+        })
         .collect();
     let first_talent = booking.talent.first().map(|t| t.id);
     let issuer = issuer_talent_id.or(match (settings.invoicing_model.as_str(), purpose) {
@@ -1014,6 +1021,26 @@ pub(crate) async fn from_booking_in(
                         tax_code_id: l.tax_code_id,
                         talent_id: l.talent_id,
                     });
+                }
+                // Only what is left of a deposit after its credit notes.
+                let notes = existing.iter().filter(|c| {
+                    c.kind == "credit_note"
+                        && c.status.is_issued()
+                        && c.credits_invoice_id == Some(d.id)
+                });
+                for c in notes {
+                    for l in &c.line_items {
+                        lines.push(LineInput {
+                            description: format!(
+                                "Deposit credited {}",
+                                c.reference.as_deref().unwrap_or("")
+                            ),
+                            quantity: Some(1.0),
+                            unit_minor: l.amount_minor,
+                            tax_code_id: l.tax_code_id,
+                            talent_id: l.talent_id,
+                        });
+                    }
                 }
             }
             lines
@@ -1217,13 +1244,24 @@ pub(crate) async fn issue_in(
     let issuer_key = before
         .issuer_talent_id
         .map_or_else(|| "workspace".to_owned(), |t| t.to_string());
-    let number = core_db::finance::next_number(tx, &issuer_key, kind).await?;
     let format = if kind == "credit_note" {
         &settings.credit_note_format
     } else {
         &settings.invoice_format
     };
-    let reference = format_number(format, number, issue_date);
+    // Skip numbers that past invoices brought in already use.
+    let mut tries = 0;
+    let (number, reference) = loop {
+        let number = core_db::finance::next_number(tx, &issuer_key, kind).await?;
+        let reference = format_number(format, number, issue_date);
+        tries += 1;
+        if tries >= 10_000
+            || !core_db::invoices::reference_taken(tx, kind, before.issuer_talent_id, &reference)
+                .await?
+        {
+            break (number, reference);
+        }
+    };
     let issuer = super::finance::issuer_json(tx, ctx, before.issuer_talent_id).await?;
     let payer = payer_json(tx, &before).await?;
     core_db::invoices::issue(
@@ -1400,7 +1438,8 @@ pub(crate) async fn recompute(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<Inv
     if before.kind != "invoice" || !before.status.is_issued() {
         return Ok(before);
     }
-    let paid = core_db::payments::paid_towards(tx, id).await?;
+    let paid = core_db::payments::paid_towards(tx, id).await?
+        + core_db::invoices::paid_before(tx, id).await?;
     let credited = core_db::invoices::credited_total(tx, id).await?;
     let today = super::finance::today(tx, ctx).await?;
     let status = status_from_amounts(before.total.minor, paid, credited, before.due_date, today);

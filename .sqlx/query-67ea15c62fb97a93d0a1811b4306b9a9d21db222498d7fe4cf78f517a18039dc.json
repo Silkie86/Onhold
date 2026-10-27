@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (SELECT 1 FROM invoices WHERE workspace_id = app_workspace_id() AND document_id = $1\n                            AND status <> 'draft' AND deleted_at IS NULL)\n               OR EXISTS (SELECT 1 FROM settlements WHERE workspace_id = app_workspace_id() AND document_id = $1\n                            AND deleted_at IS NULL) AS \"kept!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kept!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "67ea15c62fb97a93d0a1811b4306b9a9d21db222498d7fe4cf78f517a18039dc"
+}

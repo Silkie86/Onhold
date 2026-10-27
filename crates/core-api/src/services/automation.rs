@@ -631,10 +631,21 @@ async fn run_rule(
     let mut done = Vec::with_capacity(planned.len());
     let mut failure = None;
     for (i, (action, plan)) in def.actions.iter().zip(planned).enumerate() {
+        // A failed action leaves nothing behind (a draft invoice that was
+        // not issued, say), and cannot leave the transaction aborted.
+        sqlx::query("SAVEPOINT rule_action")
+            .execute(&mut **tx)
+            .await?;
         let result = act(
             state, tx, workspace, rule, i, action, &input, &ctx_json, plan,
         )
         .await?;
+        let undo = if result.ok {
+            "RELEASE SAVEPOINT rule_action"
+        } else {
+            "ROLLBACK TO SAVEPOINT rule_action"
+        };
+        sqlx::query(undo).execute(&mut **tx).await?;
         let ok = result.ok;
         if !ok {
             failure = result.error.clone();

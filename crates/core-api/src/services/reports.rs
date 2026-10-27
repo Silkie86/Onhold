@@ -115,11 +115,11 @@ pub async fn finance(state: &AppState, ctx: &Ctx, p: &Period) -> ApiResult<Finan
             })
             .collect()
     };
-    let by_month = rows(core_db::reports::revenue_by_month(&mut tx, from, to).await?);
-    let by_payer = rows(core_db::reports::revenue_by_payer(&mut tx, from, to).await?);
-    let by_talent = rows(core_db::reports::revenue_by_talent(&mut tx, from, to).await?);
+    let by_month = rows(core_db::reports::revenue_by_month(&mut tx, from, to, &base).await?);
+    let by_payer = rows(core_db::reports::revenue_by_payer(&mut tx, from, to, &base).await?);
+    let by_talent = rows(core_db::reports::revenue_by_talent(&mut tx, from, to, &base).await?);
     let mut ageing = [0i64; 5];
-    let outstanding: Vec<OutstandingRow> = core_db::reports::outstanding(&mut tx)
+    let outstanding: Vec<OutstandingRow> = core_db::reports::outstanding(&mut tx, &base)
         .await?
         .into_iter()
         .map(|o| {

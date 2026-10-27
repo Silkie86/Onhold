@@ -320,7 +320,12 @@ fn cors(origins: &[String]) -> CorsLayer {
             HeaderName::from_static(idempotency::HEADER),
             REQUEST_ID_HEADER,
         ])
-        .expose_headers([header::ETAG, header::LOCATION, REQUEST_ID_HEADER])
+        .expose_headers([
+            header::ETAG,
+            header::LOCATION,
+            header::CONTENT_DISPOSITION,
+            REQUEST_ID_HEADER,
+        ])
         .max_age(Duration::from_secs(3600))
 }
 

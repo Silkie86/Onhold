@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, document_id, version_number, position, signer_name, signer_email, status, sent_at, viewed_at,\n                  decided_at, signed_name, signed_ip AS \"signed_ip: IpAddr\", signed_user_agent, pdf_sha256,\n                  decline_reason, version\n           FROM signature_requests WHERE workspace_id = app_workspace_id() AND document_id = $1\n           ORDER BY version_number DESC, position, id",
+  "query": "SELECT id, document_id, version_number, round_id, position, signer_name, signer_email, status, sent_at, viewed_at,\n                  decided_at, signed_name, signed_ip AS \"signed_ip: IpAddr\", signed_user_agent, pdf_sha256,\n                  decline_reason, version\n           FROM signature_requests WHERE workspace_id = app_workspace_id() AND document_id = $1\n           ORDER BY version_number DESC, position, id",
   "describe": {
     "columns": [
       {
@@ -38,6 +38,17 @@
       },
       {
         "ordinal": 3,
+        "name": "round_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "round_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "position",
         "type_info": "Int4",
         "origin": {
@@ -48,7 +59,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "signer_name",
         "type_info": "Text",
         "origin": {
@@ -59,7 +70,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "signer_email",
         "type_info": "Text",
         "origin": {
@@ -70,7 +81,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "status",
         "type_info": "Text",
         "origin": {
@@ -81,7 +92,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "sent_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "viewed_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "decided_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -114,7 +125,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "signed_name",
         "type_info": "Text",
         "origin": {
@@ -125,7 +136,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "signed_ip: IpAddr",
         "type_info": "Inet",
         "origin": {
@@ -136,7 +147,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "signed_user_agent",
         "type_info": "Text",
         "origin": {
@@ -147,7 +158,7 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "pdf_sha256",
         "type_info": "Bytea",
         "origin": {
@@ -158,7 +169,7 @@
         }
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "decline_reason",
         "type_info": "Text",
         "origin": {
@@ -169,7 +180,7 @@
         }
       },
       {
-        "ordinal": 15,
+        "ordinal": 16,
         "name": "version",
         "type_info": "Int8",
         "origin": {
@@ -194,6 +205,7 @@
       false,
       false,
       false,
+      false,
       true,
       true,
       true,
@@ -204,5 +216,5 @@
       false
     ]
   },
-  "hash": "c117c545595afd33469b462c6631412111fc71f7932a117c4b0af8b9170a6658"
+  "hash": "957e2761e463b91b78f3fc7d2d9e2e5371819cd2044e3b2a7d6340aa17441e10"
 }

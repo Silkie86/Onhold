@@ -23,6 +23,7 @@ pub async fn revenue_by_month(
     conn: &mut PgConnection,
     from: NaiveDate,
     to: NaiveDate,
+    base: &str,
 ) -> Result<Vec<Row>> {
     Ok(sqlx::query_as!(
         Row,
@@ -33,10 +34,11 @@ pub async fn revenue_by_month(
                   count(*) FILTER (WHERE kind = 'invoice') AS "count!"
            FROM invoices
            WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL AND status NOT IN ('draft', 'void')
-             AND issue_date BETWEEN $1 AND $2 AND base_total_minor IS NOT NULL
+             AND issue_date BETWEEN $1 AND $2 AND base_total_minor IS NOT NULL AND base_currency = $3
            GROUP BY 1 ORDER BY 1"#,
         from,
-        to
+        to,
+        base
     )
     .fetch_all(conn)
     .await?)
@@ -47,6 +49,7 @@ pub async fn revenue_by_payer(
     conn: &mut PgConnection,
     from: NaiveDate,
     to: NaiveDate,
+    base: &str,
 ) -> Result<Vec<Row>> {
     Ok(sqlx::query_as!(
         Row,
@@ -60,9 +63,11 @@ pub async fn revenue_by_payer(
            LEFT JOIN talent t ON t.id = i.payer_talent_id
            WHERE i.workspace_id = app_workspace_id() AND i.deleted_at IS NULL AND i.status NOT IN ('draft', 'void')
              AND i.issue_date BETWEEN $1 AND $2 AND i.base_total_minor IS NOT NULL
+                 AND i.base_currency = $3
            GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 200"#,
         from,
-        to
+        to,
+        base
     )
     .fetch_all(conn)
     .await?)
@@ -74,6 +79,7 @@ pub async fn revenue_by_talent(
     conn: &mut PgConnection,
     from: NaiveDate,
     to: NaiveDate,
+    base: &str,
 ) -> Result<Vec<Row>> {
     Ok(sqlx::query_as!(
         Row,
@@ -88,6 +94,7 @@ pub async fn revenue_by_talent(
                FROM invoices i, jsonb_array_elements(i.line_items) l
                WHERE i.workspace_id = app_workspace_id() AND i.deleted_at IS NULL AND i.status NOT IN ('draft', 'void')
                  AND i.issue_date BETWEEN $1 AND $2 AND i.base_total_minor IS NOT NULL
+                 AND i.base_currency = $3
                  AND i.purpose <> 'commission'
            )
            SELECT coalesce(t.name, 'No talent') AS "key!", l.talent_id AS id,
@@ -96,7 +103,8 @@ pub async fn revenue_by_talent(
            FROM lines l LEFT JOIN talent t ON t.id = l.talent_id
            GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 200"#,
         from,
-        to
+        to,
+        base
     )
     .fetch_all(conn)
     .await?)
@@ -117,13 +125,16 @@ pub struct Outstanding {
 }
 
 /// Invoices still owed, oldest due first.
-pub async fn outstanding(conn: &mut PgConnection) -> Result<Vec<Outstanding>> {
+/// Amounts in the base currency only where the invoice was issued with
+/// today's base; others have none.
+pub async fn outstanding(conn: &mut PgConnection, base: &str) -> Result<Vec<Outstanding>> {
     Ok(sqlx::query_as!(
         Outstanding,
         r#"SELECT i.id, i.reference, coalesce(i.payer_name, o.name, t.name, '') AS "payer!", i.booking_id, i.currency,
                   (i.total_minor - i.paid_minor - i.credited_minor) AS "outstanding_minor!",
-                  round((i.total_minor - i.paid_minor - i.credited_minor)::numeric * i.base_total_minor
-                        / nullif(i.total_minor, 0))::bigint AS base_outstanding_minor,
+                  CASE WHEN i.base_currency = $1 THEN
+                      round((i.total_minor - i.paid_minor - i.credited_minor)::numeric * i.base_total_minor
+                            / nullif(i.total_minor, 0))::bigint END AS base_outstanding_minor,
                   i.issue_date, i.due_date, i.status::text AS "status!"
            FROM invoices i
            LEFT JOIN organisations o ON o.id = i.payer_organisation_id
@@ -131,7 +142,8 @@ pub async fn outstanding(conn: &mut PgConnection) -> Result<Vec<Outstanding>> {
            WHERE i.workspace_id = app_workspace_id() AND i.deleted_at IS NULL AND i.kind = 'invoice'
              AND i.status IN ('issued', 'part_paid', 'overdue')
            ORDER BY i.due_date NULLS LAST, i.issue_date
-           LIMIT 1000"#
+           LIMIT 1000"#,
+        base
     )
     .fetch_all(conn)
     .await?)

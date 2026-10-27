@@ -201,7 +201,8 @@ pub async fn finalise(
 /// Back to draft, to correct it (its statement stays as a past version).
 pub async fn reopen(conn: &mut PgConnection, id: Uuid, by: Option<UserId>) -> Result<()> {
     sqlx::query!(
-        r#"UPDATE settlements SET status = 'draft', finalised_at = NULL, finalised_by = NULL, updated_by = $2
+        r#"UPDATE settlements SET status = 'draft', finalised_at = NULL, finalised_by = NULL, commission_invoice_id = NULL,
+                  updated_by = $2
            WHERE workspace_id = app_workspace_id() AND id = $1"#,
         id,
         by.map(|u| u.0)

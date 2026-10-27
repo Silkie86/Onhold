@@ -114,6 +114,8 @@ CREATE TABLE documents (
     -- When an insurance certificate or passport runs out.
     expires_on       date,
     signature_status text NOT NULL DEFAULT 'none' CHECK (signature_status IN ('none', 'awaiting', 'signed', 'declined')),
+    -- The round of signatures the signed copy was sealed from.
+    signed_round_id  uuid,
     notes            text CHECK (length(notes) <= 5000),
     tags             text[] NOT NULL DEFAULT '{}',
     custom           jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(custom) = 'object'),
@@ -163,6 +165,8 @@ CREATE TABLE signature_requests (
     workspace_id      uuid NOT NULL REFERENCES workspaces (id),
     document_id       uuid NOT NULL,
     version_number    integer NOT NULL,
+    -- One request for signatures: its signers sign together.
+    round_id          uuid NOT NULL,
     position          integer NOT NULL DEFAULT 0,
     signer_name       text NOT NULL CHECK (length(btrim(signer_name)) BETWEEN 1 AND 200),
     signer_email      text NOT NULL CHECK (length(signer_email) BETWEEN 3 AND 320),
@@ -344,6 +348,9 @@ CREATE TABLE invoices (
     total_minor           bigint NOT NULL DEFAULT 0 CHECK (total_minor >= 0),
     -- Allocated payments and issued credit notes against this invoice.
     paid_minor            bigint NOT NULL DEFAULT 0 CHECK (paid_minor >= 0),
+    -- What a past invoice had been paid before it was imported (it has no
+    -- payments here); always counted in `paid_minor`.
+    paid_before_minor     bigint NOT NULL DEFAULT 0 CHECK (paid_before_minor >= 0),
     credited_minor        bigint NOT NULL DEFAULT 0 CHECK (credited_minor >= 0),
     issue_date            date,
     due_date              date,
@@ -403,7 +410,7 @@ CREATE INDEX invoices_credits ON invoices (workspace_id, credits_invoice_id) WHE
 CREATE INDEX invoices_search ON invoices USING gin (search_text gin_trgm_ops);
 CREATE INDEX invoices_custom ON invoices USING gin (custom jsonb_path_ops);
 -- The worker's sweep: issued invoices passing their due date.
-CREATE INDEX invoices_due ON invoices (due_date) WHERE status IN ('issued', 'part_paid') AND deleted_at IS NULL;
+CREATE INDEX invoices_due ON invoices (due_date) WHERE kind = 'invoice' AND status IN ('issued', 'part_paid') AND deleted_at IS NULL;
 CREATE TRIGGER invoices_updated_at BEFORE UPDATE ON invoices FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER invoices_version BEFORE UPDATE ON invoices FOR EACH ROW EXECUTE FUNCTION bump_version();
 
@@ -427,6 +434,7 @@ BEGIN
         OR NEW.issue_date IS DISTINCT FROM OLD.issue_date OR NEW.due_date IS DISTINCT FROM OLD.due_date
         OR NEW.fx_rate IS DISTINCT FROM OLD.fx_rate OR NEW.base_total_minor IS DISTINCT FROM OLD.base_total_minor
         OR NEW.credits_invoice_id IS DISTINCT FROM OLD.credits_invoice_id
+        OR NEW.paid_before_minor IS DISTINCT FROM OLD.paid_before_minor
         OR NEW.deleted_at IS DISTINCT FROM OLD.deleted_at
         OR (OLD.status = 'void' AND NEW.status <> 'void')
     ) THEN
@@ -671,6 +679,6 @@ GRANT SELECT ON fx_rates TO onhold_app;
 GRANT EXECUTE ON FUNCTION signature_public_find(bytea), invoice_public_find(bytea) TO onhold_app;
 
 GRANT SELECT, INSERT, UPDATE ON fx_rates TO onhold_worker;
-GRANT SELECT (id, workspace_id, status, due_date, deleted_at) ON invoices TO onhold_worker;
+GRANT SELECT (id, workspace_id, kind, status, due_date, deleted_at) ON invoices TO onhold_worker;
 GRANT SELECT (id, workspace_id, storage, storage_key, attached_at, created_at, deleted_at), DELETE
     ON files TO onhold_worker;

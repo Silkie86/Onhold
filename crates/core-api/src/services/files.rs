@@ -363,7 +363,7 @@ pub async fn read(state: &AppState, workspace: WorkspaceId, id: Uuid) -> ApiResu
             .await?;
         }
     }
-    if let Some(import) = core_db::pdf_imports::for_file(&mut tx, id).await? {
+    for import in core_db::pdf_imports::for_file(&mut tx, id).await? {
         super::pdf_imports::after_read(&mut tx, &ctx, import, extracted.as_ref().ok()).await?;
     }
     tx.commit().await?;
@@ -378,8 +378,9 @@ pub async fn sweep_unattached(
     let before = Utc::now() - UNATTACHED_TTL;
     let mut removed = 0;
     for f in core_db::files::unattached_before(worker, before, 200).await? {
-        state.storage.delete(&f.storage, &f.storage_key).await?;
+        // The row goes first, so a file attached meanwhile keeps its bytes.
         if core_db::files::delete_unattached(worker, f.id).await? {
+            state.storage.delete(&f.storage, &f.storage_key).await?;
             removed += 1;
         }
     }

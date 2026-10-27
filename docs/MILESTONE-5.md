@@ -27,7 +27,7 @@ Stripe Connect (payment links and webhooks) comes in a second PR straight after 
 - **E-signature.**
   - Signers default to the booking's contact. Each signer gets an emailed private link, and the email template can be overridden.
   - The signer reads the PDF, types their name and ticks agree, or declines.
-  - Once everyone has signed, a sealed version is made with a signing page (names, times, IP addresses) and `document.signed` fires.
+  - Each request for signatures is its own round. Once everyone in the round has signed, a sealed version is made with a signing page (names, times, IP addresses) and `document.signed` fires. Sealing runs as a job, so a failure never loses a signature, and a PDF that cannot take the signing page (password-protected or unreadable) is refused before anyone is asked.
   - Signed documents are frozen.
 - **Invoices and credit notes.**
   - An invoice is made from a booking (deposit, balance or full, from the accepted quote) or written by hand.
@@ -87,6 +87,38 @@ Stripe Connect (payment links and webhooks) comes in a second PR straight after 
   - The worker reads only the invoice and file columns its sweeps need, never amounts, lines or file contents.
   - The migration reverts to exactly the M4 schema.
 - **Web:** type-checked, unit tests and production build, in CI.
+
+## Reviewed
+
+An ultracode review (six reviewers, each finding checked by a skeptic) confirmed 24 distinct issues before merge. All are fixed in this PR, with tests:
+
+- **Money.**
+  - A past invoice keeps what was paid before the import (`paid_before_minor`).
+  - Credit notes no longer clog the overdue sweep.
+  - A fully credited deposit no longer blocks a new one or comes off the balance.
+  - Reopening a settlement removes its draft commission invoice, or refuses while one is issued.
+  - New numbers skip ones used by imported invoices.
+  - Reports only add up invoices issued in today's base currency.
+- **Documents.**
+  - Signing rounds stand alone.
+  - Simultaneous signatures still seal.
+  - A signer's link never serves a copy sealed from another round.
+  - Sealing failures are retried.
+  - Invoice and settlement PDFs cannot be relinked, deleted or regenerated.
+- **Files and worker.**
+  - Uploads over 2 MB work.
+  - The unattached-file sweep deletes the row before the bytes.
+  - An uploaded logo is kept.
+  - A rule action that fails leaves nothing behind.
+  - Exchange-rate gaps of a few days are filled.
+  - PDF imports no longer get stuck on duplicate or racing files.
+- **Web.**
+  - Import cards pick up what was read.
+  - "Keep as past invoice" follows the kind.
+  - Settings keep every bank account and the address region.
+  - Line prices stay with their lines and their currency.
+  - The bank label shows on the payer's page.
+  - App downloads keep their file names.
 
 ## Skipped, and why
 

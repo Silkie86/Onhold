@@ -535,3 +535,157 @@ fn pdf_text(bytes: &[u8]) -> String {
         .map(|e| e.text())
         .unwrap_or_default()
 }
+
+/// The signing link in the newest email to `to`.
+fn signing_token(h: &Harness, to: &str) -> String {
+    let mail = h
+        .mailer
+        .sent()
+        .into_iter()
+        .rev()
+        .find(|m| m.to == to)
+        .expect("a signing email");
+    let html = mail.html.unwrap().replace("&#x2f;", "/");
+    html.split("/sign/")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_owned()
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn each_request_for_signatures_stands_alone(pool: PgPool) {
+    let h = harness(pool).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let talent = h
+        .post(
+            &owner,
+            "/api/v1/talent",
+            json!({ "name": "The Midnight Owls" }),
+        )
+        .await
+        .id("/id");
+    let booking = h
+        .post(
+            &owner,
+            "/api/v1/bookings",
+            json!({ "title": "Gala night", "talent_ids": [talent], "status": "confirmed",
+                    "fee": { "minor": 200_000, "currency": "GBP" },
+                    "starts_at": "2031-06-01T19:00:00Z", "ends_at": "2031-06-01T23:00:00Z" }),
+        )
+        .await
+        .id("/id");
+    let doc = h
+        .post(
+            &owner,
+            "/api/v1/documents/generate",
+            json!({ "template_key": "document.contract", "related_entity": "booking", "related_id": booking }),
+        )
+        .await
+        .id("/id");
+    h.drain().await;
+    let sign = |token: String, sign: bool| {
+        let app = &h.app;
+        async move {
+            app.post(&format!("/api/v1/public/sign/{token}"))
+                .json(json!({ "sign": sign, "signed_name": "Someone", "agree": true }))
+                .send()
+                .await
+        }
+    };
+    let ask = |who: &'static str| {
+        let h = &h;
+        let owner = &owner;
+        async move {
+            h.post(
+                owner,
+                &format!("/api/v1/documents/{doc}/signatures"),
+                json!({ "signers": [{ "name": who, "email": format!("{who}@x.test") }] }),
+            )
+            .await
+            .ok();
+            h.drain().await;
+            signing_token(h, &format!("{who}@x.test"))
+        }
+    };
+
+    // A is asked, then B instead (replacing A's request); B declines.
+    let a = ask("a").await;
+    let b = ask("b").await;
+    sign(b, false).await.ok();
+    let d = h.get(&owner, &format!("/api/v1/documents/{doc}")).await;
+    assert_eq!(d["signature_status"], "declined", "{d}");
+    // A's link was replaced, so it can no longer be used.
+    sign(a.clone(), true)
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+
+    // Asking again on the same version: the old decline does not count.
+    let c = ask("c").await;
+    let signed = sign(c.clone(), true).await.ok().body;
+    assert_eq!(signed["status"], "signed", "{signed}");
+    h.drain().await;
+    let d = h.get(&owner, &format!("/api/v1/documents/{doc}")).await;
+    assert_eq!(d["signature_status"], "signed", "{d}");
+    assert_eq!(d["current_version"], 2, "{d}");
+    let sealed =
+        pdf_text(&raw_get(&h.app, &owner, &format!("/api/v1/documents/{doc}/content")).await);
+    assert!(sealed.contains("c@x.test"), "{sealed}");
+    assert!(!sealed.contains("b@x.test"), "{sealed}");
+
+    // A PDF that cannot take the certificate is refused before anyone signs.
+    let locked = h
+        .upload(
+            &owner,
+            "locked.pdf",
+            "application/pdf",
+            b"%PDF-1.4\nbroken".to_vec(),
+        )
+        .await;
+    if locked.status == StatusCode::CREATED && locked.body["content_type"] == "application/pdf" {
+        let other = h
+            .post(
+                &owner,
+                "/api/v1/documents",
+                json!({ "file_id": locked.id("/id"), "kind": "contract", "title": "Theirs" }),
+            )
+            .await
+            .id("/id");
+        h.app
+            .post(&format!("/api/v1/documents/{other}/signatures"))
+            .signed_in(&owner)
+            .json(json!({ "signers": [{ "name": "d", "email": "d@x.test" }] }))
+            .send()
+            .await
+            .expect(StatusCode::CONFLICT, "pdf_unsignable");
+    }
+
+    // Uploads well past the old 2 MB body limit go through.
+    let mut big = old_invoice_pdf();
+    big.extend(std::iter::repeat_n(b' ', 3 * 1024 * 1024));
+    let up = h.upload(&owner, "big.pdf", "application/pdf", big).await;
+    assert_eq!(up.status, StatusCode::CREATED, "{}", up.body);
+
+    // The same file twice in one batch makes one import, which is read.
+    let file = h
+        .upload(&owner, "old.pdf", "application/pdf", old_invoice_pdf())
+        .await
+        .id("/id");
+    let made = h
+        .post(
+            &owner,
+            "/api/v1/pdf-imports",
+            json!({ "file_ids": [file, file] }),
+        )
+        .await;
+    assert_eq!(made.status, StatusCode::CREATED, "{}", made.body);
+    assert_eq!(made.body.as_array().unwrap().len(), 1, "{}", made.body);
+    h.drain().await;
+    let import = made.body[0]["id"].as_str().unwrap();
+    let i = h
+        .get(&owner, &format!("/api/v1/pdf-imports/{import}"))
+        .await;
+    assert_eq!(i["status"], "ready", "{i}");
+}

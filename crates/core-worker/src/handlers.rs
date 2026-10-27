@@ -152,6 +152,12 @@ impl Worker {
                 documents::render_version(&self.app, workspace(job)?, id, number).await?;
                 Ok(())
             }
+            documents::JOB_SEAL => {
+                let id = uuid_field(&job.payload, "document_id")?;
+                let round = uuid_field(&job.payload, "round_id")?;
+                documents::seal_round(&self.app, workspace(job)?, id, round).await?;
+                Ok(())
+            }
             invoices::JOB_OVERDUE => {
                 let id = uuid_field(&job.payload, "invoice_id")?;
                 invoices::mark_overdue(&self.app, workspace(job)?, id).await?;
