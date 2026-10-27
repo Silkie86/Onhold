@@ -53,6 +53,11 @@ const MAGIC_LINK_BODY: &str = r#"<p>Hi {{ user.name }},</p>
 
 const REDACTED: &str = "[link removed]";
 
+/// Stands in for a secret link while a workspace's own template renders. The
+/// link is put in afterwards, and only where it stands on its own, so a
+/// template can place the link but never reshape it or pass it elsewhere.
+const LINK_PLACEHOLDER: &str = "OnHoldLinkPlaceholder";
+
 /// A message ready to send, and what to record about it afterwards.
 #[derive(Debug, Clone)]
 pub struct Outgoing {
@@ -142,7 +147,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                     "email": to,
                     "role": event.pointer("/after/role"),
                     "expires_at": event.pointer("/after/expires_at"),
-                    "url": url,
+                    "url": LINK_PLACEHOLDER,
                 },
             });
             // A workspace may reword its invitation.
@@ -173,11 +178,20 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 }
             };
             tx.commit().await?;
+            let rendered = place_link(rendered, &url);
             let name = workspace
                 .get("name")
                 .and_then(Value::as_str)
                 .unwrap_or("OnHold")
                 .to_owned();
+            let token = url::Url::parse(&url)
+                .ok()
+                .and_then(|u| {
+                    u.query_pairs()
+                        .find(|(k, _)| k == "token")
+                        .map(|(_, v)| v.into_owned())
+                })
+                .unwrap_or_default();
             Ok(outgoing(
                 state,
                 job.id,
@@ -189,7 +203,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 None,
                 SYSTEM_INVITATION,
                 None,
-                vec![url],
+                vec![url, token],
             ))
         }
         "auth.magic_link_requested" => {
@@ -392,6 +406,36 @@ fn outgoing(
     }
 }
 
+/// Puts `link` where the template placed [`LINK_PLACEHOLDER`] on its own: as
+/// a link's whole `href` or as text. Anywhere else (inside another address,
+/// say) it becomes [`REDACTED`].
+fn place_link(rendered: Rendered, link: &str) -> Rendered {
+    fn put(s: &str, link: &str, own: impl Fn(&str) -> bool) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut rest = s;
+        while let Some(i) = rest.find(LINK_PLACEHOLDER) {
+            out.push_str(&rest[..i]);
+            out.push_str(if own(&out) { link } else { REDACTED });
+            rest = &rest[i + LINK_PLACEHOLDER.len()..];
+        }
+        out.push_str(rest);
+        out
+    }
+    let word = |before: &str| {
+        before
+            .chars()
+            .next_back()
+            .is_none_or(|c| c.is_whitespace() || "([<".contains(c))
+    };
+    Rendered {
+        subject: rendered.subject.map(|s| put(&s, link, word)),
+        body: put(&rendered.body, &html_escape(link), |b| {
+            b.ends_with(" href=\"") || b.ends_with('>')
+        }),
+        text: put(&rendered.text, link, word),
+    }
+}
+
 fn redact(text: &str, secrets: &[String]) -> String {
     secrets
         .iter()
@@ -413,6 +457,7 @@ pub async fn record(
     let mut tx = core_db::begin(&state.db, out.workspace, out.user).await?;
     let html = out.email.html.as_deref().map(|h| redact(h, &out.redact));
     let text = redact(&out.email.text, &out.redact);
+    let subject = redact(&out.email.subject, &out.redact);
     let (status, provider_id, error) = match result {
         Ok(sent) => ("sent", sent.provider_message_id.clone(), None),
         Err(e) => ("failed", None, Some(e.to_string())),
@@ -423,7 +468,7 @@ pub async fn record(
             workspace: out.workspace,
             user: out.user,
             to_address: &out.email.to,
-            subject: Some(&out.email.subject),
+            subject: Some(&subject),
             body_html: html.as_deref(),
             body_text: &text,
             template_key: Some(&out.template_key),
@@ -463,6 +508,33 @@ mod tests {
         let out = redact(&html, &[url]);
         assert!(!out.contains("abc"), "{out}");
         assert_eq!(out.matches(REDACTED).count(), 2);
+    }
+
+    #[test]
+    fn links_are_only_placed_where_they_stand_alone() {
+        let link = "https://app.test/accept?token=abc&x=1";
+        let p = LINK_PLACEHOLDER;
+        let out = place_link(
+            Rendered {
+                subject: Some(format!("Join: {p}")),
+                body: format!(
+                    "<a href=\"{p}\">go</a> <p>{p}</p> <img src=\"https://evil.test/?u={p}\"> <a href=\"https://evil.test/{p}\">x</a>"
+                ),
+                text: format!("go ({p}) or https://evil.test/?u={p}"),
+            },
+            link,
+        );
+        assert_eq!(
+            out.subject.as_deref(),
+            Some(format!("Join: {link}").as_str())
+        );
+        let escaped = "https://app.test/accept?token=abc&amp;x=1";
+        assert_eq!(out.body.matches(escaped).count(), 2, "{}", out.body);
+        assert_eq!(out.body.matches(REDACTED).count(), 2, "{}", out.body);
+        assert_eq!(
+            out.text,
+            format!("go ({link}) or https://evil.test/?u={REDACTED}")
+        );
     }
 
     #[test]
