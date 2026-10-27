@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE pdf_templates SET archived_at = now(), updated_by = $2\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND archived_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2f32d99ff01b931d6097ddb21c92c418142bbfef5cc59db24987b1f58910cb1f"
+}

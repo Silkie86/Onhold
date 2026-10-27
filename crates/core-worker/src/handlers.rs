@@ -8,7 +8,7 @@ use core_api::services::automation::{
 };
 use core_api::services::bookings::{self, JOB_COMPLETE, JOB_EXPIRE_HOLD};
 use core_api::services::quotes::{self, JOB_EXPIRE as JOB_EXPIRE_QUOTE};
-use core_api::services::{imports, mail, webhooks};
+use core_api::services::{documents, files, imports, invoices, mail, webhooks};
 use core_db::jobs::{Claimed, LogLine};
 use core_domain::WorkspaceId;
 use core_integrations::http::DeliveryError;
@@ -135,6 +135,33 @@ impl Worker {
             JOB_MAIL => {
                 let out = mail::prepare_rule_mail(&self.app, job).await?;
                 self.send_mail(job, out, log).await
+            }
+            files::JOB_READ => {
+                let id = uuid_field(&job.payload, "file_id")?;
+                files::read(&self.app, workspace(job)?, id).await?;
+                Ok(())
+            }
+            documents::JOB_RENDER => {
+                let id = uuid_field(&job.payload, "document_id")?;
+                let number = job
+                    .payload
+                    .get("version")
+                    .and_then(Value::as_i64)
+                    .and_then(|n| i32::try_from(n).ok())
+                    .ok_or_else(|| JobError::permanent("the job has no `version`"))?;
+                documents::render_version(&self.app, workspace(job)?, id, number).await?;
+                Ok(())
+            }
+            documents::JOB_SEAL => {
+                let id = uuid_field(&job.payload, "document_id")?;
+                let round = uuid_field(&job.payload, "round_id")?;
+                documents::seal_round(&self.app, workspace(job)?, id, round).await?;
+                Ok(())
+            }
+            invoices::JOB_OVERDUE => {
+                let id = uuid_field(&job.payload, "invoice_id")?;
+                invoices::mark_overdue(&self.app, workspace(job)?, id).await?;
+                Ok(())
             }
             JOB_WEBHOOK => self.deliver_webhook(job, log).await,
             imports::JOB_IMPORT => self.run_import(job, log).await,

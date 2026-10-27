@@ -257,7 +257,8 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
     assert_eq!(user, "onhold_worker");
 
     // The queue tables, plus the few columns scheduling, cleanup and the
-    // bookings sweep (holds lapsing, bookings ending, quotes expiring) need.
+    // bookings sweep (holds lapsing, bookings ending, quotes expiring),
+    // invoices falling overdue, file cleanup and exchange rates need.
     let queue = [
         "bookings",
         "quotes",
@@ -269,6 +270,9 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "workspaces",
         "idempotency_keys",
         "imports",
+        "files",
+        "invoices",
+        "fx_rates",
     ];
     for table in tables(&app.owner).await {
         let read =
@@ -293,6 +297,9 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "SELECT fee_minor FROM bookings",
         "UPDATE bookings SET status = 'expired'",
         "SELECT line_items FROM quotes",
+        "SELECT text_content FROM files",
+        "SELECT total_minor FROM invoices",
+        "UPDATE invoices SET status = 'paid'",
     ] {
         let err = sqlx::query(query).fetch_all(&worker).await.unwrap_err();
         assert!(

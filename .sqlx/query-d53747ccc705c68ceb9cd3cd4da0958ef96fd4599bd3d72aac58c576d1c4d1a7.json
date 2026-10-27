@@ -1,0 +1,194 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT legal_name, address, tax_number, company_number, email, phone, invoice_format,\n                  credit_note_format, payment_terms_days, invoicing_model, bank_accounts, late_fee_text,\n                  invoice_footer, version, updated_at\n           FROM finance_settings WHERE workspace_id = app_workspace_id()",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "legal_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "legal_name"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "address",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "address"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "tax_number",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "tax_number"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "company_number",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "company_number"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "phone",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "phone"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "invoice_format",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "invoice_format"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "credit_note_format",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "credit_note_format"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "payment_terms_days",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "payment_terms_days"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "invoicing_model",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "invoicing_model"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "bank_accounts",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "bank_accounts"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "late_fee_text",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "late_fee_text"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "invoice_footer",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "invoice_footer"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "finance_settings",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "d53747ccc705c68ceb9cd3cd4da0958ef96fd4599bd3d72aac58c576d1c4d1a7"
+}

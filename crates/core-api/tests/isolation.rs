@@ -24,7 +24,7 @@ const NOT_WORKSPACE_SCOPED: &[(&str, &str)] = &[
     ("/api/v1/admin/", "superadmins only"),
     (
         "/api/v1/public/",
-        "secret-link holders only; the token names one quote or feed",
+        "secret-link holders only; the token names one quote, feed, invoice or signature",
     ),
 ];
 
@@ -101,7 +101,89 @@ struct World {
     b_job: uuid::Uuid,
     b_crm: Crm,
     b_work: Work,
+    b_money: Money,
     b_markers: Vec<String>,
+}
+
+/// One of everything M5 adds, in `owner`'s workspace, named after `slug`.
+struct Money {
+    tax_code: uuid::Uuid,
+    invoice: uuid::Uuid,
+    payment: uuid::Uuid,
+    allocation: uuid::Uuid,
+    settlement: uuid::Uuid,
+    document: uuid::Uuid,
+    file: uuid::Uuid,
+    pdf_import: uuid::Uuid,
+}
+
+async fn money(app: &TestApp, owner: &Client, slug: &str, crm: &Crm, work: &Work) -> Money {
+    let post = |path: &str, body: Value| {
+        let req = app.post(path).signed_in(owner).json(body);
+        async move { req.send().await.ok() }
+    };
+    let tax_code = post(
+        "/api/v1/tax-codes",
+        json!({ "name": format!("{slug} secret tax"), "rate_bps": 1234 }),
+    )
+    .await
+    .id("/id");
+    let invoice = post(
+        "/api/v1/invoices",
+        json!({ "payer": { "organisation_id": crm.organisation }, "booking_id": work.booking,
+                "line_items": [{ "description": format!("{slug} secret invoice line"), "unit_minor": 10_000 }] }),
+    )
+    .await
+    .id("/id");
+    post(&format!("/api/v1/invoices/{invoice}/issue"), json!({})).await;
+    let payment = post(
+        "/api/v1/payments",
+        json!({ "amount": { "minor": 1_000, "currency": "GBP" }, "reference": format!("{slug} secret payment"),
+                "allocations": [{ "invoice_id": invoice }] }),
+    )
+    .await;
+    let allocation = payment.id("/allocations/0/id");
+    let payment = payment.id("/id");
+    let settlement = post(
+        &format!("/api/v1/bookings/{}/settlements", work.booking),
+        json!({}),
+    )
+    .await
+    .id("/0/id");
+    let pdf = core_pdf::write::Renderer::render(
+        &core_pdf::write::PlainText,
+        &format!("<p>{slug} secret contract text</p>"),
+        "Secret",
+    )
+    .unwrap();
+    let file = app
+        .post(&format!("/api/v1/files?filename={slug}-secret.pdf"))
+        .signed_in(owner)
+        .bytes("application/pdf", pdf)
+        .send()
+        .await
+        .ok()
+        .id("/id");
+    let pdf_import = post("/api/v1/pdf-imports", json!({ "file_ids": [file] }))
+        .await
+        .id("/0/id");
+    let document = post(
+        "/api/v1/documents/generate",
+        json!({ "template_key": "document.contract", "related_entity": "booking", "related_id": work.booking,
+                "title": format!("{slug} secret contract") }),
+    )
+    .await
+    .id("/id");
+    Money {
+        tax_code,
+        invoice,
+        payment,
+        allocation,
+        settlement,
+        document,
+        file,
+        pdf_import,
+    }
 }
 
 /// One of everything M3 adds, in `owner`'s workspace, named after `slug`.
@@ -334,7 +416,14 @@ async fn world(app: &TestApp) -> World {
         "quote:read",
         "quote:write",
         "task:read",
-        "task:write"
+        "task:write",
+        "document:read",
+        "document:write",
+        "invoice:read",
+        "invoice:write",
+        "payment:write",
+        "report:read",
+        "finance:config"
     ]);
     let mut keys = Vec::new();
     let mut invitations = Vec::new();
@@ -342,6 +431,7 @@ async fn world(app: &TestApp) -> World {
     let mut configs = Vec::new();
     let mut crms = Vec::new();
     let mut works = Vec::new();
+    let mut moneys = Vec::new();
     for slug in ["alpha", "bravo"] {
         let (_, owner) = app.workspace_with_owner(slug).await;
         app.add_member(&owner, &format!("agent@{slug}.test"), "agent")
@@ -367,7 +457,9 @@ async fn world(app: &TestApp) -> World {
         ));
         configs.push(configure(app, &owner, slug).await);
         let c = crm(app, &owner, slug).await;
-        works.push(work(app, &owner, slug, &c).await);
+        let wk = work(app, &owner, slug, &c).await;
+        moneys.push(money(app, &owner, slug, &c, &wk).await);
+        works.push(wk);
         crms.push(c);
         clients.push(owner);
     }
@@ -376,6 +468,7 @@ async fn world(app: &TestApp) -> World {
     let bc = configs.pop().unwrap();
     let b_crm = crms.pop().unwrap();
     let b_work = works.pop().unwrap();
+    let b_money = moneys.pop().unwrap();
     app.publish_all().await;
     let b_event: uuid::Uuid = sqlx::query_scalar(
         "SELECT id FROM outbox WHERE workspace_id = $1 AND topic = 'thing.created'",
@@ -417,9 +510,17 @@ async fn world(app: &TestApp) -> World {
             b_work.quote.to_string(),
             b_work.task.to_string(),
             b_work.feed.to_string(),
+            b_money.tax_code.to_string(),
+            b_money.invoice.to_string(),
+            b_money.payment.to_string(),
+            b_money.settlement.to_string(),
+            b_money.document.to_string(),
+            b_money.file.to_string(),
+            b_money.pdf_import.to_string(),
         ],
         b_crm,
         b_work,
+        b_money,
         b_field: bc.field,
         b_pipeline: bc.pipeline,
         b_template: bc.template,
@@ -501,7 +602,30 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
             json!({ "starts_at": "2031-08-01T00:00:00Z", "ends_at": "2031-08-02T00:00:00Z" })
         }
         ("POST", "/api/v1/calendar/feeds") => json!({ "name": "Intruder" }),
-        ("POST", "/api/v1/quotes/{id}/send") => json!({ "to": "intruder@alpha.test" }),
+        ("POST", "/api/v1/quotes/{id}/send" | "/api/v1/invoices/{id}/send") => {
+            json!({ "to": "intruder@alpha.test" })
+        }
+        ("POST", "/api/v1/tax-codes") | ("PUT", "/api/v1/tax-codes/{id}") => {
+            json!({ "name": "Intruder", "rate_bps": 0 })
+        }
+        ("POST", "/api/v1/invoices") => json!({
+            "payer": { "name": "Intruder" }, "line_items": [{ "description": "x", "unit_minor": 1 }]
+        }),
+        ("POST", "/api/v1/invoices/historical") => json!({
+            "reference": "X-1", "payer": { "name": "Intruder" }, "currency": "GBP",
+            "issue_date": "2024-01-01", "total_minor": 1
+        }),
+        ("POST", "/api/v1/bookings/{id}/invoices") => json!({ "purpose": "full" }),
+        ("POST", "/api/v1/payments") => json!({ "amount": { "minor": 1, "currency": "GBP" } }),
+        ("POST", "/api/v1/payments/{id}/allocations") => json!({ "invoice_id": w.b_money.invoice }),
+        ("POST", "/api/v1/payments/{id}/refunds") => json!({ "amount_minor": 1 }),
+        ("POST", "/api/v1/documents") => json!({ "file_id": w.b_money.file, "kind": "misc" }),
+        ("POST", "/api/v1/documents/generate") => json!({
+            "template_key": "document.contract", "related_entity": "booking", "related_id": w.b_work.booking
+        }),
+        ("POST", "/api/v1/pdf-imports") => json!({ "file_ids": [w.b_money.file] }),
+        ("POST", "/api/v1/documents/{id}/versions") => json!({ "file_id": w.b_money.file }),
+        ("POST", "/api/v1/pdf-imports/{id}/confirm") => json!({ "kind": "misc" }),
         _ => json!({}),
     }
 }
@@ -519,6 +643,20 @@ fn fill_path(path: &str, w: &World) -> String {
         w.b_work.quote
     } else if path.contains("/tasks/") {
         w.b_work.task
+    } else if path.contains("/tax-codes/") {
+        w.b_money.tax_code
+    } else if path.contains("/invoices/") {
+        w.b_money.invoice
+    } else if path.contains("/payments/") {
+        w.b_money.payment
+    } else if path.contains("/settlements/") {
+        w.b_money.settlement
+    } else if path.contains("/documents/") {
+        w.b_money.document
+    } else if path.contains("/files/") {
+        w.b_money.file
+    } else if path.contains("/pdf-imports/") {
+        w.b_money.pdf_import
     } else if path.contains("/calendar/feeds/") {
         w.b_work.feed
     } else if path.contains("/talent/") {
@@ -557,6 +695,10 @@ fn fill_path(path: &str, w: &World) -> String {
     path.replace("{user_id}", &object.to_string())
         .replace("{id}", &object.to_string())
         .replace("{member_id}", &w.b_crm.member.to_string())
+        .replace("{allocation_id}", &w.b_money.allocation.to_string())
+        // B's own email template: not a document template A can see.
+        .replace("{key}", "bravo.secret")
+        .replace("{table}", "invoices")
         .replace("{entity}", "contact")
 }
 
@@ -615,7 +757,13 @@ async fn objects_of_another_workspace_do_not_exist_from_inside_this_one(pool: Pg
     for op in operations()
         .iter()
         // An entity's schema names a kind of record, not one of B's.
-        .filter(|o| o.workspace_scoped && o.path.contains('{') && !o.path.contains("{entity}"))
+        // A report names a table, not one of B's records.
+        .filter(|o| {
+            o.workspace_scoped
+                && o.path.contains('{')
+                && !o.path.contains("{entity}")
+                && !o.path.contains("{table}")
+        })
     {
         let path = fill_path(&op.path, &w);
         let body = body_for(&op.method, &op.path, &w);
@@ -689,7 +837,11 @@ fn read_queries(path: &str) -> Vec<&'static str> {
         "/api/v1/talent" | "/api/v1/organisations" | "/api/v1/contacts" => {
             vec!["", "?q=bravo", "?tag=bravo-secret-tag"]
         }
-        "/api/v1/enquiries" | "/api/v1/bookings" => vec!["", "?q=bravo"],
+        "/api/v1/enquiries" | "/api/v1/bookings" | "/api/v1/invoices" => vec!["", "?q=bravo"],
+        "/api/v1/documents" => vec!["", "?q=bravo", "?q=secret"],
+        "/api/v1/pdf-imports" => vec!["", "?status=all"],
+        // Rates are the same for everyone; same-currency needs no stored rate.
+        "/api/v1/fx-rates" => vec!["?from=GBP&to=GBP"],
         "/api/v1/tasks" => vec!["?status=all"],
         "/api/v1/calendar" => {
             vec!["?from=2031-01-01T00:00:00Z&to=2031-12-31T00:00:00Z"]

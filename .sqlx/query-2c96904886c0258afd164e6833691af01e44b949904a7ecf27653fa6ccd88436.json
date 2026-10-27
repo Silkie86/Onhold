@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE document_versions\n           SET status = CASE WHEN $3::uuid IS NOT NULL THEN 'ready' ELSE 'failed' END, file_id = $3, error = $4\n           WHERE workspace_id = app_workspace_id() AND document_id = $1 AND number = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2c96904886c0258afd164e6833691af01e44b949904a7ecf27653fa6ccd88436"
+}

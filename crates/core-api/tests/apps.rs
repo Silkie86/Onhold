@@ -369,4 +369,6 @@ async fn only_the_apps_origins_may_call_the_api_cross_origin(pool: PgPool) {
         .unwrap()
         .to_lowercase();
     assert!(exposed.contains("etag"), "{exposed}");
+    // Downloads keep their names in the apps too.
+    assert!(exposed.contains("content-disposition"), "{exposed}");
 }

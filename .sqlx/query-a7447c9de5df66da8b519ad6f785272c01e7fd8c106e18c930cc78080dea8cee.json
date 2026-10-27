@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (\n               SELECT 1 FROM invoices\n               WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL AND status <> 'void'\n                 AND kind = $1 AND issuer_talent_id IS NOT DISTINCT FROM $2\n                 AND lower(reference) = lower($3)\n           ) AS \"taken!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "taken!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "a7447c9de5df66da8b519ad6f785272c01e7fd8c106e18c930cc78080dea8cee"
+}

@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE files SET read_state = $2, read_error = $3, page_count = $4, needs_ocr = $5, text_content = $6\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Int4",
+        "Bool",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9f4feb47abb1f1e075686161c668a623c65e64cbeeb35736e81160a8fe8c9a93"
+}

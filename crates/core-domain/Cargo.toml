@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 aes-gcm.workspace = true
+chrono.workspace = true
 chrono-tz.workspace = true
 data-encoding.workspace = true
 getrandom.workspace = true

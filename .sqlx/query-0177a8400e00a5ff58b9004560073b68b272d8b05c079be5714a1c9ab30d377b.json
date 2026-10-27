@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE invoices SET sent_at = now(), sent_to = $3, token_hash = $2, updated_by = $4\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0177a8400e00a5ff58b9004560073b68b272d8b05c079be5714a1c9ab30d377b"
+}

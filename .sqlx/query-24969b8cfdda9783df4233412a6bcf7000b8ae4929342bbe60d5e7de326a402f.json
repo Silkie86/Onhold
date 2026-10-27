@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE finance_settings SET legal_name = $1, address = $2, tax_number = $3, company_number = $4,\n                  email = $5, phone = $6, invoice_format = $7, credit_note_format = $8, payment_terms_days = $9,\n                  invoicing_model = $10, bank_accounts = $11, late_fee_text = $12, invoice_footer = $13,\n                  updated_by = $14\n           WHERE workspace_id = app_workspace_id()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Jsonb",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Text",
+        "Jsonb",
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "24969b8cfdda9783df4233412a6bcf7000b8ae4929342bbe60d5e7de326a402f"
+}

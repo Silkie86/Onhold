@@ -302,6 +302,14 @@ impl Req<'_> {
         self
     }
 
+    /// A raw body, such as a file upload.
+    pub fn bytes(mut self, content_type: &str, body: Vec<u8>) -> Self {
+        self.headers
+            .insert(header::CONTENT_TYPE, content_type.parse().expect("ct"));
+        self.body = Some(body);
+        self
+    }
+
     /// Session cookie, CSRF token and workspace header of `client`.
     pub fn signed_in(self, client: &Client) -> Self {
         let mut req = self
@@ -406,6 +414,14 @@ pub fn totp_code(secret: &str, offset: i64) -> String {
         .with_secret(raw)
         .build()
         .expect("totp");
+    // Close to the end of a step, the server may check the code in the next
+    // one, where an `offset` of -1 falls outside its window; wait it out.
+    let into_step = chrono::Utc::now().timestamp().rem_euclid(30);
+    if into_step >= 27 {
+        std::thread::sleep(std::time::Duration::from_secs(
+            u64::try_from(31 - into_step).expect("seconds"),
+        ));
+    }
     let now = chrono::Utc::now().timestamp() + offset * 30;
     totp.generate(u64::try_from(now).expect("time")).to_string()
 }

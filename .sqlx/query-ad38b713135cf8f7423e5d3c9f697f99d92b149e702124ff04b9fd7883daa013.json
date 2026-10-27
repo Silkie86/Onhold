@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO signature_requests (id, workspace_id, document_id, version_number, round_id, position,\n                                           signer_name, signer_email, token_hash, created_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4",
+        "Uuid",
+        "Int4",
+        "Text",
+        "Text",
+        "Bytea",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ad38b713135cf8f7423e5d3c9f697f99d92b149e702124ff04b9fd7883daa013"
+}

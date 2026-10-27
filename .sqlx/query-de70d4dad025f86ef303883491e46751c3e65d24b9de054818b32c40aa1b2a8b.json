@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT signed_round_id FROM documents\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND signature_status = 'signed'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "signed_round_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "signed_round_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "de70d4dad025f86ef303883491e46751c3e65d24b9de054818b32c40aa1b2a8b"
+}

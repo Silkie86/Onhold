@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT count(*) AS \"enquiries!\",\n                  count(*) FILTER (WHERE EXISTS (\n                      SELECT 1 FROM bookings b JOIN quotes q ON q.booking_id = b.id\n                      WHERE b.enquiry_id = e.id AND q.sent_at IS NOT NULL)) AS \"quoted!\",\n                  count(*) FILTER (WHERE s.outcome = 'won') AS \"won!\",\n                  count(*) FILTER (WHERE s.outcome = 'lost') AS \"lost!\",\n                  count(*) FILTER (WHERE s.outcome IS NULL OR s.outcome = 'open') AS \"open!\"\n           FROM enquiries e LEFT JOIN pipeline_stages s ON s.id = e.stage_id\n           WHERE e.workspace_id = app_workspace_id() AND e.deleted_at IS NULL\n             AND e.created_at::date BETWEEN $1 AND $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "enquiries!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "quoted!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "won!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "lost!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "open!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "d82740ecd5ce48d509af5b49df5f46fd2e0d610ce9c01cd11d64346cc0261d32"
+}

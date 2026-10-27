@@ -10,11 +10,16 @@
 //!   invoice2data. Everything found is a suggestion with the text it came
 //!   from: the person confirms it before anything is saved.
 //!
-//! No database or HTTP here; the import job in the worker calls in.
+//! - [`write`] makes PDFs from documents' HTML (headless Chromium, or a
+//!   plain-text layout when no browser is installed) and appends pages, such
+//!   as a signing certificate, to an existing PDF.
+//!
+//! No database or HTTP here; the worker calls in.
 
 pub mod extract;
 pub mod ocr;
 pub mod suggest;
 pub mod templates;
+pub mod write;
 
 pub use extract::{ExtractError, Extracted, Limits, Page, extract};

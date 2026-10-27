@@ -42,10 +42,16 @@ const MAX_BODY_BYTES: usize = 1024 * 1024;
 /// Largest body an upload route accepts: a CSV file plus its JSON wrapping.
 pub(crate) const MAX_UPLOAD_BODY_BYTES: usize = services::imports::MAX_CSV_BYTES + 64 * 1024;
 
+/// Largest file upload body; the configured limit (25 MB by default) is
+/// checked by the service, within this.
+pub(crate) const MAX_FILE_BODY_BYTES: usize = 100 * 1024 * 1024;
+
 /// The body limit for a request: uploads get more room than everything else.
 fn body_limit(method: &axum::http::Method, path: &str) -> usize {
     if method == axum::http::Method::POST && path == "/api/v1/imports" {
         MAX_UPLOAD_BODY_BYTES
+    } else if method == axum::http::Method::POST && path == "/api/v1/files" {
+        MAX_FILE_BODY_BYTES
     } else {
         MAX_BODY_BYTES
     }
@@ -106,16 +112,51 @@ pub struct AppState {
     pub oidc: oidc::SharedRegistry,
     /// Live event notifications for server-sent event streams.
     pub events: Arc<services::events::Hub>,
+    /// Where new files' bytes go.
+    pub storage: Arc<services::files::Storage>,
+    /// How documents become PDFs.
+    pub renderer: Arc<dyn core_pdf::write::Renderer>,
+}
+
+/// The PDF renderer the configuration asks for: Chromium when it can be
+/// found (or is named), else the plain-text layout.
+fn renderer(pdf: &config::PdfConfig) -> Arc<dyn core_pdf::write::Renderer> {
+    use core_pdf::write::{Chromium, PlainText};
+    match pdf {
+        config::PdfConfig::Plain => Arc::new(PlainText),
+        config::PdfConfig::Chromium { path, no_sandbox } => {
+            let mut c = Chromium::new(path.clone());
+            c.no_sandbox = *no_sandbox;
+            Arc::new(c)
+        }
+        config::PdfConfig::Auto { no_sandbox } => match Chromium::find() {
+            Some(mut c) => {
+                c.no_sandbox = *no_sandbox;
+                tracing::info!(browser = %c.program.display(), "documents print with Chromium");
+                Arc::new(c)
+            }
+            None => {
+                tracing::warn!(
+                    "no Chromium found: documents print in the plain layout (set CHROMIUM_PATH)"
+                );
+                Arc::new(PlainText)
+            }
+        },
+    }
 }
 
 impl AppState {
     pub fn new(db: PgPool, config: Config) -> Result<Self, error::ApiError> {
         let oidc = Arc::new(oidc::Registry::new(config.oidc.clone())?);
+        let storage = Arc::new(services::files::Storage::from_config(&config.storage)?);
+        let renderer = renderer(&config.pdf);
         Ok(Self {
             db,
             config: Arc::new(config),
             oidc,
             events: Arc::default(),
+            storage,
+            renderer,
         })
     }
 }
@@ -154,6 +195,12 @@ impl AppState {
         (name = "quotes", description = "Priced offers the buyer accepts on the web"),
         (name = "calendar", description = "The calendar, availability and iCal feeds"),
         (name = "tasks", description = "To-dos on any record"),
+        (name = "documents", description = "Files, documents, e-signature and past PDFs"),
+        (name = "finance", description = "Finance settings, tax codes and exchange rates"),
+        (name = "invoices", description = "Invoices and credit notes"),
+        (name = "payments", description = "Payments received, refunds and payouts"),
+        (name = "settlements", description = "What each talent is owed for a booking"),
+        (name = "reports", description = "Revenue, what is owed, cash and the funnel"),
         (name = "public", description = "Pages reached by secret link, without an account"),
         (name = "events", description = "What changed, in order: the sync feed"),
         (name = "webhooks", description = "Events pushed to your URLs"),
@@ -196,6 +243,8 @@ fn api_router() -> OpenApiRouter<AppState> {
             .merge(routes::things::router())
             .merge(routes::crm::router())
             .merge(routes::bookings::router())
+            .merge(routes::documents::router())
+            .merge(routes::finance::router())
             .merge(routes::events::router())
             .merge(routes::webhooks::router())
             .merge(routes::jobs::router())
@@ -290,7 +339,12 @@ fn cors(origins: &[String]) -> CorsLayer {
             HeaderName::from_static(idempotency::HEADER),
             REQUEST_ID_HEADER,
         ])
-        .expose_headers([header::ETAG, header::LOCATION, REQUEST_ID_HEADER])
+        .expose_headers([
+            header::ETAG,
+            header::LOCATION,
+            header::CONTENT_DISPOSITION,
+            REQUEST_ID_HEADER,
+        ])
         .max_age(Duration::from_secs(3600))
 }
 

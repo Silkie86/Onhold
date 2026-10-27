@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO pdf_templates (id, workspace_id, name, definition, created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e33c75797ee01c965190453452dd4071218ae91711baaa479eceddbdc6296bfd"
+}

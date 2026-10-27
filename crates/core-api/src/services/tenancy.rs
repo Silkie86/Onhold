@@ -276,6 +276,26 @@ pub async fn update_workspace(
             });
         }
     }
+    // An uploaded logo is kept for as long as the branding uses it.
+    if let Some(logo) = branding.get("logo_file_id").and_then(Value::as_str)
+        && branding.get("logo_file_id") != before.branding.get("logo_file_id")
+    {
+        let found = match logo.parse::<Uuid>().ok() {
+            Some(id) => core_db::files::get(&mut tx, id).await?,
+            None => None,
+        };
+        match found {
+            Some(f) if f.content_type.starts_with("image/") && f.size_bytes <= 1_000_000 => {
+                core_db::files::attach(&mut tx, f.id).await?;
+            }
+            _ => {
+                return Err(ApiError::invalid(
+                    "branding",
+                    "logo_file_id must be an uploaded image of at most 1 MB",
+                ));
+            }
+        }
+    }
 
     let hold_days = patch.hold_days.unwrap_or(before.hold_days);
     if !(0..=365).contains(&hold_days) {

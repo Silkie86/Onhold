@@ -79,8 +79,8 @@ impl Role {
                 .into_iter()
                 .filter(|p| !matches!(p, P::BillingRead | P::BillingWrite | P::WorkspaceClose))
                 .collect(),
-            // Finance sees the workspace's billing details; the finance
-            // module's own permissions arrive with it.
+            // Finance sees the workspace's billing details and runs the money:
+            // invoices, payments, reports and tax settings.
             Role::Finance => [
                 P::WorkspaceRead,
                 P::MemberRead,
@@ -95,6 +95,13 @@ impl Role {
                 P::QuoteRead,
                 P::TaskRead,
                 P::TaskWrite,
+                P::DocumentRead,
+                P::DocumentWrite,
+                P::InvoiceRead,
+                P::InvoiceWrite,
+                P::PaymentWrite,
+                P::ReportRead,
+                P::FinanceConfig,
             ]
             .into(),
             Role::Agent => [
@@ -117,6 +124,10 @@ impl Role {
                 P::QuoteWrite,
                 P::TaskRead,
                 P::TaskWrite,
+                P::DocumentRead,
+                P::DocumentWrite,
+                P::InvoiceRead,
+                P::InvoiceWrite,
             ]
             .into(),
             Role::Viewer => [
@@ -131,6 +142,8 @@ impl Role {
                 P::BookingRead,
                 P::QuoteRead,
                 P::TaskRead,
+                P::DocumentRead,
+                P::InvoiceRead,
             ]
             .into(),
             Role::Talent => [P::WorkspaceRead].into(),
@@ -214,6 +227,16 @@ permissions! {
     QuoteWrite => "quote:write",
     TaskRead => "task:read",
     TaskWrite => "task:write",
+    DocumentRead => "document:read",
+    DocumentWrite => "document:write",
+    InvoiceRead => "invoice:read",
+    // Drafting, issuing, sending, crediting and voiding invoices; settlements.
+    InvoiceWrite => "invoice:write",
+    // Recording payments, refunds and payouts.
+    PaymentWrite => "payment:write",
+    ReportRead => "report:read",
+    // Tax codes, invoice numbering, bank details and the invoicing model.
+    FinanceConfig => "finance:config",
 }
 
 impl std::fmt::Display for Permission {

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE payments SET voided_at = now(), void_reason = $2, allocated_minor = 0, updated_by = $3\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2b5ca24eeba6cd2153f10421d7de68787d26f88d74547d7dc87ad1ac28f2903d"
+}

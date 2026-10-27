@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE invoices SET viewed_at = now()\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND viewed_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "33b9226278aada75d056cbe767b680222f37a12021c540a756e6c2a325e45cbf"
+}

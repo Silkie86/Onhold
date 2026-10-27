@@ -1279,3 +1279,31 @@ pub async fn complete(state: &AppState, workspace: WorkspaceId, id: Uuid) -> Api
     tx.commit().await?;
     Ok(())
 }
+
+/// A booking's invoice was paid in full: emits `booking.deposit_paid` (a
+/// deposit invoice) or `booking.paid` (the balance or a full invoice), for
+/// rules to act on, such as confirming the booking.
+pub(crate) async fn invoice_paid(tx: &mut Tx, ctx: &Ctx, id: Uuid, purpose: &str) -> ApiResult<()> {
+    let topic = match purpose {
+        "deposit" => "booking.deposit_paid",
+        "balance" | "full" => "booking.paid",
+        _ => return Ok(()),
+    };
+    let Some(booking) = load(tx, id).await? else {
+        return Ok(());
+    };
+    record(
+        tx,
+        ctx,
+        Change {
+            topic,
+            resource: ENTITY,
+            object_id: Some(id),
+            before: None,
+            after: Some(to_json(&booking)),
+            event_extra: None,
+        },
+    )
+    .await?;
+    Ok(())
+}
