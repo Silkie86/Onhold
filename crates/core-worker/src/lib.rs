@@ -24,8 +24,10 @@ use std::time::Duration;
 use chrono::Utc;
 use core_api::AppState;
 use core_api::services::automation::{JOB_DISPATCH, JOB_SYSTEM_MAIL};
+use core_api::services::bookings::{JOB_COMPLETE, JOB_EXPIRE_HOLD};
 use core_api::services::events::CHANNEL as EVENTS_CHANNEL;
 use core_api::services::mail::SYSTEM_TOPICS;
+use core_api::services::quotes::JOB_EXPIRE as JOB_EXPIRE_QUOTE;
 use core_db::DbError;
 use core_db::jobs::{Claimed, LogLine, NewJob, RunRecord};
 use core_integrations::http::WebhookClient;
@@ -262,8 +264,52 @@ impl Worker {
             }
             core_db::rules::advance(&mut tx, rule.id, next).await?;
         }
+        let swept = self.sweep(&mut tx, now).await?;
         tx.commit().await?;
-        Ok(Some(due.len()))
+        Ok(Some(due.len() + swept))
+    }
+
+    /// Queues the bookings module's timed work: holds past their expiry,
+    /// confirmed bookings that have ended, and quotes past their last day.
+    /// Each job is keyed by the time that made it due, so a hold placed
+    /// again later is swept again.
+    async fn sweep(
+        &self,
+        tx: &mut sqlx::Transaction<'static, sqlx::Postgres>,
+        now: chrono::DateTime<Utc>,
+    ) -> Result<usize, DbError> {
+        let mut queued = 0;
+        for b in core_db::bookings::holds_expired(tx, now, DUE_BATCH).await? {
+            let key = format!("{}@{}", b.id, b.at.to_rfc3339());
+            let payload = json!({ "booking_id": b.id });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(b.workspace_id), JOB_EXPIRE_HOLD, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for b in core_db::bookings::ended(tx, now, DUE_BATCH).await? {
+            let key = format!("{}@{}", b.id, b.at.to_rfc3339());
+            let payload = json!({ "booking_id": b.id });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(b.workspace_id), JOB_COMPLETE, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for q in core_db::quotes::lapsed(tx, now, DUE_BATCH).await? {
+            let key = format!("{}@{}", q.id, q.valid_until);
+            let payload = json!({ "quote_id": q.id });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(q.workspace_id), JOB_EXPIRE_QUOTE, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        Ok(queued)
     }
 
     /// Deletes old events, finished jobs, stored idempotent responses and

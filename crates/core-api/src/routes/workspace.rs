@@ -61,6 +61,8 @@ pub struct WorkspaceView {
     pub billing_contact: Option<Value>,
     pub plugin_slug: Option<String>,
     pub require_staff_2fa: bool,
+    /// How many days a new hold lasts before it lapses; 0 means never.
+    pub hold_days: i32,
     /// Send back as `If-Match` when saving to avoid overwriting someone else's change.
     pub version: i64,
     pub created_at: DateTime<Utc>,
@@ -84,6 +86,7 @@ fn workspace_view(w: core_db::workspaces::Workspace, show_billing: bool) -> Work
         billing_contact: show_billing.then_some(w.billing_contact),
         plugin_slug: w.plugin_slug,
         require_staff_2fa: w.require_staff_2fa,
+        hold_days: w.hold_days,
         version: w.version,
         created_at: w.created_at,
         updated_at: w.updated_at,
@@ -115,6 +118,8 @@ pub struct WorkspacePatchRequest {
     #[schema(value_type = Option<Object>)]
     pub billing_contact: Option<Value>,
     pub require_staff_2fa: Option<bool>,
+    /// 0 (holds never lapse) to 365.
+    pub hold_days: Option<i32>,
 }
 
 /// Change workspace settings. Only the fields sent are changed.
@@ -139,6 +144,7 @@ async fn update_workspace(
         branding: body.branding,
         billing_contact: body.billing_contact,
         require_staff_2fa: body.require_staff_2fa,
+        hold_days: body.hold_days,
     };
     let w = svc::update_workspace(&state, &ctx, patch, if_match).await?;
     let show = ctx.authorize(Permission::BillingRead).is_ok();

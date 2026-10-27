@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO quotes (id, workspace_id, booking_id, number, revision, supersedes_id, currency,\n                               line_items, total_minor, valid_until, message, terms, created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Int4",
+        "Uuid",
+        "Bpchar",
+        "Jsonb",
+        "Int8",
+        "Date",
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4e87b74903bba72302d00aff476707a8cf2cc9e0914092336319150dc5d9deee"
+}

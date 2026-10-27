@@ -1,4 +1,5 @@
-//! Global search across the CRM, and the workspace's tags.
+//! Global search across the CRM, enquiries and bookings, and the
+//! workspace's tags.
 
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -107,10 +108,61 @@ pub async fn tags(conn: &mut PgConnection, entity: &str) -> Result<Vec<TagCount>
                UNION ALL
                SELECT unnest(tags) FROM contacts
                WHERE $1 = 'contact' AND workspace_id = app_workspace_id() AND deleted_at IS NULL
+               UNION ALL
+               SELECT unnest(tags) FROM enquiries
+               WHERE $1 = 'enquiry' AND workspace_id = app_workspace_id() AND deleted_at IS NULL
+               UNION ALL
+               SELECT unnest(tags) FROM bookings
+               WHERE $1 = 'booking' AND workspace_id = app_workspace_id() AND deleted_at IS NULL
            ) t
            GROUP BY tag
            ORDER BY 2 DESC, 1"#,
         entity
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
+/// Enquiries and bookings matching `q` (lower-cased, trimmed), scored like
+/// [`search`]. A booking's detail is its date and status; an enquiry's, its
+/// date.
+pub async fn search_work(
+    conn: &mut PgConnection,
+    q: &str,
+    enquiries: bool,
+    bookings: bool,
+    limit: i64,
+) -> Result<Vec<Hit>> {
+    let contains = like_contains(q);
+    let prefix = format!("{}%", &contains[1..]);
+    Ok(sqlx::query_as!(
+        Hit,
+        r#"SELECT entity AS "entity!", id AS "id!", name AS "name!", detail, score AS "score!" FROM (
+               SELECT 'enquiry' AS entity, e.id, e.title AS name, e.starts_on::text AS detail,
+                      (CASE WHEN lower(e.title) = $1 THEN 3 WHEN lower(e.title) LIKE $3 THEN 2
+                            WHEN e.search_text LIKE $2 THEN 1 ELSE 0 END
+                       + word_similarity($1, e.search_text))::real AS score
+               FROM enquiries e
+               WHERE $4 AND e.workspace_id = app_workspace_id() AND e.deleted_at IS NULL
+                 AND (e.search_text LIKE $2 OR $1 <% e.search_text)
+               UNION ALL
+               SELECT 'booking', b.id, b.title,
+                      to_char(b.starts_at AT TIME ZONE b.timezone, 'YYYY-MM-DD') || ' · ' || b.status::text,
+                      (CASE WHEN lower(b.title) = $1 THEN 3 WHEN lower(b.title) LIKE $3 THEN 2
+                            WHEN b.search_text LIKE $2 THEN 1 ELSE 0 END
+                       + word_similarity($1, b.search_text))::real
+               FROM bookings b
+               WHERE $5 AND b.workspace_id = app_workspace_id() AND b.deleted_at IS NULL
+                 AND (b.search_text LIKE $2 OR $1 <% b.search_text)
+           ) hits
+           ORDER BY score DESC, name, id
+           LIMIT $6"#,
+        q,
+        contains,
+        prefix,
+        enquiries,
+        bookings,
+        limit
     )
     .fetch_all(conn)
     .await?)

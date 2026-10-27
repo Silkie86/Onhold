@@ -130,6 +130,12 @@ impl AppState {
         (name = "search", description = "Finding records across the CRM"),
         (name = "views", description = "Saved table views"),
         (name = "imports", description = "Bringing records in from spreadsheets"),
+        (name = "enquiries", description = "Requests for talent, through the enquiry pipeline"),
+        (name = "bookings", description = "Holds and bookings, with clash checks"),
+        (name = "quotes", description = "Priced offers the buyer accepts on the web"),
+        (name = "calendar", description = "The calendar, availability and iCal feeds"),
+        (name = "tasks", description = "To-dos on any record"),
+        (name = "public", description = "Pages reached by secret link, without an account"),
         (name = "events", description = "What changed, in order: the sync feed"),
         (name = "webhooks", description = "Events pushed to your URLs"),
         (name = "jobs", description = "Background work"),
@@ -170,6 +176,7 @@ fn api_router() -> OpenApiRouter<AppState> {
             .merge(routes::config::router())
             .merge(routes::things::router())
             .merge(routes::crm::router())
+            .merge(routes::bookings::router())
             .merge(routes::events::router())
             .merge(routes::webhooks::router())
             .merge(routes::jobs::router())

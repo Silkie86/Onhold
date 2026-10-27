@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO booking_talent (workspace_id, booking_id, talent_id, position, during)\n           SELECT app_workspace_id(), $1, t.id, (t.n - 1)::int, 'empty'\n           FROM unnest($2::uuid[]) WITH ORDINALITY AS t (id, n)\n           ON CONFLICT (booking_id, talent_id) DO UPDATE SET position = excluded.position",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "10e4434b224734e4c565ed04041d6d52f3964a6070f764ead8cda50b785fba8d"
+}

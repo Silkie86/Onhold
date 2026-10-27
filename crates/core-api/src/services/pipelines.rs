@@ -14,7 +14,7 @@ use crate::AppState;
 use crate::error::{ApiError, ApiResult};
 
 /// Entities whose objects move through a pipeline.
-pub const ENTITIES: &[&str] = &["thing"];
+pub const ENTITIES: &[&str] = &["enquiry", "thing"];
 
 #[derive(Debug, Clone)]
 pub struct WithStages {
@@ -286,7 +286,8 @@ pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::ConfigWrite)?;
     let mut tx = begin(state, ctx).await?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
-    let in_use = core_db::things::count_in_pipeline(&mut tx, id).await?;
+    let in_use = core_db::things::count_in_pipeline(&mut tx, id).await?
+        + core_db::enquiries::count_in_pipeline(&mut tx, id).await?;
     if in_use > 0 {
         return Err(ApiError::conflict(
             "pipeline_in_use",

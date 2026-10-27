@@ -1,0 +1,39 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id AS \"id!\", at AS \"at!\" FROM (\n               SELECT id,\n                      CASE\n                          WHEN custom->>$1 ~ '^\\d{4}-\\d{2}-\\d{2}$'\n                              THEN ((custom->>$1)::date::timestamp AT TIME ZONE timezone)\n                          WHEN custom->>$1 ~ '^\\d{4}-\\d{2}-\\d{2}T'\n                              THEN (custom->>$1)::timestamptz\n                      END + make_interval(mins => $2::int) AS at\n               FROM bookings\n               WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL\n                 AND status NOT IN ('cancelled', 'expired') AND custom ? $1\n           ) b\n           WHERE at > $3 AND at <= $4\n           ORDER BY at, id\n           LIMIT $5",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "bee5c2eb4c7091a8aeb573204fd2f38063f06ff2fc1d5ad65d08b543f9509fce"
+}

@@ -90,6 +90,11 @@ impl Role {
                 P::TalentRead,
                 P::OrganisationRead,
                 P::ContactRead,
+                P::EnquiryRead,
+                P::BookingRead,
+                P::QuoteRead,
+                P::TaskRead,
+                P::TaskWrite,
             ]
             .into(),
             Role::Agent => [
@@ -104,6 +109,14 @@ impl Role {
                 P::OrganisationWrite,
                 P::ContactRead,
                 P::ContactWrite,
+                P::EnquiryRead,
+                P::EnquiryWrite,
+                P::BookingRead,
+                P::BookingWrite,
+                P::QuoteRead,
+                P::QuoteWrite,
+                P::TaskRead,
+                P::TaskWrite,
             ]
             .into(),
             Role::Viewer => [
@@ -114,6 +127,10 @@ impl Role {
                 P::TalentRead,
                 P::OrganisationRead,
                 P::ContactRead,
+                P::EnquiryRead,
+                P::BookingRead,
+                P::QuoteRead,
+                P::TaskRead,
             ]
             .into(),
             Role::Talent => [P::WorkspaceRead].into(),
@@ -187,6 +204,16 @@ permissions! {
     OrganisationWrite => "organisation:write",
     ContactRead => "contact:read",
     ContactWrite => "contact:write",
+    EnquiryRead => "enquiry:read",
+    EnquiryWrite => "enquiry:write",
+    BookingRead => "booking:read",
+    BookingWrite => "booking:write",
+    // Confirming a booking despite a clash.
+    BookingOverride => "booking:override",
+    QuoteRead => "quote:read",
+    QuoteWrite => "quote:write",
+    TaskRead => "task:read",
+    TaskWrite => "task:write",
 }
 
 impl std::fmt::Display for Permission {

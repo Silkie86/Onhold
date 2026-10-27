@@ -23,12 +23,20 @@ pub const SCAN_INTERVAL: chrono::Duration = chrono::Duration::minutes(5);
 /// What a workspace's rules may refer to.
 pub(crate) struct Catalog {
     thing_dates: Vec<String>,
+    booking_dates: Vec<String>,
     email_templates: HashSet<String>,
 }
 
+/// A booking's own dates a date-offset rule can count from.
+pub const BOOKING_DATES: &[&str] = &["starts_at", "ends_at", "hold_expires_at"];
+
 impl engine::Catalog for Catalog {
     fn date_fields(&self, entity: &str) -> Option<Vec<String>> {
-        (entity == super::things::ENTITY).then(|| self.thing_dates.clone())
+        match entity {
+            "thing" => Some(self.thing_dates.clone()),
+            "booking" => Some(self.booking_dates.clone()),
+            _ => None,
+        }
     }
 
     fn template_exists(&self, key: &str) -> bool {
@@ -40,16 +48,26 @@ impl engine::Catalog for Catalog {
     }
 }
 
-pub(crate) async fn catalog(tx: &mut Tx) -> ApiResult<Catalog> {
-    let mut thing_dates = vec!["due_at".to_owned()];
-    for f in core_db::fields::list(tx, Some(super::things::ENTITY), false).await? {
+async fn custom_dates(tx: &mut Tx, entity: &str, mut out: Vec<String>) -> ApiResult<Vec<String>> {
+    for f in core_db::fields::list(tx, Some(entity), false).await? {
         if matches!(
             FieldType::parse(&f.field_type),
             Some(FieldType::Date | FieldType::Datetime)
         ) {
-            thing_dates.push(format!("custom.{}", f.key));
+            out.push(format!("custom.{}", f.key));
         }
     }
+    Ok(out)
+}
+
+pub(crate) async fn catalog(tx: &mut Tx) -> ApiResult<Catalog> {
+    let thing_dates = custom_dates(tx, super::things::ENTITY, vec!["due_at".to_owned()]).await?;
+    let booking_dates = custom_dates(
+        tx,
+        super::bookings::ENTITY,
+        BOOKING_DATES.iter().map(|d| (*d).to_owned()).collect(),
+    )
+    .await?;
     let email_templates = core_db::templates::list(tx, Some("email"))
         .await?
         .into_iter()
@@ -57,6 +75,7 @@ pub(crate) async fn catalog(tx: &mut Tx) -> ApiResult<Catalog> {
         .collect();
     Ok(Catalog {
         thing_dates,
+        booking_dates,
         email_templates,
     })
 }
@@ -88,6 +107,8 @@ pub(crate) fn entity_of(trigger: &Trigger) -> String {
 async fn check_references(tx: &mut Tx, def: &RuleDef) -> ApiResult<()> {
     let entity = entity_of(&def.trigger);
     let is_thing = entity == super::things::ENTITY;
+    let in_pipeline = is_thing || entity == super::enquiries::ENTITY;
+    let titled = entity == super::enquiries::ENTITY || entity == super::bookings::ENTITY;
     for (i, action) in def.actions.iter().enumerate() {
         match action {
             Action::CallWebhook { webhook_id } => {
@@ -104,7 +125,25 @@ async fn check_references(tx: &mut Tx, def: &RuleDef) -> ApiResult<()> {
                     format!("{entity} records have no due_at"),
                 ));
             }
-            Action::MoveStage { .. } if !is_thing => {
+            Action::SetField { field, .. } if field == "title" && !titled => {
+                return Err(ApiError::invalid(
+                    format!("actions[{i}].field"),
+                    format!("{entity} records have a name, not a title"),
+                ));
+            }
+            Action::SetField { field, .. } if field == "name" && titled => {
+                return Err(ApiError::invalid(
+                    format!("actions[{i}].field"),
+                    format!("{entity} records have a title, not a name"),
+                ));
+            }
+            Action::SetField { .. } if entity == super::quotes::ENTITY => {
+                return Err(ApiError::invalid(
+                    format!("actions[{i}]"),
+                    "a quote is changed by revising it, not by a rule",
+                ));
+            }
+            Action::MoveStage { .. } if !in_pipeline => {
                 return Err(ApiError::invalid(
                     format!("actions[{i}]"),
                     format!("{entity} records are not in a pipeline"),
@@ -129,12 +168,19 @@ async fn check_references(tx: &mut Tx, def: &RuleDef) -> ApiResult<()> {
                 }
             }
             Action::MoveStage { stage } => {
-                let pipelines = core_db::pipelines::list(tx, Some(super::things::ENTITY)).await?;
+                let pipelines = core_db::pipelines::list(tx, Some(&entity)).await?;
                 let ids: Vec<Uuid> = pipelines.iter().map(|p| p.id).collect();
                 let stages = core_db::pipelines::stages(tx, &ids).await?;
-                if !stages
-                    .iter()
-                    .any(|s| &s.key == stage && s.archived_at.is_none())
+                // The enquiry pipeline is made with the first enquiry.
+                let starter = pipelines.is_empty()
+                    && entity == super::enquiries::ENTITY
+                    && super::enquiries::DEFAULT_STAGES
+                        .iter()
+                        .any(|(k, ..)| k == stage);
+                if !starter
+                    && !stages
+                        .iter()
+                        .any(|s| &s.key == stage && s.archived_at.is_none())
                 {
                     return Err(ApiError::invalid(
                         format!("actions[{i}].stage"),
@@ -142,7 +188,21 @@ async fn check_references(tx: &mut Tx, def: &RuleDef) -> ApiResult<()> {
                     ));
                 }
             }
-            Action::SendEmail { .. } => {}
+            Action::CreateTask {
+                assignee_id: Some(user),
+                ..
+            } => {
+                if core_db::members::get(tx, core_domain::UserId(*user))
+                    .await?
+                    .is_none()
+                {
+                    return Err(ApiError::invalid(
+                        format!("actions[{i}].assignee_id"),
+                        "must be a member of the workspace",
+                    ));
+                }
+            }
+            Action::SendEmail { .. } | Action::CreateTask { .. } => {}
         }
     }
     Ok(())

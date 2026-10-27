@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE quotes SET status = 'viewed', viewed_at = now()\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND status = 'sent'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "24a72e7ecf1b85899b1a231b50b0b0ca047935c99556e40f6594a97d3dcf37df"
+}

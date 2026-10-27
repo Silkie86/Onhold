@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE bookings SET enquiry_id = $2, title = $3, organisation_id = $4, contact_id = $5,\n                  venue_id = $6, venue_text = $7, timezone = $8, starts_at = $9, ends_at = $10, all_day = $11,\n                  schedule = $12, fee_minor = $13, fee_currency = $14, deposit_bps = $15, notes = $16,\n                  tags = $17, custom = $18, updated_by = $19\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Bool",
+        "Jsonb",
+        "Int8",
+        "Bpchar",
+        "Int4",
+        "Text",
+        "TextArray",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ba70992d30fdf28f1037a1b4d0c64a74103f7b5bf5031f7c18f8eb8d8a1d397e"
+}

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE quotes SET status = 'sent', sent_at = now(), sent_to = $3, token_hash = $2, updated_by = $4\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2b4eb0a20a8c24195a63296f7b1e386e5c74902d4bcc1fa2ebd9b2d9099acb1f"
+}

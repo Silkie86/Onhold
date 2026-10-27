@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE tasks SET title = $2, notes = $3, due_at = $4, assignee_id = $5, related_entity = $6,\n                  related_id = $7, status = $8, done_at = $9, done_by = $10, updated_by = $11\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Text",
+        "Timestamptz",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6ce27e804262e07b095bc9e7d7f7b42a04b0d6dae86a71450ae0291eb7ab583a"
+}

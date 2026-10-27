@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE quotes SET currency = $2, line_items = $3, total_minor = $4, valid_until = $5, message = $6,\n                  terms = $7, updated_by = $8\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bpchar",
+        "Jsonb",
+        "Int8",
+        "Date",
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3d3e5b8702536c0840552e10ea4589d4b39aaa5e3a8c57c1d56094d875d25a74"
+}

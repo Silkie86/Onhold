@@ -501,6 +501,200 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/availability/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_availability"];
+        options?: never;
+        head?: never;
+        patch: operations["update_availability"];
+        trace?: never;
+    };
+    "/api/v1/bookings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bookings, soonest first unless sorted otherwise. */
+        get: operations["list_bookings"];
+        put?: never;
+        /**
+         * Place a hold (the default), or add a pending or confirmed booking.
+         *     Confirming checks for clashes; see `POST /bookings/clash-check`.
+         */
+        post: operations["create_booking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/clash-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What a booking of these talent at this time would clash with: other
+         *     bookings and marked availability. Confirmed bookings and unavailable
+         *     time block confirming; holds, pending bookings and tentative time warn.
+         */
+        post: operations["clash_check"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_booking"];
+        put?: never;
+        post?: never;
+        /** Delete a booking. Its open quotes are withdrawn. */
+        delete: operations["delete_booking"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a booking. Moving a confirmed booking, or changing its talent,
+         *     checks for clashes again.
+         */
+        patch: operations["update_booking"];
+        trace?: never;
+    };
+    "/api/v1/bookings/{id}/quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A booking's quotes, newest first. */
+        get: operations["list_booking_quotes"];
+        put?: never;
+        /**
+         * Start a draft quote for a booking, priced from the booking's fee or its
+         *     talent's default fees unless lines are given.
+         */
+        post: operations["create_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a booking to another status: hold → pending → confirmed →
+         *     completed, or cancelled; an expired hold can be held again. Confirming
+         *     refuses a clash (409 `booking_clash`) unless `override_reason` is given
+         *     by someone with `booking:override`.
+         */
+        post: operations["change_booking_status"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What happened to this booking and its quotes, newest first. */
+        get: operations["booking_timeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bookings and availability in a window (at most 400 days), for the calendar. */
+        get: operations["calendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/feeds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your calendar links (an admin sees everyone's). */
+        get: operations["list_feeds"];
+        put?: never;
+        /**
+         * Make a secret iCal link to the workspace's bookings, or one talent's.
+         *     The link is in the response only.
+         */
+        post: operations["create_feed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/feeds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop a calendar link working. */
+        delete: operations["revoke_feed"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/contacts": {
         parameters: {
             query?: never;
@@ -628,6 +822,58 @@ export interface paths {
         head?: never;
         /** Change a field's settings. Its entity, key and type never change. */
         patch: operations["update_field"];
+        trace?: never;
+    };
+    "/api/v1/enquiries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Enquiries, newest first unless sorted otherwise. */
+        get: operations["list_enquiries"];
+        put?: never;
+        /** Log an enquiry. It starts in the first stage of the enquiry pipeline. */
+        post: operations["create_enquiry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/enquiries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_enquiry"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_enquiry"];
+        options?: never;
+        head?: never;
+        /** Change an enquiry, or move it to another stage. */
+        patch: operations["update_enquiry"];
+        trace?: never;
+    };
+    "/api/v1/enquiries/{id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What happened to this enquiry and its bookings, newest first. */
+        get: operations["enquiry_timeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/events": {
@@ -1049,6 +1295,166 @@ export interface paths {
         patch: operations["update_pipeline"];
         trace?: never;
     };
+    "/api/v1/public/calendar/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An iCal feed (`<token>.ics`) for calendar apps to subscribe to. */
+        get: operations["public_calendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/quotes/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The quote behind a buyer's link. Needs no account; the link is the key.
+         *     The first view is recorded.
+         */
+        get: operations["public_quote"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/quotes/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept the quote behind a buyer's link, by name. */
+        post: operations["accept_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/quotes/{token}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline the quote behind a buyer's link. */
+        post: operations["decline_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quotes across bookings, newest first. */
+        get: operations["list_quotes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quotes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_quote"];
+        put?: never;
+        post?: never;
+        /** Delete a draft quote. */
+        delete: operations["delete_quote"];
+        options?: never;
+        head?: never;
+        /** Change a draft quote. A sent quote is revised instead. */
+        patch: operations["update_quote"];
+        trace?: never;
+    };
+    "/api/v1/quotes/{id}/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a revision of a sent quote: a new draft with the same number. */
+        post: operations["revise_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quotes/{id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a draft quote: the buyer gets an email with a link to view and
+         *     accept it. Other open quotes on the booking are withdrawn.
+         */
+        post: operations["send_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quotes/{id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take back a sent quote before the buyer answers. */
+        post: operations["withdraw_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rules": {
         parameters: {
             query?: never;
@@ -1236,6 +1642,27 @@ export interface paths {
         patch: operations["update_talent"];
         trace?: never;
     };
+    "/api/v1/talent/{id}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A talent's availability in a window (default: last month to a year ahead). */
+        get: operations["list_availability"];
+        put?: never;
+        /**
+         * Mark time a talent is unavailable (blocks confirming), tentative
+         *     (warns) or available only.
+         */
+        post: operations["create_availability"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/talent/{id}/members": {
         parameters: {
             query?: never;
@@ -1285,6 +1712,40 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tasks: open ones soonest due first, then done ones. */
+        get: operations["list_tasks"];
+        put?: never;
+        post: operations["create_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_task"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_task"];
+        options?: never;
+        head?: never;
+        /** Change a task, or mark it done (`status: "done"`) or open again. */
+        patch: operations["update_task"];
         trace?: never;
     };
     "/api/v1/templates": {
@@ -1649,6 +2110,11 @@ export interface components {
             user_id: components["schemas"]["UserId"];
             workspace_id: components["schemas"]["WorkspaceId"];
         };
+        AcceptQuote: {
+            email?: string | null;
+            /** @description The buyer's name, as their acceptance. */
+            name: string;
+        };
         /** @description One action as planned or done, for the run log. */
         ActionResult: {
             detail?: Record<string, never>;
@@ -1761,6 +2227,152 @@ export interface components {
             /** @description While paused no rule runs; events are still recorded and webhooks still sent. */
             paused: boolean;
         };
+        /**
+         * @description A stretch of a talent's time: unavailable (blocks confirming a
+         *     booking), tentative (warns), or available only (the talent works
+         *     only in these stretches; shown, not enforced).
+         * @enum {string}
+         */
+        AvailabilityKind: "unavailable" | "tentative" | "available_only";
+        AvailabilityPatch: {
+            all_day?: boolean | null;
+            /** Format: date-time */
+            ends_at?: string | null;
+            kind?: components["schemas"]["AvailabilityKind"] | null;
+            note?: string | null;
+            /** Format: date-time */
+            starts_at?: string | null;
+        };
+        AvailabilityView: {
+            all_day: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            ends_at: string;
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["AvailabilityKind"];
+            note?: string | null;
+            /** @description `manual`, `portal` or `external`. */
+            source: string;
+            /** Format: date-time */
+            starts_at: string;
+            /** Format: uuid */
+            talent_id: string;
+            talent_name: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            version: number;
+        };
+        BookingPage: {
+            items: components["schemas"]["BookingView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        BookingPatch: {
+            all_day?: boolean | null;
+            /** Format: uuid */
+            contact_id?: string | null;
+            /** @description Only the keys sent change; `null` clears a value. */
+            custom?: Record<string, never> | null;
+            /** Format: double */
+            deposit_percent?: number | null;
+            /** Format: date-time */
+            ends_at?: string | null;
+            /** Format: uuid */
+            enquiry_id?: string | null;
+            fee?: components["schemas"]["Money"] | null;
+            /**
+             * Format: date-time
+             * @description Holds only; `null` means it never lapses.
+             */
+            hold_expires_at?: string | null;
+            notes?: string | null;
+            /**
+             * Format: uuid
+             * @description `null` clears it; likewise for the other optional fields.
+             */
+            organisation_id?: string | null;
+            /** @description Keep a confirmed booking at a time that clashes (needs `booking:override`). */
+            override_reason?: string | null;
+            schedule?: components["schemas"]["ScheduleItem"][] | null;
+            /** Format: date-time */
+            starts_at?: string | null;
+            tags?: string[] | null;
+            /** @description Replaces the talent booked. */
+            talent_ids?: string[] | null;
+            timezone?: string | null;
+            title?: string | null;
+            /** Format: uuid */
+            venue_id?: string | null;
+            venue_text?: string | null;
+        };
+        /**
+         * @description Where a booking stands. A hold pencils the date in; pending means the
+         *     buyer has accepted and the paperwork (contract, deposit) is under way;
+         *     confirmed is firm and may not clash.
+         * @enum {string}
+         */
+        BookingStatus: "hold" | "pending" | "confirmed" | "cancelled" | "completed" | "expired";
+        BookingView: {
+            all_day: boolean;
+            cancel_reason?: string | null;
+            /** @description Confirmed despite a clash. */
+            clash_override: boolean;
+            /** Format: uuid */
+            contact_id?: string | null;
+            contact_name?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            custom: Record<string, never>;
+            /**
+             * Format: double
+             * @description The share of the fee due as a deposit.
+             */
+            deposit_percent?: number | null;
+            /** Format: date-time */
+            ends_at: string;
+            /** Format: uuid */
+            enquiry_id?: string | null;
+            fee?: components["schemas"]["Money"] | null;
+            /**
+             * Format: date-time
+             * @description When a hold lapses by itself.
+             */
+            hold_expires_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            organisation_name?: string | null;
+            /** Format: uuid */
+            override_by?: string | null;
+            override_reason?: string | null;
+            schedule: components["schemas"]["ScheduleItem"][];
+            /** Format: date-time */
+            starts_at: string;
+            status: components["schemas"]["BookingStatus"];
+            /** Format: date-time */
+            status_changed_at: string;
+            tags: string[];
+            /** @description The talent booked, in order. */
+            talent: components["schemas"]["Named"][];
+            /** @description The IANA zone times are shown and entered in. */
+            timezone: string;
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: uuid */
+            venue_id?: string | null;
+            venue_name?: string | null;
+            venue_text?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
         /** @enum {string} */
         BulkAction: "delete" | "add_tags" | "remove_tags";
         BulkFailure: {
@@ -1781,6 +2393,11 @@ export interface components {
             /** @description Records left unchanged, and why. */
             failed: components["schemas"]["BulkFailure"][];
         };
+        CalendarView: {
+            /** @description Unavailable, tentative and available-only time in the window. */
+            availability: components["schemas"]["AvailabilityView"][];
+            bookings: components["schemas"]["BookingView"][];
+        };
         /** @enum {string} */
         Channel: "email" | "phone" | "sms" | "whatsapp";
         /** @description One comparison as evaluated, for the dry-run explanation. */
@@ -1791,6 +2408,48 @@ export interface components {
             field: string;
             op: components["schemas"]["Op"];
             passed: boolean;
+        };
+        /** @description Something else taking a talent's time. */
+        Clash: {
+            /** Format: uuid */
+            availability_id?: string | null;
+            /**
+             * @description Whether it stops the booking being confirmed: a confirmed booking or
+             *     unavailable time. Holds, pending bookings and tentative time only warn.
+             */
+            blocking: boolean;
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** Format: date-time */
+            ends_at: string;
+            /** @description `booking` or `availability`. */
+            kind: string;
+            /** Format: date-time */
+            starts_at: string;
+            /** @description The other booking's status, or the availability's kind. */
+            status: string;
+            /** Format: uuid */
+            talent_id: string;
+            talent_name: string;
+            /** @description The other booking's title, or the availability's note. */
+            title?: string | null;
+        };
+        ClashQuery: {
+            /** Format: date-time */
+            ends_at: string;
+            /**
+             * Format: uuid
+             * @description The booking being edited, which does not clash with itself.
+             */
+            except_id?: string | null;
+            /** Format: date-time */
+            starts_at: string;
+            talent_ids: string[];
+        };
+        ClashReport: {
+            /** @description True when at least one clash blocks confirming. */
+            blocking: boolean;
+            clashes: components["schemas"]["Clash"][];
         };
         CloseWorkspaceRequest: {
             /** @description The workspace's slug, typed again to confirm. */
@@ -1990,6 +2649,11 @@ export interface components {
             /** @description The key itself. Shown once; store it somewhere safe. */
             secret: string;
         };
+        CreatedFeed: {
+            feed: components["schemas"]["FeedView"];
+            /** @description The link to subscribe to. Shown once; keep it private. */
+            url: string;
+        };
         CreatedWorkspaceResponse: {
             /** Format: uuid */
             owner_invitation_id: string;
@@ -2017,6 +2681,10 @@ export interface components {
             /** @description True signs the app in as you; false refuses it. */
             approve: boolean;
             code: string;
+        };
+        DeclineQuote: {
+            name: string;
+            reason?: string | null;
         };
         DeliveryPage: {
             deliveries: components["schemas"]["DeliveryView"][];
@@ -2108,6 +2776,88 @@ export interface components {
              */
             reasons: string[];
         };
+        EnquiryPage: {
+            items: components["schemas"]["EnquiryView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        EnquiryPatch: {
+            budget?: components["schemas"]["Money"] | null;
+            /** Format: uuid */
+            contact_id?: string | null;
+            /** @description Only the keys sent change; `null` clears a value. */
+            custom?: Record<string, never> | null;
+            /** Format: date */
+            ends_on?: string | null;
+            lost_reason?: string | null;
+            notes?: string | null;
+            /**
+             * Format: uuid
+             * @description `null` clears it; likewise for the other optional fields.
+             */
+            organisation_id?: string | null;
+            /** Format: uuid */
+            owner_id?: string | null;
+            /** @description Move to this stage (by key) of the enquiry's pipeline. */
+            stage?: string | null;
+            /** Format: date */
+            starts_on?: string | null;
+            tags?: string[] | null;
+            /** @description Replaces the talent asked for. */
+            talent_ids?: string[] | null;
+            title?: string | null;
+            /** Format: uuid */
+            venue_id?: string | null;
+            venue_text?: string | null;
+        };
+        EnquiryView: {
+            budget?: components["schemas"]["Money"] | null;
+            /** Format: uuid */
+            contact_id?: string | null;
+            contact_name?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            custom: Record<string, never>;
+            /** Format: date */
+            ends_on?: string | null;
+            /** Format: uuid */
+            id: string;
+            lost_reason?: string | null;
+            notes?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            organisation_name?: string | null;
+            /** Format: uuid */
+            owner_id?: string | null;
+            /** Format: uuid */
+            pipeline_id?: string | null;
+            /** @description `manual`, `email`, `form` or `portal`. */
+            source: string;
+            /** @description The stage's key. */
+            stage?: string | null;
+            /** Format: date-time */
+            stage_entered_at?: string | null;
+            stage_name?: string | null;
+            /** @description `open`, `won` or `lost`. */
+            stage_outcome?: string | null;
+            /** Format: date */
+            starts_on?: string | null;
+            tags: string[];
+            /** @description The talent asked for, in order. */
+            talent: components["schemas"]["Named"][];
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: uuid */
+            venue_id?: string | null;
+            venue_name?: string | null;
+            /** @description A venue not in the CRM. */
+            venue_text?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
         EntitySchema: {
             /** @description The caller may create and change these records. */
             can_write: boolean;
@@ -2161,6 +2911,23 @@ export interface components {
              */
             seq: number;
             topic: string;
+        };
+        FeedView: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            created_by: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_used_at?: string | null;
+            name: string;
+            /**
+             * Format: uuid
+             * @description One talent's bookings, or the whole workspace's when absent.
+             */
+            talent_id?: string | null;
+            talent_name?: string | null;
         };
         FieldChange: {
             after: Record<string, never>;
@@ -2392,6 +3159,37 @@ export interface components {
         };
         /** @enum {string} */
         Kind: "email" | "sms" | "whatsapp" | "notification" | "partial";
+        /** @description A line with its amount worked out. */
+        Line: {
+            /** Format: int64 */
+            amount_minor: number;
+            description: string;
+            /** Format: double */
+            quantity: number;
+            /** Format: uuid */
+            talent_id?: string | null;
+            /** Format: int64 */
+            unit_minor: number;
+        };
+        /** @description A line as given: what, how many, at what price each. */
+        LineInput: {
+            description: string;
+            /**
+             * Format: double
+             * @description Up to three decimal places (1.5 hours). Default 1.
+             */
+            quantity?: number | null;
+            /**
+             * Format: uuid
+             * @description The talent the line is for, if any.
+             */
+            talent_id?: string | null;
+            /**
+             * Format: int64
+             * @description Price of one, in minor units of the quote's currency. Negative for a discount.
+             */
+            unit_minor: number;
+        };
         LoginRequest: {
             email: string;
             password: string;
@@ -2472,6 +3270,60 @@ export interface components {
             slug: string;
             status: components["schemas"]["WorkspaceStatus"];
         };
+        /** @description A linked record's id and name. */
+        Named: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        NewAvailability: {
+            all_day?: boolean;
+            /** Format: date-time */
+            ends_at: string;
+            kind?: components["schemas"]["AvailabilityKind"] | null;
+            note?: string | null;
+            /** Format: date-time */
+            starts_at: string;
+        };
+        NewBooking: {
+            all_day?: boolean;
+            /** Format: uuid */
+            contact_id?: string | null;
+            custom?: Record<string, never>;
+            /** Format: double */
+            deposit_percent?: number | null;
+            /** Format: date-time */
+            ends_at: string;
+            /**
+             * Format: uuid
+             * @description The enquiry it answers. Its talent, organisation, contact and venue
+             *     are used for any not given here.
+             */
+            enquiry_id?: string | null;
+            fee?: components["schemas"]["Money"] | null;
+            /**
+             * Format: date-time
+             * @description When a hold lapses. Default: the workspace's hold period from now.
+             */
+            hold_expires_at?: string | null;
+            notes?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            /** @description Confirm despite a clash (needs `booking:override`). */
+            override_reason?: string | null;
+            schedule?: components["schemas"]["ScheduleItem"][];
+            /** Format: date-time */
+            starts_at: string;
+            status?: components["schemas"]["BookingStatus"] | null;
+            tags?: string[];
+            talent_ids?: string[];
+            /** @description Default: the workspace's timezone. */
+            timezone?: string | null;
+            title: string;
+            /** Format: uuid */
+            venue_id?: string | null;
+            venue_text?: string | null;
+        };
         NewContact: {
             /** @description Custom field values by key. Missing fields take their defaults. */
             custom?: Record<string, never>;
@@ -2487,6 +3339,42 @@ export interface components {
             sms_opt_in?: boolean;
             tags?: string[];
             whatsapp_opt_in?: boolean;
+        };
+        NewEnquiry: {
+            budget?: components["schemas"]["Money"] | null;
+            /** Format: uuid */
+            contact_id?: string | null;
+            custom?: Record<string, never>;
+            /** Format: date */
+            ends_on?: string | null;
+            notes?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Default: the member creating it.
+             */
+            owner_id?: string | null;
+            /** @description `manual` (default), `email`, `form` or `portal`. */
+            source?: string | null;
+            /** @description A stage key of the default pipeline; default its first stage. */
+            stage?: string | null;
+            /** Format: date */
+            starts_on?: string | null;
+            tags?: string[];
+            talent_ids?: string[];
+            title: string;
+            /** Format: uuid */
+            venue_id?: string | null;
+            venue_text?: string | null;
+        };
+        NewFeed: {
+            name: string;
+            /**
+             * Format: uuid
+             * @description Only this talent's bookings.
+             */
+            talent_id?: string | null;
         };
         NewImport: {
             /**
@@ -2511,6 +3399,19 @@ export interface components {
             tags?: string[];
             tax_id?: string | null;
         };
+        NewQuote: {
+            /** @description Default: the booking's fee currency, else the first talent's, else the workspace's. */
+            currency?: string | null;
+            /** @description Default: the booking's fee as one line, else each talent's default fee. */
+            line_items?: components["schemas"]["LineInput"][] | null;
+            message?: string | null;
+            terms?: string | null;
+            /**
+             * Format: date
+             * @description Default: two weeks from today.
+             */
+            valid_until?: string | null;
+        };
         NewTalent: {
             base_location?: string | null;
             bio?: string | null;
@@ -2527,6 +3428,20 @@ export interface components {
             status?: components["schemas"]["TalentStatus"] | null;
             tags?: string[];
             talent_type?: string | null;
+        };
+        NewTask: {
+            /**
+             * Format: uuid
+             * @description Default: the member creating it.
+             */
+            assignee_id?: string | null;
+            /** Format: date-time */
+            due_at?: string | null;
+            notes?: string | null;
+            related_entity?: string | null;
+            /** Format: uuid */
+            related_id?: string | null;
+            title: string;
         };
         OidcProviderView: {
             display_name: string;
@@ -2620,7 +3535,7 @@ export interface components {
          * @description A `resource:action` permission.
          * @enum {string}
          */
-        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write";
+        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write" | "enquiry:read" | "enquiry:write" | "booking:read" | "booking:write" | "booking:override" | "quote:read" | "quote:write" | "task:read" | "task:write";
         /**
          * @description Whether the workspace represents talent (`sells`), books talent for its
          *     own events (`buys`), or both. Changes vocabulary and defaults, never the
@@ -2680,12 +3595,112 @@ export interface components {
              */
             thing_id?: string | null;
         };
+        PublicLine: {
+            amount: components["schemas"]["Money"];
+            description: string;
+            /** Format: double */
+            quantity: number;
+            unit: components["schemas"]["Money"];
+        };
+        /** @description A quote as the buyer sees it: no internal notes, ids or history. */
+        PublicQuote: {
+            all_day: boolean;
+            booking_title: string;
+            /** @description The workspace's logo and colours, for a page in its own style. */
+            branding: Record<string, never>;
+            /** @description True while the buyer can still accept or decline. */
+            can_decide: boolean;
+            /** Format: date-time */
+            decided_at?: string | null;
+            decided_name?: string | null;
+            /** Format: date-time */
+            ends_at: string;
+            line_items: components["schemas"]["PublicLine"][];
+            message?: string | null;
+            reference: string;
+            /** Format: date-time */
+            starts_at: string;
+            status: components["schemas"]["QuoteStatus"];
+            talent: string[];
+            terms?: string | null;
+            timezone: string;
+            total: components["schemas"]["Money"];
+            /** Format: date */
+            valid_until?: string | null;
+            venue?: string | null;
+            workspace_name: string;
+        };
         QueuedResponse: {
             /**
              * Format: uuid
              * @description Follow it at `GET /jobs/{id}`.
              */
             job_id: string;
+        };
+        QuotePage: {
+            items: components["schemas"]["QuoteView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        QuotePatch: {
+            currency?: string | null;
+            /** @description Replaces the lines. */
+            line_items?: components["schemas"]["LineInput"][] | null;
+            message?: string | null;
+            terms?: string | null;
+            /** Format: date */
+            valid_until?: string | null;
+        };
+        /**
+         * @description Where a quote stands. Withdrawn means a newer revision replaced it.
+         * @enum {string}
+         */
+        QuoteStatus: "draft" | "sent" | "viewed" | "accepted" | "declined" | "expired" | "withdrawn";
+        QuoteView: {
+            /** Format: uuid */
+            booking_id: string;
+            booking_title: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            currency: string;
+            /** Format: date-time */
+            decided_at?: string | null;
+            decided_email?: string | null;
+            decided_name?: string | null;
+            decline_reason?: string | null;
+            /** Format: uuid */
+            id: string;
+            line_items: components["schemas"]["Line"][];
+            message?: string | null;
+            /** Format: int64 */
+            number: number;
+            /** @description How people refer to it: `Q-0007`, or `Q-0007-R2` for a revision. */
+            reference: string;
+            /** Format: int32 */
+            revision: number;
+            /** Format: date-time */
+            sent_at?: string | null;
+            sent_to?: string | null;
+            /** @description Exactly what was accepted. */
+            snapshot?: Record<string, never> | null;
+            status: components["schemas"]["QuoteStatus"];
+            /** Format: uuid */
+            supersedes_id?: string | null;
+            terms?: string | null;
+            total: components["schemas"]["Money"];
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /**
+             * Format: date
+             * @description The last day it can be accepted.
+             */
+            valid_until?: string | null;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            viewed_at?: string | null;
         };
         RecoveryCodesResponse: {
             /** @description Shown once. Each works once if the authenticator app is lost. */
@@ -2790,6 +3805,12 @@ export interface components {
             /** @description Share with the whole workspace (needs `config:write`). */
             shared?: boolean;
         };
+        /** @description A time in the running order: load-in, soundcheck, doors, set. */
+        ScheduleItem: {
+            /** Format: date-time */
+            at: string;
+            label: string;
+        };
         SchemaField: {
             /** @description Built in, rather than a custom field. */
             core: boolean;
@@ -2832,7 +3853,7 @@ export interface components {
         SearchHit: {
             /** @description A second line to tell similar names apart. */
             detail?: string | null;
-            /** @description `talent`, `organisation` or `contact`. */
+            /** @description `talent`, `organisation`, `contact`, `enquiry` or `booking`. */
             entity: string;
             /** Format: uuid */
             id: string;
@@ -2846,6 +3867,15 @@ export interface components {
         SelectOption: {
             label: string;
             value: string;
+        };
+        SendQuote: {
+            /** @description Default: the booking contact's first email address. */
+            to?: string | null;
+        };
+        SentQuote: {
+            /** @description The buyer's link, to copy into another message if needed. Shown once. */
+            link: string;
+            quote: components["schemas"]["QuoteView"];
         };
         SessionInfoView: {
             auth_method: string;
@@ -2911,6 +3941,13 @@ export interface components {
             /** @description Recorded in the customer's audit log. */
             reason: string;
             workspace_id: components["schemas"]["WorkspaceId"];
+        };
+        StatusRequest: {
+            /** @description Confirm despite a clash (needs `booking:override`). */
+            override_reason?: string | null;
+            /** @description Why it was cancelled. */
+            reason?: string | null;
+            status: components["schemas"]["BookingStatus"];
         };
         TagCount: {
             /**
@@ -3024,6 +4061,55 @@ export interface components {
             tags: string[];
             /** @description Free text: solo, band, DJ, speaker, studio… */
             talent_type?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+        };
+        TaskPage: {
+            items: components["schemas"]["TaskView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        TaskPatch: {
+            /** Format: uuid */
+            assignee_id?: string | null;
+            /** Format: date-time */
+            due_at?: string | null;
+            notes?: string | null;
+            /** @description `open` or `done`. */
+            status?: string | null;
+            title?: string | null;
+        };
+        TaskView: {
+            /** Format: uuid */
+            assignee_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** Format: date-time */
+            done_at?: string | null;
+            /** Format: uuid */
+            done_by?: string | null;
+            /** Format: date-time */
+            due_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            /** @description `manual` or `rule`. */
+            origin: string;
+            /** @description `talent`, `organisation`, `contact`, `enquiry`, `booking` or `quote`. */
+            related_entity?: string | null;
+            /** Format: uuid */
+            related_id?: string | null;
+            /** @description The related record's name or title, if it still exists. */
+            related_name?: string | null;
+            /** Format: uuid */
+            rule_id?: string | null;
+            /** @description `open` or `done`. */
+            status: string;
+            title: string;
             /** Format: date-time */
             updated_at: string;
             updated_by?: components["schemas"]["UserId"] | null;
@@ -3253,6 +4339,11 @@ export interface components {
             default_currency?: string | null;
             default_timezone?: string | null;
             enabled_modules?: string[] | null;
+            /**
+             * Format: int32
+             * @description 0 (holds never lapse) to 365.
+             */
+            hold_days?: number | null;
             locale?: string | null;
             name?: string | null;
             perspective?: components["schemas"]["Perspective"] | null;
@@ -3270,6 +4361,11 @@ export interface components {
             default_currency: string;
             default_timezone: string;
             enabled_modules: string[];
+            /**
+             * Format: int32
+             * @description How many days a new hold lasts before it lapses; 0 means never.
+             */
+            hold_days: number;
             id: components["schemas"]["WorkspaceId"];
             locale: string;
             name: string;
@@ -4242,6 +5338,724 @@ export interface operations {
             };
         };
     };
+    delete_availability: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_availability: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvailabilityPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_bookings: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Search text: matches anywhere in the name and other short fields,
+                 *     searchable custom fields, and close misspellings.
+                 */
+                q?: string | null;
+                /** @description Only records with this tag. */
+                tag?: string | null;
+                /**
+                 * @description Only records whose custom values include these, as a JSON object,
+                 *     e.g. `{"genre":"jazz"}`.
+                 */
+                custom?: string | null;
+                /**
+                 * @description A column to sort by, `-` first for descending: `name`, `-created_at`,
+                 *     `custom.genre`, or `relevance` (best search matches first). Default
+                 *     `relevance` when searching, otherwise `name`.
+                 */
+                sort?: string | null;
+                /** @description Rows to skip, default 0. */
+                offset?: number | null;
+                /** @description 1 to 500, default 50. */
+                limit?: number | null;
+                /** @description Bookings ending after this… */
+                from?: string | null;
+                /** @description …and starting before this. */
+                to?: string | null;
+                /** @description Comma-separated statuses, e.g. `hold,confirmed`. */
+                status?: string | null;
+                talent_id?: string | null;
+                /** @description Bookings for (or at) this organisation. */
+                organisation_id?: string | null;
+                contact_id?: string | null;
+                enquiry_id?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_booking: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewBooking"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    clash_check: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClashQuery"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClashReport"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_booking: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_booking: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_booking: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookingPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_booking_quotes: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuotePage"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_quote: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewQuote"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_booking_status: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookingView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    booking_timeline: {
+        parameters: {
+            query?: {
+                /** @description Return items older than this id (the previous page's `next_before`). */
+                before?: string | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelinePage"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    calendar: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                /** @description One talent's lane only. */
+                talent_id?: string | null;
+                /** @description Comma-separated statuses; default everything but cancelled and expired. */
+                status?: string | null;
+                /** @description Only bookings with this tag. */
+                tag?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_feeds: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedView"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_feed: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewFeed"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedFeed"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_feed: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_contacts: {
         parameters: {
             query?: {
@@ -4768,6 +6582,275 @@ export interface operations {
                 };
             };
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_enquiries: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Search text: matches anywhere in the name and other short fields,
+                 *     searchable custom fields, and close misspellings.
+                 */
+                q?: string | null;
+                /** @description Only records with this tag. */
+                tag?: string | null;
+                /**
+                 * @description Only records whose custom values include these, as a JSON object,
+                 *     e.g. `{"genre":"jazz"}`.
+                 */
+                custom?: string | null;
+                /**
+                 * @description A column to sort by, `-` first for descending: `name`, `-created_at`,
+                 *     `custom.genre`, or `relevance` (best search matches first). Default
+                 *     `relevance` when searching, otherwise `name`.
+                 */
+                sort?: string | null;
+                /** @description Rows to skip, default 0. */
+                offset?: number | null;
+                /** @description 1 to 500, default 50. */
+                limit?: number | null;
+                /** @description Only enquiries in this stage (by key) of the default pipeline. */
+                stage?: string | null;
+                /** @description Only enquiries asking for this talent. */
+                talent_id?: string | null;
+                /** @description Only enquiries this member owns. */
+                owner_id?: string | null;
+                /** @description Only enquiries from (or at) this organisation. */
+                organisation_id?: string | null;
+                contact_id?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnquiryPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_enquiry: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewEnquiry"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnquiryView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_enquiry: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnquiryView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_enquiry: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_enquiry: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnquiryPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnquiryView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    enquiry_timeline: {
+        parameters: {
+            query?: {
+                /** @description Return items older than this id (the previous page's `next_before`). */
+                before?: string | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelinePage"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6099,6 +8182,472 @@ export interface operations {
             };
         };
     };
+    public_calendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description `<token>.ics` */
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/calendar": string;
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_quote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicQuote"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accept_quote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptQuote"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicQuote"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    decline_quote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeclineQuote"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicQuote"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_quotes: {
+        parameters: {
+            query?: {
+                booking_id?: string | null;
+                /** @description Comma-separated statuses, e.g. `sent,viewed`. */
+                status?: string | null;
+                offset?: number | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuotePage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_quote: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_quote: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_quote: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuotePatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revise_quote: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_quote: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendQuote"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SentQuote"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    withdraw_quote: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_rules: {
         parameters: {
             query?: never;
@@ -6746,6 +9295,86 @@ export interface operations {
             };
         };
     };
+    list_availability: {
+        parameters: {
+            query?: {
+                /** @description Default: today minus a month. */
+                from?: string | null;
+                /** @description Default: a year after `from`. */
+                to?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityView"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_availability: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewAvailability"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_talent_members: {
         parameters: {
             query?: never;
@@ -6933,6 +9562,211 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_tasks: {
+        parameters: {
+            query?: {
+                /** @description `open` (default), `done` or `all`. */
+                status?: string | null;
+                /** @description A member's id, or `me`. */
+                assignee?: string | null;
+                /** @description Tasks about this record. */
+                related_id?: string | null;
+                /** @description Open tasks due before this. */
+                due_before?: string | null;
+                offset?: number | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_task: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewTask"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_task: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_task: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_task: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
                 headers: {
                     [name: string]: unknown;
                 };

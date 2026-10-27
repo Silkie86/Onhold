@@ -169,7 +169,7 @@ fn workspace_audit_view(w: &core_db::workspaces::Workspace) -> Value {
         "country": w.country, "default_currency": w.default_currency, "default_timezone": w.default_timezone,
         "locale": w.locale, "enabled_modules": w.enabled_modules, "branding": w.branding,
         "billing_contact": w.billing_contact, "plugin_slug": w.plugin_slug,
-        "require_staff_2fa": w.require_staff_2fa,
+        "require_staff_2fa": w.require_staff_2fa, "hold_days": w.hold_days,
     })
 }
 
@@ -198,6 +198,7 @@ pub struct WorkspacePatch {
     pub branding: Option<Value>,
     pub billing_contact: Option<Value>,
     pub require_staff_2fa: Option<bool>,
+    pub hold_days: Option<i32>,
 }
 
 pub async fn update_workspace(
@@ -273,6 +274,14 @@ pub async fn update_workspace(
         }
     }
 
+    let hold_days = patch.hold_days.unwrap_or(before.hold_days);
+    if !(0..=365).contains(&hold_days) {
+        return Err(ApiError::invalid(
+            "hold_days",
+            "must be 0 (never) to 365 days",
+        ));
+    }
+
     let saved = core_db::workspaces::update_settings(
         &mut tx,
         ctx.workspace_id,
@@ -287,6 +296,7 @@ pub async fn update_workspace(
             branding: &branding,
             billing_contact: &billing,
             require_staff_2fa: patch.require_staff_2fa.unwrap_or(before.require_staff_2fa),
+            hold_days,
         },
         expected,
         ctx.user_id(),

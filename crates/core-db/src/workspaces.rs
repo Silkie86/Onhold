@@ -25,6 +25,8 @@ pub struct Workspace {
     pub billing_contact: Value,
     pub plugin_slug: Option<String>,
     pub require_staff_2fa: bool,
+    /// How many days a new hold lasts; 0 means holds never lapse.
+    pub hold_days: i32,
     pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -36,7 +38,7 @@ pub async fn get(conn: &mut PgConnection, id: WorkspaceId) -> Result<Option<Work
         r#"SELECT id AS "id: WorkspaceId", slug, name, plan, status AS "status: WorkspaceStatus",
                   perspective AS "perspective: Perspective", country, default_currency, default_timezone,
                   locale, enabled_modules, branding, billing_contact, plugin_slug, require_staff_2fa,
-                  version, created_at, updated_at
+                  hold_days, version, created_at, updated_at
            FROM workspaces WHERE id = $1"#,
         id.0
     )
@@ -108,6 +110,7 @@ pub struct Settings<'a> {
     pub branding: &'a Value,
     pub billing_contact: &'a Value,
     pub require_staff_2fa: bool,
+    pub hold_days: i32,
 }
 
 /// Returns false when `expected_version` no longer matches (someone else saved first).
@@ -122,7 +125,7 @@ pub async fn update_settings(
         r#"UPDATE workspaces
            SET name = $2, perspective = $3, country = $4, default_currency = $5, default_timezone = $6,
                locale = $7, enabled_modules = $8, branding = $9, billing_contact = $10,
-               require_staff_2fa = $11, updated_by = $12
+               require_staff_2fa = $11, updated_by = $12, hold_days = $14
            WHERE id = $1 AND version = $13"#,
         id.0,
         s.name,
@@ -136,7 +139,8 @@ pub async fn update_settings(
         s.billing_contact,
         s.require_staff_2fa,
         by.map(|u| u.0),
-        expected_version
+        expected_version,
+        s.hold_days
     )
     .execute(conn)
     .await?;

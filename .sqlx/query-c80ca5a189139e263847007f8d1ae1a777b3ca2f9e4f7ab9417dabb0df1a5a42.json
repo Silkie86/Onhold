@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT q.id, q.workspace_id AS \"workspace_id: WorkspaceId\", q.valid_until AS \"valid_until!\"\n           FROM quotes q JOIN workspaces w ON w.id = q.workspace_id\n           WHERE q.status IN ('sent', 'viewed') AND q.deleted_at IS NULL\n             AND q.valid_until < ($1 AT TIME ZONE w.default_timezone)::date\n             AND w.status IN ('trial', 'active')\n           ORDER BY q.valid_until\n           LIMIT $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "quotes",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "workspace_id: WorkspaceId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "quotes",
+            "name": "workspace_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "valid_until!",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "quotes",
+            "name": "valid_until"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "c80ca5a189139e263847007f8d1ae1a777b3ca2f9e4f7ab9417dabb0df1a5a42"
+}

@@ -22,9 +22,23 @@ use crate::error::{ApiError, ApiResult};
 
 pub const SYSTEM_INVITATION: &str = "system.invitation";
 pub const SYSTEM_MAGIC_LINK: &str = "system.magic_link";
+pub const SYSTEM_QUOTE: &str = "system.quote";
 
 /// Event topics that become platform mail.
-pub const SYSTEM_TOPICS: &[&str] = &["invitation.created", "auth.magic_link_requested"];
+pub const SYSTEM_TOPICS: &[&str] = &[
+    "invitation.created",
+    "auth.magic_link_requested",
+    "quote.sent",
+];
+
+const QUOTE_SUBJECT: &str =
+    "Quote {{ quote.reference }} from {{ workspace.name }}: {{ booking.title }}";
+const QUOTE_BODY: &str = r#"<p>Hello,</p>
+<p>{{ workspace.name }} has sent you a quote for <strong>{{ booking.title }}</strong>{% if booking.starts_at %} on {{ booking.starts_at | date(none, booking.timezone) }}{% endif %}{% if booking.venue %} at {{ booking.venue }}{% endif %}.</p>
+{% if quote.message %}<p style="white-space:pre-line">{{ quote.message }}</p>{% endif %}
+<p>Total: <strong>{{ quote.total | money }}</strong></p>
+<p><a href="{{ quote.url }}">View and accept the quote</a></p>
+{% if quote.valid_until %}<p>You can accept it until {{ quote.valid_until | date }}.</p>{% endif %}"#;
 
 const INVITATION_SUBJECT: &str = "You're invited to {{ workspace.name }} on OnHold";
 const INVITATION_BODY: &str = r#"<p>Hello,</p>
@@ -212,6 +226,61 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 None,
                 user,
                 SYSTEM_MAGIC_LINK,
+                None,
+                vec![url],
+            ))
+        }
+        "quote.sent" => {
+            let ws = job
+                .workspace_id
+                .ok_or_else(|| permanent("quote without a workspace"))?;
+            let to = event
+                .pointer("/after/sent_to")
+                .and_then(Value::as_str)
+                .ok_or_else(|| permanent("quote without an address"))?
+                .to_owned();
+            let mut quote = event.get("after").cloned().unwrap_or(Value::Null);
+            if let Some(q) = quote.as_object_mut() {
+                q.insert("url".into(), Value::String(url.clone()));
+            }
+            let mut tx = core_db::begin(&state.db, Some(ws), None).await?;
+            let (workspace, options) = context::workspace(&mut tx, state).await?;
+            let ctx_json = json!({
+                "workspace": workspace,
+                "quote": quote,
+                "booking": event.get("booking"),
+            });
+            // A workspace may reword its quote email.
+            let custom = core_db::templates::find(&mut tx, SYSTEM_QUOTE, &options.locale).await?;
+            let (subject, body) = match &custom {
+                Some(t) => (t.subject.as_deref(), t.body.as_str()),
+                None => (Some(QUOTE_SUBJECT), QUOTE_BODY),
+            };
+            let rendered = super::templates::render_in(
+                &mut tx,
+                Kind::Email,
+                subject,
+                body,
+                &ctx_json,
+                &options,
+            )
+            .await?;
+            tx.commit().await?;
+            let name = workspace
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("OnHold")
+                .to_owned();
+            Ok(outgoing(
+                state,
+                job.id,
+                rendered,
+                &to,
+                Some(name.clone()),
+                &format!("Sent by {name} via OnHold."),
+                Some(ws),
+                None,
+                SYSTEM_QUOTE,
                 None,
                 vec![url],
             ))

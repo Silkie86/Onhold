@@ -6,6 +6,8 @@ use core_api::error::ApiError;
 use core_api::services::automation::{
     self, JOB_DISPATCH, JOB_MAIL, JOB_SCAN, JOB_SCHEDULED, JOB_SYSTEM_MAIL, JOB_WEBHOOK,
 };
+use core_api::services::bookings::{self, JOB_COMPLETE, JOB_EXPIRE_HOLD};
+use core_api::services::quotes::{self, JOB_EXPIRE as JOB_EXPIRE_QUOTE};
 use core_api::services::{imports, mail, webhooks};
 use core_db::jobs::{Claimed, LogLine};
 use core_domain::WorkspaceId;
@@ -109,6 +111,21 @@ impl Worker {
                 let rule_id = uuid_field(&job.payload, "rule_id")?;
                 let fire_at = time_field(&job.payload, "fire_at")?;
                 automation::run_scheduled(&self.app, workspace(job)?, rule_id, fire_at).await?;
+                Ok(())
+            }
+            JOB_EXPIRE_HOLD => {
+                let id = uuid_field(&job.payload, "booking_id")?;
+                bookings::expire_hold(&self.app, workspace(job)?, id).await?;
+                Ok(())
+            }
+            JOB_COMPLETE => {
+                let id = uuid_field(&job.payload, "booking_id")?;
+                bookings::complete(&self.app, workspace(job)?, id).await?;
+                Ok(())
+            }
+            JOB_EXPIRE_QUOTE => {
+                let id = uuid_field(&job.payload, "quote_id")?;
+                quotes::expire(&self.app, workspace(job)?, id).await?;
                 Ok(())
             }
             JOB_SYSTEM_MAIL => {

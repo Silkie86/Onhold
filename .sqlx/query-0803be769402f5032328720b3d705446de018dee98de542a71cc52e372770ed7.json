@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO workspace_counters (workspace_id, name, value) VALUES (app_workspace_id(), $1, 1)\n           ON CONFLICT (workspace_id, name) DO UPDATE SET value = workspace_counters.value + 1\n           RETURNING value",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "value",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "workspace_counters",
+            "name": "value"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0803be769402f5032328720b3d705446de018dee98de542a71cc52e372770ed7"
+}
