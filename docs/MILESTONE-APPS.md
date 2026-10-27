@@ -28,7 +28,7 @@ This runs the app's own code in Chromium, built with `VITE_APP_MODE=app` on its 
 
 ## Skipped, and why
 
-- **iOS and Android builds** come next, from the same shell (`tauri ios init`, `tauri android init`). They need Xcode on a Mac runner and the Android SDK, and publishing needs Apple and Google developer accounts. How clients get branded phone apps is Solomon's decision first (see the thread).
+- **iOS and Android builds** come next, from the same shell (`tauri ios init`, `tauri android init`). They need Xcode on a Mac runner and the Android SDK, and publishing needs Apple and Google developer accounts. Solomon decided they ship as one shared OnHold app in each store, showing the client's logo and colours after sign-in (see `DECISIONS.md`).
 - **Signing and auto-update.** Unsigned installers warn when installed. Signing needs an Apple Developer account ($99 a year) and a Windows code-signing certificate, and updates need a place to publish them. All are worth setting up once there is a client to ship to.
 - **Offline for everything else.** Settings, imports, saved views, timelines, talent members, marking time off, and making or sending quotes need a connection, and the app says so. Documents and money will join the offline copy as those milestones land.
 - **Branding inside the website** (logo, colours, the website's own name). The spec puts branding on the workspace record. The branded apps cover name and icon now, and in-app theming arrives with the workspace branding settings.
