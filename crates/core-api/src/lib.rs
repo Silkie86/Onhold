@@ -42,10 +42,16 @@ const MAX_BODY_BYTES: usize = 1024 * 1024;
 /// Largest body an upload route accepts: a CSV file plus its JSON wrapping.
 pub(crate) const MAX_UPLOAD_BODY_BYTES: usize = services::imports::MAX_CSV_BYTES + 64 * 1024;
 
+/// Largest file upload body; the configured limit (25 MB by default) is
+/// checked by the service, within this.
+pub(crate) const MAX_FILE_BODY_BYTES: usize = 100 * 1024 * 1024;
+
 /// The body limit for a request: uploads get more room than everything else.
 fn body_limit(method: &axum::http::Method, path: &str) -> usize {
     if method == axum::http::Method::POST && path == "/api/v1/imports" {
         MAX_UPLOAD_BODY_BYTES
+    } else if method == axum::http::Method::POST && path == "/api/v1/files" {
+        MAX_FILE_BODY_BYTES
     } else {
         MAX_BODY_BYTES
     }
@@ -168,6 +174,12 @@ impl AppState {
         (name = "quotes", description = "Priced offers the buyer accepts on the web"),
         (name = "calendar", description = "The calendar, availability and iCal feeds"),
         (name = "tasks", description = "To-dos on any record"),
+        (name = "documents", description = "Files, documents, e-signature and past PDFs"),
+        (name = "finance", description = "Finance settings, tax codes and exchange rates"),
+        (name = "invoices", description = "Invoices and credit notes"),
+        (name = "payments", description = "Payments received, refunds and payouts"),
+        (name = "settlements", description = "What each talent is owed for a booking"),
+        (name = "reports", description = "Revenue, what is owed, cash and the funnel"),
         (name = "public", description = "Pages reached by secret link, without an account"),
         (name = "events", description = "What changed, in order: the sync feed"),
         (name = "webhooks", description = "Events pushed to your URLs"),
@@ -210,6 +222,8 @@ fn api_router() -> OpenApiRouter<AppState> {
             .merge(routes::things::router())
             .merge(routes::crm::router())
             .merge(routes::bookings::router())
+            .merge(routes::documents::router())
+            .merge(routes::finance::router())
             .merge(routes::events::router())
             .merge(routes::webhooks::router())
             .merge(routes::jobs::router())
