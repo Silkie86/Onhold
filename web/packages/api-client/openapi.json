@@ -545,6 +545,176 @@
         ]
       }
     },
+    "/api/v1/auth/app/decide": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Approve or refuse an app's sign-in.",
+        "operationId": "decide_app_sign_in",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideAppSignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/app/lookup": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "The app waiting for a code, before approving it.",
+        "operationId": "lookup_app_sign_in",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "description": "The code the app shows, with or without the dash.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingAppSignInView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/app/start": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Start signing in a desktop or mobile app.",
+        "description": "The app shows `user_code`, opens `verification_url` in the browser and\npolls `POST /auth/app/token`. The person signs in there as usual, types\nthe code and approves.",
+        "operationId": "start_app_sign_in",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartAppSignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSignInStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/app/token": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Collect the app's session once the sign-in is approved.",
+        "description": "Until then this answers 400 `authorization_pending`. A refused sign-in is\n403 `access_denied`; an expired or already collected one is 400\n`expired_token`.",
+        "operationId": "app_sign_in_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppSignInTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -9207,6 +9377,77 @@
           }
         }
       },
+      "AppSession": {
+        "type": "object",
+        "required": [
+          "token",
+          "session_id",
+          "user_id",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "token": {
+            "type": "string",
+            "description": "Send as `Authorization: Bearer <token>`. Store it in the device's keychain."
+          },
+          "user_id": {
+            "$ref": "#/components/schemas/UserId"
+          }
+        }
+      },
+      "AppSignInStarted": {
+        "type": "object",
+        "required": [
+          "user_code",
+          "poll_token",
+          "verification_url",
+          "expires_at",
+          "interval_seconds"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "interval_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Poll no more often than this.",
+            "minimum": 0
+          },
+          "poll_token": {
+            "type": "string",
+            "description": "Keep this secret and poll `POST /auth/app/token` with it."
+          },
+          "user_code": {
+            "type": "string",
+            "description": "Show this to the person, who types it on the approval page."
+          },
+          "verification_url": {
+            "type": "string",
+            "description": "The approval page, to open in the browser. It deliberately does not\ncarry the code."
+          }
+        }
+      },
+      "AppSignInTokenRequest": {
+        "type": "object",
+        "required": [
+          "poll_token"
+        ],
+        "properties": {
+          "poll_token": {
+            "type": "string"
+          }
+        }
+      },
       "AuditEntryView": {
         "type": "object",
         "required": [
@@ -10139,11 +10380,16 @@
         "type": "object",
         "required": [
           "id",
+          "client",
           "csrf_token",
           "mfa_verified",
           "expires_at"
         ],
         "properties": {
+          "client": {
+            "type": "string",
+            "description": "`browser` or `app`."
+          },
           "csrf_token": {
             "type": "string"
           },
@@ -10168,6 +10414,22 @@
           "mdy",
           "ymd"
         ]
+      },
+      "DecideAppSignInRequest": {
+        "type": "object",
+        "required": [
+          "code",
+          "approve"
+        ],
+        "properties": {
+          "approve": {
+            "type": "boolean",
+            "description": "True signs the app in as you; false refuses it."
+          },
+          "code": {
+            "type": "string"
+          }
+        }
       },
       "DeliveryPage": {
         "type": "object",
@@ -11626,9 +11888,14 @@
           "slug",
           "name",
           "status",
-          "role"
+          "role",
+          "apps_allowed"
         ],
         "properties": {
+          "apps_allowed": {
+            "type": "boolean",
+            "description": "False when the workspace's plan does not include the desktop and\nmobile apps; an app's requests to it are then refused."
+          },
           "id": {
             "$ref": "#/components/schemas/WorkspaceId"
           },
@@ -12177,6 +12444,40 @@
           },
           "new_password": {
             "type": "string"
+          }
+        }
+      },
+      "PendingAppSignInView": {
+        "type": "object",
+        "required": [
+          "device_name",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the request came from, so the person can tell it is theirs."
+          },
+          "user_agent": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -12900,11 +13201,16 @@
           "created_at",
           "last_seen_at",
           "expires_at",
-          "current"
+          "current",
+          "client"
         ],
         "properties": {
           "auth_method": {
             "type": "string"
+          },
+          "client": {
+            "type": "string",
+            "description": "`browser` or `app` (the desktop and mobile apps)."
           },
           "created_at": {
             "type": "string",
@@ -12912,6 +13218,13 @@
           },
           "current": {
             "type": "boolean"
+          },
+          "device_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The app's name for its device, such as \"Sam's MacBook\"."
           },
           "expires_at": {
             "type": "string",
@@ -13074,6 +13387,18 @@
               "null"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "StartAppSignInRequest": {
+        "type": "object",
+        "required": [
+          "device_name"
+        ],
+        "properties": {
+          "device_name": {
+            "type": "string",
+            "description": "Shown when approving and in the session list, such as \"Sam's MacBook\"."
           }
         }
       },

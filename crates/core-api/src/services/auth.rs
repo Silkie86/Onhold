@@ -28,7 +28,7 @@ pub struct IssuedSession {
     pub expires_at: chrono::DateTime<Utc>,
 }
 
-fn to_chrono(d: std::time::Duration) -> ChronoDuration {
+pub(crate) fn to_chrono(d: std::time::Duration) -> ChronoDuration {
     ChronoDuration::from_std(d).unwrap_or(ChronoDuration::MAX)
 }
 
@@ -70,6 +70,8 @@ pub async fn issue_session(
             ip: meta.ip,
             user_agent: meta.user_agent.as_deref(),
             expires_at,
+            client: "browser",
+            device_name: None,
         },
     )
     .await?;

@@ -10,6 +10,7 @@
 //! workspace's data does so through the app pool, like a request.
 
 pub mod api_keys;
+pub mod app_sign_ins;
 pub mod audit;
 pub mod auth;
 pub mod contacts;

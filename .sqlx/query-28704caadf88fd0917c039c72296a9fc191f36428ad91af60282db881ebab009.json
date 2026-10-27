@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, auth_method, ip AS \"ip: IpAddr\", user_agent, created_at, last_seen_at, expires_at\n           FROM sessions\n           WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()\n           ORDER BY last_seen_at DESC",
+  "query": "SELECT id, auth_method, ip AS \"ip: IpAddr\", user_agent, created_at, last_seen_at, expires_at,\n                  client, device_name\n           FROM sessions\n           WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()\n           ORDER BY last_seen_at DESC",
   "describe": {
     "columns": [
       {
@@ -79,6 +79,28 @@
             "name": "expires_at"
           }
         }
+      },
+      {
+        "ordinal": 7,
+        "name": "client",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sessions",
+            "name": "client"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "device_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sessions",
+            "name": "device_name"
+          }
+        }
       }
     ],
     "parameters": {
@@ -93,8 +115,10 @@
       true,
       false,
       false,
-      false
+      false,
+      false,
+      true
     ]
   },
-  "hash": "22d04fed272f90d05a9b1a6716596db67966476d1432a9a88cffd45deaa3321f"
+  "hash": "28704caadf88fd0917c039c72296a9fc191f36428ad91af60282db881ebab009"
 }

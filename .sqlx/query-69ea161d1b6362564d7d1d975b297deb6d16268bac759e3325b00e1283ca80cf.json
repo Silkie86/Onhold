@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT w.id AS \"id: WorkspaceId\", w.slug, w.name, w.status AS \"status: WorkspaceStatus\",\n                  m.role AS \"role: Role\"\n           FROM memberships m JOIN workspaces w ON w.id = m.workspace_id\n           WHERE m.user_id = $1 AND m.deleted_at IS NULL AND w.status <> 'closed'\n           ORDER BY w.name",
+  "query": "SELECT w.id AS \"id: WorkspaceId\", w.slug, w.name, w.status AS \"status: WorkspaceStatus\",\n                  m.role AS \"role: Role\", w.plan\n           FROM memberships m JOIN workspaces w ON w.id = m.workspace_id\n           WHERE m.user_id = $1 AND m.deleted_at IS NULL AND w.status <> 'closed'\n           ORDER BY w.name",
   "describe": {
     "columns": [
       {
@@ -83,6 +83,17 @@
             "name": "role"
           }
         }
+      },
+      {
+        "ordinal": 5,
+        "name": "plan",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "plan"
+          }
+        }
       }
     ],
     "parameters": {
@@ -95,8 +106,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "afdb45313abf9b72fb082dc27554b6c6e5c3897e1f8a4cb4244d07ec1d1dd586"
+  "hash": "69ea161d1b6362564d7d1d975b297deb6d16268bac759e3325b00e1283ca80cf"
 }

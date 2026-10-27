@@ -3,6 +3,7 @@
 //! before committing. Handlers only translate HTTP to and from these calls.
 
 pub mod admin;
+pub mod app_sign_in;
 pub mod auth;
 pub mod automation;
 pub mod contacts;

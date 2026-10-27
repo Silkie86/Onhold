@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id AS \"id!\", device_name AS \"device_name!\", ip AS \"ip: IpAddr\", user_agent,\n                  created_at AS \"created_at!\", expires_at AS \"expires_at!\"\n           FROM app_sign_in_find($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "device_name!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "ip: IpAddr",
+        "type_info": "Inet",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "user_agent",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "expires_at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "d20da182471958857b4086f1d2e4f7710b6823b7eee874e119f3e8d8f4e79e82"
+}

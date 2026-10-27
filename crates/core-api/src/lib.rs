@@ -24,6 +24,7 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceBuilder;
 use tower_http::LatencyUnit;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
@@ -189,6 +190,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 pub fn router(state: AppState) -> Router {
     let (api, _) = api_router().split_for_parts();
     let spec = Arc::new(openapi());
+    let cors = cors(&state.config.cors_origins);
 
     Router::new()
         .merge(health::router())
@@ -226,12 +228,44 @@ pub fn router(state: AppState) -> Router {
                         .on_response(DefaultOnResponse::new().latency_unit(LatencyUnit::Millis)),
                 )
                 .layer(PropagateRequestIdLayer::new(REQUEST_ID_HEADER))
+                .layer(cors)
                 .layer(TimeoutLayer::with_status_code(
                     axum::http::StatusCode::REQUEST_TIMEOUT,
                     REQUEST_TIMEOUT,
                 ))
                 .layer(axum::middleware::from_fn(limit_body)),
         )
+}
+
+/// Cross-origin access for the desktop and mobile apps, whose pages are served
+/// from their own origins (see [`config::APP_ORIGINS`]). Credentials are not
+/// allowed: the apps send bearer tokens, so a browser never attaches the
+/// session cookie to a cross-origin request.
+fn cors(origins: &[String]) -> CorsLayer {
+    use axum::http::{HeaderValue, Method, header};
+    let origins: Vec<HeaderValue> = origins
+        .iter()
+        .filter_map(|o| HeaderValue::from_str(o).ok())
+        .collect();
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+        ])
+        .allow_headers([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            header::IF_MATCH,
+            HeaderName::from_static(extract::WORKSPACE_HEADER),
+            HeaderName::from_static(idempotency::HEADER),
+            REQUEST_ID_HEADER,
+        ])
+        .expose_headers([header::ETAG, header::LOCATION, REQUEST_ID_HEADER])
+        .max_age(Duration::from_secs(3600))
 }
 
 /// Serves `app` on `addr` until `shutdown` is cancelled, then drains in-flight requests.

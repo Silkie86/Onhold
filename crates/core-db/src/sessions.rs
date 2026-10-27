@@ -1,5 +1,6 @@
-//! Browser sessions. Only the SHA-256 of the token is stored. Rows are
-//! visible to their own user only.
+//! Sessions of browsers (cookie) and of the desktop and mobile apps (bearer
+//! token). Only the SHA-256 of the token is stored. Rows are visible to their
+//! own user only.
 
 use std::net::IpAddr;
 
@@ -19,14 +20,17 @@ pub struct NewSession<'a> {
     pub ip: Option<IpAddr>,
     pub user_agent: Option<&'a str>,
     pub expires_at: DateTime<Utc>,
+    /// `browser` or `app`.
+    pub client: &'a str,
+    pub device_name: Option<&'a str>,
 }
 
 pub async fn insert(conn: &mut PgConnection, new: NewSession<'_>) -> Result<Uuid> {
     let id = core_domain::ids::new_id();
     sqlx::query!(
         r#"INSERT INTO sessions (id, user_id, token_hash, csrf_token, auth_method, mfa_verified,
-                                 ip, user_agent, expires_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#,
+                                 ip, user_agent, expires_at, client, device_name)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"#,
         id,
         new.user_id.0,
         new.token_hash,
@@ -35,7 +39,9 @@ pub async fn insert(conn: &mut PgConnection, new: NewSession<'_>) -> Result<Uuid
         new.mfa_verified,
         new.ip as Option<IpAddr>,
         new.user_agent,
-        new.expires_at
+        new.expires_at,
+        new.client,
+        new.device_name
     )
     .execute(conn)
     .await?;
@@ -122,13 +128,16 @@ pub struct SessionInfo {
     pub created_at: DateTime<Utc>,
     pub last_seen_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
+    pub client: String,
+    pub device_name: Option<String>,
 }
 
 /// Active sessions of the user in context, newest first.
 pub async fn list_active(conn: &mut PgConnection, user: UserId) -> Result<Vec<SessionInfo>> {
     Ok(sqlx::query_as!(
         SessionInfo,
-        r#"SELECT id, auth_method, ip AS "ip: IpAddr", user_agent, created_at, last_seen_at, expires_at
+        r#"SELECT id, auth_method, ip AS "ip: IpAddr", user_agent, created_at, last_seen_at, expires_at,
+                  client, device_name
            FROM sessions
            WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
            ORDER BY last_seen_at DESC"#,
