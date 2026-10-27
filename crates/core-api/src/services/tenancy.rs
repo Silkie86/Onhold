@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::error::{ApiError, ApiResult};
 use crate::extract::format_api_key;
-use crate::services::{Change, record};
+use crate::services::{Change, record, record_with_secret};
 
 async fn begin(state: &AppState, ctx: &Ctx) -> ApiResult<Tx> {
     Ok(core_db::begin(&state.db, Some(ctx.workspace_id), ctx.user_id()).await?)
@@ -556,7 +556,7 @@ async fn invite_in_tx(
     let url = state
         .config
         .app_url("/invitations/accept", &[("token", &token)]);
-    record(
+    record_with_secret(
         tx,
         ctx,
         Change {
@@ -565,9 +565,11 @@ async fn invite_in_tx(
             object_id: Some(id),
             before: None,
             after: Some(json!({ "email": email, "role": role, "expires_at": expires_at })),
-            // The mailer (M2) needs the link; the audit log must never hold it.
-            event_extra: Some(json!({ "url": url, "workspace_name": workspace_name })),
+            event_extra: Some(json!({ "workspace_name": workspace_name })),
         },
+        &state.config.keyring,
+        // Only the mailer may see the link: not the audit log, the event stream or webhooks.
+        &json!({ "url": url }),
     )
     .await?;
     Ok((id, url))
@@ -807,6 +809,7 @@ pub async fn audit_csv(state: &AppState, ctx: &Ctx, max_rows: usize) -> ApiResul
         "actor_user_id",
         "actor_api_key_id",
         "impersonator_id",
+        "actor_rule_id",
         "ip",
         "user_agent",
         "request_id",
@@ -831,6 +834,7 @@ pub async fn audit_csv(state: &AppState, ctx: &Ctx, max_rows: usize) -> ApiResul
                 opt(row.actor_user_id.map(|v| v.to_string())),
                 opt(row.actor_api_key_id.map(|v| v.to_string())),
                 opt(row.impersonator_id.map(|v| v.to_string())),
+                opt(row.actor_rule_id.map(|v| v.to_string())),
                 opt(row.ip.map(|v| v.to_string())),
                 opt(row.user_agent.clone()),
                 opt(row.request_id.clone()),

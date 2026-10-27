@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id AS \"id!\", at AS \"at!\" FROM (\n               SELECT id,\n                      CASE\n                          WHEN custom->>$1 ~ '^\\d{4}-\\d{2}-\\d{2}$'\n                              THEN ((custom->>$1)::date::timestamp AT TIME ZONE $2)\n                          WHEN custom->>$1 ~ '^\\d{4}-\\d{2}-\\d{2}T'\n                              THEN (custom->>$1)::timestamptz\n                      END + make_interval(mins => $3::int) AS at\n               FROM things\n               WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL AND custom ? $1\n           ) t\n           WHERE at > $4 AND at <= $5\n           ORDER BY at, id\n           LIMIT $6",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "things",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "348c61177d475777c6173a67d4a8ca23b08386eabbb4b0accc7a8ba4efd1b891"
+}

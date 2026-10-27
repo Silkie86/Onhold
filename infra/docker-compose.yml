@@ -1,4 +1,5 @@
-# Development stack: Postgres, a one-shot migration, the API and the worker.
+# Development stack: Postgres, a one-shot migration, the API, the worker and
+# Mailpit, which catches every email the worker sends: http://localhost:8025
 #   docker compose -f infra/docker-compose.yml up --build
 # API probes: http://localhost:8080/healthz and /readyz; worker probes on :8081.
 # OpenAPI document: http://localhost:8080/api/openapi.json
@@ -22,6 +23,10 @@ x-app: &app
     ENCRYPTION_KEYS: dev:ZGV2LW9ubHktbm90LWEtc2VjcmV0LWtleS0zMmJ5dGU=
     PUBLIC_BASE_URL: http://localhost:8080
     COOKIE_SECURE: "false"
+    SMTP_URL: smtp://mailpit:1025
+    MAIL_FROM: OnHold <no-reply@onhold.localhost>
+    # Lets webhooks reach other containers and your machine. Never in production.
+    WEBHOOKS_ALLOW_PRIVATE: "true"
 
 services:
   postgres:
@@ -69,11 +74,19 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      mailpit:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8081/readyz"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.20
+    ports:
+      - "8025:8025"
+      - "1025:1025"
 
 volumes:
   pgdata:

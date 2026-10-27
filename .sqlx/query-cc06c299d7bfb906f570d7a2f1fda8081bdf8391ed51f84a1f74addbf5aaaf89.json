@@ -1,0 +1,173 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, channel, to_address, subject, body_html, body_text, template_key, rule_id, job_id,\n                  status, provider_message_id, error, created_at\n           FROM outbound_messages\n           WHERE workspace_id = app_workspace_id() AND ($1::uuid IS NULL OR id < $1)\n           ORDER BY id DESC\n           LIMIT $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "channel",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "channel"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "to_address",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "to_address"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "subject",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "subject"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "body_html",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "body_html"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "body_text",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "body_text"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "template_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "template_key"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "rule_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "rule_id"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "job_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "job_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "provider_message_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "provider_message_id"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "error"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "outbound_messages",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "cc06c299d7bfb906f570d7a2f1fda8081bdf8391ed51f84a1f74addbf5aaaf89"
+}

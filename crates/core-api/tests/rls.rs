@@ -216,3 +216,97 @@ async fn the_lookup_functions_answer_only_exact_keys(pool: PgPool) {
         .await;
     assert!(listed.unwrap_err().to_string().contains("superadmin"));
 }
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
+    let role = sqlx::query(
+        "SELECT rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname = 'onhold_worker'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!role.get::<bool, _>("rolsuper"));
+    assert!(!role.get::<bool, _>("rolbypassrls"));
+    assert!(!role.get::<bool, _>("rolcanlogin"));
+
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("alpha").await;
+    app.post("/api/v1/things")
+        .signed_in(&owner)
+        .json(json!({ "name": "a thing" }))
+        .send()
+        .await
+        .ok();
+    let options = app.owner.connect_options().as_ref().clone();
+    let worker =
+        core_db::worker_pool_options(sqlx::postgres::PgPoolOptions::new().max_connections(1))
+            .connect_with(options)
+            .await
+            .unwrap();
+    let user: String = sqlx::query_scalar("SELECT current_user::text")
+        .fetch_one(&worker)
+        .await
+        .unwrap();
+    assert_eq!(user, "onhold_worker");
+
+    // The queue tables, plus the few columns scheduling and cleanup need.
+    let queue = [
+        "jobs",
+        "job_runs",
+        "outbox",
+        "outbox_pruned",
+        "rules",
+        "workspaces",
+        "idempotency_keys",
+    ];
+    for table in tables(&app.owner).await {
+        let read =
+            sqlx::query_scalar::<_, i64>(AssertSqlSafe(format!("SELECT count(*) FROM {table}")))
+                .fetch_one(&worker)
+                .await;
+        if queue.contains(&table.as_str()) {
+            assert!(read.is_ok(), "{table}: {read:?}");
+        } else {
+            let err = read.expect_err(&table).to_string();
+            assert!(err.contains("permission denied"), "{table}: {err}");
+        }
+    }
+    // Only the columns it needs, even in the tables it can read.
+    for query in [
+        "SELECT name FROM workspaces",
+        "SELECT actions FROM rules",
+        "SELECT body FROM idempotency_keys",
+    ] {
+        let err = sqlx::query(query).fetch_all(&worker).await.unwrap_err();
+        assert!(
+            err.to_string().contains("permission denied"),
+            "{query}: {err}"
+        );
+    }
+    // The outbox is readable (it publishes it) but not writable beyond publishing.
+    let err = sqlx::query("UPDATE outbox SET payload = '{}'")
+        .execute(&worker)
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("permission denied"), "{err}");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn new_tables_get_no_default_grants(pool: PgPool) {
+    // Privileges are granted table by table; nothing is granted on future
+    // tables by default, so a new table is unreachable until a migration says otherwise.
+    let defaults: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM pg_default_acl d JOIN pg_namespace n ON n.oid = d.defaclnamespace WHERE n.nspname = 'public'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(defaults, 0);
+    let public: Vec<String> = sqlx::query_scalar(
+        "SELECT table_name::text FROM information_schema.role_table_grants WHERE grantee = 'PUBLIC' AND table_schema = 'public'",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert!(public.is_empty(), "granted to everyone: {public:?}");
+}

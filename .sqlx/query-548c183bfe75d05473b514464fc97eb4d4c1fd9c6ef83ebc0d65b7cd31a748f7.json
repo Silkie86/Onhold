@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE rules SET name = $2, enabled = $3, dry_run = $4, once_per_object = $5, trigger = $6,\n                  conditions = $7, actions = $8, trigger_kind = $9, trigger_event = $10,\n                  next_run_at = $11, scanned_until = $12, updated_by = $13\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL\n             AND ($14::bigint IS NULL OR version = $14)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Jsonb",
+        "Jsonb",
+        "Jsonb",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "548c183bfe75d05473b514464fc97eb4d4c1fd9c6ef83ebc0d65b7cd31a748f7"
+}

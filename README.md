@@ -10,7 +10,7 @@ curl localhost:8080/healthz   # {"status":"ok"}
 curl localhost:8080/readyz    # {"status":"ready"}
 ```
 
-Then create the first workspace; the command prints the owner's invitation link:
+Then create the first workspace. The owner's invitation is emailed by the worker; in this stack every email lands in Mailpit at `localhost:8025`, and the command also prints the link:
 
 ```sh
 docker compose -f infra/docker-compose.yml run --rm api admin workspace create \
@@ -26,11 +26,13 @@ Needs Rust (the version in `rust-toolchain.toml` installs itself), Postgres 16 a
 
 ```sh
 cp .env.example .env              # then set ENCRYPTION_KEYS: cargo run -p onhold -- admin generate-key
-docker compose -f infra/docker-compose.yml up -d postgres
+docker compose -f infra/docker-compose.yml up -d postgres mailpit
 sqlx migrate run --source crates/core-db/migrations
-cargo run -p onhold -- api        # or: worker, migrate
+cargo run -p onhold -- api        # in another terminal: cargo run -p onhold -- worker
 cargo test --workspace
 ```
+
+The worker publishes events, runs automation rules and sends email and webhooks. Without `SMTP_URL` it writes emails to its log instead of sending them.
 
 After adding or changing a `query!` macro, run `cargo sqlx prepare --workspace` and commit `.sqlx/`; CI fails otherwise.
 

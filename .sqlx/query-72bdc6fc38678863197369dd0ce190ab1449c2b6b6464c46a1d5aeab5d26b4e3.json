@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT automations_paused FROM workspaces WHERE id = app_workspace_id()",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "automations_paused",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "automations_paused"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "72bdc6fc38678863197369dd0ce190ab1449c2b6b6464c46a1d5aeab5d26b4e3"
+}

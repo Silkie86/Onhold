@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO outbound_messages (id, workspace_id, user_id, channel, to_address, subject, body_html,\n                                          body_text, template_key, rule_id, job_id, status,\n                                          provider_message_id, error)\n           VALUES ($1, $2, $3, 'email', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d7cfa5cf3aedaa1fa51155a5802089965da2f5388c8dee04ce8d2d226e024922"
+}

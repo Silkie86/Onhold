@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE webhook_endpoints SET url = $2, description = $3, events = $4, enabled = $5, updated_by = $6\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL\n             AND ($7::bigint IS NULL OR version = $7)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "TextArray",
+        "Bool",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b3cbc749c4983408c5e81585351b2f69ed43292264ac748c34c6cc4ef874f530"
+}

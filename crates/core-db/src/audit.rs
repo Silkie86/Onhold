@@ -23,8 +23,9 @@ pub async fn record(conn: &mut PgConnection, ctx: &Ctx, entry: Entry<'_>) -> Res
     let id = core_domain::ids::new_id();
     sqlx::query!(
         r#"INSERT INTO audit_log (id, workspace_id, actor_user_id, actor_api_key_id, impersonator_id,
-                                  action, resource, object_id, before, after, ip, user_agent, request_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"#,
+                                  action, resource, object_id, before, after, ip, user_agent, request_id,
+                                  actor_rule_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)"#,
         id,
         ctx.workspace_id.0,
         ctx.user_id().map(|u| u.0),
@@ -37,7 +38,8 @@ pub async fn record(conn: &mut PgConnection, ctx: &Ctx, entry: Entry<'_>) -> Res
         entry.after,
         ctx.meta.ip as Option<IpAddr>,
         ctx.meta.user_agent.as_deref(),
-        ctx.meta.request_id.as_deref()
+        ctx.meta.request_id.as_deref(),
+        ctx.rule_id()
     )
     .execute(conn)
     .await?;
@@ -50,6 +52,7 @@ pub struct Row {
     pub actor_user_id: Option<UserId>,
     pub actor_api_key_id: Option<Uuid>,
     pub impersonator_id: Option<UserId>,
+    pub actor_rule_id: Option<Uuid>,
     pub action: String,
     pub resource: String,
     pub object_id: Option<Uuid>,
@@ -66,7 +69,7 @@ pub async fn list(conn: &mut PgConnection, before: Option<Uuid>, limit: i64) -> 
     Ok(sqlx::query_as!(
         Row,
         r#"SELECT id, actor_user_id AS "actor_user_id: UserId", actor_api_key_id,
-                  impersonator_id AS "impersonator_id: UserId", action, resource, object_id,
+                  impersonator_id AS "impersonator_id: UserId", actor_rule_id, action, resource, object_id,
                   before, after, ip AS "ip: IpAddr", user_agent, request_id, at
            FROM audit_log
            WHERE $1::uuid IS NULL OR id < $1

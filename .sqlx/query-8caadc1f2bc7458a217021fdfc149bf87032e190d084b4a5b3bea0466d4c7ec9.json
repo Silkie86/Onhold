@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE pipeline_stages SET name = $2, position = $3, colour = $4, sla_days = $5, outcome = $6,\n                  required_fields = $7, allowed_next = $8, archived_at = NULL\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int4",
+        "Text",
+        "Int4",
+        "Text",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8caadc1f2bc7458a217021fdfc149bf87032e190d084b4a5b3bea0466d4c7ec9"
+}

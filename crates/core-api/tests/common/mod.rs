@@ -67,6 +67,10 @@ impl TestApp {
         self.request(Method::PATCH, path)
     }
 
+    pub fn put(&self, path: &str) -> Req<'_> {
+        self.request(Method::PUT, path)
+    }
+
     pub fn delete(&self, path: &str) -> Req<'_> {
         self.request(Method::DELETE, path)
     }
@@ -141,28 +145,59 @@ impl TestApp {
             .await
     }
 
-    /// The newest invitation link in a workspace, from the outbox (where the
-    /// mailer will pick it up in M2).
-    pub async fn last_invitation_token(&self, ws: WorkspaceId) -> String {
-        let url: String = sqlx::query_scalar(
-            "SELECT payload->>'url' FROM outbox WHERE workspace_id = $1 AND topic = 'invitation.created' ORDER BY id DESC LIMIT 1",
+    /// The link in an event's sealed secret: on the outbox row until the
+    /// worker publishes it, then on the `mail.system` job it queued.
+    async fn event_link(
+        &self,
+        topic: &str,
+        ws: Option<WorkspaceId>,
+        email: Option<&str>,
+    ) -> Option<String> {
+        let row: Option<(Uuid, Option<Vec<u8>>)> = sqlx::query_as(
+            "SELECT o.id, coalesce(o.secret, j.secret) FROM outbox o
+             LEFT JOIN jobs j ON j.kind = 'mail.system' AND j.payload->>'event_id' = o.id::text
+             WHERE o.topic = $1 AND ($2::uuid IS NULL OR o.workspace_id = $2)
+               AND ($3::text IS NULL OR o.payload->>'email' = $3)
+             ORDER BY o.created_at DESC, o.id DESC LIMIT 1",
         )
-        .bind(ws.0)
-        .fetch_one(&self.owner)
+        .bind(topic)
+        .bind(ws.map(|w| w.0))
+        .bind(email)
+        .fetch_optional(&self.owner)
         .await
-        .expect("invitation event");
+        .expect("event");
+        let (id, sealed) = row?;
+        let secret =
+            core_api::services::open_event_secret(&self.state.config.keyring, id, &sealed?)
+                .expect("secret opens");
+        secret.get("url").and_then(Value::as_str).map(str::to_owned)
+    }
+
+    /// The newest invitation link in a workspace (what the email carries).
+    pub async fn last_invitation_token(&self, ws: WorkspaceId) -> String {
+        let url = self
+            .event_link("invitation.created", Some(ws), None)
+            .await
+            .expect("invitation event");
         token_from_url(&url)
     }
 
     pub async fn last_magic_link_token(&self, email: &str) -> Option<String> {
-        let url: Option<String> = sqlx::query_scalar(
-            "SELECT payload->>'url' FROM outbox WHERE topic = 'auth.magic_link_requested' AND payload->>'email' = $1 ORDER BY id DESC LIMIT 1",
+        self.event_link("auth.magic_link_requested", None, Some(email))
+            .await
+            .map(|u| token_from_url(&u))
+    }
+
+    /// Publishes every pending outbox event as the worker would (stream
+    /// position, secret dropped), without queueing the jobs it would.
+    pub async fn publish_all(&self) {
+        sqlx::query(
+            "UPDATE outbox SET seq = nextval('outbox_seq'), processed_at = now(), secret = NULL
+             WHERE id IN (SELECT id FROM outbox WHERE processed_at IS NULL ORDER BY created_at, id)",
         )
-        .bind(email)
-        .fetch_optional(&self.owner)
+        .execute(&self.owner)
         .await
-        .expect("query");
-        url.map(|u| token_from_url(&u))
+        .expect("publish");
     }
 
     pub async fn user_id(&self, email: &str) -> UserId {

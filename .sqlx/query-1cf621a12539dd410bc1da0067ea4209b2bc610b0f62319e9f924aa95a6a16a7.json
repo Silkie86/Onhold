@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE jobs SET\n               status = CASE WHEN $3::timestamptz IS NULL THEN 'dead'::job_status ELSE 'queued' END,\n               run_at = coalesce($3, run_at),\n               locked_until = NULL,\n               last_error = $2,\n               finished_at = CASE WHEN $3::timestamptz IS NULL THEN now() END\n           WHERE id = $1 AND status = 'running'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1cf621a12539dd410bc1da0067ea4209b2bc610b0f62319e9f924aa95a6a16a7"
+}

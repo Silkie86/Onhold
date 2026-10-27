@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
 use core_domain::workspace::{Perspective, WorkspaceStatus};
@@ -18,10 +18,10 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;
 
-use super::{IdempotencyHeader, IfMatchHeader, WorkspaceHeader};
+use super::{IdempotencyHeader, IfMatchHeader, WorkspaceHeader, with_etag};
 use crate::AppState;
 use crate::error::{ApiError, ApiResult, ErrorBody};
-use crate::extract::{IfMatch, WsCtx, etag};
+use crate::extract::{IfMatch, WsCtx};
 use crate::services::tenancy as svc;
 
 pub fn router() -> OpenApiRouter<AppState> {
@@ -37,14 +37,6 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(revoke_api_key))
         .routes(routes!(audit))
         .routes(routes!(audit_export))
-}
-
-fn with_etag<T: Serialize>(version: i64, body: T) -> Response {
-    let mut headers = HeaderMap::new();
-    if let Ok(v) = HeaderValue::from_str(&etag(version)) {
-        headers.insert(header::ETAG, v);
-    }
-    (headers, Json(body)).into_response()
 }
 
 // Workspace ---------------------------------------------------------------------------
@@ -470,6 +462,8 @@ pub struct AuditEntryView {
     pub actor_api_key_id: Option<Uuid>,
     /// Set when an OnHold operator made the change while supporting this workspace.
     pub impersonator_id: Option<UserId>,
+    /// Set when an automation rule made the change.
+    pub actor_rule_id: Option<Uuid>,
     #[schema(value_type = Option<Object>)]
     pub before: Option<Value>,
     #[schema(value_type = Option<Object>)]
@@ -511,6 +505,7 @@ async fn audit(
                 actor_user_id: r.actor_user_id,
                 actor_api_key_id: r.actor_api_key_id,
                 impersonator_id: r.impersonator_id,
+                actor_rule_id: r.actor_rule_id,
                 before: r.before,
                 after: r.after,
                 ip: r.ip.map(|ip| ip.to_string()),

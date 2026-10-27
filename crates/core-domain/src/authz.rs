@@ -81,8 +81,23 @@ impl Role {
                 .collect(),
             // Finance sees the workspace's billing details; the finance
             // module's own permissions arrive with it.
-            Role::Finance => [P::WorkspaceRead, P::MemberRead, P::BillingRead].into(),
-            Role::Agent | Role::Viewer => [P::WorkspaceRead, P::MemberRead].into(),
+            Role::Finance => [
+                P::WorkspaceRead,
+                P::MemberRead,
+                P::BillingRead,
+                P::ThingRead,
+                P::EventRead,
+            ]
+            .into(),
+            Role::Agent => [
+                P::WorkspaceRead,
+                P::MemberRead,
+                P::ThingRead,
+                P::ThingWrite,
+                P::EventRead,
+            ]
+            .into(),
+            Role::Viewer => [P::WorkspaceRead, P::MemberRead, P::ThingRead, P::EventRead].into(),
             Role::Talent => [P::WorkspaceRead].into(),
         }
     }
@@ -138,6 +153,16 @@ permissions! {
     AuditRead => "audit:read",
     BillingRead => "billing:read",
     BillingWrite => "billing:write",
+    // Workspace configuration: custom fields, pipelines, templates, rules.
+    ConfigWrite => "config:write",
+    // The placeholder entity that exercises the engines until real modules land.
+    ThingRead => "thing:read",
+    ThingWrite => "thing:write",
+    EventRead => "event:read",
+    WebhookRead => "webhook:read",
+    WebhookWrite => "webhook:write",
+    JobRead => "job:read",
+    JobWrite => "job:write",
 }
 
 impl std::fmt::Display for Permission {
@@ -164,6 +189,10 @@ pub enum Actor {
         key_id: Uuid,
         created_by: Option<UserId>,
     },
+    /// An automation rule acting on its own. `depth` counts how many rule
+    /// runs led here, so a rule whose action triggers another rule cannot
+    /// loop forever.
+    Rule { rule_id: Uuid, depth: u8 },
     /// The operator CLI or another trusted system process.
     System,
 }
@@ -208,21 +237,36 @@ impl Ctx {
     pub fn user_id(&self) -> Option<UserId> {
         match self.actor {
             Actor::User { user_id, .. } => Some(user_id),
-            Actor::ApiKey { .. } | Actor::System => None,
+            Actor::ApiKey { .. } | Actor::Rule { .. } | Actor::System => None,
         }
     }
 
     pub fn impersonator(&self) -> Option<UserId> {
         match self.actor {
             Actor::User { impersonator, .. } => impersonator,
-            Actor::ApiKey { .. } | Actor::System => None,
+            Actor::ApiKey { .. } | Actor::Rule { .. } | Actor::System => None,
         }
     }
 
     pub fn api_key_id(&self) -> Option<Uuid> {
         match self.actor {
             Actor::ApiKey { key_id, .. } => Some(key_id),
-            Actor::User { .. } | Actor::System => None,
+            Actor::User { .. } | Actor::Rule { .. } | Actor::System => None,
+        }
+    }
+
+    pub fn rule_id(&self) -> Option<Uuid> {
+        match self.actor {
+            Actor::Rule { rule_id, .. } => Some(rule_id),
+            Actor::User { .. } | Actor::ApiKey { .. } | Actor::System => None,
+        }
+    }
+
+    /// How many rule runs led to this operation (0 for people and keys).
+    pub fn rule_depth(&self) -> u8 {
+        match self.actor {
+            Actor::Rule { depth, .. } => depth,
+            Actor::User { .. } | Actor::ApiKey { .. } | Actor::System => 0,
         }
     }
 

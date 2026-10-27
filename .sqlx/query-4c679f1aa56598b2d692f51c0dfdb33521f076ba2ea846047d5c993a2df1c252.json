@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE workspaces SET automations_paused = $1 WHERE id = app_workspace_id()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4c679f1aa56598b2d692f51c0dfdb33521f076ba2ea846047d5c993a2df1c252"
+}

@@ -7,6 +7,26 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
+chrono.workspace = true
+chrono-tz.workspace = true
+core-domain.workspace = true
+croner.workspace = true
+data-encoding.workspace = true
+getrandom.workspace = true
+hmac.workspace = true
+html2text.workspace = true
+minijinja.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+url.workspace = true
+utoipa.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
 
 [lints]
 workspace = true

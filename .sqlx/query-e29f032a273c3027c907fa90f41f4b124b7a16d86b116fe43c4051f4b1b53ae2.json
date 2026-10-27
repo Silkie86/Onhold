@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE things SET name = $2, pipeline_id = $3, stage_id = $4, stage_entered_at = $5,\n                  due_at = $6, custom = $7, updated_by = $8\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e29f032a273c3027c907fa90f41f4b124b7a16d86b116fe43c4051f4b1b53ae2"
+}

@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT r.id, r.workspace_id AS \"workspace_id: WorkspaceId\", r.trigger,\n                  r.next_run_at AS \"next_run_at!\", w.default_timezone\n           FROM rules r JOIN workspaces w ON w.id = r.workspace_id\n           WHERE r.deleted_at IS NULL AND r.enabled AND r.next_run_at <= $1\n             AND w.status IN ('trial', 'active') AND NOT w.automations_paused\n           ORDER BY r.next_run_at\n           LIMIT $2\n           FOR UPDATE OF r SKIP LOCKED",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "rules",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "workspace_id: WorkspaceId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "rules",
+            "name": "workspace_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "trigger",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "rules",
+            "name": "trigger"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "next_run_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "rules",
+            "name": "next_run_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "default_timezone",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "default_timezone"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "73cf29af7c4e72c699119db3d3093fb2395a3c6c50d4ccface4aa99f20a14ccc"
+}

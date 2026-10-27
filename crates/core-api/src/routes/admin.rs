@@ -4,6 +4,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
+use core_db::jobs::JobStatus;
 use core_domain::WorkspaceId;
 use core_domain::workspace::{Perspective, WorkspaceStatus};
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,7 @@ pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(list_workspaces, create_workspace))
         .routes(routes!(start_impersonation, end_impersonation))
+        .routes(routes!(job_summary))
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -83,7 +85,7 @@ pub struct CreatedWorkspaceResponse {
     pub workspace_id: WorkspaceId,
     pub slug: String,
     pub owner_invitation_id: Uuid,
-    /// The owner's join link. Until email delivery lands (M2), pass it on yourself.
+    /// The owner's join link. It is also emailed; it is shown here in case it needs passing on.
     pub owner_invitation_url: String,
 }
 
@@ -159,4 +161,38 @@ async fn end_impersonation(
 ) -> ApiResult<StatusCode> {
     svc::end_impersonation(&state, &session).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct JobSummaryRow {
+    /// Absent for platform jobs (such as sign-in emails).
+    pub workspace_id: Option<WorkspaceId>,
+    pub workspace_slug: Option<String>,
+    pub kind: String,
+    pub status: JobStatus,
+    pub jobs: i64,
+    /// When the oldest of these was created.
+    pub oldest: Option<DateTime<Utc>>,
+}
+
+/// Unfinished and dead jobs across the platform, by workspace, kind and status.
+#[utoipa::path(get, path = "/admin/jobs", tag = "admin",
+    responses((status = 200, body = Vec<JobSummaryRow>), (status = 403, body = ErrorBody)), security(("session" = [])))]
+async fn job_summary(
+    State(state): State<AppState>,
+    CurrentSession(session): CurrentSession,
+) -> ApiResult<Json<Vec<JobSummaryRow>>> {
+    let rows = svc::job_summary(&state, &session).await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| JobSummaryRow {
+                workspace_id: r.workspace_id,
+                workspace_slug: r.workspace_slug,
+                kind: r.kind,
+                status: r.status,
+                jobs: r.jobs,
+                oldest: r.oldest,
+            })
+            .collect(),
+    ))
 }

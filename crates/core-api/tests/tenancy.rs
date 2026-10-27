@@ -449,7 +449,27 @@ async fn read_only_roles_cannot_change_anything(pool: PgPool) {
         .send()
         .await
         .ok();
-    assert_eq!(roles.body["mine"], json!(["workspace:read", "member:read"]));
+    assert_eq!(
+        roles.body["mine"],
+        json!(["workspace:read", "member:read", "thing:read", "event:read"])
+    );
+    app.post("/api/v1/things")
+        .signed_in(&viewer)
+        .json(json!({ "name": "Mine" }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "permission_denied");
+    app.put("/api/v1/automations")
+        .signed_in(&viewer)
+        .json(json!({ "paused": true }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "permission_denied");
+    app.get("/api/v1/jobs")
+        .signed_in(&viewer)
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "permission_denied");
 }
 
 // Workspace settings --------------------------------------------------------------------

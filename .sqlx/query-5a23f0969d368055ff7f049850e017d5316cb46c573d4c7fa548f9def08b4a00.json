@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT attempt, started_at, finished_at, succeeded, error, log\n           FROM job_runs WHERE workspace_id = app_workspace_id() AND job_id = $1\n           ORDER BY finished_at, attempt",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "attempt",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "job_runs",
+            "name": "attempt"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "started_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "job_runs",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "finished_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "job_runs",
+            "name": "finished_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "succeeded",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "job_runs",
+            "name": "succeeded"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_runs",
+            "name": "error"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "log",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "job_runs",
+            "name": "log"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "5a23f0969d368055ff7f049850e017d5316cb46c573d4c7fa548f9def08b4a00"
+}

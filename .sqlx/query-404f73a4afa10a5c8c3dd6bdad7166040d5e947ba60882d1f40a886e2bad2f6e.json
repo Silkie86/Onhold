@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM outbox WHERE seq <= $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "404f73a4afa10a5c8c3dd6bdad7166040d5e947ba60882d1f40a886e2bad2f6e"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE pipelines SET is_default = false\n           WHERE workspace_id = app_workspace_id() AND entity = $1 AND is_default AND id <> $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9a50fccfe04af5d4e732216b36f8e5013fa71a8d350b8a98a9caddffdcd349e4"
+}

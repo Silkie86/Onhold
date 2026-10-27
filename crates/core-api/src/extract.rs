@@ -283,7 +283,7 @@ impl FromRequestParts<AppState> for WsCtx {
             Actor::ApiKey { key_id, .. } => {
                 span.record("api_key_id", tracing::field::display(key_id))
             }
-            Actor::System => &span,
+            Actor::Rule { .. } | Actor::System => &span,
         };
         Ok(WsCtx(ctx))
     }

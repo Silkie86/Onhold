@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO outbox_pruned (singleton, through_seq) VALUES (true, $1)\n           ON CONFLICT (singleton) DO UPDATE SET through_seq = greatest(outbox_pruned.through_seq, $1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e0bd1ac6a860322016184e9ac31ab4221cf9f01717bab8997c95bf598180c76e"
+}

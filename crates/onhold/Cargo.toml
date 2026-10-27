@@ -18,6 +18,7 @@ dotenvy.workspace = true
 core-api.workspace = true
 core-db.workspace = true
 core-domain.workspace = true
+core-integrations.workspace = true
 core-worker.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

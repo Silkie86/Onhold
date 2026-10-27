@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT min(seq) AS \"min\", max(seq) AS \"max\" FROM outbox\n           WHERE workspace_id = app_workspace_id() AND seq IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "min",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "max",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "d1ed1434ced6dbdc2510f78d37bbc1c04e53c58f41fbf0fbbc8523202352fa66"
+}

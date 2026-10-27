@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, actor_user_id AS \"actor_user_id: UserId\", actor_api_key_id,\n                  impersonator_id AS \"impersonator_id: UserId\", action, resource, object_id,\n                  before, after, ip AS \"ip: IpAddr\", user_agent, request_id, at\n           FROM audit_log\n           WHERE $1::uuid IS NULL OR id < $1\n           ORDER BY id DESC\n           LIMIT $2",
+  "query": "SELECT id, actor_user_id AS \"actor_user_id: UserId\", actor_api_key_id,\n                  impersonator_id AS \"impersonator_id: UserId\", actor_rule_id, action, resource, object_id,\n                  before, after, ip AS \"ip: IpAddr\", user_agent, request_id, at\n           FROM audit_log\n           WHERE $1::uuid IS NULL OR id < $1\n           ORDER BY id DESC\n           LIMIT $2",
   "describe": {
     "columns": [
       {
@@ -49,6 +49,17 @@
       },
       {
         "ordinal": 4,
+        "name": "actor_rule_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "actor_rule_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
         "name": "action",
         "type_info": "Text",
         "origin": {
@@ -59,7 +70,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "resource",
         "type_info": "Text",
         "origin": {
@@ -70,7 +81,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "object_id",
         "type_info": "Uuid",
         "origin": {
@@ -81,7 +92,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "before",
         "type_info": "Jsonb",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "after",
         "type_info": "Jsonb",
         "origin": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "ip: IpAddr",
         "type_info": "Inet",
         "origin": {
@@ -114,7 +125,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "user_agent",
         "type_info": "Text",
         "origin": {
@@ -125,7 +136,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "request_id",
         "type_info": "Text",
         "origin": {
@@ -136,7 +147,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "at",
         "type_info": "Timestamptz",
         "origin": {
@@ -158,6 +169,7 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       true,
@@ -169,5 +181,5 @@
       false
     ]
   },
-  "hash": "6e4d52d17e52d03f5aff58a145448a118373bf1c730a59ab97c4f9da34036a31"
+  "hash": "7ab06973793fbfa1553ded9775d1cd567916b6b1b62c5c5ad0a460f2efd1abe1"
 }

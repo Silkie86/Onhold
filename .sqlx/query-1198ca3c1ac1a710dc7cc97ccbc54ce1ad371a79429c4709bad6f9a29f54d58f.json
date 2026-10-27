@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE jobs SET status = 'queued', run_at = now(), attempts = 0, finished_at = NULL\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND status IN ('dead', 'cancelled')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1198ca3c1ac1a710dc7cc97ccbc54ce1ad371a79429c4709bad6f9a29f54d58f"
+}

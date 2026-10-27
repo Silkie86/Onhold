@@ -8,7 +8,9 @@
 pub mod authz;
 pub mod crypto;
 pub mod ids;
+pub mod money;
 pub mod workspace;
 
 pub use authz::{Actor, AuthzError, Ctx, Permission, Role};
 pub use ids::{UserId, WorkspaceId};
+pub use money::Money;
