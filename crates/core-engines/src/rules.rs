@@ -278,8 +278,11 @@ pub fn parse(
             }
             Action::CallWebhook { .. } => {}
             Action::GenerateDocument { template } => {
-                if !crate::fields::is_valid_key(template) {
-                    return Err(Issue::new(at("template"), "name a document template key"));
+                if template.len() > 100 || !template.split('.').all(crate::fields::is_valid_key) {
+                    return Err(Issue::new(
+                        at("template"),
+                        "name a document template key, such as `document.contract`",
+                    ));
                 }
             }
             Action::CreateInvoice { purpose, .. } => {

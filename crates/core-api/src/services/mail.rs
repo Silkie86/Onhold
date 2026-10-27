@@ -530,9 +530,11 @@ fn redact(text: &str, secrets: &[String]) -> String {
         .iter()
         .filter(|s| !s.is_empty())
         .fold(text.to_owned(), |acc, s| {
-            // The HTML copy escapes `&` in links.
+            // The HTML copy escapes `&` in links, and templates escape `/` too.
+            let amp = s.replace('&', "&amp;");
             acc.replace(s.as_str(), REDACTED)
-                .replace(&s.replace('&', "&amp;"), REDACTED)
+                .replace(&amp, REDACTED)
+                .replace(&amp.replace('/', "&#x2f;"), REDACTED)
         })
 }
 
@@ -596,6 +598,8 @@ mod tests {
         let out = redact(&html, &[url]);
         assert!(!out.contains("abc"), "{out}");
         assert_eq!(out.matches(REDACTED).count(), 2);
+        let escaped = "<a href=\"https:&#x2f;&#x2f;app.test&#x2f;accept?token=abc&amp;x=1\">go</a>";
+        assert!(!redact(escaped, &["https://app.test/accept?token=abc&x=1".to_owned()]).contains("abc"));
     }
 
     #[test]
