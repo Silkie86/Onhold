@@ -109,7 +109,8 @@ fn proxy_headers(value: &str) -> Result<ProxyHeaders, String> {
 #[derive(Debug, Args)]
 pub struct WorkerArgs {
     /// Outgoing mail server, e.g. `smtp://user:pass@smtp.example.com:587?tls=required`
-    /// or `smtp://localhost:1025` for Mailpit. Unset: emails are only logged.
+    /// or `smtp://localhost:1025` for Mailpit. Unset: emails are only logged,
+    /// links removed, and only allowed while `PUBLIC_BASE_URL` is plain HTTP.
     #[arg(long, env = "SMTP_URL", hide_env_values = true)]
     smtp_url: Option<String>,
 
@@ -123,10 +124,15 @@ pub struct WorkerArgs {
 }
 
 impl WorkerArgs {
-    pub fn mailer(&self) -> anyhow::Result<Arc<dyn Mailer>> {
+    /// The mail server. A deployment on https must have one: without it,
+    /// sign-in and invitation emails would never arrive.
+    pub fn mailer(&self, public_base_url: &Url) -> anyhow::Result<Arc<dyn Mailer>> {
         Ok(match &self.smtp_url {
             Some(url) => Arc::new(
                 SmtpMailer::from_url(url, &self.mail_from).map_err(|e| anyhow::anyhow!("{e}"))?,
+            ),
+            None if public_base_url.scheme() == "https" => anyhow::bail!(
+                "SMTP_URL is not set while PUBLIC_BASE_URL is https; set the mail server to send sign-in and invitation emails"
             ),
             None => {
                 tracing::warn!("SMTP_URL is not set; emails will be written to the log, not sent");
@@ -271,6 +277,30 @@ mod tests {
             ProxyHeaders::Cloudflare
         );
         assert!(Cli::try_parse_from(["onhold", KEY, "--trust-proxy-headers=yes"]).is_err());
+    }
+
+    // The SMTP transport's connection pool needs a Tokio runtime, even to drop.
+    #[tokio::test]
+    async fn a_deployment_on_https_needs_a_mail_server() {
+        #[derive(Parser)]
+        struct WorkerCli {
+            #[command(flatten)]
+            worker: WorkerArgs,
+        }
+        let worker = |extra: &[&str]| {
+            let mut argv = vec!["onhold"];
+            argv.extend_from_slice(extra);
+            WorkerCli::try_parse_from(argv).expect("parses").worker
+        };
+        let https = Url::parse("https://app.example.com").expect("url");
+        let http = Url::parse("http://localhost:5173").expect("url");
+        assert!(worker(&[]).mailer(&https).is_err());
+        assert!(worker(&[]).mailer(&http).is_ok());
+        assert!(
+            worker(&["--smtp-url=smtp://localhost:1025"])
+                .mailer(&https)
+                .is_ok()
+        );
     }
 
     #[test]
