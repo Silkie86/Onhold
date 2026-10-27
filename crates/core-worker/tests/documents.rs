@@ -328,7 +328,7 @@ async fn documents_are_made_signed_sealed_and_packed(pool: PgPool) {
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(raw)).unwrap();
     assert_eq!(zip.len(), 2);
     let mut names: Vec<String> = (0..zip.len())
-        .map(|i| zip.by_index(i).unwrap().name().to_owned())
+        .map(|i| zip.by_index(i).unwrap().name().unwrap().into_owned())
         .collect();
     names.sort();
     assert_eq!(
