@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE custom_field_defs SET archived_at = now(), updated_by = $2\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND archived_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2b8140f3e4552192b661be0432c65326f6834a5ada40a810755119f467a07f8c"
+}

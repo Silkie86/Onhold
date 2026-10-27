@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT through_seq FROM outbox_pruned WHERE singleton",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "through_seq",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "outbox_pruned",
+            "name": "through_seq"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e004fb03bb5d6716e2b2e12acbf89d161b3d2a71ba08b452ed615ddaf9d07705"
+}

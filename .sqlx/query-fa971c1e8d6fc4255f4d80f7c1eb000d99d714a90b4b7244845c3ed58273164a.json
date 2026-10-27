@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT default_timezone FROM workspaces WHERE id = app_workspace_id()",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "default_timezone",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "default_timezone"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fa971c1e8d6fc4255f4d80f7c1eb000d99d714a90b4b7244845c3ed58273164a"
+}

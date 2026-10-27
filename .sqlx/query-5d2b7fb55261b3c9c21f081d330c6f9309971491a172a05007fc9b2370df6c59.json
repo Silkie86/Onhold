@@ -1,0 +1,150 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT d.id, d.event_id, o.topic AS \"topic?\", d.job_id, d.attempt, d.succeeded, d.status_code,\n                  d.error, d.response_excerpt, d.duration_ms, d.created_at\n           FROM webhook_deliveries d\n           LEFT JOIN outbox o ON o.id = d.event_id AND o.workspace_id = d.workspace_id AND o.seq IS NOT NULL\n           WHERE d.workspace_id = app_workspace_id() AND d.endpoint_id = $1\n             AND ($2::uuid IS NULL OR d.id < $2)\n           ORDER BY d.id DESC\n           LIMIT $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "webhook_deliveries",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "event_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "webhook_deliveries",
+            "name": "event_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "topic?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "outbox",
+            "name": "topic"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "job_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "webhook_deliveries",
+            "name": "job_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "attempt",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "webhook_deliveries",
+            "name": "attempt"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "succeeded",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "webhook_deliveries",
+            "name": "succeeded"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "status_code",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "webhook_deliveries",
+            "name": "status_code"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "webhook_deliveries",
+            "name": "error"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "response_excerpt",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "webhook_deliveries",
+            "name": "response_excerpt"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "duration_ms",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "webhook_deliveries",
+            "name": "duration_ms"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "webhook_deliveries",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "5d2b7fb55261b3c9c21f081d330c6f9309971491a172a05007fc9b2370df6c59"
+}

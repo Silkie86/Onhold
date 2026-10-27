@@ -60,3 +60,14 @@ pub async fn release(pool: &PgPool, scope: &[u8], key: &str) -> Result<()> {
         .await?;
     Ok(())
 }
+
+/// Deletes stored responses older than `before` (the worker's cleanup).
+pub async fn delete_before(
+    conn: &mut sqlx::PgConnection,
+    before: chrono::DateTime<chrono::Utc>,
+) -> Result<u64> {
+    let done = sqlx::query!("DELETE FROM idempotency_keys WHERE created_at < $1", before)
+        .execute(conn)
+        .await?;
+    Ok(done.rows_affected())
+}

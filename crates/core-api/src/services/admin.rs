@@ -44,6 +44,18 @@ pub async fn list_workspaces(
     Ok(list)
 }
 
+/// Queue depth per workspace, kind and status, for spotting stuck work.
+pub async fn job_summary(
+    state: &AppState,
+    session: &Session,
+) -> ApiResult<Vec<core_db::jobs::Summary>> {
+    require_superadmin(state, session).await?;
+    let mut tx = core_db::begin(&state.db, None, Some(session.user_id)).await?;
+    let rows = core_db::jobs::admin_summary(&mut tx).await?;
+    tx.commit().await?;
+    Ok(rows)
+}
+
 fn operator_ctx(session: &Session, workspace_id: WorkspaceId) -> Ctx {
     Ctx {
         workspace_id,

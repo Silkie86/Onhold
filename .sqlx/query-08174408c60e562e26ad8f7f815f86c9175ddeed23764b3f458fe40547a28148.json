@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT secret_enc FROM webhook_endpoints WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "secret_enc",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "webhook_endpoints",
+            "name": "secret_enc"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "08174408c60e562e26ad8f7f815f86c9175ddeed23764b3f458fe40547a28148"
+}

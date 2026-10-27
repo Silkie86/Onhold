@@ -1,20 +1,31 @@
 //! Database access: pools, migrations, the tenant transaction that row-level
 //! security keys on, and the SQL for every table.
 //!
-//! Two pools exist. The *owner* pool runs migrations and nothing else in the
-//! API. The *app* pool switches every connection to the `onhold_app` role,
-//! which row-level security always applies to; all request work uses it,
-//! through [`begin`], which sets the workspace and user for one transaction.
+//! Three pools exist. The *owner* pool runs migrations and nothing else in
+//! the API. The *app* pool switches every connection to the `onhold_app`
+//! role, which row-level security always applies to; all request work uses
+//! it, through [`begin`], which sets the workspace and user for one
+//! transaction. The *worker* pool runs as `onhold_worker`, which sees the
+//! queue tables of every workspace and nothing else; a job that touches a
+//! workspace's data does so through the app pool, like a request.
 
 pub mod api_keys;
 pub mod audit;
 pub mod auth;
+pub mod fields;
 pub mod idempotency;
 pub mod invitations;
+pub mod jobs;
 pub mod members;
+pub mod messages;
 pub mod outbox;
+pub mod pipelines;
+pub mod rules;
 pub mod sessions;
+pub mod templates;
+pub mod things;
 pub mod users;
+pub mod webhooks;
 pub mod workspaces;
 
 use std::time::Duration;
@@ -84,6 +95,21 @@ pub fn app_pool_options(options: PgPoolOptions) -> PgPoolOptions {
     options.after_connect(|conn, _meta| {
         Box::pin(async move {
             conn.execute("SET ROLE onhold_app").await?;
+            Ok(())
+        })
+    })
+}
+
+/// The pool for the worker's queue work. Every connection runs as `onhold_worker`.
+pub fn connect_worker(config: &PoolConfig) -> Result<PgPool> {
+    Ok(worker_pool_options(options(config)).connect_lazy(&config.url)?)
+}
+
+/// Adds the worker role switch to any pool options; used by [`connect_worker`] and by tests.
+pub fn worker_pool_options(options: PgPoolOptions) -> PgPoolOptions {
+    options.after_connect(|conn, _meta| {
+        Box::pin(async move {
+            conn.execute("SET ROLE onhold_worker").await?;
             Ok(())
         })
     })

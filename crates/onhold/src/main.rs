@@ -55,6 +55,8 @@ enum Command {
     Worker {
         #[arg(long, env = "WORKER_HEALTH_ADDR", default_value = "0.0.0.0:8081")]
         health_bind: SocketAddr,
+        #[command(flatten)]
+        worker: config::WorkerArgs,
     },
     /// Apply pending database migrations and exit.
     Migrate,
@@ -169,12 +171,25 @@ async fn main() -> anyhow::Result<()> {
                 core_api::AppState::new(core_db::connect_app(&pool_config)?, cli.api.build(true)?)?;
             core_api::serve(bind, core_api::router(state), shutdown).await?;
         }
-        Command::Worker { health_bind } => {
+        Command::Worker {
+            health_bind,
+            worker,
+        } => {
+            let config = cli.api.build(true)?;
+            let webhooks =
+                core_integrations::http::WebhookClient::new(config.webhooks_allow_private)
+                    .map_err(|e| anyhow::anyhow!("webhook client: {e}"))?;
             let db = core_db::connect_app(&pool_config)?;
-            let probes = core_api::health::standalone(db.clone());
+            let worker = core_worker::Worker {
+                app: core_api::AppState::new(db.clone(), config)?,
+                queue: core_db::connect_worker(&pool_config)?,
+                mailer: worker.mailer()?,
+                webhooks,
+                settings: worker.settings()?,
+            };
+            let probes = core_api::health::standalone(db);
             let probes = core_api::serve(health_bind, probes, shutdown.clone());
-            let worker = core_worker::run(db, core_worker::HEARTBEAT_INTERVAL, shutdown.clone());
-            let (probes, ()) = tokio::join!(probes, worker);
+            let (probes, ()) = tokio::join!(probes, core_worker::run(worker, shutdown.clone()));
             probes?;
         }
         Command::Migrate => core_db::migrate(&core_db::connect_owner(&pool_config)?).await?,

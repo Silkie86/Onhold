@@ -343,11 +343,16 @@ pub async fn request_magic_link(state: &AppState, email: &str) -> ApiResult<()> 
     let expires_at = Utc::now() + to_chrono(state.config.magic_link_ttl);
     core_db::users::insert_magic_link(&mut tx, user.id, &hash_token(&token), expires_at).await?;
     let url = state.config.app_url("/auth/magic", &[("token", &token)]);
-    core_db::outbox::emit(
+    let event_id = core_domain::ids::new_id();
+    let sealed =
+        crate::services::seal_event_secret(&state.config.keyring, event_id, &json!({ "url": url }));
+    core_db::outbox::emit_with_secret(
         &mut tx,
+        event_id,
         None,
         "auth.magic_link_requested",
-        &json!({ "user_id": user.id, "email": user.email, "name": user.name, "url": url, "expires_at": expires_at }),
+        &json!({ "user_id": user.id, "email": user.email, "name": user.name, "expires_at": expires_at }),
+        Some(&sealed),
     )
     .await?;
     tx.commit().await?;

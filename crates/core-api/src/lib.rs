@@ -49,6 +49,8 @@ pub struct AppState {
     pub db: PgPool,
     pub config: Arc<Config>,
     pub oidc: oidc::SharedRegistry,
+    /// Live event notifications for server-sent event streams.
+    pub events: Arc<services::events::Hub>,
 }
 
 impl AppState {
@@ -58,6 +60,7 @@ impl AppState {
             db,
             config: Arc::new(config),
             oidc,
+            events: Arc::default(),
         })
     }
 }
@@ -80,6 +83,15 @@ impl AppState {
         (name = "invitations", description = "Inviting people"),
         (name = "api-keys", description = "Keys for scripts and integrations"),
         (name = "audit", description = "The audit log"),
+        (name = "custom-fields", description = "Extra fields on records"),
+        (name = "pipelines", description = "Stages records move through"),
+        (name = "templates", description = "Message templates and previews"),
+        (name = "rules", description = "Automation rules"),
+        (name = "things", description = "The test entity the engines are built against"),
+        (name = "events", description = "What changed, in order: the sync feed"),
+        (name = "webhooks", description = "Events pushed to your URLs"),
+        (name = "jobs", description = "Background work"),
+        (name = "messages", description = "Messages sent"),
         (name = "admin", description = "Operator tools (superadmin)"),
         (name = "health", description = "Probes"),
     )
@@ -113,6 +125,11 @@ fn api_router() -> OpenApiRouter<AppState> {
         OpenApiRouter::new()
             .merge(routes::auth::router())
             .merge(routes::workspace::router())
+            .merge(routes::config::router())
+            .merge(routes::things::router())
+            .merge(routes::events::router())
+            .merge(routes::webhooks::router())
+            .merge(routes::jobs::router())
             .merge(routes::admin::router()),
     )
 }

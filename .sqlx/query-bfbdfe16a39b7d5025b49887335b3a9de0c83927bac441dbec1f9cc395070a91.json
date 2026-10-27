@@ -1,0 +1,148 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, pipeline_id, key, name, position, colour, sla_days, outcome, required_fields,\n                  allowed_next, archived_at\n           FROM pipeline_stages\n           WHERE workspace_id = app_workspace_id() AND pipeline_id = ANY($1)\n           ORDER BY pipeline_id, archived_at NULLS FIRST, position",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pipeline_stages",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "pipeline_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pipeline_stages",
+            "name": "pipeline_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pipeline_stages",
+            "name": "key"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pipeline_stages",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "position",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "pipeline_stages",
+            "name": "position"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "colour",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pipeline_stages",
+            "name": "colour"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "sla_days",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "pipeline_stages",
+            "name": "sla_days"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "outcome",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pipeline_stages",
+            "name": "outcome"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "required_fields",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "pipeline_stages",
+            "name": "required_fields"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "allowed_next",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "pipeline_stages",
+            "name": "allowed_next"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "archived_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "pipeline_stages",
+            "name": "archived_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "bfbdfe16a39b7d5025b49887335b3a9de0c83927bac441dbec1f9cc395070a91"
+}

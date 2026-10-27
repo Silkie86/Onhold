@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO custom_field_defs (id, workspace_id, entity, key, label, field_type, required,\n                                          default_value, validation, visibility, searchable, field_group,\n                                          position, help_text, created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Jsonb",
+        "Jsonb",
+        "Text",
+        "Bool",
+        "Text",
+        "Int4",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "023a4c483e98abc68a3d07a0000dd65ced7a8939f09fb4e4bffd49c1309bb3f5"
+}

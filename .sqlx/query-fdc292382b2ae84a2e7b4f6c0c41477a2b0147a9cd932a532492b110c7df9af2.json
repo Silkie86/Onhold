@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE webhook_endpoints SET deleted_at = now(), enabled = false, updated_by = $2\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fdc292382b2ae84a2e7b4f6c0c41477a2b0147a9cd932a532492b110c7df9af2"
+}

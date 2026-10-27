@@ -29,6 +29,9 @@ pub struct Config {
     pub max_mfa_failures: i32,
     pub keyring: Keyring,
     pub oidc: Vec<OidcProvider>,
+    /// Let webhooks reach private and local addresses. Development and
+    /// tests only: in production it would let tenants probe the network.
+    pub webhooks_allow_private: bool,
 }
 
 impl Config {
@@ -48,6 +51,7 @@ impl Config {
             max_mfa_failures: 5,
             keyring,
             oidc: Vec::new(),
+            webhooks_allow_private: false,
         }
     }
 
@@ -58,6 +62,7 @@ impl Config {
         let url = Url::parse("http://localhost:5173").expect("static URL");
         Self {
             cookie_secure: false,
+            webhooks_allow_private: true,
             ..Self::new(url, Keyring::ephemeral())
         }
     }

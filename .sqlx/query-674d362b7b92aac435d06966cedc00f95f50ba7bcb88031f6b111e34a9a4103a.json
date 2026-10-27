@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO webhook_endpoints (id, workspace_id, url, description, events, secret_enc,\n                                          created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $6)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "TextArray",
+        "Bytea",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "674d362b7b92aac435d06966cedc00f95f50ba7bcb88031f6b111e34a9a4103a"
+}

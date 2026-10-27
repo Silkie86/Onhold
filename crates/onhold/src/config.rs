@@ -1,5 +1,6 @@
 //! API settings from flags and the environment.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -7,6 +8,7 @@ use clap::Args;
 use core_api::Config;
 use core_api::oidc::OidcProvider;
 use core_domain::crypto::Keyring;
+use core_integrations::mail::{LogMailer, Mailer, SmtpMailer};
 use url::Url;
 
 #[derive(Debug, Args)]
@@ -65,6 +67,52 @@ pub struct ApiArgs {
         global = true
     )]
     microsoft_tenant: String,
+
+    /// Let webhooks reach private and internal addresses. Local development only.
+    #[arg(long, env = "WEBHOOKS_ALLOW_PRIVATE", default_value_t = false, action = clap::ArgAction::Set, global = true)]
+    webhooks_allow_private: bool,
+}
+
+/// Worker settings.
+#[derive(Debug, Args)]
+pub struct WorkerArgs {
+    /// Outgoing mail server, e.g. `smtp://user:pass@smtp.example.com:587?tls=required`
+    /// or `smtp://localhost:1025` for Mailpit. Unset: emails are only logged.
+    #[arg(long, env = "SMTP_URL", hide_env_values = true)]
+    smtp_url: Option<String>,
+
+    /// The sender of every email, e.g. `OnHold <no-reply@example.com>`.
+    #[arg(long, env = "MAIL_FROM", default_value = "OnHold <no-reply@localhost>")]
+    mail_from: String,
+
+    /// Jobs this process runs at the same time.
+    #[arg(long, env = "WORKER_CONCURRENCY", default_value_t = 8)]
+    concurrency: usize,
+}
+
+impl WorkerArgs {
+    pub fn mailer(&self) -> anyhow::Result<Arc<dyn Mailer>> {
+        Ok(match &self.smtp_url {
+            Some(url) => Arc::new(
+                SmtpMailer::from_url(url, &self.mail_from).map_err(|e| anyhow::anyhow!("{e}"))?,
+            ),
+            None => {
+                tracing::warn!("SMTP_URL is not set; emails will be written to the log, not sent");
+                Arc::new(LogMailer)
+            }
+        })
+    }
+
+    pub fn settings(&self) -> anyhow::Result<core_worker::Settings> {
+        anyhow::ensure!(
+            (1..=256).contains(&self.concurrency),
+            "WORKER_CONCURRENCY must be 1 to 256"
+        );
+        Ok(core_worker::Settings {
+            concurrency: self.concurrency,
+            ..Default::default()
+        })
+    }
 }
 
 impl ApiArgs {
@@ -111,6 +159,7 @@ impl ApiArgs {
             trust_proxy_headers: self.trust_proxy_headers,
             session_ttl: Duration::from_secs(self.session_ttl_days * 24 * 3600),
             oidc,
+            webhooks_allow_private: self.webhooks_allow_private,
             ..Config::new(self.public_base_url, keyring)
         })
     }

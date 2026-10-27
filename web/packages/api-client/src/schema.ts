@@ -25,6 +25,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Unfinished and dead jobs across the platform, by workspace, kind and status. */
+        get: operations["job_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/workspaces": {
         parameters: {
             query?: never;
@@ -389,6 +406,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/automations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_automations"];
+        /** Pause or resume every rule in the workspace. */
+        put: operations["set_automations"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/custom-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Custom field definitions, in display order. */
+        get: operations["list_fields"];
+        put?: never;
+        /**
+         * Add a custom field. Existing records are not changed; a required field
+         *     is enforced on new records and on edits that touch it.
+         */
+        post: operations["create_field"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/custom-fields/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_field"];
+        put?: never;
+        post?: never;
+        /**
+         * Archive a field. Values already stored are kept but hidden; the key
+         *     cannot be reused.
+         */
+        delete: operations["archive_field"];
+        options?: never;
+        head?: never;
+        /** Change a field's settings. Its entity, key and type never change. */
+        patch: operations["update_field"];
+        trace?: never;
+    };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What changed, in order. To sync: load everything, remember `latest`, then
+         *     read from it. Each event names the record that changed; fetch it if you
+         *     need it. A 410 `cursor_expired` means the events after your cursor are no
+         *     longer kept: load everything again.
+         */
+        get: operations["list_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The event stream, live. Each message's `id` is its position and its data
+         *     an event as in `GET /events`. Streams end after 15 minutes; browsers
+         *     reconnect on their own and resume from `Last-Event-ID`. A
+         *     `cursor_expired` message means events were missed: load everything again.
+         */
+        get: operations["stream_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invitations": {
         parameters: {
             query?: never;
@@ -458,6 +578,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Background jobs, newest first. */
+        get: operations["list_jobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_job"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a dead job again with a fresh set of attempts. */
+        post: operations["retry_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/members": {
         parameters: {
             query?: never;
@@ -495,6 +665,347 @@ export interface paths {
          *     the last owner cannot be demoted.
          */
         patch: operations["update_member"];
+        trace?: never;
+    };
+    "/api/v1/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Messages the workspace sent, newest first. */
+        get: operations["list_messages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipelines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pipelines and their stages. */
+        get: operations["list_pipelines"];
+        put?: never;
+        post: operations["create_pipeline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipelines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_pipeline"];
+        put?: never;
+        post?: never;
+        /** Delete a pipeline. Refused while records use it or while it is the default. */
+        delete: operations["delete_pipeline"];
+        options?: never;
+        head?: never;
+        patch: operations["update_pipeline"];
+        trace?: never;
+    };
+    "/api/v1/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_rules"];
+        put?: never;
+        /** Add a rule. Every template, field, stage and role it names is checked. */
+        post: operations["create_rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_rule"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_rule"];
+        options?: never;
+        head?: never;
+        patch: operations["update_rule"];
+        trace?: never;
+    };
+    "/api/v1/rules/{id}/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test a rule: whether it would match, why, and what it would do. Nothing is changed or sent. */
+        post: operations["dry_run_rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rules/{id}/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What a rule did and why, newest first. */
+        get: operations["rule_log"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_templates"];
+        put?: never;
+        /** Add a template. Syntax errors are refused with the line they are on. */
+        post: operations["create_template"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/templates/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Render an unsaved template, for live preview while editing. */
+        post: operations["preview_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/templates/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every variable a template can use, with a description of each. */
+        get: operations["template_variables"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_template"];
+        put?: never;
+        post?: never;
+        /** Archive a template. Refused while a rule sends it. */
+        delete: operations["archive_template"];
+        options?: never;
+        head?: never;
+        patch: operations["update_template"];
+        trace?: never;
+    };
+    "/api/v1/templates/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Render a saved template. */
+        post: operations["preview_template"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/things": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Things, newest first. */
+        get: operations["list_things"];
+        put?: never;
+        /** Create a thing. Custom values are validated against the field definitions. */
+        post: operations["create_thing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/things/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_thing"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_thing"];
+        options?: never;
+        head?: never;
+        patch: operations["update_thing"];
+        trace?: never;
+    };
+    "/api/v1/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_webhooks"];
+        put?: never;
+        /**
+         * Add an endpoint. Each delivery is a POST signed with
+         *     `OnHold-Signature: t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>">`.
+         */
+        post: operations["create_webhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_webhook"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_webhook"];
+        options?: never;
+        head?: never;
+        patch: operations["update_webhook"];
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every delivery attempt to this endpoint, newest first. */
+        get: operations["deliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a `webhook.ping` event to this endpoint only, to test it. */
+        post: operations["ping"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send one event to this endpoint again. */
+        post: operations["replay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace the signing secret. */
+        post: operations["rotate_secret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/workspace": {
@@ -602,6 +1113,13 @@ export interface components {
             user_id: components["schemas"]["UserId"];
             workspace_id: components["schemas"]["WorkspaceId"];
         };
+        /** @description One action as planned or done, for the run log. */
+        ActionResult: {
+            detail?: Record<string, never>;
+            error?: string | null;
+            ok: boolean;
+            type: string;
+        };
         AdminWorkspaceView: {
             /** Format: date-time */
             created_at: string;
@@ -632,6 +1150,11 @@ export interface components {
             action: string;
             /** Format: uuid */
             actor_api_key_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Set when an automation rule made the change.
+             */
+            actor_rule_id?: string | null;
             actor_user_id?: components["schemas"]["UserId"] | null;
             after?: Record<string, never> | null;
             /** Format: date-time */
@@ -655,6 +1178,19 @@ export interface components {
              */
             next_before?: string | null;
         };
+        AutomationsState: {
+            /** @description While paused no rule runs; events are still recorded and webhooks still sent. */
+            paused: boolean;
+        };
+        /** @description One comparison as evaluated, for the dry-run explanation. */
+        Check: {
+            /** @description What the field held (absent if it did not exist). */
+            actual?: Record<string, never> | null;
+            expected?: Record<string, never> | null;
+            field: string;
+            op: components["schemas"]["Op"];
+            passed: boolean;
+        };
         CloseWorkspaceRequest: {
             /** @description The workspace's slug, typed again to confirm. */
             confirm_slug: string;
@@ -666,9 +1202,94 @@ export interface components {
             /** @description What the key may do; at most what you can do yourself. */
             permissions: components["schemas"]["Permission"][];
         };
+        CreateFieldRequest: {
+            default_value?: Record<string, never> | null;
+            entity: string;
+            /** @description Permanent. */
+            field_type: components["schemas"]["FieldType"];
+            group?: string | null;
+            help_text?: string | null;
+            /** @description Lowercase letters, digits and underscores, starting with a letter. Permanent. */
+            key: string;
+            label: string;
+            /**
+             * Format: int32
+             * @description Defaults to after the last field.
+             */
+            position?: number | null;
+            required?: boolean;
+            searchable?: boolean;
+            validation?: components["schemas"]["Validation"];
+            /** @description `staff` (default), `portal` or `both`. */
+            visibility?: string | null;
+        };
         CreateInvitationRequest: {
             email: string;
             role: components["schemas"]["Role"];
+        };
+        CreatePipelineRequest: {
+            entity: string;
+            /** @description Make this the entity's default. An entity's first pipeline always is. */
+            is_default?: boolean;
+            name: string;
+            /** @description At least one, in order. */
+            stages: components["schemas"]["StageRequest"][];
+        };
+        CreateRuleRequest: {
+            actions: Record<string, never>[];
+            /** @description Omit to always match. */
+            conditions?: Record<string, never>;
+            dry_run?: boolean;
+            enabled?: boolean;
+            name: string;
+            /**
+             * @description Fire at most once per record (default true). Turn off for rules that
+             *     should act on every update.
+             */
+            once_per_object?: boolean;
+            trigger: Record<string, never>;
+        };
+        CreateTemplateRequest: {
+            /**
+             * @description Jinja-style: `{{ thing.name }}`, `{% if %}`, filters `money`, `date`,
+             *     `datetime`, `address`, and `{% include "partial.key" %}`.
+             */
+            body: string;
+            description?: string | null;
+            /** @description Dot-separated lowercase segments, e.g. `quote.sent`. Permanent. */
+            key: string;
+            kind: components["schemas"]["Kind"];
+            /**
+             * @description BCP 47, e.g. `en-GB`. Defaults to `en`, which also serves every
+             *     English locale that has no template of its own.
+             */
+            locale?: string | null;
+            name: string;
+            /** @description Required for email. */
+            subject?: string | null;
+        };
+        CreateThingRequest: {
+            /** @description Custom field values by key. Missing fields take their defaults. */
+            custom?: Record<string, never>;
+            /** Format: date-time */
+            due_at?: string | null;
+            name: string;
+            /**
+             * Format: uuid
+             * @description Defaults to the default pipeline.
+             */
+            pipeline_id?: string | null;
+            /** @description Defaults to the pipeline's first stage. */
+            stage?: string | null;
+        };
+        CreateWebhookRequest: {
+            description?: string | null;
+            events: string[];
+            /**
+             * @description `https://` (plain `http://` only for local development). Private and
+             *     internal addresses are refused.
+             */
+            url: string;
         };
         CreateWorkspaceRequest: {
             /** @description ISO 3166-1 alpha-2, e.g. `GB`. */
@@ -696,7 +1317,7 @@ export interface components {
         CreatedWorkspaceResponse: {
             /** Format: uuid */
             owner_invitation_id: string;
-            /** @description The owner's join link. Until email delivery lands (M2), pass it on yourself. */
+            /** @description The owner's join link. It is also emailed; it is shown here in case it needs passing on. */
             owner_invitation_url: string;
             slug: string;
             workspace_id: components["schemas"]["WorkspaceId"];
@@ -709,6 +1330,60 @@ export interface components {
             id: string;
             mfa_verified: boolean;
         };
+        DeliveryPage: {
+            deliveries: components["schemas"]["DeliveryView"][];
+            /** Format: uuid */
+            next_before?: string | null;
+        };
+        DeliveryView: {
+            /** Format: date-time */
+            at: string;
+            /** Format: int32 */
+            attempt: number;
+            /** Format: int32 */
+            duration_ms: number;
+            error?: string | null;
+            /** Format: uuid */
+            event_id: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            job_id?: string | null;
+            /** @description The start of the endpoint's response body. */
+            response_excerpt?: string | null;
+            /**
+             * Format: int32
+             * @description The endpoint's HTTP status, when it answered.
+             */
+            status_code?: number | null;
+            succeeded: boolean;
+            topic?: string | null;
+        };
+        DraftPreviewRequest: {
+            body: string;
+            kind: components["schemas"]["Kind"];
+            overrides?: Record<string, never> | null;
+            subject?: string | null;
+            /** Format: uuid */
+            thing_id?: string | null;
+        };
+        /** @description The answer to "what would this rule do for this record?". */
+        DryRun: {
+            /** @description What the rule would do, if it matched. */
+            actions: components["schemas"]["ActionResult"][];
+            /** @description Each comparison made, with the value found. */
+            checks: components["schemas"]["Check"][];
+            matched: boolean;
+            /** @description Why it would not act even though it matched, if so. */
+            note?: string | null;
+        };
+        DryRunRequest: {
+            /**
+             * Format: uuid
+             * @description Test against this record; otherwise against sample data.
+             */
+            thing_id?: string | null;
+        };
         ErrorBody: {
             error: components["schemas"]["ErrorDetail"];
         };
@@ -717,8 +1392,84 @@ export interface components {
             code: string;
             /** @description The request field at fault, for validation errors. */
             field?: string | null;
+            /** @description Every invalid field, when there is more than one thing to fix. */
+            issues?: components["schemas"]["Issue"][] | null;
             /** @description Human-readable explanation. */
             message: string;
+        };
+        EventPage: {
+            /** @description Oldest first. */
+            events: components["schemas"]["EventView"][];
+            /** @description True when there may be more right now. */
+            has_more: boolean;
+            /**
+             * Format: int64
+             * @description The newest position in the stream.
+             */
+            latest: number;
+            /**
+             * Format: int64
+             * @description Pass as `after` next time.
+             */
+            next_after: number;
+        };
+        EventView: {
+            actor: Record<string, never>;
+            /** Format: date-time */
+            at: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            object_id?: string | null;
+            resource?: string | null;
+            /**
+             * Format: int64
+             * @description Position in the stream; pass the last one you saw as `after`.
+             */
+            seq: number;
+            topic: string;
+        };
+        FieldPatchRequest: {
+            /** @description `null` removes the default. */
+            default_value?: Record<string, never> | null;
+            group?: string | null;
+            help_text?: string | null;
+            label?: string | null;
+            /** Format: int32 */
+            position?: number | null;
+            required?: boolean | null;
+            searchable?: boolean | null;
+            validation?: components["schemas"]["Validation"] | null;
+            visibility?: string | null;
+        };
+        /** @enum {string} */
+        FieldType: "text" | "long_text" | "number" | "money" | "date" | "datetime" | "boolean" | "select" | "multi_select" | "url" | "email" | "phone" | "file" | "relation";
+        FieldView: {
+            archived: boolean;
+            /** Format: date-time */
+            created_at: string;
+            default_value?: Record<string, never> | null;
+            /** @description What the field belongs to, e.g. `thing`. */
+            entity: string;
+            field_type: components["schemas"]["FieldType"];
+            group?: string | null;
+            help_text?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description Where the value lives: `custom.<key>` on the record. Permanent. */
+            key: string;
+            label: string;
+            /** Format: int32 */
+            position: number;
+            required: boolean;
+            searchable: boolean;
+            /** Format: date-time */
+            updated_at: string;
+            validation: components["schemas"]["Validation"];
+            /** Format: int64 */
+            version: number;
+            /** @description `staff`, `portal` or `both`. */
+            visibility: string;
         };
         HealthBody: {
             status: string;
@@ -748,6 +1499,77 @@ export interface components {
             revoked_at?: string | null;
             role: components["schemas"]["Role"];
         };
+        /**
+         * @description A problem with one input field, for validation errors that name the
+         *     field at fault (`custom.budget`, `stages[2].key`, `actions[0].template`).
+         */
+        Issue: {
+            field: string;
+            message: string;
+        };
+        JobDetail: {
+            job: components["schemas"]["JobView"];
+            /** @description Every attempt, oldest first. */
+            runs: components["schemas"]["JobRunView"][];
+        };
+        JobPage: {
+            jobs: components["schemas"]["JobView"][];
+            /** Format: uuid */
+            next_before?: string | null;
+        };
+        JobRunView: {
+            /** Format: int32 */
+            attempt: number;
+            error?: string | null;
+            /** Format: date-time */
+            finished_at: string;
+            /** @description `[{"at", "message"}]` lines the handler wrote. */
+            log: Record<string, never>[];
+            /** Format: date-time */
+            started_at: string;
+            succeeded: boolean;
+        };
+        /** @enum {string} */
+        JobStatus: "queued" | "running" | "succeeded" | "dead" | "cancelled";
+        JobSummaryRow: {
+            /** Format: int64 */
+            jobs: number;
+            kind: string;
+            /**
+             * Format: date-time
+             * @description When the oldest of these was created.
+             */
+            oldest?: string | null;
+            status: components["schemas"]["JobStatus"];
+            workspace_id?: components["schemas"]["WorkspaceId"] | null;
+            workspace_slug?: string | null;
+        };
+        JobView: {
+            /** Format: int32 */
+            attempts: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            finished_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description e.g. `mail.send`, `webhook.deliver`, `event.dispatch`. */
+            kind: string;
+            last_error?: string | null;
+            /** Format: int32 */
+            max_attempts: number;
+            payload: Record<string, never>;
+            /** Format: int32 */
+            priority: number;
+            /**
+             * Format: date-time
+             * @description When it runs next (or ran last).
+             */
+            run_at: string;
+            status: components["schemas"]["JobStatus"];
+        };
+        /** @enum {string} */
+        Kind: "email" | "sms" | "whatsapp" | "notification" | "partial";
         LoginRequest: {
             email: string;
             password: string;
@@ -773,6 +1595,33 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        MessagePage: {
+            messages: components["schemas"]["MessageView"][];
+            /** Format: uuid */
+            next_before?: string | null;
+        };
+        MessageView: {
+            /** Format: date-time */
+            at: string;
+            /** @description Sign-in and invitation links are replaced with `[link removed]`. */
+            body_html?: string | null;
+            body_text: string;
+            /** @description `email` for now. */
+            channel: string;
+            error?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            job_id?: string | null;
+            provider_message_id?: string | null;
+            /** Format: uuid */
+            rule_id?: string | null;
+            /** @description `sent` or `failed`. */
+            status: string;
+            subject?: string | null;
+            template_key?: string | null;
+            to: string;
+        };
         MfaVerifyRequest: {
             /** @description The 6-digit code from the authenticator app. */
             code?: string | null;
@@ -790,6 +1639,10 @@ export interface components {
             display_name: string;
             name: string;
         };
+        /** @enum {string} */
+        Op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "contains" | "not_contains" | "in" | "not_in" | "is_empty" | "is_not_empty" | "changed";
+        /** @enum {string} */
+        Outcome: "open" | "won" | "lost";
         PasswordChangeRequest: {
             /** @description Required when the account already has a password. */
             current_password?: string | null;
@@ -799,7 +1652,7 @@ export interface components {
          * @description A `resource:action` permission.
          * @enum {string}
          */
-        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write";
+        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write";
         /**
          * @description Whether the workspace represents talent (`sells`), books talent for its
          *     own events (`buys`), or both. Changes vocabulary and defaults, never the
@@ -807,9 +1660,62 @@ export interface components {
          * @enum {string}
          */
         Perspective: "sells" | "buys" | "both";
+        PipelinePatchRequest: {
+            /** @description `true` makes this the entity's default pipeline. */
+            make_default?: boolean;
+            name?: string | null;
+            /**
+             * @description The full list of stages, in order. New keys are added; missing keys
+             *     are archived (records in them stay until moved).
+             */
+            stages?: components["schemas"]["StageRequest"][] | null;
+        };
+        PipelineView: {
+            /** Format: date-time */
+            created_at: string;
+            entity: string;
+            /** Format: uuid */
+            id: string;
+            is_default: boolean;
+            name: string;
+            /** @description In order; archived stages last. */
+            stages: components["schemas"]["StageView"][];
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            version: number;
+        };
+        Preview: {
+            /** @description The rendered body (HTML for email). */
+            body: string;
+            subject?: string | null;
+            text: string;
+            /** @description Variables the template uses that this record does not have. */
+            warnings: string[];
+        };
+        PreviewRequest: {
+            /** @description Values merged over the context, e.g. `{"thing": {"name": "Test"}}`. */
+            overrides?: Record<string, never> | null;
+            /**
+             * Format: uuid
+             * @description Render against this record; otherwise sample data is used.
+             */
+            thing_id?: string | null;
+        };
+        QueuedResponse: {
+            /**
+             * Format: uuid
+             * @description Follow it at `GET /jobs/{id}`.
+             */
+            job_id: string;
+        };
         RecoveryCodesResponse: {
             /** @description Shown once. Each works once if the authenticator app is lost. */
             recovery_codes: string[];
+        };
+        ReplayRequest: {
+            /** Format: uuid */
+            event_id: string;
         };
         /**
          * @description A workspace membership role. A fixed set in v1.
@@ -823,6 +1729,74 @@ export interface components {
             roles: {
                 [key: string]: components["schemas"]["Permission"][];
             };
+        };
+        RuleLogPage: {
+            /** Format: uuid */
+            next_before?: string | null;
+            runs: components["schemas"]["RuleRunView"][];
+        };
+        RulePatchRequest: {
+            actions?: Record<string, never>[] | null;
+            conditions?: Record<string, never> | null;
+            dry_run?: boolean | null;
+            enabled?: boolean | null;
+            name?: string | null;
+            once_per_object?: boolean | null;
+            trigger?: Record<string, never> | null;
+        };
+        RuleRunView: {
+            actions: components["schemas"]["ActionResult"][];
+            /** Format: date-time */
+            at: string;
+            /** Format: uuid */
+            event_id?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            object_id?: string | null;
+            /** @description `acted`, `dry_run`, `skipped` or `failed`. */
+            outcome: string;
+            reason?: string | null;
+        };
+        RuleView: {
+            /** @description `[{"type": "send_email", "template": "quote.sent", "to": {"field": "thing.custom.email"}}, ...]` */
+            actions: Record<string, never>[];
+            /**
+             * @description `{"all": [...]}`, `{"any": [...]}`, `{"not": {...}}` or
+             *     `{"field": "thing.custom.budget", "op": "gt", "value": 1000}`.
+             */
+            conditions: Record<string, never>;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Log what would happen without doing it. */
+            dry_run: boolean;
+            enabled: boolean;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            next_run_at?: string | null;
+            /** @description Fire at most once per record. */
+            once_per_object: boolean;
+            /**
+             * @description `{"kind": "event", "topic": "thing.created"}`,
+             *     `{"kind": "date_offset", "entity": "thing", "field": "due_at", "offset_minutes": -1440}` or
+             *     `{"kind": "schedule", "cron": "0 9 * * 1"}`.
+             */
+            trigger: Record<string, never>;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            version: number;
+        };
+        SecretResponse: {
+            /** @description Shown only now. The old secret stops working immediately. */
+            secret: string;
+        };
+        /** @description One choice of a select or multi-select field. */
+        SelectOption: {
+            label: string;
+            value: string;
         };
         SessionInfoView: {
             auth_method: string;
@@ -847,10 +1821,109 @@ export interface components {
             mfa_required: boolean;
             user_id: components["schemas"]["UserId"];
         };
+        StageRequest: {
+            allowed_next?: string[] | null;
+            /** @description A CSS colour such as `#2f80ed`. */
+            colour?: string | null;
+            /** @description Lowercase letters, digits and underscores. Stages are matched by key on update. */
+            key: string;
+            name: string;
+            outcome?: components["schemas"]["Outcome"];
+            required_fields?: string[];
+            /** Format: int32 */
+            sla_days?: number | null;
+        };
+        StageView: {
+            /** @description Stage keys a record may move to from here; absent means any. */
+            allowed_next?: string[] | null;
+            archived: boolean;
+            colour?: string | null;
+            /** Format: uuid */
+            id: string;
+            key: string;
+            name: string;
+            outcome: components["schemas"]["Outcome"];
+            /** Format: int32 */
+            position: number;
+            /** @description Custom fields that must have a value before a record enters this stage. */
+            required_fields: string[];
+            /** Format: int32 */
+            sla_days?: number | null;
+        };
         StartImpersonationRequest: {
             /** @description Recorded in the customer's audit log. */
             reason: string;
             workspace_id: components["schemas"]["WorkspaceId"];
+        };
+        TemplatePatchRequest: {
+            body?: string | null;
+            description?: string | null;
+            name?: string | null;
+            subject?: string | null;
+        };
+        TemplateView: {
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            description?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description What rules and the platform refer to it by, e.g. `quote.sent`. */
+            key: string;
+            kind: components["schemas"]["Kind"];
+            locale: string;
+            name: string;
+            subject?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            version: number;
+        };
+        ThingPage: {
+            /**
+             * Format: uuid
+             * @description Pass as `before` for the next page; absent on the last page.
+             */
+            next_before?: string | null;
+            things: components["schemas"]["ThingView"][];
+        };
+        ThingPatchRequest: {
+            /** @description Only the keys sent change; `null` clears a value. */
+            custom?: Record<string, never> | null;
+            /**
+             * Format: date-time
+             * @description `null` clears it.
+             */
+            due_at?: string | null;
+            name?: string | null;
+            /**
+             * @description Move to this stage key. Refused (422) if the pipeline does not allow
+             *     the move or the stage's required fields are empty.
+             */
+            stage?: string | null;
+        };
+        ThingView: {
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** @description Custom field values by key. */
+            custom: Record<string, never>;
+            /** Format: date-time */
+            due_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            pipeline_id?: string | null;
+            /** @description The current stage's key. */
+            stage?: string | null;
+            /** Format: date-time */
+            stage_entered_at?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
         };
         TokenRequest: {
             token: string;
@@ -880,6 +1953,63 @@ export interface components {
             is_superadmin: boolean;
             name: string;
             totp_enabled: boolean;
+        };
+        /** @description Type-specific rules. Only those that make sense for the type may be set. */
+        Validation: {
+            /** @description money: the only allowed currency. */
+            currency?: string | null;
+            /** @description relation: the entity linked to, e.g. `contact`. */
+            entity?: string | null;
+            /** Format: double */
+            max?: number | null;
+            /** Format: int32 */
+            max_length?: number | null;
+            /**
+             * Format: double
+             * @description number: the smallest allowed value; money: in minor units.
+             */
+            min?: number | null;
+            /**
+             * Format: int32
+             * @description text, long_text: length limits in characters; multi_select: number of choices.
+             */
+            min_length?: number | null;
+            /** @description select, multi_select: the allowed values. */
+            options?: components["schemas"]["SelectOption"][];
+            /** @description text, phone: the whole value must match this regular expression. */
+            regex?: string | null;
+        };
+        /** @description One variable a template can use. */
+        Variable: {
+            description: string;
+            field_type?: string | null;
+            path: string;
+        };
+        WebhookPatchRequest: {
+            description?: string | null;
+            enabled?: boolean | null;
+            events?: string[] | null;
+            url?: string | null;
+        };
+        WebhookView: {
+            /** Format: date-time */
+            created_at: string;
+            description?: string | null;
+            enabled: boolean;
+            /** @description Topics or patterns such as `thing.*`; `*` for everything. */
+            events: string[];
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            updated_at: string;
+            url: string;
+            /** Format: int64 */
+            version: number;
+        };
+        WebhookWithSecret: {
+            /** @description Verifies the `OnHold-Signature` header. Shown only now; store it safely. */
+            secret: string;
+            webhook: components["schemas"]["WebhookView"];
         };
         /**
          * Format: uuid
@@ -990,6 +2120,33 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    job_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobSummaryRow"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };
@@ -1672,6 +2829,372 @@ export interface operations {
             };
         };
     };
+    get_automations: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationsState"];
+                };
+            };
+        };
+    };
+    set_automations: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationsState"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationsState"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_fields: {
+        parameters: {
+            query?: {
+                /** @description Only this entity's fields, e.g. `thing`. */
+                entity?: string | null;
+                /** @description Include archived fields (default false). */
+                include_archived?: boolean;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldView"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_field: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFieldRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_field: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    archive_field: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_field: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FieldPatchRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_events: {
+        parameters: {
+            query?: {
+                /** @description Events after this position (`seq`); 0 or absent for the oldest kept. */
+                after?: number | null;
+                /** @description Comma-separated topics or patterns, e.g. `thing.*,pipeline.updated`. */
+                topics?: string | null;
+                /** @description 1 to 500, default 100. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stream_events: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Start after this position; absent means only new events. The
+                 *     `Last-Event-ID` header, sent by browsers on reconnect, wins.
+                 */
+                after?: number | null;
+                /** @description Comma-separated topics or patterns. */
+                topics?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["EventView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_invitations: {
         parameters: {
             query?: never;
@@ -1857,6 +3380,112 @@ export interface operations {
             };
         };
     };
+    list_jobs: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["JobStatus"] | null;
+                kind?: string | null;
+                before?: string | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobPage"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_job: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    retry_job: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_members: {
         parameters: {
             query?: never;
@@ -2015,6 +3644,1324 @@ export interface operations {
                 };
             };
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_messages: {
+        parameters: {
+            query?: {
+                /** @description Return items older than this id (the previous page's `next_before`). */
+                before?: string | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagePage"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_pipelines: {
+        parameters: {
+            query?: {
+                /** @description e.g. `thing`. */
+                entity?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineView"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_pipeline: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePipelineRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_pipeline: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_pipeline: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_pipeline: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PipelinePatchRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_rules: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleView"][];
+                };
+            };
+        };
+    };
+    create_rule: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRuleRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_rule: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_rule: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_rule: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RulePatchRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    dry_run_rule: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DryRunRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DryRun"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rule_log: {
+        parameters: {
+            query?: {
+                /** @description Return items older than this id (the previous page's `next_before`). */
+                before?: string | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleLogPage"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_templates: {
+        parameters: {
+            query?: {
+                kind?: components["schemas"]["Kind"] | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateView"][];
+                };
+            };
+        };
+    };
+    create_template: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTemplateRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    preview_draft: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftPreviewRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preview"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    template_variables: {
+        parameters: {
+            query?: {
+                /** @description Defaults to `thing`. */
+                entity?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_template: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    archive_template: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_template: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplatePatchRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    preview_template: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preview"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_things: {
+        parameters: {
+            query?: {
+                pipeline_id?: string | null;
+                /** @description A stage key (in `pipeline_id`, or the default pipeline). */
+                stage?: string | null;
+                /** @description Names containing this text. */
+                q?: string | null;
+                before?: string | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThingPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_thing: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateThingRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThingView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_thing: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThingView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_thing: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_thing: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThingPatchRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThingView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_webhooks: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookView"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_webhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWebhookRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookWithSecret"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_webhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_webhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_webhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookPatchRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    deliveries: {
+        parameters: {
+            query?: {
+                /** @description Return items older than this id (the previous page's `next_before`). */
+                before?: string | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryPage"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ping: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    replay: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplayRequest"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueuedResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rotate_secret: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretResponse"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

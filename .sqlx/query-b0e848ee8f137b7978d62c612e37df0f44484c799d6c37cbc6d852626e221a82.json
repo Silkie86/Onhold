@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO rule_fires (workspace_id, rule_id, object_id) VALUES (app_workspace_id(), $1, $2)\n           ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b0e848ee8f137b7978d62c612e37df0f44484c799d6c37cbc6d852626e221a82"
+}

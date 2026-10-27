@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE pipeline_stages SET archived_at = now()\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND archived_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e62d9ed0bdceaeccbb276a1b3ce5e0c2c33b757ae69278fc209930e13dc4347a"
+}

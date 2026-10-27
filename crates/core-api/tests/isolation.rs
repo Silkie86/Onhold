@@ -87,7 +87,75 @@ struct World {
     b_agent: uuid::Uuid,
     b_invitation: uuid::Uuid,
     b_key: uuid::Uuid,
+    b_field: uuid::Uuid,
+    b_pipeline: uuid::Uuid,
+    b_template: uuid::Uuid,
+    b_rule: uuid::Uuid,
+    b_thing: uuid::Uuid,
+    b_webhook: uuid::Uuid,
+    b_event: uuid::Uuid,
+    b_job: uuid::Uuid,
     b_markers: Vec<String>,
+}
+
+/// One of everything M2 adds, in `owner`'s workspace, named after `slug`.
+struct Config {
+    field: uuid::Uuid,
+    pipeline: uuid::Uuid,
+    template: uuid::Uuid,
+    rule: uuid::Uuid,
+    thing: uuid::Uuid,
+    webhook: uuid::Uuid,
+}
+
+async fn configure(app: &TestApp, owner: &Client, slug: &str) -> Config {
+    let post = |path: &str, body: Value| {
+        let req = app.post(path).signed_in(owner).json(body);
+        async move { req.send().await.ok().id("/id") }
+    };
+    let field = post(
+        "/api/v1/custom-fields",
+        json!({ "entity": "thing", "key": format!("{slug}_secret_field"), "label": "Secret", "field_type": "text" }),
+    )
+    .await;
+    let pipeline = post(
+        "/api/v1/pipelines",
+        json!({ "entity": "thing", "name": format!("{slug} secret pipeline"),
+                "stages": [{ "key": "new", "name": "New" }, { "key": "done", "name": "Done", "outcome": "won" }] }),
+    )
+    .await;
+    let template = post(
+        "/api/v1/templates",
+        json!({ "kind": "email", "key": format!("{slug}.secret"), "name": "Secret", "subject": "Hi", "body": "Hello {{ thing.name }}" }),
+    )
+    .await;
+    let rule = post(
+        "/api/v1/rules",
+        json!({ "name": format!("{slug} secret rule"), "trigger": { "kind": "event", "topic": "thing.created" },
+                "actions": [{ "type": "send_email", "template": format!("{slug}.secret"), "to": { "address": format!("ops@{slug}.test") } }] }),
+    )
+    .await;
+    let thing = post(
+        "/api/v1/things",
+        json!({ "name": format!("{slug} secret thing") }),
+    )
+    .await;
+    let webhook = app
+        .post("/api/v1/webhooks")
+        .signed_in(owner)
+        .json(json!({ "url": format!("https://{slug}-hook.example/in"), "events": ["*"] }))
+        .send()
+        .await
+        .ok()
+        .id("/webhook/id");
+    Config {
+        field,
+        pipeline,
+        template,
+        rule,
+        thing,
+        webhook,
+    }
 }
 
 async fn world(app: &TestApp) -> World {
@@ -102,11 +170,20 @@ async fn world(app: &TestApp) -> World {
         "api_key:write",
         "audit:read",
         "billing:read",
-        "billing:write"
+        "billing:write",
+        "config:write",
+        "thing:read",
+        "thing:write",
+        "event:read",
+        "webhook:read",
+        "webhook:write",
+        "job:read",
+        "job:write"
     ]);
     let mut keys = Vec::new();
     let mut invitations = Vec::new();
     let mut clients = Vec::new();
+    let mut configs = Vec::new();
     for slug in ["alpha", "bravo"] {
         let (_, owner) = app.workspace_with_owner(slug).await;
         app.add_member(&owner, &format!("agent@{slug}.test"), "agent")
@@ -130,10 +207,31 @@ async fn world(app: &TestApp) -> World {
             key.id("/key/id"),
             key.body["secret"].as_str().unwrap().to_owned(),
         ));
+        configs.push(configure(app, &owner, slug).await);
         clients.push(owner);
     }
     let b = clients.pop().unwrap();
     let a = clients.pop().unwrap();
+    let bc = configs.pop().unwrap();
+    app.publish_all().await;
+    let b_event: uuid::Uuid = sqlx::query_scalar(
+        "SELECT id FROM outbox WHERE workspace_id = $1 AND topic = 'thing.created'",
+    )
+    .bind(b.workspace.unwrap().0)
+    .fetch_one(&app.owner)
+    .await
+    .unwrap();
+    // A dead job, so retrying it would be allowed if access were.
+    let b_job = uuid::Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO jobs (id, workspace_id, kind, payload, status, attempts, finished_at)
+         VALUES ($1, $2, 'test.noop', '{}', 'dead', 10, now())",
+    )
+    .bind(b_job)
+    .bind(b.workspace.unwrap().0)
+    .execute(&app.owner)
+    .await
+    .unwrap();
     World {
         b_markers: vec![
             b.workspace.unwrap().to_string(),
@@ -141,7 +239,18 @@ async fn world(app: &TestApp) -> World {
             "agent@bravo.test".into(),
             "pending@bravo.test".into(),
             keys[1].0.to_string(),
+            bc.thing.to_string(),
+            b_event.to_string(),
+            b_job.to_string(),
         ],
+        b_field: bc.field,
+        b_pipeline: bc.pipeline,
+        b_template: bc.template,
+        b_rule: bc.rule,
+        b_thing: bc.thing,
+        b_webhook: bc.webhook,
+        b_event,
+        b_job,
         a,
         a_key: keys[0].1.clone(),
         b_owner: app.user_id("owner@bravo.test").await.0,
@@ -153,7 +262,7 @@ async fn world(app: &TestApp) -> World {
 }
 
 /// A body that passes validation for each write, so a refusal is about access.
-fn body_for(method: &Method, path: &str) -> Value {
+fn body_for(method: &Method, path: &str, w: &World) -> Value {
     match (method.as_str(), path) {
         ("PATCH", "/api/v1/workspace") => json!({ "name": "Taken over" }),
         ("POST", "/api/v1/workspace/close") => json!({ "confirm_slug": "bravo" }),
@@ -164,6 +273,28 @@ fn body_for(method: &Method, path: &str) -> Value {
         ("POST", "/api/v1/api-keys") => {
             json!({ "name": "backdoor", "permissions": ["member:read"] })
         }
+        ("POST", "/api/v1/custom-fields") => {
+            json!({ "entity": "thing", "key": "intruder", "label": "Intruder", "field_type": "text" })
+        }
+        ("POST", "/api/v1/pipelines") => {
+            json!({ "entity": "thing", "name": "Intruder", "stages": [{ "key": "a", "name": "A" }] })
+        }
+        ("POST", "/api/v1/templates") => {
+            json!({ "kind": "email", "key": "intruder", "name": "Intruder", "subject": "x", "body": "x" })
+        }
+        ("POST", "/api/v1/templates/preview") => {
+            json!({ "kind": "email", "subject": "x", "body": "x" })
+        }
+        ("POST", "/api/v1/rules") => json!({
+            "name": "Intruder", "trigger": { "kind": "event", "topic": "thing.created" },
+            "actions": [{ "type": "send_email", "template": "intruder", "to": { "address": "x@intruder.test" } }]
+        }),
+        ("PUT", "/api/v1/automations") => json!({ "paused": true }),
+        ("POST", "/api/v1/things") => json!({ "name": "Intruder" }),
+        ("POST", "/api/v1/webhooks") => {
+            json!({ "url": "https://intruder.example/", "events": ["*"] })
+        }
+        ("POST", "/api/v1/webhooks/{id}/replay") => json!({ "event_id": w.b_event }),
         _ => json!({}),
     }
 }
@@ -175,6 +306,20 @@ fn fill_path(path: &str, w: &World) -> String {
         w.b_invitation
     } else if path.contains("/api-keys/") {
         w.b_key
+    } else if path.contains("/custom-fields/") {
+        w.b_field
+    } else if path.contains("/pipelines/") {
+        w.b_pipeline
+    } else if path.contains("/templates/") {
+        w.b_template
+    } else if path.contains("/rules/") {
+        w.b_rule
+    } else if path.contains("/things/") {
+        w.b_thing
+    } else if path.contains("/webhooks/") {
+        w.b_webhook
+    } else if path.contains("/jobs/") {
+        w.b_job
     } else {
         w.b_owner
     };
@@ -191,7 +336,7 @@ async fn a_member_of_one_workspace_cannot_reach_another(pool: PgPool) {
     let mut checked = 0;
     for op in operations().iter().filter(|o| o.workspace_scoped) {
         let path = fill_path(&op.path, &w);
-        let body = body_for(&op.method, &op.path);
+        let body = body_for(&op.method, &op.path, &w);
 
         // A's session, pointed at B.
         let res = app
@@ -239,7 +384,7 @@ async fn objects_of_another_workspace_do_not_exist_from_inside_this_one(pool: Pg
         .filter(|o| o.workspace_scoped && o.path.contains('{'))
     {
         let path = fill_path(&op.path, &w);
-        let body = body_for(&op.method, &op.path);
+        let body = body_for(&op.method, &op.path, &w);
         for (who, res) in [
             (
                 "session",
@@ -277,7 +422,13 @@ async fn nothing_from_another_workspace_appears_in_this_ones_reads(pool: PgPool)
 
     for op in operations()
         .iter()
-        .filter(|o| o.workspace_scoped && o.method == Method::GET && !o.path.contains('{'))
+        // The live stream never ends; it has its own test in events.rs.
+        .filter(|o| {
+            o.workspace_scoped
+                && o.method == Method::GET
+                && !o.path.contains('{')
+                && !o.path.ends_with("/stream")
+        })
     {
         for res in [
             app.get(&op.path).signed_in(&w.a).send().await,
@@ -346,4 +497,38 @@ async fn assert_untouched(app: &TestApp, w: &World) {
         .ok();
     assert_eq!(keys.body.as_array().unwrap().len(), 1);
     assert!(keys.body[0]["revoked_at"].is_null());
+    let thing = app
+        .get(&format!("/api/v1/things/{}", w.b_thing))
+        .signed_in(&w.b)
+        .send()
+        .await
+        .ok();
+    assert_eq!(thing.body["version"], 1);
+    let rule = app
+        .get(&format!("/api/v1/rules/{}", w.b_rule))
+        .signed_in(&w.b)
+        .send()
+        .await
+        .ok();
+    assert_eq!(rule.body["version"], 1);
+    let hook = app
+        .get(&format!("/api/v1/webhooks/{}", w.b_webhook))
+        .signed_in(&w.b)
+        .send()
+        .await
+        .ok();
+    assert_eq!(hook.body["version"], 1);
+    let paused = app
+        .get("/api/v1/automations")
+        .signed_in(&w.b)
+        .send()
+        .await
+        .ok();
+    assert_eq!(paused.body["paused"], false);
+    let job: String = sqlx::query_scalar("SELECT status::text FROM jobs WHERE id = $1")
+        .bind(w.b_job)
+        .fetch_one(&app.owner)
+        .await
+        .unwrap();
+    assert_eq!(job, "dead");
 }

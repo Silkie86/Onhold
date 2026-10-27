@@ -3,17 +3,67 @@
 
 pub mod admin;
 pub mod auth;
+pub mod config;
+pub mod events;
+pub mod jobs;
+pub mod things;
+pub mod webhooks;
 pub mod workspace;
 
+use axum::Json;
+use axum::http::{HeaderMap, HeaderValue, header};
+use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use chrono::{DateTime, Utc};
 use core_domain::UserId;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
 
 use crate::AppState;
-use crate::extract::SESSION_COOKIE;
+use crate::extract::{SESSION_COOKIE, etag};
 use crate::services::auth::IssuedSession;
+
+/// A JSON response with the record's version as its `ETag`.
+pub(crate) fn with_etag<T: Serialize>(version: i64, body: T) -> Response {
+    let mut headers = HeaderMap::new();
+    if let Ok(v) = HeaderValue::from_str(&etag(version)) {
+        headers.insert(header::ETAG, v);
+    }
+    (headers, Json(body)).into_response()
+}
+
+/// For PATCH fields that can be cleared: absent is `None`, `null` is
+/// `Some(None)`, a value is `Some(Some(v))`.
+pub(crate) fn nullable<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(d).map(Some)
+}
+
+/// Keyset paging for lists that are newest first.
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct PageQuery {
+    /// Return items older than this id (the previous page's `next_before`).
+    pub before: Option<Uuid>,
+    /// 1 to 200, default 50.
+    pub limit: Option<i64>,
+}
+
+impl PageQuery {
+    pub fn limit(&self) -> i64 {
+        self.limit.unwrap_or(50).clamp(1, 200)
+    }
+}
+
+/// The cursor for the next page: the last id, if the page was full.
+pub(crate) fn next_before<T>(items: &[T], limit: i64, id: impl Fn(&T) -> Uuid) -> Option<Uuid> {
+    (items.len() as i64 == limit)
+        .then(|| items.last().map(id))
+        .flatten()
+}
 
 /// The workspace a request acts in. Required with a session cookie; with an
 /// API key it may be omitted (the key's workspace is used) or must match.

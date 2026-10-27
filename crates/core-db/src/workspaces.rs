@@ -219,3 +219,23 @@ pub async fn for_user(conn: &mut PgConnection, user: UserId) -> Result<Vec<MyWor
     .fetch_all(conn)
     .await?)
 }
+
+/// The automation kill switch for the workspace in context.
+pub async fn automations_paused(conn: &mut PgConnection) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        "SELECT automations_paused FROM workspaces WHERE id = app_workspace_id()"
+    )
+    .fetch_optional(conn)
+    .await?
+    .unwrap_or(true))
+}
+
+pub async fn set_automations_paused(conn: &mut PgConnection, paused: bool) -> Result<()> {
+    sqlx::query!(
+        "UPDATE workspaces SET automations_paused = $1 WHERE id = app_workspace_id()",
+        paused
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}

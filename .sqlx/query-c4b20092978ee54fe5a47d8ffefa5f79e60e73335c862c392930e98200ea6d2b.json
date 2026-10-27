@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT DISTINCT ON (key) key, body\n           FROM templates\n           WHERE workspace_id = app_workspace_id() AND kind = 'partial' AND archived_at IS NULL\n           ORDER BY key, CASE WHEN locale = $1 THEN 0 WHEN locale = $2 THEN 1 WHEN locale = 'en' THEN 2 ELSE 3 END",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "templates",
+            "name": "key"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "body",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "templates",
+            "name": "body"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "c4b20092978ee54fe5a47d8ffefa5f79e60e73335c862c392930e98200ea6d2b"
+}

@@ -7,10 +7,28 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
+chrono.workspace = true
+core-api.workspace = true
+core-db.workspace = true
+core-domain.workspace = true
+core-engines.workspace = true
+core-integrations.workspace = true
+futures-util.workspace = true
+serde_json.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+# For the API test harness, shared from core-api/tests/common.
+axum.workspace = true
+data-encoding.workspace = true
+http-body-util.workspace = true
+totp-rs.workspace = true
+tower.workspace = true
+url.workspace = true
 
 [lints]
 workspace = true

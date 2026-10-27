@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE pipelines SET name = $2, updated_by = $3\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL\n             AND ($4::bigint IS NULL OR version = $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "026082fb95e154a7c460ca820a3366f1aca4fe56c8a093d9750d19743574bd99"
+}

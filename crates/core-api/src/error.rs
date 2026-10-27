@@ -6,6 +6,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use core_domain::AuthzError;
 use core_domain::workspace::ValidationError;
+use core_engines::Issue;
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
@@ -30,6 +31,11 @@ pub enum ApiError {
     PreconditionFailed { code: &'static str, message: String },
     #[error("{message}")]
     Unprocessable { code: &'static str, message: String },
+    /// One or more input fields are invalid; each is named.
+    #[error("invalid input")]
+    Invalid(Vec<Issue>),
+    #[error("{message}")]
+    Gone { code: &'static str, message: String },
     #[error("internal error")]
     Internal(String),
 }
@@ -48,6 +54,9 @@ pub struct ErrorDetail {
     /// The request field at fault, for validation errors.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub field: Option<String>,
+    /// Every invalid field, when there is more than one thing to fix.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issues: Option<Vec<Issue>>,
 }
 
 impl ApiError {
@@ -91,6 +100,18 @@ impl ApiError {
         Self::Internal(err.to_string())
     }
 
+    /// A single invalid field, named by its path (`custom.budget`, `stages[1].key`).
+    pub fn invalid(field: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Invalid(vec![Issue::new(field, message)])
+    }
+
+    pub fn unprocessable(code: &'static str, message: impl Into<String>) -> Self {
+        Self::Unprocessable {
+            code,
+            message: message.into(),
+        }
+    }
+
     fn parts(&self) -> (StatusCode, &str, String, Option<&str>) {
         match self {
             ApiError::BadRequest {
@@ -123,6 +144,17 @@ impl ApiError {
                 message.clone(),
                 None,
             ),
+            ApiError::Invalid(issues) => (
+                StatusCode::BAD_REQUEST,
+                "invalid_input",
+                issues
+                    .iter()
+                    .map(Issue::to_string)
+                    .collect::<Vec<_>>()
+                    .join("; "),
+                issues.first().map(|i| i.field.as_str()),
+            ),
+            ApiError::Gone { code, message } => (StatusCode::GONE, code, message.clone(), None),
             ApiError::Internal(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",
@@ -139,11 +171,16 @@ impl IntoResponse for ApiError {
             tracing::error!(error = %detail, "internal error");
         }
         let (status, code, message, field) = self.parts();
+        let issues = match &self {
+            ApiError::Invalid(issues) if issues.len() > 1 => Some(issues.clone()),
+            _ => None,
+        };
         let body = ErrorBody {
             error: ErrorDetail {
                 code: code.to_owned(),
                 message,
                 field: field.map(str::to_owned),
+                issues,
             },
         };
         (status, Json(body)).into_response()
@@ -165,6 +202,12 @@ impl From<sqlx::Error> for ApiError {
 impl From<AuthzError> for ApiError {
     fn from(err: AuthzError) -> Self {
         ApiError::forbidden("permission_denied", err.to_string())
+    }
+}
+
+impl From<Issue> for ApiError {
+    fn from(issue: Issue) -> Self {
+        ApiError::Invalid(vec![issue])
     }
 }
 

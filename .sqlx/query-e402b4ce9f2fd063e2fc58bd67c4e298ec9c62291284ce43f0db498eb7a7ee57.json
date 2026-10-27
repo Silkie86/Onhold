@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO rules (id, workspace_id, name, enabled, dry_run, once_per_object, trigger, conditions,\n                              actions, trigger_kind, trigger_event, next_run_at, scanned_until,\n                              created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Jsonb",
+        "Jsonb",
+        "Jsonb",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e402b4ce9f2fd063e2fc58bd67c4e298ec9c62291284ce43f0db498eb7a7ee57"
+}

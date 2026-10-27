@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE templates SET archived_at = now(), updated_by = $2\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND archived_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ca6c5b24ee0944e6fcd9ec4ee1b300f2366b61fdde2ca3d7398b6d5ff11247cc"
+}
