@@ -1,0 +1,58 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/core-domain",
+    "crates/core-db",
+    "crates/core-engines",
+    "crates/core-modules",
+    "crates/core-integrations",
+    "crates/core-api",
+    "crates/core-worker",
+    "crates/plugin-sdk",
+    "crates/onhold",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+license = "UNLICENSED"
+
+[workspace.dependencies]
+core-domain = { path = "crates/core-domain" }
+core-db = { path = "crates/core-db" }
+core-engines = { path = "crates/core-engines" }
+core-modules = { path = "crates/core-modules" }
+core-integrations = { path = "crates/core-integrations" }
+core-api = { path = "crates/core-api" }
+core-worker = { path = "crates/core-worker" }
+plugin-sdk = { path = "crates/plugin-sdk" }
+
+anyhow = "1"
+axum = "0.8"
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "uuid", "chrono", "json"] }
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "time"] }
+tokio-util = "0.7"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.7", features = ["trace", "request-id", "timeout", "limit"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["v7", "serde"] }
+http-body-util = "0.1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+[profile.dev.package.sqlx-macros]
+opt-level = 3

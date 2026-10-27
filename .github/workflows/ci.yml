@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  rust:
+    name: Rust (fmt, clippy, test, sqlx)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: onhold
+          POSTGRES_PASSWORD: onhold
+          POSTGRES_DB: onhold
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U onhold -d onhold"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://onhold:onhold@localhost:5432/onhold
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: sqlx-cli
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Offline query data is current
+        run: |
+          SQLX_OFFLINE=true cargo check --workspace --all-targets --locked
+      - name: Migrations apply
+        run: sqlx migrate run --source crates/core-db/migrations
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: sqlx prepare --check
+        run: cargo sqlx prepare --workspace --check
+      - name: Test
+        run: cargo test --workspace --locked
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile
+          push: false
+          tags: onhold:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

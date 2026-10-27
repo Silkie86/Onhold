@@ -1,0 +1,4 @@
+target/
+.git/
+web/**/node_modules/
+.env
