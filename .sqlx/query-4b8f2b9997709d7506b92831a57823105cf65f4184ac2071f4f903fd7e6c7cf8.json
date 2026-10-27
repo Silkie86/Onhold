@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE users SET is_superadmin = $2 WHERE email = $1::text::citext AND deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4b8f2b9997709d7506b92831a57823105cf65f4184ac2071f4f903fd7e6c7cf8"
+}

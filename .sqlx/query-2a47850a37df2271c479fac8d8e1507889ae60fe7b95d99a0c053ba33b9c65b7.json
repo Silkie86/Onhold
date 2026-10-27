@@ -1,0 +1,42 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT role AS \"role: Role\" FROM memberships\n           WHERE workspace_id = app_workspace_id() AND user_id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "role: Role",
+        "type_info": {
+          "Custom": {
+            "name": "member_role",
+            "kind": {
+              "Enum": [
+                "owner",
+                "admin",
+                "agent",
+                "finance",
+                "viewer",
+                "talent"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "memberships",
+            "name": "role"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2a47850a37df2271c479fac8d8e1507889ae60fe7b95d99a0c053ba33b9c65b7"
+}

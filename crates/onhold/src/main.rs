@@ -1,7 +1,10 @@
-//! The single OnHold binary: `onhold api`, `onhold worker` and `onhold migrate`.
+//! The single OnHold binary: `onhold api`, `onhold worker`, `onhold migrate`,
+//! `onhold openapi` and the operator tools under `onhold admin`.
 
+mod config;
 mod telemetry;
 
+use std::io::Write;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -17,6 +20,9 @@ struct Cli {
 
     #[command(flatten)]
     telemetry: telemetry::TelemetryArgs,
+
+    #[command(flatten)]
+    api: config::ApiArgs,
 
     #[command(subcommand)]
     command: Command,
@@ -52,36 +58,189 @@ enum Command {
     },
     /// Apply pending database migrations and exit.
     Migrate,
+    /// Print the OpenAPI document as JSON. Needs no database.
+    Openapi,
+    /// Operator tools.
+    #[command(subcommand)]
+    Admin(AdminCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum AdminCommand {
+    /// Print a new random encryption key, ready for `ENCRYPTION_KEYS`.
+    GenerateKey {
+        /// Key id; use a new one for each rotation.
+        #[arg(long, default_value = "k1")]
+        id: String,
+    },
+    /// Workspaces.
+    #[command(subcommand)]
+    Workspace(WorkspaceCommand),
+    /// Platform operator rights. The user must have signed in at least once.
+    #[command(subcommand)]
+    Superadmin(SuperadminCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum WorkspaceCommand {
+    /// Create a workspace and print its owner's invitation link.
+    Create {
+        #[arg(long)]
+        slug: String,
+        #[arg(long)]
+        name: String,
+        /// ISO 3166-1 alpha-2, e.g. GB.
+        #[arg(long)]
+        country: String,
+        /// ISO 4217, e.g. GBP.
+        #[arg(long)]
+        currency: String,
+        /// IANA time zone, e.g. Europe/London.
+        #[arg(long)]
+        timezone: String,
+        #[arg(long)]
+        owner_email: String,
+        #[arg(long)]
+        locale: Option<String>,
+        #[arg(long)]
+        plan: Option<String>,
+        #[arg(long)]
+        plugin_slug: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum SuperadminCommand {
+    Grant {
+        #[arg(long)]
+        email: String,
+    },
+    Revoke {
+        #[arg(long)]
+        email: String,
+    },
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // A `.env` file, if present, fills in settings the environment lacks (local development).
+    let dotenv = dotenvy::dotenv();
     let cli = Cli::parse();
     telemetry::init(&cli.telemetry)?;
+    if let Err(err) = dotenv
+        && !err.not_found()
+    {
+        tracing::warn!(error = %err, "could not read .env");
+    }
+
+    // Commands that touch no database.
+    match &cli.command {
+        Command::Openapi => {
+            let json = core_api::openapi().to_pretty_json()?;
+            // A closed pipe (`onhold openapi | head`) is not an error.
+            let mut out = std::io::stdout().lock();
+            match writeln!(out, "{json}") {
+                Err(err) if err.kind() != std::io::ErrorKind::BrokenPipe => return Err(err.into()),
+                _ => return Ok(()),
+            }
+        }
+        Command::Admin(AdminCommand::GenerateKey { id }) => {
+            let key = core_domain::crypto::random_bytes::<32>();
+            let spec = format!("{id}:{}", data_encoding::BASE64.encode(&key));
+            core_domain::crypto::Keyring::parse(&spec)?;
+            println!("{spec}");
+            return Ok(());
+        }
+        _ => {}
+    }
 
     let pool_config = core_db::PoolConfig {
         url: cli.db.database_url.context("DATABASE_URL is not set")?,
         max_connections: cli.db.database_max_connections,
         acquire_timeout: Duration::from_secs(5),
     };
-    let db = core_db::connect_lazy(&pool_config)?;
 
     let shutdown = CancellationToken::new();
     tokio::spawn(cancel_on_signal(shutdown.clone()));
 
     match cli.command {
         Command::Api { bind } => {
-            let app = core_api::router(core_api::AppState { db });
-            core_api::serve(bind, app, shutdown).await?;
+            let state =
+                core_api::AppState::new(core_db::connect_app(&pool_config)?, cli.api.build(true)?)?;
+            core_api::serve(bind, core_api::router(state), shutdown).await?;
         }
         Command::Worker { health_bind } => {
+            let db = core_db::connect_app(&pool_config)?;
             let probes = core_api::health::standalone(db.clone());
             let probes = core_api::serve(health_bind, probes, shutdown.clone());
             let worker = core_worker::run(db, core_worker::HEARTBEAT_INTERVAL, shutdown.clone());
             let (probes, ()) = tokio::join!(probes, worker);
             probes?;
         }
-        Command::Migrate => core_db::migrate(&db).await?,
+        Command::Migrate => core_db::migrate(&core_db::connect_owner(&pool_config)?).await?,
+        Command::Admin(AdminCommand::Workspace(WorkspaceCommand::Create {
+            slug,
+            name,
+            country,
+            currency,
+            timezone,
+            owner_email,
+            locale,
+            plan,
+            plugin_slug,
+        })) => {
+            let state = core_api::AppState::new(
+                core_db::connect_app(&pool_config)?,
+                cli.api.build(false)?,
+            )?;
+            let created = core_api::services::tenancy::create_workspace(
+                &state,
+                None,
+                Default::default(),
+                core_api::services::tenancy::NewWorkspace {
+                    slug,
+                    name,
+                    country,
+                    default_currency: currency,
+                    default_timezone: timezone,
+                    locale,
+                    plan,
+                    perspective: None,
+                    plugin_slug,
+                    owner_email,
+                },
+            )
+            .await
+            .map_err(|err| match err {
+                core_api::error::ApiError::Internal(detail) => {
+                    anyhow::anyhow!("internal error: {detail}")
+                }
+                err => err.into(),
+            })?;
+            println!(
+                "workspace {} ({})",
+                created.workspace.slug, created.workspace.id.0
+            );
+            println!("owner invitation: {}", created.owner_invitation_url);
+        }
+        Command::Admin(AdminCommand::Superadmin(cmd)) => {
+            let (email, on) = match cmd {
+                SuperadminCommand::Grant { email } => (email, true),
+                SuperadminCommand::Revoke { email } => (email, false),
+            };
+            let owner = core_db::connect_owner(&pool_config)?;
+            if !core_db::users::set_superadmin(&owner, &email, on).await? {
+                anyhow::bail!("no user with email {email}; they must accept an invitation first");
+            }
+            tracing::warn!(%email, superadmin = on, "platform operator rights changed");
+            println!(
+                "{email}: superadmin {}",
+                if on { "granted" } else { "revoked" }
+            );
+        }
+        Command::Openapi | Command::Admin(AdminCommand::GenerateKey { .. }) => {
+            unreachable!("handled above")
+        }
     }
     Ok(())
 }

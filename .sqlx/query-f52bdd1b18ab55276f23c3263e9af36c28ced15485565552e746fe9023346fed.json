@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE sessions s SET impersonated_workspace_id = NULL, impersonation_expires_at = NULL\n           FROM (SELECT impersonated_workspace_id AS old FROM sessions WHERE id = $1 FOR UPDATE) prev\n           WHERE s.id = $1\n           RETURNING prev.old AS \"old: WorkspaceId\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "old: WorkspaceId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "sessions",
+            "name": "impersonated_workspace_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "f52bdd1b18ab55276f23c3263e9af36c28ced15485565552e746fe9023346fed"
+}

@@ -1,0 +1,8 @@
+# Normalise to LF everywhere, including Windows checkouts. sqlx checksums
+# migration files byte-for-byte, so a CRLF checkout would make an
+# already-applied migration look modified.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

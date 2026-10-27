@@ -1,0 +1,12 @@
+{
+  "name": "onhold-web",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "generate": "pnpm --filter @onhold/api-client generate",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
