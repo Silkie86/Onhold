@@ -550,6 +550,34 @@ async fn wrong_codes_lock_the_account_however_often_the_password_is_given(pool: 
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn guesses_sent_all_at_once_still_stop_at_the_lockout(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let (secret, _) = enable_totp(&app, &owner).await;
+    let code = (totp_code(&secret, 0).parse::<u32>().unwrap() + 500_000) % 1_000_000;
+    let wrong = json!({ "code": format!("{code:06}") });
+    let max = app.state.config.max_login_failures;
+    let mut sessions = vec![];
+    for _ in 0..max * 2 {
+        sessions.push(Client::from_login(
+            &app.login("owner@acme.test", PASSWORD).await.ok(),
+        ));
+    }
+    futures_util::future::join_all(sessions.iter().map(|s| {
+        app.post("/api/v1/auth/mfa/verify")
+            .signed_in(s)
+            .json(wrong.clone())
+            .send()
+    }))
+    .await;
+    let count: i32 = sqlx::query_scalar("SELECT failed_login_count FROM users")
+        .fetch_one(&app.owner)
+        .await
+        .unwrap();
+    assert_eq!(count, max, "no guess is judged once the account is locked");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn the_cookie_lasts_the_full_session_once_the_code_is_given(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let (_, owner) = app.workspace_with_owner("acme").await;

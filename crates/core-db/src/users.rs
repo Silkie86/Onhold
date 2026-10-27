@@ -113,9 +113,11 @@ pub async fn record_login_failure(
 }
 
 /// True while too many failed sign-ins (passwords or second-factor codes) lock the account.
+/// Holds the user's row until the transaction ends, so one user's guesses are judged one at a
+/// time and none slips past the lockout.
 pub async fn is_locked(conn: &mut PgConnection, id: UserId) -> Result<bool> {
     Ok(sqlx::query_scalar!(
-        r#"SELECT coalesce(locked_until > now(), false) AS "locked!" FROM users WHERE id = $1"#,
+        r#"SELECT coalesce(locked_until > now(), false) AS "locked!" FROM users WHERE id = $1 FOR UPDATE"#,
         id.0
     )
     .fetch_optional(conn)
