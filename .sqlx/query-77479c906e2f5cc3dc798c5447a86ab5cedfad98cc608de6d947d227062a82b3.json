@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE invoices SET stripe_session_id = $2, stripe_session_url = $3,\n               stripe_session_amount = $4, stripe_session_expires_at = $5\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Int8",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "77479c906e2f5cc3dc798c5447a86ab5cedfad98cc608de6d947d227062a82b3"
+}

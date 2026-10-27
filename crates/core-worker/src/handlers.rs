@@ -8,7 +8,7 @@ use core_api::services::automation::{
 };
 use core_api::services::bookings::{self, JOB_COMPLETE, JOB_EXPIRE_HOLD};
 use core_api::services::quotes::{self, JOB_EXPIRE as JOB_EXPIRE_QUOTE};
-use core_api::services::{documents, files, imports, invoices, mail, webhooks};
+use core_api::services::{documents, files, imports, invoices, mail, stripe, webhooks};
 use core_db::jobs::{Claimed, LogLine};
 use core_domain::WorkspaceId;
 use core_integrations::http::DeliveryError;
@@ -55,7 +55,10 @@ impl From<ApiError> for JobError {
         // Bad input stays bad; database and other internal trouble may pass.
         let permanent = !matches!(
             err,
-            ApiError::Internal(_) | ApiError::Conflict { .. } | ApiError::PreconditionFailed { .. }
+            ApiError::Internal(_)
+                | ApiError::Conflict { .. }
+                | ApiError::PreconditionFailed { .. }
+                | ApiError::Unavailable { .. }
         );
         Self { message, permanent }
     }
@@ -161,6 +164,16 @@ impl Worker {
             invoices::JOB_OVERDUE => {
                 let id = uuid_field(&job.payload, "invoice_id")?;
                 invoices::mark_overdue(&self.app, workspace(job)?, id).await?;
+                Ok(())
+            }
+            stripe::JOB_EVENT => {
+                let id = job
+                    .payload
+                    .get("event_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| JobError::permanent("the job has no `event_id`"))?;
+                let outcome = stripe::process_event(&self.app, workspace(job)?, id).await?;
+                note(log, format!("Stripe event {id}: {outcome}"));
                 Ok(())
             }
             JOB_WEBHOOK => self.deliver_webhook(job, log).await,

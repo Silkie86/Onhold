@@ -1,0 +1,28 @@
+{
+  "id": "evt_3QOwlsRefunded",
+  "object": "event",
+  "account": "acct_1QOwlsTestAccount",
+  "api_version": "2024-06-20",
+  "created": 1730060000,
+  "data": {
+    "object": {
+      "id": "ch_3QOwlsCharge",
+      "object": "charge",
+      "amount": 120000,
+      "amount_captured": 120000,
+      "amount_refunded": 20000,
+      "captured": true,
+      "currency": "gbp",
+      "livemode": false,
+      "paid": true,
+      "payment_intent": "pi_3QOwlsPaymentIntent",
+      "refunded": false,
+      "status": "succeeded"
+    },
+    "previous_attributes": { "amount_refunded": 0 }
+  },
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": { "id": "req_OwlsRefund", "idempotency_key": null },
+  "type": "charge.refunded"
+}

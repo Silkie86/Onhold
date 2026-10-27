@@ -42,6 +42,7 @@ pub mod rules;
 pub mod search;
 pub mod sessions;
 pub mod settlements;
+pub mod stripe;
 pub mod talent;
 pub mod tasks;
 pub mod templates;

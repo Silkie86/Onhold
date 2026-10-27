@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE stripe_accounts SET charges_enabled = $2, details_submitted = $3,\n               default_currency = $4, display_name = $5\n           WHERE workspace_id = app_workspace_id() AND account_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bool",
+        "Bool",
+        "Bpchar",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a75a4fc11b0f5c9cec4770fa313d0596186802dde182675060e0ad8836d634c9"
+}

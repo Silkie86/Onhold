@@ -71,7 +71,12 @@ const publicQuote = createRoute({
 });
 
 // The payer's page for an invoice, and a signer's for a document.
-const publicInvoice = createRoute({ getParentRoute: () => root, path: "/invoice/$token", component: PublicInvoicePage });
+const publicInvoice = createRoute({
+  getParentRoute: () => root,
+  path: "/invoice/$token",
+  validateSearch: (s: Record<string, unknown>): { paid?: string } => ({ paid: str(s.paid) }),
+  component: PublicInvoicePage,
+});
 const publicSigning = createRoute({ getParentRoute: () => root, path: "/sign/$token", component: PublicSigningPage });
 
 // Where people approve a desktop or mobile app's sign-in (the API's `verification_url`).
@@ -137,6 +142,18 @@ const reports = createRoute({ getParentRoute: () => app, path: "/finance/reports
 const documents = createRoute({ getParentRoute: () => app, path: "/documents", component: DocumentsPage });
 const pdfImports = createRoute({ getParentRoute: () => app, path: "/documents/imports", component: PdfImportsPage });
 const documentPage = createRoute({ getParentRoute: () => app, path: "/documents/$id", component: DocumentPage });
+const paymentsSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/payments",
+  // Stripe sends the admin back here with these.
+  validateSearch: (s: Record<string, unknown>): { code?: string; state?: string; error?: string; error_description?: string } => ({
+    code: str(s.code),
+    state: str(s.state),
+    error: str(s.error),
+    error_description: str(s.error_description),
+  }),
+  component: lazyRouteComponent(() => import("./pages/payments-settings.tsx"), "PaymentsSettingsPage"),
+});
 const financeSettings = createRoute({
   getParentRoute: () => app,
   path: "/settings/finance",
@@ -175,6 +192,7 @@ const tree = root.addChildren([
     pdfImports,
     documentPage,
     financeSettings,
+    paymentsSettings,
   ]),
 ]);
 

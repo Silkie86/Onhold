@@ -457,10 +457,17 @@ pub struct NewRefund {
 pub async fn refund(state: &AppState, ctx: &Ctx, id: Uuid, r: NewRefund) -> ApiResult<PaymentView> {
     ctx.authorize(Permission::PaymentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    core_db::payments::lock(&mut tx, id)
+    let refund_id = refund_in(&mut tx, ctx, id, r).await?;
+    let refund = load(&mut tx, refund_id).await?.ok_or(ApiError::NotFound)?;
+    tx.commit().await?;
+    Ok(refund)
+}
+
+pub(crate) async fn refund_in(tx: &mut Tx, ctx: &Ctx, id: Uuid, r: NewRefund) -> ApiResult<Uuid> {
+    core_db::payments::lock(tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let before = load(tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.kind != "payment" || before.voided_at.is_some() {
         return Err(ApiError::conflict(
             "payment_closed",
@@ -483,11 +490,11 @@ pub async fn refund(state: &AppState, ctx: &Ctx, id: Uuid, r: NewRefund) -> ApiR
     check.finish()?;
     let paid_on = match r.paid_on {
         Some(d) => d,
-        None => super::finance::today(&mut tx, ctx).await?,
+        None => super::finance::today(tx, ctx).await?,
     };
     let refund_id = core_domain::ids::new_id();
     core_db::payments::insert(
-        &mut tx,
+        tx,
         core_db::payments::NewPayment {
             id: refund_id,
             kind: "refund",
@@ -506,10 +513,10 @@ pub async fn refund(state: &AppState, ctx: &Ctx, id: Uuid, r: NewRefund) -> ApiR
         ctx.user_id(),
     )
     .await?;
-    core_db::payments::add_allocated(&mut tx, id, r.amount_minor).await?;
-    let refund = load(&mut tx, refund_id).await?.ok_or(ApiError::NotFound)?;
+    core_db::payments::add_allocated(tx, id, r.amount_minor).await?;
+    let refund = load(tx, refund_id).await?.ok_or(ApiError::NotFound)?;
     record(
-        &mut tx,
+        tx,
         ctx,
         Change {
             topic: "payment.refunded",
@@ -521,8 +528,7 @@ pub async fn refund(state: &AppState, ctx: &Ctx, id: Uuid, r: NewRefund) -> ApiR
         },
     )
     .await?;
-    tx.commit().await?;
-    Ok(refund)
+    Ok(refund_id)
 }
 
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]

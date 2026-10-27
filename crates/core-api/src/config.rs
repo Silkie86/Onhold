@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use core_domain::crypto::Keyring;
 use core_integrations::storage::S3Config;
+use core_integrations::stripe::StripeClient;
 use url::Url;
 
 use crate::oidc::OidcProvider;
@@ -95,6 +96,9 @@ pub struct Config {
     pub pdf: PdfConfig,
     /// The largest file one upload may be.
     pub max_upload_bytes: usize,
+    /// Stripe Connect, for paying invoices by card. `None`: invoices are
+    /// paid by bank transfer only.
+    pub stripe: Option<StripeClient>,
 }
 
 impl Config {
@@ -122,6 +126,7 @@ impl Config {
             storage: StorageConfig::Database,
             pdf: PdfConfig::Auto { no_sandbox: false },
             max_upload_bytes: 25 * 1024 * 1024,
+            stripe: None,
         }
     }
 

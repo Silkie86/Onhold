@@ -1708,9 +1708,11 @@ pub struct PublicInvoice {
     /// How to pay, from the issuer's bank details.
     #[schema(value_type = Option<Object>)]
     pub bank_account: Option<Value>,
+    /// The payer can pay by card (`POST /public/invoices/{token}/pay`).
+    pub card_payments: bool,
 }
 
-async fn open_public(
+pub(crate) async fn open_public(
     state: &AppState,
     token: &str,
     meta: core_domain::authz::RequestMeta,
@@ -1753,8 +1755,10 @@ pub async fn public_get(
         .await?
         .ok_or(ApiError::NotFound)?;
     let context = template_context(&mut tx, &inv, None).await?;
+    let card_payments = super::stripe::card_payments_open(state, &mut tx, &inv).await?;
     tx.commit().await?;
     Ok(PublicInvoice {
+        card_payments,
         workspace_name: w.name,
         branding: w.branding,
         kind: inv.kind,
