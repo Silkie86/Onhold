@@ -508,7 +508,7 @@ pub async fn duplicates(
 // Members ----------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct MemberView {
+pub struct TalentMemberView {
     pub id: Uuid,
     pub talent_id: Uuid,
     pub name: String,
@@ -523,7 +523,7 @@ pub struct MemberView {
     pub updated_at: DateTime<Utc>,
 }
 
-impl From<Member> for MemberView {
+impl From<Member> for TalentMemberView {
     fn from(m: Member) -> Self {
         Self {
             id: m.id,
@@ -542,7 +542,7 @@ impl From<Member> for MemberView {
 }
 
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
-pub struct MemberInput {
+pub struct TalentMemberInput {
     pub name: String,
     pub role: Option<String>,
     pub email: Option<String>,
@@ -560,7 +560,7 @@ struct CheckedMember {
     notes: Option<String>,
 }
 
-fn check_member(m: &MemberInput) -> ApiResult<CheckedMember> {
+fn check_member(m: &TalentMemberInput) -> ApiResult<CheckedMember> {
     let mut check = Check::default();
     let out = CheckedMember {
         name: check.required("name", &m.name, 200),
@@ -580,7 +580,11 @@ fn check_member(m: &MemberInput) -> ApiResult<CheckedMember> {
     Ok(out)
 }
 
-pub async fn members(state: &AppState, ctx: &Ctx, talent_id: Uuid) -> ApiResult<Vec<MemberView>> {
+pub async fn members(
+    state: &AppState,
+    ctx: &Ctx,
+    talent_id: Uuid,
+) -> ApiResult<Vec<TalentMemberView>> {
     ctx.authorize(Permission::TalentRead)?;
     let mut tx = begin(state, ctx).await?;
     load(&mut tx, talent_id).await?.ok_or(ApiError::NotFound)?;
@@ -593,8 +597,8 @@ pub async fn add_member(
     state: &AppState,
     ctx: &Ctx,
     talent_id: Uuid,
-    input: MemberInput,
-) -> ApiResult<MemberView> {
+    input: TalentMemberInput,
+) -> ApiResult<TalentMemberView> {
     ctx.authorize(Permission::TalentWrite)?;
     let m = check_member(&input)?;
     let mut tx = begin(state, ctx).await?;
@@ -619,7 +623,7 @@ pub async fn add_member(
         ctx.user_id(),
     )
     .await?;
-    let view: MemberView = core_db::talent::member_for_update(&mut tx, talent_id, id)
+    let view: TalentMemberView = core_db::talent::member_for_update(&mut tx, talent_id, id)
         .await?
         .ok_or(ApiError::NotFound)?
         .into();
@@ -645,9 +649,9 @@ pub async fn update_member(
     ctx: &Ctx,
     talent_id: Uuid,
     id: Uuid,
-    input: MemberInput,
+    input: TalentMemberInput,
     if_match: Option<i64>,
-) -> ApiResult<MemberView> {
+) -> ApiResult<TalentMemberView> {
     ctx.authorize(Permission::TalentWrite)?;
     let m = check_member(&input)?;
     let mut tx = begin(state, ctx).await?;
@@ -669,7 +673,7 @@ pub async fn update_member(
         ctx.user_id(),
     )
     .await?;
-    let after: MemberView = core_db::talent::member_for_update(&mut tx, talent_id, id)
+    let after: TalentMemberView = core_db::talent::member_for_update(&mut tx, talent_id, id)
         .await?
         .ok_or(ApiError::NotFound)?
         .into();
@@ -680,7 +684,7 @@ pub async fn update_member(
             topic: "talent_member.updated",
             resource: MEMBER,
             object_id: Some(id),
-            before: Some(json!(MemberView::from(current))),
+            before: Some(json!(TalentMemberView::from(current))),
             after: Some(json!(after)),
             event_extra: Some(json!({ "talent_id": talent_id })),
         },
@@ -709,7 +713,7 @@ pub async fn remove_member(
             topic: "talent_member.deleted",
             resource: MEMBER,
             object_id: Some(id),
-            before: Some(json!(MemberView::from(current))),
+            before: Some(json!(TalentMemberView::from(current))),
             after: None,
             event_extra: Some(json!({ "talent_id": talent_id })),
         },

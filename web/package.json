@@ -7,6 +7,9 @@
   },
   "scripts": {
     "generate": "pnpm --filter @onhold/api-client generate",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm --filter @onhold/app build",
+    "dev": "pnpm --filter @onhold/app dev"
   }
 }

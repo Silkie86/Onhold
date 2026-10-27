@@ -2291,18 +2291,6 @@ export interface components {
             /** @description Workspaces this user belongs to (empty while a second factor is pending). */
             workspaces: components["schemas"]["MyWorkspaceView"][];
         };
-        MemberInput: {
-            email?: string | null;
-            name: string;
-            notes?: string | null;
-            phone?: string | null;
-            /**
-             * Format: int32
-             * @description Order in the list; default last.
-             */
-            position?: number | null;
-            role?: string | null;
-        };
         MemberView: {
             email: string;
             has_2fa: boolean;
@@ -2808,6 +2796,38 @@ export interface components {
          * @enum {string}
          */
         TalentKind: "person" | "act" | "space" | "equipment";
+        TalentMemberInput: {
+            email?: string | null;
+            name: string;
+            notes?: string | null;
+            phone?: string | null;
+            /**
+             * Format: int32
+             * @description Order in the list; default last.
+             */
+            position?: number | null;
+            role?: string | null;
+        };
+        TalentMemberView: {
+            /** Format: date-time */
+            created_at: string;
+            email?: string | null;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Dietary, travel and other notes. */
+            notes?: string | null;
+            phone?: string | null;
+            /** Format: int32 */
+            position: number;
+            role?: string | null;
+            /** Format: uuid */
+            talent_id: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            version: number;
+        };
         TalentPage: {
             items: components["schemas"]["TalentView"][];
             /**
@@ -6477,7 +6497,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MemberView"][];
+                    "application/json": components["schemas"]["TalentMemberView"][];
                 };
             };
             404: {
@@ -6504,7 +6524,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MemberInput"];
+                "application/json": components["schemas"]["TalentMemberInput"];
             };
         };
         responses: {
@@ -6513,7 +6533,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MemberView"];
+                    "application/json": components["schemas"]["TalentMemberView"];
                 };
             };
             400: {
@@ -6550,7 +6570,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MemberInput"];
+                "application/json": components["schemas"]["TalentMemberInput"];
             };
         };
         responses: {
@@ -6559,7 +6579,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MemberView"];
+                    "application/json": components["schemas"]["TalentMemberView"];
                 };
             };
             400: {

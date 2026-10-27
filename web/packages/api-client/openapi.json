@@ -6291,7 +6291,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/MemberView"
+                    "$ref": "#/components/schemas/TalentMemberView"
                   }
                 }
               }
@@ -6359,7 +6359,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MemberInput"
+                "$ref": "#/components/schemas/TalentMemberInput"
               }
             }
           },
@@ -6370,7 +6370,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemberView"
+                  "$ref": "#/components/schemas/TalentMemberView"
                 }
               }
             }
@@ -6469,7 +6469,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MemberInput"
+                "$ref": "#/components/schemas/TalentMemberInput"
               }
             }
           },
@@ -6480,7 +6480,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemberView"
+                  "$ref": "#/components/schemas/TalentMemberView"
                 }
               }
             }
@@ -11442,49 +11442,6 @@
           }
         }
       },
-      "MemberInput": {
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "properties": {
-          "email": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "name": {
-            "type": "string"
-          },
-          "notes": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "phone": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "position": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Order in the list; default last."
-          },
-          "role": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
       "MemberView": {
         "type": "object",
         "required": [
@@ -13181,6 +13138,115 @@
           "space",
           "equipment"
         ]
+      },
+      "TalentMemberInput": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Order in the list; default last."
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TalentMemberView": {
+        "type": "object",
+        "required": [
+          "id",
+          "talent_id",
+          "name",
+          "position",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Dietary, travel and other notes."
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "talent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       },
       "TalentPage": {
         "type": "object",

@@ -27,7 +27,8 @@ const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export function createApiClient(options: ClientOptions = {}) {
   const client = createClient<paths>({
-    baseUrl: `${options.baseUrl ?? ""}/api/v1`,
+    // Paths in the spec already start with `/api/v1`.
+    baseUrl: options.baseUrl ?? "",
     credentials: "include",
     fetch: options.fetch,
   });

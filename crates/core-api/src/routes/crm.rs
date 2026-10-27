@@ -31,8 +31,8 @@ use crate::services::organisations::{
 use crate::services::records::{self, BulkRequest, BulkResult};
 use crate::services::search::{self as search_svc, SearchHit, TagCount, TimelinePage};
 use crate::services::talent::{
-    self, MemberInput, MemberView, NewTalent, TalentDuplicateQuery, TalentPage, TalentPatch,
-    TalentStatus, TalentView,
+    self, NewTalent, TalentDuplicateQuery, TalentMemberInput, TalentMemberView, TalentPage,
+    TalentPatch, TalentStatus, TalentView,
 };
 use crate::services::views::{self, EntitySchema, SavedView, SavedViewInput};
 
@@ -194,26 +194,26 @@ async fn talent_timeline(
 
 /// The people in an act or crew, in order.
 #[utoipa::path(get, path = "/talent/{id}/members", tag = "talent", params(WorkspaceHeader, ("id" = Uuid, Path)),
-    responses((status = 200, body = Vec<MemberView>), (status = 404, body = ErrorBody)),
+    responses((status = 200, body = Vec<TalentMemberView>), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
 async fn list_talent_members(
     State(state): State<AppState>,
     WsCtx(ctx): WsCtx,
     Path(id): Path<Uuid>,
-) -> ApiResult<Json<Vec<MemberView>>> {
+) -> ApiResult<Json<Vec<TalentMemberView>>> {
     Ok(Json(talent::members(&state, &ctx, id).await?))
 }
 
 #[utoipa::path(post, path = "/talent/{id}/members", tag = "talent", params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path)),
-    request_body = MemberInput,
-    responses((status = 201, body = MemberView), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody)),
+    request_body = TalentMemberInput,
+    responses((status = 201, body = TalentMemberView), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
 async fn add_talent_member(
     State(state): State<AppState>,
     WsCtx(ctx): WsCtx,
     Path(id): Path<Uuid>,
-    Json(b): Json<MemberInput>,
-) -> ApiResult<(StatusCode, Json<MemberView>)> {
+    Json(b): Json<TalentMemberInput>,
+) -> ApiResult<(StatusCode, Json<TalentMemberView>)> {
     Ok((
         StatusCode::CREATED,
         Json(talent::add_member(&state, &ctx, id, b).await?),
@@ -223,15 +223,15 @@ async fn add_talent_member(
 /// Replace a member's details.
 #[utoipa::path(put, path = "/talent/{id}/members/{member_id}", tag = "talent",
     params(WorkspaceHeader, IfMatchHeader, IdempotencyHeader, ("id" = Uuid, Path), ("member_id" = Uuid, Path)),
-    request_body = MemberInput,
-    responses((status = 200, body = MemberView), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody), (status = 412, body = ErrorBody)),
+    request_body = TalentMemberInput,
+    responses((status = 200, body = TalentMemberView), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody), (status = 412, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
 async fn update_talent_member(
     State(state): State<AppState>,
     WsCtx(ctx): WsCtx,
     Path((id, member_id)): Path<(Uuid, Uuid)>,
     IfMatch(if_match): IfMatch,
-    Json(b): Json<MemberInput>,
+    Json(b): Json<TalentMemberInput>,
 ) -> ApiResult<Response> {
     let v = talent::update_member(&state, &ctx, id, member_id, b, if_match).await?;
     Ok(with_etag(v.version, v))
