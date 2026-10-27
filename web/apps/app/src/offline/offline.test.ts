@@ -128,6 +128,30 @@ describe("queuing changes", () => {
     expect(enqueue([stuck], item("update", "a", { name: "y" }))).toHaveLength(2);
   });
 
+  it("leaves the change being sent, or held by the server, as it is", () => {
+    const sending = { ...item("update", "a", { name: "x" }), seq: 7 };
+    expect(enqueue([sending], item("update", "a", { email: "a@x.example" }), 7)).toEqual([
+      sending,
+      expect.objectContaining({ op: "update", body: { email: "a@x.example" } }),
+    ]);
+    const held = { ...item("update", "a", { name: "x" }), seq: 7, tries: 1 };
+    expect(enqueue([held], item("update", "a", { email: "a@x.example" }))).toHaveLength(2);
+    // A record whose creation is on its way is deleted after it arrives, not forgotten.
+    const id = newLocalId();
+    const creating = { ...item("create", id, { name: "New" }), seq: 8 };
+    const edit = { ...item("update", id, { name: "Newer" }), seq: 9 };
+    expect(enqueue([creating, edit], item("delete", id), 8).map((q) => [q.seq, q.op])).toEqual([
+      [8, "create"],
+      [undefined, "delete"],
+    ]);
+  });
+
+  it("queues a change that may have reached the server as it is, after what waits", () => {
+    const waiting = { ...item("update", "a", { name: "x" }), seq: 7 };
+    const sent = { ...item("update", "a", { email: "a@x.example" }), tries: 0 };
+    expect(enqueue([waiting], sent)).toEqual([waiting, sent]);
+  });
+
   it("points queued changes at the server id once a create arrives", () => {
     const q = rewriteIds(
       [item("update", "local-1", { name: "x" }), item("create", "local-2", { organisation_id: "local-1" })],

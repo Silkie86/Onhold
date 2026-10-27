@@ -57,6 +57,23 @@ fn body_limit(method: &axum::http::Method, path: &str) -> usize {
     }
 }
 
+/// Path segments that are bearer secrets: the buyer's quote link and
+/// calendar feeds. The database keeps only their hashes, so logs must not
+/// keep them either.
+const SECRET_SEGMENTS_AFTER: &[&str] = &["/public/quotes/", "/public/calendar/"];
+
+/// The request path as it goes into logs, with secret segments replaced.
+fn log_path(path: &str) -> std::borrow::Cow<'_, str> {
+    for marker in SECRET_SEGMENTS_AFTER {
+        if let Some(i) = path.find(marker) {
+            let (head, secret) = path.split_at(i + marker.len());
+            let tail = secret.find('/').map_or("", |j| &secret[j..]);
+            return format!("{head}<redacted>{tail}").into();
+        }
+    }
+    path.into()
+}
+
 /// Refuses bodies over the route's limit: early from Content-Length, and
 /// while reading for bodies that do not declare one.
 async fn limit_body(
@@ -82,6 +99,8 @@ async fn limit_body(
     next.run(Request::from_parts(parts, body)).await
 }
 
+/// Keep well under a minute: `idem_claim` treats an idempotency claim older
+/// than that as abandoned by a request that was cut off.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Shared state handed to every handler.
@@ -274,7 +293,7 @@ pub fn router(state: AppState) -> Router {
                             tracing::info_span!(
                                 "request",
                                 method = %req.method(),
-                                path = %req.uri().path(),
+                                path = %log_path(req.uri().path()),
                                 request_id,
                                 workspace_id = tracing::field::Empty,
                                 user_id = tracing::field::Empty,

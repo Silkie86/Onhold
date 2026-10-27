@@ -1,5 +1,5 @@
 import { addDays, dayKey, daysBetween, formatWhen, monthGrid, nextStatuses, onDay, parseDayKey, shiftByDays, startOfWeek } from "./work.ts";
-import { lineAmount } from "./pages/quotes.tsx";
+import { lineAmount, lineDrafts, lineInputs } from "./pages/quotes.tsx";
 import { validateCalendarSearch, viewRange } from "./pages/calendar.tsx";
 
 test("a month view is six whole weeks starting on a Monday", () => {
@@ -63,6 +63,20 @@ test("status buttons follow the server's arrows", () => {
 test("quote lines total as the server does", () => {
   expect(lineAmount(2, 15_000)).toBe(30_000);
   expect(lineAmount(1.5, 333)).toBe(500);
+});
+
+test("saving a quote's lines keeps the talent each one is for", () => {
+  const talent = "0190a3c4-0000-7000-8000-000000000001";
+  const saved = lineInputs(
+    lineDrafts([
+      { description: "Fee: The Midnight Owls", quantity: 1, unit_minor: 200_000, amount_minor: 200_000, talent_id: talent },
+      { description: "Travel", quantity: 2, unit_minor: 15_000, amount_minor: 30_000 },
+    ]),
+  );
+  expect(saved).toEqual([
+    { description: "Fee: The Midnight Owls", quantity: 1, unit_minor: 200_000, talent_id: talent },
+    { description: "Travel", quantity: 2, unit_minor: 15_000, talent_id: null },
+  ]);
 });
 
 test("calendar addresses and ranges", () => {

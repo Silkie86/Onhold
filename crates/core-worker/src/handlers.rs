@@ -171,6 +171,27 @@ impl Worker {
         }
     }
 
+    /// Cleans up after a job that gave up for good without its handler
+    /// finishing: it timed out on its last attempt, or its worker stopped.
+    pub(crate) async fn gave_up(
+        &self,
+        workspace: Option<WorkspaceId>,
+        kind: &str,
+        payload: &Value,
+        error: &str,
+    ) {
+        if kind != imports::JOB_IMPORT {
+            return;
+        }
+        let (Some(workspace), Ok(id)) = (workspace, uuid_field(payload, "import_id")) else {
+            return;
+        };
+        let message = format!("the import stopped: {error}");
+        if let Err(e) = imports::abandon(&self.app, workspace, id, &message).await {
+            tracing::error!(import_id = %id, error = %e, "could not mark an import failed");
+        }
+    }
+
     async fn run_import(&self, job: &Claimed, log: &mut Vec<LogLine>) -> Result<(), JobError> {
         let workspace = workspace(job)?;
         let id = uuid_field(&job.payload, "import_id")?;

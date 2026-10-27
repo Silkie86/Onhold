@@ -136,9 +136,12 @@ export function SyncPage() {
               ) : (
                 <>
                   <Alert>{item.error ?? "The server did not accept this change."}</Alert>
-                  <div className="flex justify-end">
+                  <div className="flex flex-wrap justify-end gap-2">
                     <Button variant="outline" onClick={() => void sync.resolve(item.seq as number, "theirs")}>
                       Discard this change
+                    </Button>
+                    <Button disabled={!status.online} onClick={() => void sync.retry(item.seq as number)}>
+                      Try again
                     </Button>
                   </div>
                 </>
@@ -153,7 +156,15 @@ export function SyncPage() {
         {waiting.length === 0 ? (
           <EmptyState title="Nothing waiting">Every change made on this device has reached the server.</EmptyState>
         ) : (
-          waiting.map((item) => <ChangeCard key={item.seq} item={item} />)
+          waiting.map((item) => (
+            <ChangeCard key={item.seq} item={item}>
+              {item.retryAt && (
+                <p className="text-sm text-muted-foreground">
+                  The server has not finished with this yet. It will be sent again shortly.
+                </p>
+              )}
+            </ChangeCard>
+          ))
         )}
       </section>
     </div>

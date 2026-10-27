@@ -615,3 +615,17 @@ pub async fn set_override(
     .await?;
     Ok(())
 }
+
+/// Ends an override, so the booking is firm again if it is confirmed.
+pub async fn clear_override(conn: &mut PgConnection, id: Uuid, by: Option<UserId>) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE bookings SET clash_override = false, override_reason = NULL, override_by = NULL,
+                  updated_by = $2
+           WHERE workspace_id = app_workspace_id() AND id = $1"#,
+        id,
+        by.map(|u| u.0)
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}

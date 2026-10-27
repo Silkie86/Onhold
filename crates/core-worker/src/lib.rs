@@ -201,10 +201,18 @@ impl Worker {
         .await
         {
             Ok(r) => r,
-            Err(_) => Err(JobError::retry(format!(
-                "timed out after {} seconds",
-                self.settings.job_timeout.as_secs()
-            ))),
+            Err(_) => {
+                let message = format!(
+                    "timed out after {} seconds",
+                    self.settings.job_timeout.as_secs()
+                );
+                // The handler was cut off, so it could not clean up itself.
+                if job.attempt >= job.max_attempts {
+                    self.gave_up(job.workspace_id, &job.kind, &job.payload, &message)
+                        .await;
+                }
+                Err(JobError::retry(message))
+            }
         };
         if let Err(err) = self.finish(&job, started_at, &log, result).await {
             // The lease runs out and the job is retried.
@@ -273,8 +281,11 @@ impl Worker {
             return Ok(None);
         }
         let reclaimed = core_db::jobs::reclaim_expired(&mut tx).await?;
-        if reclaimed > 0 {
-            tracing::warn!(reclaimed, "returned jobs whose worker stopped to the queue");
+        if !reclaimed.is_empty() {
+            tracing::warn!(
+                reclaimed = reclaimed.len(),
+                "returned jobs whose worker stopped to the queue"
+            );
         }
         let now = Utc::now();
         let due = core_db::rules::due(&mut tx, now, DUE_BATCH).await?;
@@ -291,6 +302,15 @@ impl Worker {
         }
         let swept = self.sweep(&mut tx, now).await?;
         tx.commit().await?;
+        for job in reclaimed.iter().filter(|j| j.dead) {
+            self.gave_up(
+                job.workspace_id,
+                &job.kind,
+                &job.payload,
+                core_db::jobs::WORKER_STOPPED,
+            )
+            .await;
+        }
         Ok(Some(due.len() + swept))
     }
 

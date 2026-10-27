@@ -588,6 +588,27 @@ async fn billing_details_need_billing_permissions(pool: PgPool) {
         seen_by_finance.body["billing_contact"]["email"],
         "accounts@acme.test"
     );
+
+    // Nor do the audit log, its export or webhooks give it away; they only
+    // say that it changed.
+    let audit = app.get("/api/v1/audit").signed_in(&admin).send().await.ok();
+    let text = audit.body.to_string();
+    assert!(!text.contains("accounts@acme.test"), "{text}");
+    assert!(text.contains("billing_contact_changed"), "{text}");
+    let csv = app
+        .get("/api/v1/audit/export")
+        .signed_in(&admin)
+        .send()
+        .await
+        .ok();
+    assert!(!csv.body.to_string().contains("accounts@acme.test"));
+    let leaked: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM outbox WHERE payload::text LIKE '%accounts@acme.test%'",
+    )
+    .fetch_one(&app.owner)
+    .await
+    .unwrap();
+    assert_eq!(leaked, 0);
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -727,6 +748,109 @@ async fn api_keys_cannot_exceed_their_creator(pool: PgPool) {
         .send()
         .await;
     res.expect(StatusCode::BAD_REQUEST, "invalid_input");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn api_keys_follow_their_creators_membership(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let admin = app.add_member(&owner, "admin@acme.test", "admin").await;
+    let id = app.user_id("admin@acme.test").await;
+    let key = create_key(
+        &app,
+        &admin,
+        json!(["member:read", "member:invite", "api_key:write"]),
+    )
+    .await;
+    // A key made by that key belongs to the admin too.
+    let child = app
+        .post("/api/v1/api-keys")
+        .bearer(&key)
+        .json(json!({ "name": "child", "permissions": ["member:read"] }))
+        .send()
+        .await;
+    assert_eq!(child.status, StatusCode::CREATED, "{}", child.body);
+    let child = child.body["secret"].as_str().unwrap().to_owned();
+
+    // Demoted: the key shrinks to what a viewer may do.
+    let etag = app
+        .get(&format!("/api/v1/members/{id}"))
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok()
+        .headers
+        .get("etag")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+    app.patch(&format!("/api/v1/members/{id}"))
+        .signed_in(&owner)
+        .header("if-match", &etag)
+        .json(json!({ "role": "viewer" }))
+        .send()
+        .await
+        .ok();
+    app.get("/api/v1/members").bearer(&key).send().await.ok();
+    app.post("/api/v1/invitations")
+        .bearer(&key)
+        .json(json!({ "email": "a@acme.test", "role": "admin" }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "permission_denied");
+
+    // Removed: neither key works any more.
+    app.delete(&format!("/api/v1/members/{id}"))
+        .signed_in(&owner)
+        .send()
+        .await;
+    for k in [&key, &child] {
+        app.get("/api/v1/members")
+            .bearer(k)
+            .send()
+            .await
+            .expect(StatusCode::UNAUTHORIZED, "invalid_api_key");
+    }
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn keys_made_by_keys_expire_with_them(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let expires = (chrono::Utc::now() + chrono::Duration::days(1)).to_rfc3339();
+    let parent = app
+        .post("/api/v1/api-keys")
+        .signed_in(&owner)
+        .json(json!({ "name": "short", "permissions": ["api_key:write"], "expires_at": expires }))
+        .send()
+        .await;
+    assert_eq!(parent.status, StatusCode::CREATED, "{}", parent.body);
+    let parent_expiry = parent.body["key"]["expires_at"]
+        .as_str()
+        .or_else(|| parent.body["expires_at"].as_str())
+        .unwrap()
+        .to_owned();
+    let parent = parent.body["secret"].as_str().unwrap().to_owned();
+
+    let later = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
+    for body in [
+        json!({ "name": "forever", "permissions": ["api_key:write"] }),
+        json!({ "name": "later", "permissions": ["api_key:write"], "expires_at": later }),
+    ] {
+        let res = app
+            .post("/api/v1/api-keys")
+            .bearer(&parent)
+            .json(body)
+            .send()
+            .await;
+        assert_eq!(res.status, StatusCode::CREATED, "{}", res.body);
+        let expiry = res.body["key"]["expires_at"]
+            .as_str()
+            .or_else(|| res.body["expires_at"].as_str())
+            .unwrap();
+        assert_eq!(expiry, parent_expiry);
+    }
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -1052,6 +1176,13 @@ async fn impersonation_is_time_boxed_and_audited(pool: PgPool) {
         .send()
         .await
         .ok();
+    // A key needs a member behind it; a visitor's would never work.
+    app.post("/api/v1/api-keys")
+        .signed_in(&in_customer)
+        .json(json!({ "name": "support", "permissions": ["member:read"] }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
     let me = app.get("/api/v1/auth/me").signed_in(&ops).send().await.ok();
     assert_eq!(
         me.body["impersonation"]["workspace_id"],
