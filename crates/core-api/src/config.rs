@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use core_domain::crypto::Keyring;
+use core_integrations::oauth::OAuthApp;
 use core_integrations::storage::S3Config;
 use core_integrations::stripe::StripeClient;
 use url::Url;
@@ -58,6 +59,37 @@ pub enum ProxyHeaders {
     Cloudflare,
 }
 
+/// Connecting people's own mailboxes.
+#[derive(Debug, Clone)]
+pub struct MailboxConfig {
+    /// Gmail through Google's OAuth; `None` when Google is not set up.
+    pub google: Option<OAuthApp>,
+    /// Outlook and Microsoft 365 through Microsoft's OAuth.
+    pub microsoft: Option<OAuthApp>,
+    pub gmail_api: Url,
+    pub graph_api: Url,
+    /// How often each mailbox is read.
+    pub poll_every: Duration,
+    /// How far back the first read of a new mailbox goes.
+    pub first_read_days: i64,
+    pub http: reqwest::Client,
+}
+
+impl Default for MailboxConfig {
+    fn default() -> Self {
+        #[allow(clippy::expect_used)]
+        Self {
+            google: None,
+            microsoft: None,
+            gmail_api: Url::parse(core_integrations::gmail::API_BASE).expect("static URL"),
+            graph_api: Url::parse(core_integrations::graph::API_BASE).expect("static URL"),
+            poll_every: Duration::from_secs(120),
+            first_read_days: 30,
+            http: core_integrations::provider::http_client().unwrap_or_default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Where the web app is served; links in emails and OIDC redirects are built from it.
@@ -99,6 +131,7 @@ pub struct Config {
     /// Stripe Connect, for paying invoices by card. `None`: invoices are
     /// paid by bank transfer only.
     pub stripe: Option<StripeClient>,
+    pub mailboxes: MailboxConfig,
 }
 
 impl Config {
@@ -127,6 +160,7 @@ impl Config {
             pdf: PdfConfig::Auto { no_sandbox: false },
             max_upload_bytes: 25 * 1024 * 1024,
             stripe: None,
+            mailboxes: MailboxConfig::default(),
         }
     }
 

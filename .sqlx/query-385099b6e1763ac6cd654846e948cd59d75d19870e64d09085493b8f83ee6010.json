@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO thread_message_files (workspace_id, message_id, file_id, inline)\n           VALUES (app_workspace_id(), $1, $2, $3) ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "385099b6e1763ac6cd654846e948cd59d75d19870e64d09085493b8f83ee6010"
+}

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT thread_id FROM thread_messages\n           WHERE workspace_id = app_workspace_id() AND message_id = ANY($2)\n             AND (integration_id = $1 OR integration_id IS NULL)\n           ORDER BY integration_id IS NULL, sent_at DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "thread_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "thread_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5b9be07c9dfe738f04f21ac1cbdfc35799545b5719889b57da8bfb61c33f85de"
+}

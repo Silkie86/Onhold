@@ -102,6 +102,8 @@ impl Role {
                 P::PaymentWrite,
                 P::ReportRead,
                 P::FinanceConfig,
+                P::InboxRead,
+                P::InboxWrite,
             ]
             .into(),
             Role::Agent => [
@@ -128,6 +130,8 @@ impl Role {
                 P::DocumentWrite,
                 P::InvoiceRead,
                 P::InvoiceWrite,
+                P::InboxRead,
+                P::InboxWrite,
             ]
             .into(),
             Role::Viewer => [
@@ -144,6 +148,7 @@ impl Role {
                 P::TaskRead,
                 P::DocumentRead,
                 P::InvoiceRead,
+                P::InboxRead,
             ]
             .into(),
             Role::Talent => [P::WorkspaceRead].into(),
@@ -237,6 +242,12 @@ permissions! {
     ReportRead => "report:read",
     // Tax codes, invoice numbering, bank details and the invoicing model.
     FinanceConfig => "finance:config",
+    // The unified inbox: reading threads, and replying, linking and
+    // resolving them. Connecting one's own mailbox needs `inbox:write`.
+    InboxRead => "inbox:read",
+    InboxWrite => "inbox:write",
+    // Seeing every connected account's health and disconnecting any of them.
+    IntegrationManage => "integration:manage",
 }
 
 impl std::fmt::Display for Permission {

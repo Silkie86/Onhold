@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT mf.message_id, mf.file_id, f.filename, f.content_type, f.size_bytes, mf.inline\n           FROM thread_message_files mf\n           JOIN thread_messages m ON m.workspace_id = mf.workspace_id AND m.id = mf.message_id\n           JOIN files f ON f.workspace_id = mf.workspace_id AND f.id = mf.file_id\n           WHERE mf.workspace_id = app_workspace_id() AND m.thread_id = $1 AND f.deleted_at IS NULL\n           ORDER BY m.sent_at, f.filename",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "message_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_message_files",
+            "name": "message_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "file_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_message_files",
+            "name": "file_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "filename",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "files",
+            "name": "filename"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "content_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "files",
+            "name": "content_type"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "size_bytes",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "files",
+            "name": "size_bytes"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "inline",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "thread_message_files",
+            "name": "inline"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c3358a0b265da3bd988be790b9720dfcb35684b2b6d691da8ed53a8042528489"
+}

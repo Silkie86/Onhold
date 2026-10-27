@@ -271,49 +271,23 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 .to_owned();
             let mut quote = event.get("after").cloned().unwrap_or(Value::Null);
             if let Some(q) = quote.as_object_mut() {
-                q.insert("url".into(), Value::String(url.clone()));
+                q.insert("url".into(), Value::String(LINK_PLACEHOLDER.into()));
             }
             let mut tx = core_db::begin(&state.db, Some(ws), None).await?;
-            let (workspace, options) = context::workspace(&mut tx, state).await?;
-            let ctx_json = json!({
-                "workspace": workspace,
-                "quote": quote,
-                "booking": event.get("booking"),
-            });
-            // A workspace may reword its quote email.
-            let custom = core_db::templates::find(&mut tx, SYSTEM_QUOTE, &options.locale).await?;
-            let (subject, body) = match &custom {
-                Some(t) => (t.subject.as_deref(), t.body.as_str()),
-                None => (Some(QUOTE_SUBJECT), QUOTE_BODY),
-            };
-            let rendered = super::templates::render_in(
+            let out = workspace_mail(
+                state,
                 &mut tx,
-                Kind::Email,
-                subject,
-                body,
-                &ctx_json,
-                &options,
+                job.id,
+                ws,
+                &to,
+                SYSTEM_QUOTE,
+                (QUOTE_SUBJECT, QUOTE_BODY),
+                json!({ "quote": quote, "booking": event.get("booking") }),
+                url,
             )
             .await?;
             tx.commit().await?;
-            let name = workspace
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("OnHold")
-                .to_owned();
-            Ok(outgoing(
-                state,
-                job.id,
-                rendered,
-                &to,
-                Some(name.clone()),
-                &format!("Sent by {name} via OnHold."),
-                Some(ws),
-                None,
-                SYSTEM_QUOTE,
-                None,
-                vec![url],
-            ))
+            Ok(out)
         }
         "invoice.sent" => {
             let ws = job
@@ -331,7 +305,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 .ok_or_else(|| permanent("invoice without an id"))?;
             let mut invoice = event.get("after").cloned().unwrap_or(Value::Null);
             if let Some(i) = invoice.as_object_mut() {
-                i.insert("url".into(), Value::String(url.clone()));
+                i.insert("url".into(), Value::String(LINK_PLACEHOLDER.into()));
             }
             let mut tx = core_db::begin(&state.db, Some(ws), None).await?;
             // The PDF as issued; still printing means try again shortly.
@@ -377,7 +351,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 json!({
                     "signer": event.get("signer"),
                     "document": event.get("document"),
-                    "link": { "url": url },
+                    "link": { "url": LINK_PLACEHOLDER },
                 }),
                 url,
             )
@@ -390,7 +364,9 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
 }
 
 /// A workspace's own system email: its wording if it saved a template under
-/// `key`, else the default, sent in its name.
+/// `key`, else the default, sent in its name. `extra` carries
+/// [`LINK_PLACEHOLDER`] where the private `url` goes; the template never
+/// sees the link itself, which is placed afterwards by [`place_link`].
 #[allow(clippy::too_many_arguments)]
 async fn workspace_mail(
     state: &AppState,
@@ -415,6 +391,7 @@ async fn workspace_mail(
     };
     let rendered =
         super::templates::render_in(tx, Kind::Email, subject, body, &ctx_json, &options).await?;
+    let rendered = place_link(rendered, &url);
     let name = workspace
         .get("name")
         .and_then(Value::as_str)

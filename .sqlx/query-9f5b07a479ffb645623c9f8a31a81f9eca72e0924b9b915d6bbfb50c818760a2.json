@@ -1,0 +1,280 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, provider, purposes, owner_id AS \"owner_id: UserId\", account, shared_mailbox, shared,\n                      display_name, settings, secret, scopes, status, failures, last_error, last_error_at,\n                      last_synced_at, mail_cursor, mail_since, next_poll_at, connected_at, disconnected_at, version\n               FROM integrations WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "provider",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "purposes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "purposes"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "owner_id: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "owner_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "account",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "account"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "shared_mailbox",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "shared_mailbox"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "shared",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "shared"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "settings",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "settings"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "secret",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "secret"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "scopes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "failures",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "failures"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "last_error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "last_error"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "last_error_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "last_error_at"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "last_synced_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "last_synced_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "mail_cursor",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "mail_cursor"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "mail_since",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "mail_since"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "next_poll_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "next_poll_at"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "connected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "connected_at"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "disconnected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "disconnected_at"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "9f5b07a479ffb645623c9f8a31a81f9eca72e0924b9b915d6bbfb50c818760a2"
+}

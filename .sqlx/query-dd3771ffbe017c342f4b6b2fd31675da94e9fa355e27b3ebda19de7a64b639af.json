@@ -1,0 +1,256 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, thread_id, direction, message_id, in_reply_to, \"references\" AS \"references!\",\n                      from_address, from_name, to_addresses, cc_addresses, subject, body_text, body_html,\n                      sent_at, status, error, automatic, bulk, author_id, template_key\n               FROM thread_messages WHERE workspace_id = app_workspace_id() AND id = $1 FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "thread_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "thread_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "direction",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "direction"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "message_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "message_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "in_reply_to",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "in_reply_to"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "references!",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "references"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "from_address",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "from_address"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "from_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "from_name"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "to_addresses",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "to_addresses"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "cc_addresses",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "cc_addresses"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "subject",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "subject"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "body_text",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "body_text"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "body_html",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "body_html"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "sent_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "sent_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "error"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "automatic",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "automatic"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "bulk",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "bulk"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "author_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "author_id"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "template_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "template_key"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "dd3771ffbe017c342f4b6b2fd31675da94e9fa355e27b3ebda19de7a64b639af"
+}

@@ -8,7 +8,9 @@ use core_api::services::automation::{
 };
 use core_api::services::bookings::{self, JOB_COMPLETE, JOB_EXPIRE_HOLD};
 use core_api::services::quotes::{self, JOB_EXPIRE as JOB_EXPIRE_QUOTE};
-use core_api::services::{documents, files, imports, invoices, mail, stripe, webhooks};
+use core_api::services::{
+    documents, files, imports, inbox, integrations, invoices, mail, stripe, webhooks,
+};
 use core_db::jobs::{Claimed, LogLine};
 use core_domain::WorkspaceId;
 use core_integrations::http::DeliveryError;
@@ -176,6 +178,26 @@ impl Worker {
                 note(log, format!("Stripe event {id}: {outcome}"));
                 Ok(())
             }
+            integrations::JOB_POLL => {
+                let id = uuid_field(&job.payload, "integration_id")?;
+                let outcome = integrations::poll(&self.app, workspace(job)?, id).await?;
+                note(log, outcome.to_string());
+                Ok(())
+            }
+            inbox::JOB_SEND => {
+                let id = uuid_field(&job.payload, "message_id")?;
+                let last = job.attempt >= job.max_attempts;
+                let outcome =
+                    inbox::send(&self.app, workspace(job)?, id, self.mailer.as_ref(), last).await?;
+                note(log, outcome.to_string());
+                Ok(())
+            }
+            inbox::JOB_WAKE => {
+                let id = uuid_field(&job.payload, "thread_id")?;
+                let at = time_field(&job.payload, "at")?;
+                inbox::wake(&self.app, workspace(job)?, id, at).await?;
+                Ok(())
+            }
             JOB_WEBHOOK => self.deliver_webhook(job, log).await,
             imports::JOB_IMPORT => self.run_import(job, log).await,
             other => Err(JobError::permanent(format!(
@@ -193,6 +215,15 @@ impl Worker {
         payload: &Value,
         error: &str,
     ) {
+        if kind == inbox::JOB_SEND {
+            let (Some(workspace), Ok(id)) = (workspace, uuid_field(payload, "message_id")) else {
+                return;
+            };
+            if let Err(e) = inbox::abandon(&self.app, workspace, id, error).await {
+                tracing::error!(message_id = %id, error = %e, "could not mark a message failed");
+            }
+            return;
+        }
         if kind != imports::JOB_IMPORT {
             return;
         }

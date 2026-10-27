@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE threads t SET\n               message_count = s.n,\n               last_message_at = s.last_at,\n               last_inbound_at = s.last_in,\n               last_outbound_at = s.last_out,\n               preview = s.preview,\n               participants = s.participants,\n               unread = t.unread OR $2,\n               status = CASE WHEN $2 THEN 'open' ELSE t.status END,\n               snoozed_until = CASE WHEN $2 THEN NULL ELSE t.snoozed_until END\n           FROM (\n               SELECT count(*)::int AS n,\n                      max(sent_at) AS last_at,\n                      max(sent_at) FILTER (WHERE direction = 'inbound') AS last_in,\n                      max(sent_at) FILTER (WHERE direction = 'outbound' AND status <> 'failed') AS last_out,\n                      (SELECT left(regexp_replace(m2.body_text, '\\s+', ' ', 'g'), 300) FROM thread_messages m2\n                       WHERE m2.thread_id = $1 AND m2.workspace_id = app_workspace_id()\n                       ORDER BY m2.sent_at DESC, m2.id DESC LIMIT 1) AS preview,\n                      (SELECT coalesce(array_agg(DISTINCT a ORDER BY a), '{}') FROM (\n                           SELECT unnest(ARRAY[m3.from_address] || m3.to_addresses || m3.cc_addresses) AS a\n                           FROM thread_messages m3\n                           WHERE m3.thread_id = $1 AND m3.workspace_id = app_workspace_id()\n                       ) x\n                       WHERE a IS NOT NULL\n                         AND a NOT IN (SELECT coalesce(i.shared_mailbox, i.account) FROM integrations i\n                                       WHERE i.workspace_id = app_workspace_id())\n                      ) AS participants\n               FROM thread_messages WHERE thread_id = $1 AND workspace_id = app_workspace_id()\n           ) s\n           WHERE t.workspace_id = app_workspace_id() AND t.id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6ab2898a3df51f5a6218814fa877ac4bb151a51792050cad8bca614f0060f466"
+}

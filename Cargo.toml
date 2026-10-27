@@ -75,6 +75,12 @@ proptest = "1"
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
+ammonia = "4"
+async-imap = { version = "0.12", default-features = false, features = ["runtime-tokio"] }
+mail-parser = { version = "1", features = ["full_encoding"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+webpki-roots = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

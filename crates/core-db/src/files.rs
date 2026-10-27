@@ -39,13 +39,16 @@ pub struct NewFile<'a> {
     pub read_state: &'a str,
     /// Made by OnHold and in use at once (a generated PDF).
     pub attached: bool,
+    /// `upload`, or `mail` for a file that came with a message: those are
+    /// reached only through their thread, never through [`get`].
+    pub origin: &'a str,
 }
 
 pub async fn insert(conn: &mut PgConnection, f: NewFile<'_>, by: Option<UserId>) -> Result<()> {
     sqlx::query!(
         r#"INSERT INTO files (id, workspace_id, filename, content_type, size_bytes, sha256, storage, storage_key,
-                              read_state, attached_at, created_by)
-           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, CASE WHEN $9 THEN now() END, $10)"#,
+                              read_state, attached_at, created_by, origin)
+           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, CASE WHEN $9 THEN now() END, $10, $11)"#,
         f.id,
         f.filename,
         f.content_type,
@@ -55,7 +58,8 @@ pub async fn insert(conn: &mut PgConnection, f: NewFile<'_>, by: Option<UserId>)
         f.storage_key,
         f.read_state,
         f.attached,
-        by.map(|u| u.0)
+        by.map(|u| u.0),
+        f.origin
     )
     .execute(conn)
     .await?;
@@ -82,12 +86,30 @@ pub async fn blob(conn: &mut PgConnection, file_id: Uuid) -> Result<Option<Vec<u
     .await?)
 }
 
+/// A file uploaded or made in OnHold. Files that came by mail are left
+/// out: they are opened through their thread ([`mail_file`]).
 pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<File>> {
     Ok(sqlx::query_as!(
         File,
         r#"SELECT id, filename, content_type, size_bytes, sha256, storage, storage_key, read_state, read_error,
                   page_count, needs_ocr, attached_at, created_at, created_by AS "created_by: UserId"
-           FROM files WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL"#,
+           FROM files
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL AND origin = 'upload'"#,
+        id
+    )
+    .fetch_optional(conn)
+    .await?)
+}
+
+/// A file that came with (or was sent with) a message. The caller checks
+/// that the reader may see its thread.
+pub async fn mail_file(conn: &mut PgConnection, id: Uuid) -> Result<Option<File>> {
+    Ok(sqlx::query_as!(
+        File,
+        r#"SELECT id, filename, content_type, size_bytes, sha256, storage, storage_key, read_state, read_error,
+                  page_count, needs_ocr, attached_at, created_at, created_by AS "created_by: UserId"
+           FROM files
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL AND origin = 'mail'"#,
         id
     )
     .fetch_optional(conn)

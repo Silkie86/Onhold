@@ -206,6 +206,7 @@ impl AppState {
         (name = "webhooks", description = "Events pushed to your URLs"),
         (name = "jobs", description = "Background work"),
         (name = "messages", description = "Messages sent"),
+        (name = "inbox", description = "Connected mailboxes and the conversations in them"),
         (name = "admin", description = "Operator tools (superadmin)"),
         (name = "health", description = "Probes"),
     )
@@ -246,6 +247,7 @@ fn api_router() -> OpenApiRouter<AppState> {
             .merge(routes::documents::router())
             .merge(routes::finance::router())
             .merge(routes::stripe::router())
+            .merge(routes::inbox::router())
             .merge(routes::events::router())
             .merge(routes::webhooks::router())
             .merge(routes::jobs::router())

@@ -26,6 +26,8 @@ pub mod files;
 pub mod finance;
 pub mod idempotency;
 pub mod imports;
+pub mod inbox;
+pub mod integrations;
 pub mod invitations;
 pub mod invoices;
 pub mod jobs;

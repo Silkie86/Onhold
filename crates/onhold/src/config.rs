@@ -7,10 +7,11 @@ use anyhow::Context;
 use clap::Args;
 use core_api::Config;
 use core_api::config::ProxyHeaders;
-use core_api::config::{PdfConfig, StorageConfig};
+use core_api::config::{MailboxConfig, PdfConfig, StorageConfig};
 use core_api::oidc::OidcProvider;
 use core_domain::crypto::Keyring;
 use core_integrations::mail::{LogMailer, Mailer, SmtpMailer};
+use core_integrations::oauth::OAuthApp;
 use core_integrations::storage::S3Config;
 use core_integrations::stripe::{StripeClient, StripeConfig};
 use url::Url;
@@ -167,6 +168,27 @@ pub struct ApiArgs {
     stripe_api_base: Url,
     #[arg(long, env = "STRIPE_CONNECT_BASE", default_value = core_integrations::stripe::CONNECT_BASE, global = true, hide = true)]
     stripe_connect_base: Url,
+
+    /// How often each connected mailbox is read, in seconds.
+    #[arg(long, env = "MAIL_POLL_SECONDS", default_value_t = 120, global = true)]
+    mail_poll_seconds: u64,
+    /// How far back the first read of a newly connected mailbox goes, in days.
+    #[arg(
+        long,
+        env = "MAIL_FIRST_READ_DAYS",
+        default_value_t = 30,
+        global = true
+    )]
+    mail_first_read_days: i64,
+    /// Google's and Microsoft's endpoints, for stand-ins in tests.
+    #[arg(long, env = "GOOGLE_OAUTH_BASE", global = true, hide = true)]
+    google_oauth_base: Option<Url>,
+    #[arg(long, env = "GMAIL_API_BASE", default_value = core_integrations::gmail::API_BASE, global = true, hide = true)]
+    gmail_api_base: Url,
+    #[arg(long, env = "MICROSOFT_LOGIN_BASE", default_value = core_integrations::oauth::MICROSOFT_LOGIN, global = true, hide = true)]
+    microsoft_login_base: Url,
+    #[arg(long, env = "GRAPH_API_BASE", default_value = core_integrations::graph::API_BASE, global = true, hide = true)]
+    graph_api_base: Url,
 }
 
 fn proxy_headers(value: &str) -> Result<ProxyHeaders, String> {
@@ -246,6 +268,31 @@ impl ApiArgs {
             }
             None => Keyring::ephemeral(),
         };
+
+        // Mailboxes are connected through the same OAuth clients as sign-in.
+        let mut mailboxes = MailboxConfig {
+            gmail_api: self.gmail_api_base,
+            graph_api: self.graph_api_base,
+            poll_every: Duration::from_secs(self.mail_poll_seconds.clamp(30, 3600)),
+            first_read_days: self.mail_first_read_days.clamp(0, 365),
+            ..MailboxConfig::default()
+        };
+        if let (Some(id), Some(secret)) = (&self.google_client_id, &self.google_client_secret) {
+            let app = OAuthApp::google(id.clone(), secret.clone());
+            mailboxes.google = Some(match &self.google_oauth_base {
+                Some(base) => app.at(base),
+                None => app,
+            });
+        }
+        if let (Some(id), Some(secret)) = (&self.microsoft_client_id, &self.microsoft_client_secret)
+        {
+            mailboxes.microsoft = Some(OAuthApp::microsoft_at(
+                id.clone(),
+                secret.clone(),
+                &self.microsoft_tenant,
+                self.microsoft_login_base.as_str(),
+            ));
+        }
 
         let mut oidc = Vec::new();
         match (self.google_client_id, self.google_client_secret) {
@@ -368,6 +415,7 @@ impl ApiArgs {
             oidc,
             webhooks_allow_private: self.webhooks_allow_private,
             stripe,
+            mailboxes,
             ..Config::new(self.public_base_url, keyring)
         })
     }

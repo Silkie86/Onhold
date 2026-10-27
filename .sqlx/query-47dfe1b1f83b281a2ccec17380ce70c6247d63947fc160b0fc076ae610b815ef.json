@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE threads SET status = $2, snoozed_until = $3, assigned_to = $4, unread = $5\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz",
+        "Uuid",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "47dfe1b1f83b281a2ccec17380ce70c6247d63947fc160b0fc076ae610b815ef"
+}

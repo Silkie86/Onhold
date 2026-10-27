@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, filename, content_type, size_bytes, sha256, storage, storage_key, read_state, read_error,\n                  page_count, needs_ocr, attached_at, created_at, created_by AS \"created_by: UserId\"\n           FROM files WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL",
+  "query": "SELECT id, filename, content_type, size_bytes, sha256, storage, storage_key, read_state, read_error,\n                  page_count, needs_ocr, attached_at, created_at, created_by AS \"created_by: UserId\"\n           FROM files\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL AND origin = 'mail'",
   "describe": {
     "columns": [
       {
@@ -180,5 +180,5 @@
       true
     ]
   },
-  "hash": "8f1d804fd58be7a3b4072ac992c3c9b305764a7cced42151761a34ca08daca5f"
+  "hash": "cf33b8482741780bfd73c0ee35bb0be26edab5280a00fe7e230ad4604b6ce2aa"
 }

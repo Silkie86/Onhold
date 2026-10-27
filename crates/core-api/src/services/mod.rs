@@ -19,6 +19,8 @@ pub mod fields;
 pub mod files;
 pub mod finance;
 pub mod imports;
+pub mod inbox;
+pub mod integrations;
 pub mod invoices;
 pub mod jobs;
 pub mod links;
