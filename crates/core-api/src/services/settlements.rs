@@ -490,6 +490,9 @@ pub async fn payout(state: &AppState, ctx: &Ctx, id: Uuid, p: NewPayout) -> ApiR
         return Err(ApiError::conflict("settlement_draft", "finalise the settlement first"));
     }
     let owed = before.net.minor - before.paid_out.minor;
+    if owed <= 0 {
+        return Err(ApiError::conflict("settlement_paid", "the talent has been paid everything owed"));
+    }
     let amount = p.amount_minor.unwrap_or(owed);
     if amount <= 0 || amount > owed {
         return Err(ApiError::invalid(

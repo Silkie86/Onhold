@@ -1716,6 +1716,14 @@ pub(crate) async fn insert_historical(tx: &mut Tx, ctx: &Ctx, h: HistoricalInvoi
     if paid < 0 || paid > priced.total {
         check.issue("paid_minor", "must be between 0 and the total");
     }
+    check.finish()?;
+    if core_db::invoices::reference_taken(tx, kind, h.issuer_talent_id, &reference).await? {
+        return Err(ApiError::conflict(
+            "invoice_number_taken",
+            format!("there is already an invoice {reference} from this issuer"),
+        ));
+    }
+    let mut check = Check::default();
     let today = super::finance::today(tx, ctx).await?;
     let status = if kind == "credit_note" {
         InvoiceStatus::Issued

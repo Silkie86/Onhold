@@ -759,6 +759,7 @@ dependencies = [
  "core-domain",
  "core-engines",
  "core-integrations",
+ "core-pdf",
  "data-encoding",
  "futures-util",
  "http-body-util",
@@ -771,6 +772,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "zip",
 ]
 
 [[package]]

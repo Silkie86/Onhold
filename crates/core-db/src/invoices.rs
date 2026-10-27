@@ -491,6 +491,29 @@ pub async fn delete_draft(conn: &mut PgConnection, id: Uuid, by: Option<UserId>)
     Ok(done.rows_affected() == 1)
 }
 
+/// Whether this issuer already has a live invoice (or credit note) with
+/// this reference: importing the same past invoice twice is refused.
+pub async fn reference_taken(
+    conn: &mut PgConnection,
+    kind: &str,
+    issuer_talent_id: Option<Uuid>,
+    reference: &str,
+) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT EXISTS (
+               SELECT 1 FROM invoices
+               WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL AND status <> 'void'
+                 AND kind = $1 AND issuer_talent_id IS NOT DISTINCT FROM $2
+                 AND lower(reference) = lower($3)
+           ) AS "taken!""#,
+        kind,
+        issuer_talent_id,
+        reference
+    )
+    .fetch_one(conn)
+    .await?)
+}
+
 /// Issued credit notes against an invoice, totalled.
 pub async fn credited_total(conn: &mut PgConnection, invoice_id: Uuid) -> Result<i64> {
     Ok(sqlx::query_scalar!(

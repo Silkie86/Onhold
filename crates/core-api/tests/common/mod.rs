@@ -302,6 +302,16 @@ impl Req<'_> {
         self
     }
 
+    /// A raw body, such as a file upload.
+    pub fn bytes(mut self, content_type: &str, body: Vec<u8>) -> Self {
+        self.headers.insert(
+            header::CONTENT_TYPE,
+            content_type.parse().expect("ct"),
+        );
+        self.body = Some(body);
+        self
+    }
+
     /// Session cookie, CSRF token and workspace header of `client`.
     pub fn signed_in(self, client: &Client) -> Self {
         let mut req = self
