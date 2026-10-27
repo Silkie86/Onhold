@@ -347,6 +347,19 @@ async fn api_key_ctx(
         .await?
         .ok_or_else(invalid)?;
     check_status(workspace.status, false)?;
+    // A key never does more than the person who made it can do today: it
+    // stops working when they leave and shrinks when their role does.
+    let creator_gone = || {
+        ApiError::unauthorized(
+            "invalid_api_key",
+            "the person who created this API key is no longer a member of the workspace",
+        )
+    };
+    let creator = key.created_by.ok_or_else(creator_gone)?;
+    let role = core_db::members::role_of(&mut tx, creator)
+        .await?
+        .ok_or_else(creator_gone)?;
+    let allowed = core_db::workspaces::role_permissions(&mut tx, role).await?;
     core_db::api_keys::touch(&mut tx, key_id).await?;
     tx.commit().await?;
 
@@ -361,6 +374,7 @@ async fn api_key_ctx(
             .permissions
             .iter()
             .filter_map(|p| p.parse::<Permission>().ok())
+            .filter(|p| allowed.contains(p))
             .collect(),
         meta: request_meta(parts, state.config.trust_proxy_headers),
     })

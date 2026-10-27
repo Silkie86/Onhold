@@ -714,6 +714,20 @@ pub async fn create_api_key(
     let id = core_domain::ids::new_id();
     let secret = new_token();
     let mut tx = begin(state, ctx).await?;
+    // A key made by a key belongs to the same person and expires no later.
+    let (created_by, expires_at) = match ctx.actor {
+        Actor::ApiKey { key_id, created_by } => {
+            let parent = core_db::api_keys::get(&mut tx, key_id)
+                .await?
+                .ok_or(ApiError::NotFound)?;
+            let expires_at = match (expires_at, parent.expires_at) {
+                (Some(e), Some(p)) => Some(e.min(p)),
+                (e, p) => e.or(p),
+            };
+            (created_by, expires_at)
+        }
+        _ => (ctx.user_id(), expires_at),
+    };
     core_db::api_keys::insert(
         &mut tx,
         core_db::api_keys::NewApiKey {
@@ -722,7 +736,7 @@ pub async fn create_api_key(
             name,
             secret_hash: &hash_token(&secret),
             permissions: &perms,
-            created_by: ctx.user_id(),
+            created_by,
             expires_at,
         },
     )
