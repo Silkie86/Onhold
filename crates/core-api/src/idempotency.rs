@@ -129,7 +129,9 @@ pub async fn layer(State(state): State<AppState>, req: Request, next: Next) -> R
 }
 
 /// Who is calling, checked: a person (whichever session they use) or an API
-/// key. `None` for no credential, or one that is not valid.
+/// key. A session still waiting for its second factor is scoped on its own,
+/// so it is never handed a response a verified session stored. `None` for no
+/// credential, or one that is not valid.
 async fn caller(state: &AppState, headers: &axum::http::HeaderMap) -> ApiResult<Option<String>> {
     let Some(cred) = read_credential(headers)? else {
         return Ok(None);
@@ -141,7 +143,13 @@ async fn caller(state: &AppState, headers: &axum::http::HeaderMap) -> ApiResult<
             core_db::auth::find_session(&mut tx, &hash_token(&token))
                 .await?
                 .filter(|f| f.client == expected_client)
-                .map(|f| format!("user:{}", f.user_id))
+                .map(|f| {
+                    if f.mfa_verified {
+                        format!("user:{}", f.user_id)
+                    } else {
+                        format!("session:{}", f.session_id)
+                    }
+                })
         }
         Credential::ApiKey { key_id, secret } => core_db::auth::find_api_key(&mut tx, key_id)
             .await?

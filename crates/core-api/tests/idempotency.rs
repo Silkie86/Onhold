@@ -173,6 +173,43 @@ async fn a_write_replayed_after_signing_in_again_still_acts_once(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_session_waiting_for_its_second_factor_gets_no_replay(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let setup = app
+        .post("/api/v1/auth/totp/setup")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    let secret = setup.body["secret"].as_str().unwrap().to_owned();
+    app.post("/api/v1/auth/totp/enable")
+        .signed_in(&owner)
+        .json(json!({ "code": common::totp_code(&secret, -1) }))
+        .send()
+        .await
+        .ok();
+    let send = |who: &common::Client| {
+        app.post("/api/v1/invitations")
+            .signed_in(who)
+            .header("idempotency-key", "queued-op")
+            .json(json!({ "email": "a@acme.test", "role": "agent" }))
+            .send()
+    };
+    let first = send(&owner).await;
+    assert_eq!(first.status, StatusCode::CREATED, "{}", first.body);
+
+    // The password alone, with no second factor: the same key and request do
+    // not hand back the invitation the verified session made.
+    let pending = app.login("owner@acme.test", common::PASSWORD).await.ok();
+    assert_eq!(pending.body["mfa_required"], true);
+    let pending = common::Client::from_login(&pending).in_workspace(ws);
+    let second = send(&pending).await;
+    second.expect(StatusCode::UNAUTHORIZED, "mfa_required");
+    assert!(second.headers.get("idempotent-replayed").is_none());
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn a_request_cut_off_midway_releases_its_key(pool: PgPool) {
     use axum::body::Body;
     use axum::http::Request;
