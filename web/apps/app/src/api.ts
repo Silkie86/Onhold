@@ -1,8 +1,10 @@
 // The API client the app uses, and what it needs to act as the signed-in
-// person: the session's CSRF token and the current workspace.
+// person: the session's CSRF token (browsers) or bearer token (apps), and the
+// current workspace.
 
 import { type ApiError, type Schemas, createApiClient } from "@onhold/api-client";
 import type { FieldIssue } from "@onhold/ui";
+import { IS_APP, appToken, serverUrl } from "./platform.ts";
 
 const WORKSPACE_KEY = "onhold.workspace";
 
@@ -35,11 +37,11 @@ export function setWorkspace(id: string | undefined) {
   }
 }
 
-export const api = createApiClient({
-  baseUrl: import.meta.env.VITE_API_URL ?? "",
-  csrfToken: () => csrfToken,
-  workspaceId: () => workspaceId,
-});
+export const api = createApiClient(
+  IS_APP
+    ? { baseUrl: serverUrl, bearerToken: appToken, credentials: "omit", workspaceId: () => workspaceId }
+    : { baseUrl: serverUrl(), csrfToken: () => csrfToken, workspaceId: () => workspaceId },
+);
 
 /** An error the API returned, with its per-field problems. */
 export class ApiFailure extends Error {

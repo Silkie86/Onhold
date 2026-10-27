@@ -23,24 +23,47 @@ import {
   stateFromView,
   viewConfig,
 } from "@onhold/ui";
-import { ArrowLeft, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, CloudOff, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiFailure, type EntitySchema, ENTITIES, api, entityByPath, ok } from "../api.ts";
+import {
+  createRecord,
+  deleteRecord,
+  fetchList,
+  fetchRecord,
+  fetchSchema,
+  fetchTags,
+  fetchWorkspace,
+  findDuplicates,
+  updateRecord,
+  useOffline,
+  useSyncStatus,
+} from "../data.ts";
+import { isNetworkError } from "../offline/sync.ts";
+import { isLocalId } from "../offline/store.ts";
 import { useSession } from "../session.tsx";
 import { TalentMembers } from "./members.tsx";
 
 type Entity = (typeof ENTITIES)[keyof typeof ENTITIES];
-type Page = { items: RecordJson[]; total: number };
-
-// The three entities share their routes' shapes; one typed path stands in for each.
-const P = (path: string) => `/api/v1/${path}` as "/api/v1/contacts";
-const PI = (path: string) => `/api/v1/${path}/{id}` as "/api/v1/contacts/{id}";
 
 export function useSchema(entity: string) {
+  const sync = useOffline();
   return useQuery({
     queryKey: ["schema", entity],
-    queryFn: () => ok(api.GET("/api/v1/schema/{entity}", { params: { path: { entity } } })),
+    queryFn: async () => (await fetchSchema(sync, entity)).data,
   });
+}
+
+/** Says the page shows what is saved on this device, because the app is offline. */
+export function OfflineNote({ children }: { children?: React.ReactNode }) {
+  return (
+    <Alert tone="info">
+      <span className="flex items-center gap-2">
+        <CloudOff className="size-4 shrink-0" />
+        {children ?? "You are offline. This is the copy saved on this device; changes you make are sent when you reconnect."}
+      </span>
+    </Alert>
+  );
 }
 
 export interface ListSearch {
@@ -87,6 +110,8 @@ export function EntityListPage() {
   const search = useSearch({ from: "/app/crm/$entity" });
   const navigate = useNavigate({ from: "/crm/$entity" });
   const qc = useQueryClient();
+  const sync = useOffline();
+  const status = useSyncStatus();
   const { workspace } = useSession();
   const schema = useSchema(entity.entity);
   const [creating, setCreating] = useState(false);
@@ -106,29 +131,31 @@ export function EntityListPage() {
 
   const list = useQuery({
     queryKey: ["list", entity.entity, state.q, state.sort, state.tag, state.offset, state.limit],
-    queryFn: async () =>
-      (await ok(
-        api.GET(P(entity.path), {
-          params: {
-            query: {
-              q: state.q || undefined,
-              sort: state.sort ?? undefined,
-              tag: state.tag ?? undefined,
-              offset: state.offset,
-              limit: state.limit,
-            },
-          },
-        }),
-      )) as unknown as Page,
+    queryFn: () =>
+      fetchList(sync, entity.entity, {
+        q: state.q,
+        sort: state.sort,
+        tag: state.tag,
+        offset: state.offset,
+        limit: state.limit,
+      }),
     placeholderData: (prev) => prev,
   });
   const tags = useQuery({
     queryKey: ["tags", entity.entity],
-    queryFn: () => ok(api.GET("/api/v1/tags", { params: { query: { entity: entity.entity } } })),
+    queryFn: async () => (await fetchTags(sync, entity.entity)).data,
   });
   const views = useQuery({
     queryKey: ["views", entity.entity],
-    queryFn: () => ok(api.GET("/api/v1/views", { params: { query: { entity: entity.entity } } })),
+    queryFn: async () => {
+      try {
+        return await ok(api.GET("/api/v1/views", { params: { query: { entity: entity.entity } } }));
+      } catch (e) {
+        // Saved views live on the server; offline the list simply has none.
+        if (sync && isNetworkError(e)) return [];
+        throw e;
+      }
+    },
   });
 
   const setState = (s: TableState) => {
@@ -159,6 +186,7 @@ export function EntityListPage() {
     void qc.invalidateQueries({ queryKey: ["tags", entity.entity] });
   };
   const bulk = async (action: "delete" | "add_tags" | "remove_tags", ids: string[], tags: string[]) => {
+    if (list.data?.offline) throw new Error("Changing many records at once needs a connection.");
     const res = await ok(api.POST(`/api/v1/${entity.path}/bulk` as "/api/v1/contacts/bulk", { body: { action, ids, tags } }));
     refresh();
     const failed = res.failed.length ? `; ${res.failed.length} could not be changed (${res.failed[0]?.message})` : "";
@@ -191,10 +219,11 @@ export function EntityListPage() {
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 p-4 sm:p-6">
       <h1 className="text-xl font-semibold">{schema.data.label_plural}</h1>
+      {(list.data?.offline || status?.online === false) && <OfflineNote />}
       <DataTable
         schema={schema.data}
-        rows={list.data?.items ?? []}
-        total={list.data?.total ?? 0}
+        rows={list.data?.data.items ?? []}
+        total={list.data?.data.total ?? 0}
         loading={list.isFetching}
         error={list.error?.message}
         state={state}
@@ -268,6 +297,7 @@ function CreateRecord({
 }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const sync = useOffline();
   const { workspace } = useSession();
   const [issues, setIssues] = useState<FieldIssue[]>([]);
   const [duplicates, setDuplicates] = useState<{ list: Duplicate[]; body: Record<string, unknown> } | null>(null);
@@ -275,7 +305,7 @@ function CreateRecord({
 
   const create = async (body: Record<string, unknown>) => {
     try {
-      const record = (await ok(api.POST(P(entity.path), { body: body as never }))) as unknown as RecordJson;
+      const record = (await createRecord(sync, entity.entity, body)).record as RecordJson;
       await qc.invalidateQueries({ queryKey: ["list", entity.entity] });
       onClose();
       if (onCreated) onCreated(record);
@@ -321,9 +351,7 @@ function CreateRecord({
           onSubmit={async (body) => {
             setIssues([]);
             const query = duplicateQuery(entity, body);
-            const list = (query.name as string)
-              ? await ok(api.POST(`/api/v1/${entity.path}/duplicates` as "/api/v1/contacts/duplicates", { body: query as never }))
-              : [];
+            const list = (query.name as string) ? await findDuplicates(sync, entity.entity, query) : [];
             if (list.length > 0) setDuplicates({ list, body });
             else await create(body);
           }}
@@ -334,7 +362,8 @@ function CreateRecord({
 }
 
 export function useWorkspaceCurrency(): string {
-  const ws = useQuery({ queryKey: ["workspace"], queryFn: () => ok(api.GET("/api/v1/workspace")) });
+  const sync = useOffline();
+  const ws = useQuery({ queryKey: ["workspace"], queryFn: async () => (await fetchWorkspace(sync)).data });
   return ws.data?.default_currency?.trim() || "GBP";
 }
 
@@ -354,11 +383,12 @@ function OrganisationSearch({
   onChange: (id: string | null) => void;
   initialName: string | null;
 }) {
+  const sync = useOffline();
   const [name, setName] = useState(initialName);
   const [q, setQ] = useState("");
   const results = useQuery({
     queryKey: ["org-search", q],
-    queryFn: () => ok(api.GET("/api/v1/organisations", { params: { query: { q, limit: 8 } } })),
+    queryFn: async () => (await fetchList(sync, "organisation", { q, limit: 8 })).data,
     enabled: q.trim().length > 0,
   });
   if (value && name) {
@@ -387,12 +417,12 @@ function OrganisationSearch({
                 type="button"
                 className="w-full px-3 py-2 text-left hover:bg-accent"
                 onClick={() => {
-                  setName(o.name);
+                  setName(String(o.name));
                   setQ("");
                   onChange(o.id);
                 }}
               >
-                {o.name}
+                {String(o.name)}
               </button>
             </li>
           ))}
@@ -408,14 +438,21 @@ export function EntityRecordPage() {
   const { id } = useParams({ from: "/app/crm/$entity/$id" });
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const sync = useOffline();
+  const status = useSyncStatus();
   const schema = useSchema(entity.entity);
   const currency = useWorkspaceCurrency();
   const [issues, setIssues] = useState<FieldIssue[]>([]);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<"sent" | "queued" | null>(null);
   const record = useQuery({
     queryKey: ["record", entity.entity, id],
-    queryFn: async () => (await ok(api.GET(PI(entity.path), { params: { path: { id } } }))) as unknown as RecordJson,
+    queryFn: () => fetchRecord(sync, entity.entity, id),
   });
+  // A record created offline gets its real id once it reaches the server.
+  const renamed = isLocalId(id) ? sync?.renamed.get(id) : undefined;
+  useEffect(() => {
+    if (renamed) void navigate({ to: "/crm/$entity/$id", params: { entity: entity.path, id: renamed }, replace: true });
+  }, [renamed, entity.path, navigate]);
   const [before, setBefore] = useState<string | null>(null);
   const timeline = useQuery({
     queryKey: ["timeline", entity.entity, id, before],
@@ -425,6 +462,8 @@ export function EntityRecordPage() {
           params: { path: { id }, query: { before: before ?? undefined, limit: 50 } },
         }),
       ),
+    enabled: !isLocalId(id) && !record.data?.offline,
+    retry: (count, e) => !isNetworkError(e) && count < 2,
   });
   const [older, setOlder] = useState<TimelineEntry[]>([]);
   useEffect(() => {
@@ -434,7 +473,7 @@ export function EntityRecordPage() {
   const entries = before ? [...older, ...(timeline.data?.entries ?? [])] : (timeline.data?.entries ?? []);
 
   const remove = useMutation({
-    mutationFn: () => ok(api.DELETE(PI(entity.path), { params: { path: { id } } })),
+    mutationFn: () => deleteRecord(sync, entity.entity, id, Number(record.data?.data.version ?? 0) || undefined),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["list", entity.entity] });
       void navigate({ to: "/crm/$entity", params: { entity: entity.path } });
@@ -444,7 +483,8 @@ export function EntityRecordPage() {
   if (schema.isPending || record.isPending) return <Loading />;
   if (schema.isError) return <PageError error={schema.error} />;
   if (record.isError) return <PageError error={record.error} />;
-  const r = record.data;
+  const r = record.data.data;
+  const offline = record.data.offline || (timeline.isError && isNetworkError(timeline.error));
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 p-4 sm:p-6">
@@ -467,9 +507,13 @@ export function EntityRecordPage() {
         )}
       </div>
       {remove.error && <Alert>{remove.error.message}</Alert>}
+      {(record.data.offline || status?.online === false) && <OfflineNote />}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section className="flex flex-col gap-6" aria-label="Details">
-          {saved && <Alert tone="success">Saved.</Alert>}
+          {saved === "sent" && <Alert tone="success">Saved.</Alert>}
+          {saved === "queued" && (
+            <Alert tone="info">Saved on this device. It will be sent when you are back online.</Alert>
+          )}
           <EntityForm
             key={String(r.version)}
             schema={schema.data}
@@ -479,18 +523,12 @@ export function EntityRecordPage() {
             renderRelation={OrganisationPicker}
             onSubmit={async (body) => {
               setIssues([]);
-              setSaved(false);
+              setSaved(null);
               if (Object.keys(body).length === 0) return;
               try {
-                const updated = (await ok(
-                  api.PATCH(PI(entity.path), {
-                    params: { path: { id } },
-                    headers: { "If-Match": `"${String(r.version)}"` },
-                    body: body as never,
-                  }),
-                )) as unknown as RecordJson;
-                qc.setQueryData(["record", entity.entity, id], updated);
-                setSaved(true);
+                const result = await updateRecord(sync, entity.entity, id, body, Number(r.version ?? 0));
+                qc.setQueryData(["record", entity.entity, id], { data: result.record, offline: result.queued && !navigator.onLine });
+                setSaved(result.queued ? "queued" : "sent");
                 void qc.invalidateQueries({ queryKey: ["timeline", entity.entity, id] });
                 void qc.invalidateQueries({ queryKey: ["list", entity.entity] });
               } catch (e) {
@@ -503,11 +541,19 @@ export function EntityRecordPage() {
               }
             }}
           />
-          {entity.entity === "talent" && <TalentMembers talentId={id} canWrite={schema.data.can_write} />}
+          {entity.entity === "talent" &&
+            (offline || isLocalId(id) ? (
+              <p className="text-sm text-muted-foreground">Members can be seen and changed when you are online.</p>
+            ) : (
+              <TalentMembers talentId={id} canWrite={schema.data.can_write} />
+            ))}
           {entity.entity === "organisation" && <OrganisationContacts organisation={r} />}
         </section>
         <section aria-label="Activity" className="flex flex-col gap-3">
           <h2 className="font-semibold">Activity</h2>
+          {offline || isLocalId(id) ? (
+            <p className="text-sm text-muted-foreground">Activity shows when you are online.</p>
+          ) : (
           <Timeline
             entries={entries}
             schema={schema.data}
@@ -518,6 +564,7 @@ export function EntityRecordPage() {
               setBefore(timeline.data?.next_before ?? null);
             }}
           />
+          )}
         </section>
       </div>
     </div>
@@ -525,12 +572,12 @@ export function EntityRecordPage() {
 }
 
 function OrganisationContacts({ organisation }: { organisation: RecordJson }) {
+  const sync = useOffline();
   const schema = useSchema("contact");
   const [adding, setAdding] = useState(false);
   const contacts = useQuery({
     queryKey: ["list", "contact", "org", organisation.id],
-    queryFn: () =>
-      ok(api.GET("/api/v1/contacts", { params: { query: { organisation_id: organisation.id, limit: 100 } } })),
+    queryFn: async () => (await fetchList(sync, "contact", { organisation_id: organisation.id, limit: 100 })).data,
   });
   return (
     <section className="flex flex-col gap-3" aria-label="People">
@@ -551,9 +598,9 @@ function OrganisationContacts({ organisation }: { organisation: RecordJson }) {
           {contacts.data?.items.map((c) => (
             <li key={c.id} className="flex flex-wrap justify-between gap-2 px-3 py-2 text-sm">
               <Link to="/crm/$entity/$id" params={{ entity: "contacts", id: c.id }} className="font-medium hover:underline">
-                {c.name}
+                {String(c.name)}
               </Link>
-              <span className="text-muted-foreground">{[c.role, c.email].filter(Boolean).join(" · ")}</span>
+              <span className="text-muted-foreground">{[c.role, c.email].filter(Boolean).map(String).join(" · ")}</span>
             </li>
           ))}
         </ul>

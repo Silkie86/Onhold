@@ -180,3 +180,68 @@ jobs:
         with:
           name: playwright-report
           path: web/apps/app/playwright-report
+
+  desktop:
+    name: Desktop app (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bundles: deb,rpm,appimage
+          - os: macos-latest
+            bundles: app,dmg
+          - os: windows-latest
+            bundles: msi,nsis
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: web/apps/app
+    steps:
+      - uses: actions/checkout@v7
+      - name: Web view and keychain libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev patchelf
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+        working-directory: .
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: web/apps/app/src-tauri
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - name: Lint the app shell
+        if: runner.os == 'Linux'
+        working-directory: web/apps/app/src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --locked -- -D warnings
+      # Unsigned: signing certificates are bought once there is something to ship.
+      - name: Build installers
+        run: pnpm tauri build --bundles ${{ matrix.bundles }} -- --locked
+      # The same app under a client's own name and icon.
+      - name: Build a branded app
+        if: runner.os == 'Linux'
+        run: node scripts/brand.mjs brands/example.json -- --bundles deb -- --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ runner.os }}
+          path: |
+            web/apps/app/src-tauri/target/release/bundle/deb/*.deb
+            web/apps/app/src-tauri/target/release/bundle/rpm/*.rpm
+            web/apps/app/src-tauri/target/release/bundle/appimage/*.AppImage
+            web/apps/app/src-tauri/target/release/bundle/dmg/*.dmg
+            web/apps/app/src-tauri/target/release/bundle/msi/*.msi
+            web/apps/app/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 14

@@ -44,3 +44,17 @@ pnpm --dir web install && pnpm --dir web generate
 ```
 
 New migrations are always reversible: `sqlx migrate add -r --source crates/core-db/migrations <name>`.
+
+## Desktop and mobile apps
+
+The apps (Windows, macOS, Linux; iOS and Android next) are the same web app in a [Tauri](https://tauri.app) shell, `web/apps/app/src-tauri`, with an offline copy of the CRM and a queue of changes made without a connection. They sign in by showing a code that the person approves on the website (`/link-app`). Building them needs the Rust toolchain plus, on Linux, `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev patchelf` (see [Tauri's prerequisites](https://tauri.app/start/prerequisites/) for Windows and macOS).
+
+```sh
+cd web/apps/app
+CORS_ORIGINS=http://localhost:5173 cargo run -p onhold -- serve   # the API, letting the dev app call it
+VITE_API_URL=http://localhost:8080 pnpm app:dev                     # the app in a window, reloading on change
+VITE_API_URL=https://onhold.example.com pnpm app:build              # installers in src-tauri/target/release/bundle
+node scripts/brand.mjs brands/example.json                          # a client's own name and icon (see the file)
+```
+
+`VITE_APP_MODE=app pnpm dev` runs the app's code in a plain browser; the `app` Playwright project tests sign-in, working offline and settling a conflict that way. CI builds unsigned installers for all three desktop systems on every change (the `desktop-*` artifacts).
