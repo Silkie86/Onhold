@@ -453,6 +453,26 @@ async fn resolve(
                 ));
             };
             let user = match core_db::auth::find_user_by_email(&mut tx, &email).await? {
+                // An invitation only creates accounts. Holding one never
+                // attaches a new identity to someone's existing account,
+                // unless the provider vouches for that very address (rule 4).
+                Some(_)
+                    if invitation.is_some()
+                        && !(provider.kind
+                            == ProviderKind::Standard {
+                                trust_verified_email: true,
+                            }
+                            && identity.email_verified
+                            && identity
+                                .email
+                                .as_deref()
+                                .is_some_and(|e| e.eq_ignore_ascii_case(&email))) =>
+                {
+                    return Err(ApiError::conflict(
+                        "account_exists",
+                        "an account with this email already exists; sign in, then accept the invitation",
+                    ));
+                }
                 Some(found) => {
                     core_db::set_context(&mut tx, None, Some(found.user_id)).await?;
                     core_db::users::mark_email_verified(&mut tx, found.user_id).await?;
@@ -508,8 +528,8 @@ async fn resolve(
             core_db::set_context(&mut tx, None, Some(user)).await?;
         }
     }
-    core_db::users::reset_login_failures(&mut tx, user).await?;
     let issued = issue_session(state, &mut tx, user, &method, meta).await?;
+    crate::services::auth::reset_failures_if_signed_in(&mut tx, &issued).await?;
     tx.commit().await?;
     tracing::info!(user_id = %user, provider = %provider.name, "signed in with OIDC");
     Ok(Some(issued))

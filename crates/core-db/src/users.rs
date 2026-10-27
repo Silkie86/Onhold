@@ -112,6 +112,17 @@ pub async fn record_login_failure(
     Ok(())
 }
 
+/// True while too many failed sign-ins (passwords or second-factor codes) lock the account.
+pub async fn is_locked(conn: &mut PgConnection, id: UserId) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT coalesce(locked_until > now(), false) AS "locked!" FROM users WHERE id = $1"#,
+        id.0
+    )
+    .fetch_optional(conn)
+    .await?
+    .unwrap_or(false))
+}
+
 pub async fn reset_login_failures(conn: &mut PgConnection, id: UserId) -> Result<()> {
     sqlx::query!(
         "UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = $1 AND (failed_login_count <> 0 OR locked_until IS NOT NULL)",

@@ -85,6 +85,19 @@ pub async fn issue_session(
     })
 }
 
+/// Clears the failed sign-in count once a session is fully signed in. A
+/// session still waiting for its second factor leaves it alone, so wrong
+/// codes keep counting towards the lockout across fresh sign-ins.
+pub(crate) async fn reset_failures_if_signed_in(
+    tx: &mut Tx,
+    issued: &IssuedSession,
+) -> ApiResult<()> {
+    if !issued.mfa_required {
+        core_db::users::reset_login_failures(tx, issued.user_id).await?;
+    }
+    Ok(())
+}
+
 pub async fn login(
     state: &AppState,
     email: &str,
@@ -115,8 +128,8 @@ pub async fn login(
         tracing::info!(user_id = %found.user_id, locked, "sign-in failed");
         return Err(invalid_credentials());
     }
-    core_db::users::reset_login_failures(&mut tx, found.user_id).await?;
     let issued = issue_session(state, &mut tx, found.user_id, "password", meta).await?;
+    reset_failures_if_signed_in(&mut tx, &issued).await?;
     tx.commit().await?;
     tracing::info!(user_id = %found.user_id, "signed in with password");
     Ok(issued)
@@ -129,17 +142,27 @@ pub async fn logout(state: &AppState, session: &Session) -> ApiResult<()> {
     Ok(())
 }
 
-/// Finishes sign-in with a TOTP code or a recovery code.
+/// Finishes sign-in with a TOTP code or a recovery code. Returns when the
+/// session now expires.
 pub async fn verify_mfa(
     state: &AppState,
     session: &Session,
     code: Option<&str>,
     recovery_code: Option<&str>,
-) -> ApiResult<()> {
+) -> ApiResult<chrono::DateTime<Utc>> {
     if session.mfa_verified {
-        return Ok(());
+        return Ok(session.expires_at);
     }
     let mut tx = core_db::begin(&state.db, None, Some(session.user_id)).await?;
+    let too_many =
+        || ApiError::unauthorized("session_expired", "too many wrong codes; sign in again");
+    // Wrong codes also count against the account, so signing in again does
+    // not buy more guesses; a locked account takes no codes at all.
+    if core_db::users::is_locked(&mut tx, session.user_id).await? {
+        core_db::sessions::revoke(&mut tx, session.id).await?;
+        tx.commit().await?;
+        return Err(too_many());
+    }
     let ok = match (code, recovery_code) {
         (Some(code), _) => check_current_totp(state, &mut tx, session.user_id, code).await?,
         (None, Some(recovery)) => {
@@ -164,17 +187,30 @@ pub async fn verify_mfa(
             state.config.max_mfa_failures,
         )
         .await?;
+        core_db::users::record_login_failure(
+            &mut tx,
+            session.user_id,
+            state.config.max_login_failures,
+            state.config.lockout.as_secs_f64(),
+        )
+        .await?;
+        let locked = core_db::users::is_locked(&mut tx, session.user_id).await?;
+        if locked {
+            core_db::sessions::revoke(&mut tx, session.id).await?;
+        }
         tx.commit().await?;
-        return Err(if still_usable {
+        tracing::info!(user_id = %session.user_id, locked, "wrong second-factor code");
+        return Err(if still_usable && !locked {
             ApiError::unauthorized("invalid_code", "that code is not valid")
         } else {
-            ApiError::unauthorized("session_expired", "too many wrong codes; sign in again")
+            too_many()
         });
     }
     let expires_at = Utc::now() + to_chrono(state.config.session_ttl);
     core_db::sessions::mark_mfa_verified(&mut tx, session.id, expires_at).await?;
+    core_db::users::reset_login_failures(&mut tx, session.user_id).await?;
     tx.commit().await?;
-    Ok(())
+    Ok(expires_at)
 }
 
 /// Checks a code against the user's active TOTP secret, rejecting replays.
@@ -381,8 +417,8 @@ pub async fn consume_magic_link(
         return Err(invalid());
     }
     core_db::users::mark_email_verified(&mut tx, link.user_id).await?;
-    core_db::users::reset_login_failures(&mut tx, link.user_id).await?;
     let issued = issue_session(state, &mut tx, link.user_id, "magic_link", meta).await?;
+    reset_failures_if_signed_in(&mut tx, &issued).await?;
     tx.commit().await?;
     Ok(issued)
 }
