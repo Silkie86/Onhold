@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT app_sign_in_start($1, $2, $3, $4, $5, $6, $7)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "app_sign_in_start",
+        "type_info": "Void",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Text",
+        "Inet",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "368346c656eda226d65328b5fdd36debf9de7b3da9c4f40be174499b5017e542"
+}

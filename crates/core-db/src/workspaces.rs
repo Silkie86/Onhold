@@ -203,6 +203,7 @@ pub struct MyWorkspace {
     pub name: String,
     pub status: WorkspaceStatus,
     pub role: Role,
+    pub plan: String,
 }
 
 /// The workspaces the user in context belongs to.
@@ -210,7 +211,7 @@ pub async fn for_user(conn: &mut PgConnection, user: UserId) -> Result<Vec<MyWor
     Ok(sqlx::query_as!(
         MyWorkspace,
         r#"SELECT w.id AS "id: WorkspaceId", w.slug, w.name, w.status AS "status: WorkspaceStatus",
-                  m.role AS "role: Role"
+                  m.role AS "role: Role", w.plan
            FROM memberships m JOIN workspaces w ON w.id = m.workspace_id
            WHERE m.user_id = $1 AND m.deleted_at IS NULL AND w.status <> 'closed'
            ORDER BY w.name"#,

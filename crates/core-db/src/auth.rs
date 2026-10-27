@@ -17,6 +17,8 @@ pub struct SessionLookup {
     pub expires_at: DateTime<Utc>,
     pub impersonated_workspace_id: Option<WorkspaceId>,
     pub impersonation_expires_at: Option<DateTime<Utc>>,
+    /// `browser` (cookie) or `app` (bearer token).
+    pub client: String,
 }
 
 pub async fn find_session(
@@ -28,7 +30,7 @@ pub async fn find_session(
         r#"SELECT session_id AS "session_id!", user_id AS "user_id!: UserId", csrf_token AS "csrf_token!",
                   mfa_verified AS "mfa_verified!", expires_at AS "expires_at!",
                   impersonated_workspace_id AS "impersonated_workspace_id: WorkspaceId",
-                  impersonation_expires_at
+                  impersonation_expires_at, client AS "client!"
            FROM auth_find_session($1)"#,
         token_hash
     )

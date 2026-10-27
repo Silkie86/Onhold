@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT app_sign_in_decide($1, $2) AS \"done!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "done!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "e23c77c7e679c4ab7c3d60843237af8c15c49d645d5e4ed80a11487ff1a77e45"
+}

@@ -7,6 +7,14 @@ use url::Url;
 
 use crate::oidc::OidcProvider;
 
+/// Where Tauri serves the app from: `tauri://localhost` on macOS, iOS and
+/// Linux, `http(s)://tauri.localhost` on Windows and Android.
+pub const APP_ORIGINS: &[&str] = &[
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+];
+
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Where the web app is served; links in emails and OIDC redirects are built from it.
@@ -17,6 +25,16 @@ pub struct Config {
     /// enable behind a proxy that sets them.
     pub trust_proxy_headers: bool,
     pub session_ttl: Duration,
+    /// Sessions of the desktop and mobile apps, which may be offline for days.
+    pub app_session_ttl: Duration,
+    /// How long an app's sign-in code waits for approval in the browser.
+    pub app_sign_in_ttl: Duration,
+    /// Origins allowed to call the API from another origin: the desktop and
+    /// mobile apps' web views. They authenticate with bearer tokens, never cookies.
+    pub cors_origins: Vec<String>,
+    /// Plans whose workspaces may use the desktop and mobile apps; `None`
+    /// allows every plan. The website is always available.
+    pub app_plans: Option<Vec<String>>,
     /// How long a session may wait for its second factor before it is useless.
     pub mfa_pending_ttl: Duration,
     pub invitation_ttl: Duration,
@@ -42,6 +60,10 @@ impl Config {
             cookie_secure: true,
             trust_proxy_headers: false,
             session_ttl: Duration::from_secs(30 * 24 * 3600),
+            app_session_ttl: Duration::from_secs(90 * 24 * 3600),
+            app_sign_in_ttl: Duration::from_secs(10 * 60),
+            cors_origins: APP_ORIGINS.iter().map(|o| (*o).to_owned()).collect(),
+            app_plans: None,
             mfa_pending_ttl: Duration::from_secs(10 * 60),
             invitation_ttl: Duration::from_secs(7 * 24 * 3600),
             magic_link_ttl: Duration::from_secs(15 * 60),
@@ -65,6 +87,13 @@ impl Config {
             webhooks_allow_private: true,
             ..Self::new(url, Keyring::ephemeral())
         }
+    }
+
+    /// Whether a workspace on `plan` may be used from the desktop and mobile apps.
+    pub fn apps_allowed(&self, plan: &str) -> bool {
+        self.app_plans
+            .as_ref()
+            .is_none_or(|plans| plans.iter().any(|p| p == plan))
     }
 
     /// An absolute link for a same-site `path_and_query` that was already

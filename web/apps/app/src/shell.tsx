@@ -1,7 +1,7 @@
 // The signed-in app's frame: navigation, workspace switcher, ⌘K search and
 // the user menu. Anyone not signed in is sent to sign in first.
 
-import { Link, Navigate, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Button,
   CommandPalette,
@@ -21,8 +21,10 @@ import {
 import {
   Building2,
   ChevronsUpDown,
+  CloudOff,
   Contact,
   FileUp,
+  RefreshCw,
   LogOut,
   Menu as MenuIcon,
   Mic2,
@@ -34,8 +36,14 @@ import {
   Workflow,
   X,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { api, entityByPath, ok } from "./api.ts";
+import { ENTITIES, entityByPath } from "./api.ts";
+import { OfflineContext, searchEverything, useSyncStatus } from "./data.ts";
+import { claimFor } from "./offline/store.ts";
+import { OfflineSync } from "./offline/sync.ts";
+import { IS_APP, serverUrl } from "./platform.ts";
+import { GoTo } from "./go-to.tsx";
 import { type Session, SessionContext, useMe, useSessionActions } from "./session.tsx";
 
 const NAV: { group: string; items: { to: string; label: string; icon: ReactNode }[] }[] = [
@@ -59,6 +67,34 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
     ],
   },
 ];
+
+/** Starts keeping the workspace on the device (apps only) for as long as it is open. */
+function useOfflineSync(workspaceId: string | undefined, userId: string): OfflineSync | null {
+  const qc = useQueryClient();
+  const [sync, setSync] = useState<OfflineSync | null>(null);
+  useEffect(() => {
+    if (!IS_APP || !workspaceId) return;
+    const engine = new OfflineSync(workspaceId);
+    let stopped = false;
+    const off = engine.onRecordsChanged(() => {
+      void qc.invalidateQueries({
+        predicate: (q) => ["list", "record", "tags", "schema", "org-search"].includes(String(q.queryKey[0])),
+      });
+    });
+    void claimFor(userId).then(() => {
+      if (stopped) return;
+      setSync(engine);
+      void engine.start();
+    });
+    return () => {
+      stopped = true;
+      off();
+      engine.stop();
+      setSync(null);
+    };
+  }, [workspaceId, userId, qc]);
+  return sync;
+}
 
 const THEME_KEY = "onhold.theme";
 
@@ -85,10 +121,10 @@ export function AppShell() {
     return <div className="p-6 text-sm">Could not reach OnHold: {me.error.message}</div>;
   }
   if (!me.data) {
-    return <Navigate to="/sign-in" search={{ redirect: location.href }} replace />;
+    return <GoTo to="/sign-in" redirect={location.href} />;
   }
   if (!me.data.session.mfa_verified) {
-    return <Navigate to="/auth/mfa" search={{ redirect: location.href }} replace />;
+    return <GoTo to="/auth/mfa" redirect={location.href} />;
   }
   if (me.data.workspaces.length === 0) {
     return (
@@ -97,11 +133,21 @@ export function AppShell() {
       </div>
     );
   }
+  if (IS_APP && !me.data.workspaces.some((w) => w.apps_allowed)) {
+    return (
+      <div className="mx-auto max-w-md p-6 text-sm">
+        The desktop and mobile apps are not part of your workspace&apos;s plan. You can use OnHold in your browser at{" "}
+        {serverUrl() || "your OnHold address"}.
+      </div>
+    );
+  }
   return <SignedIn me={me.data} />;
 }
 
 function SignedIn({ me }: { me: Session["me"] }) {
   const { workspace, switchWorkspace, signOut } = useSessionActions(me);
+  const current = workspace ?? me.workspaces[0];
+  const sync = useOfflineSync(current?.apps_allowed ? current.id : undefined, me.user.id);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(storedTheme);
@@ -129,11 +175,13 @@ function SignedIn({ me }: { me: Session["me"] }) {
   // Close the mobile menu after navigating.
   useEffect(() => setNavOpen(false), [location.pathname]);
 
-  const search = useCallback(async (q: string): Promise<PaletteHit[]> => {
-    const hits = await ok(api.GET("/api/v1/search", { params: { query: { q, limit: 12 } } }));
-    const groups: Record<string, string> = { contact: "Contacts", organisation: "Organisations", talent: "Talent" };
-    return hits.map((h) => ({ id: h.id, title: h.name, detail: h.detail, group: groups[h.entity] ?? h.entity }));
-  }, []);
+  const search = useCallback(
+    async (q: string): Promise<PaletteHit[]> => {
+      const hits = await searchEverything(sync, q);
+      return hits.map((h) => ({ id: h.id, title: h.name, detail: h.detail, group: ENTITIES[h.entity]?.label ?? h.entity }));
+    },
+    [sync],
+  );
   const actions: PaletteAction[] = NAV.flatMap((g) =>
     g.items.map((i) => ({ id: i.to, title: `Go to ${i.label}`, group: "Pages", icon: i.icon })),
   );
@@ -170,6 +218,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
 
   return (
     <SessionContext.Provider value={session}>
+      <OfflineContext.Provider value={sync}>
       <div className="flex h-dvh">
         <aside className="hidden w-56 shrink-0 flex-col border-r bg-muted/30 md:flex">
           <WorkspaceSwitcher session={session} />
@@ -204,6 +253,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
               <kbd className="hidden rounded border px-1.5 text-xs sm:inline">⌘K</kbd>
             </button>
             <div className="flex-1" />
+            {sync && <SyncIndicator />}
             <Menu>
               <MenuTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="Account" className="rounded-full bg-secondary">
@@ -234,7 +284,14 @@ function SignedIn({ me }: { me: Session["me"] }) {
             </Menu>
           </header>
           <main className="min-w-0 flex-1 overflow-y-auto">
-            <Outlet />
+            {IS_APP && !session.workspace.apps_allowed ? (
+              <p className="mx-auto max-w-md p-6 text-sm">
+                The apps are not part of {session.workspace.name}&apos;s plan. Switch workspace, or use OnHold in your
+                browser.
+              </p>
+            ) : (
+              <Outlet />
+            )}
           </main>
         </div>
       </div>
@@ -253,6 +310,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
           }
         }}
       />
+      </OfflineContext.Provider>
     </SessionContext.Provider>
   );
 }
@@ -285,5 +343,34 @@ function WorkspaceSwitcher({ session }: { session: Session }) {
         ))}
       </MenuContent>
     </Menu>
+  );
+}
+
+/** Online, offline, or changes waiting: a link to the sync page either way. */
+function SyncIndicator() {
+  const status = useSyncStatus();
+  if (!status) return null;
+  const label = !status.online
+    ? status.pending
+      ? `Offline · ${status.pending} waiting`
+      : "Offline"
+    : status.attention
+      ? `${status.attention} need${status.attention === 1 ? "s" : ""} attention`
+      : status.syncing || status.pending
+        ? "Syncing…"
+        : "Up to date";
+  const warn = !status.online || status.attention > 0;
+  return (
+    <Link
+      to="/sync"
+      className={cn(
+        "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs [&_svg]:size-3.5",
+        warn ? "border-amber-500/50 text-amber-700 dark:text-amber-400" : "text-muted-foreground",
+      )}
+    >
+      {status.online ? <RefreshCw className={cn(status.syncing && "animate-spin")} /> : <CloudOff />}
+      <span className="hidden sm:inline">{label}</span>
+      <span className="sr-only sm:hidden">{label}</span>
+    </Link>
   );
 }

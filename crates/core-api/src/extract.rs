@@ -1,9 +1,11 @@
 //! Request extractors: where the request came from, who is calling, and the
 //! workspace context every service call needs.
 //!
-//! Credentials are either the session cookie (browsers) or
-//! `Authorization: Bearer ohk_…` (API keys). Cookie-authenticated writes must
-//! echo the session's CSRF token in `X-CSRF-Token`. Workspace routes name
+//! Credentials are the session cookie (browsers), `Authorization: Bearer
+//! ohs_…` (sessions of the desktop and mobile apps) or `Authorization: Bearer
+//! ohk_…` (API keys). Cookie-authenticated writes must echo the session's CSRF
+//! token in `X-CSRF-Token`; bearer tokens are never sent automatically, so
+//! they need no such check. Workspace routes name
 //! their workspace in `X-Workspace-Id`; an API key implies its own.
 
 use std::collections::BTreeSet;
@@ -27,6 +29,7 @@ pub const SESSION_COOKIE: &str = "onhold_session";
 pub const CSRF_HEADER: &str = "x-csrf-token";
 pub const WORKSPACE_HEADER: &str = "x-workspace-id";
 pub const API_KEY_PREFIX: &str = "ohk_";
+pub const APP_SESSION_PREFIX: &str = "ohs_";
 
 /// Client IP, user agent and request id, for audit rows and sessions.
 #[derive(Debug, Clone, Default)]
@@ -66,21 +69,28 @@ pub fn request_meta(parts: &Parts, trust_proxy_headers: bool) -> RequestMeta {
 /// The credential a request carries, before it is checked.
 #[derive(Debug, Clone)]
 pub enum Credential {
-    Session { token: String },
-    ApiKey { key_id: Uuid, secret: String },
+    /// `bearer` is true for an app's session token, false for a browser cookie.
+    Session {
+        token: String,
+        bearer: bool,
+    },
+    ApiKey {
+        key_id: Uuid,
+        secret: String,
+    },
 }
 
 impl Credential {
     /// The raw secret, used to scope idempotency keys to this caller.
     pub fn secret(&self) -> &str {
         match self {
-            Credential::Session { token } => token,
+            Credential::Session { token, .. } => token,
             Credential::ApiKey { secret, .. } => secret,
         }
     }
 }
 
-/// Reads the bearer key or session cookie. A malformed bearer is an error;
+/// Reads the bearer token or session cookie. A malformed bearer is an error;
 /// a missing credential is `None`.
 pub fn read_credential(headers: &HeaderMap) -> ApiResult<Option<Credential>> {
     if let Some(auth) = headers.get(header::AUTHORIZATION) {
@@ -90,11 +100,18 @@ pub fn read_credential(headers: &HeaderMap) -> ApiResult<Option<Credential>> {
         let token = value.strip_prefix("Bearer ").ok_or_else(|| {
             ApiError::unauthorized("invalid_api_key", "use `Authorization: Bearer <api key>`")
         })?;
+        if token.starts_with(APP_SESSION_PREFIX) {
+            return Ok(Some(Credential::Session {
+                token: token.to_owned(),
+                bearer: true,
+            }));
+        }
         return parse_api_key(token).map(Some);
     }
     let jar = CookieJar::from_headers(headers);
     Ok(jar.get(SESSION_COOKIE).map(|c| Credential::Session {
         token: c.value().to_owned(),
+        bearer: false,
     }))
 }
 
@@ -117,7 +134,7 @@ pub fn format_api_key(key_id: Uuid, secret: &str) -> String {
     format!("{API_KEY_PREFIX}{}_{secret}", key_id.simple())
 }
 
-/// A checked browser session.
+/// A checked session, of a browser or an app.
 #[derive(Debug, Clone)]
 pub struct Session {
     pub id: Uuid,
@@ -127,21 +144,33 @@ pub struct Session {
     pub expires_at: DateTime<Utc>,
     pub impersonating: Option<(WorkspaceId, DateTime<Utc>)>,
     pub meta: RequestMeta,
+    /// A desktop or mobile app's session rather than a browser's.
+    pub is_app: bool,
 }
 
 fn is_write(method: &Method) -> bool {
     !matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS)
 }
 
-async fn load_session(parts: &Parts, state: &AppState, token: &str) -> ApiResult<Session> {
+async fn load_session(
+    parts: &Parts,
+    state: &AppState,
+    token: &str,
+    bearer: bool,
+) -> ApiResult<Session> {
     let mut tx = core_db::begin(&state.db, None, None).await?;
     let found = core_db::auth::find_session(&mut tx, &hash_token(token)).await?;
     tx.commit().await?;
-    let found = found.ok_or_else(|| {
-        ApiError::unauthorized("session_expired", "your session has ended; sign in again")
-    })?;
+    // An app's token only works as a bearer token and a browser's only as a
+    // cookie, so neither can be replayed through the other's checks.
+    let expected_client = if bearer { "app" } else { "browser" };
+    let found = found
+        .filter(|f| f.client == expected_client)
+        .ok_or_else(|| {
+            ApiError::unauthorized("session_expired", "your session has ended; sign in again")
+        })?;
 
-    if is_write(&parts.method) {
+    if !bearer && is_write(&parts.method) {
         let sent = parts
             .headers
             .get(CSRF_HEADER)
@@ -164,6 +193,7 @@ async fn load_session(parts: &Parts, state: &AppState, token: &str) -> ApiResult
         id: found.session_id,
         user_id: found.user_id,
         csrf_token: found.csrf_token,
+        is_app: bearer,
         mfa_verified: found.mfa_verified,
         expires_at: found.expires_at,
         impersonating: found
@@ -176,7 +206,9 @@ async fn load_session(parts: &Parts, state: &AppState, token: &str) -> ApiResult
 
 async fn session_from_parts(parts: &Parts, state: &AppState) -> ApiResult<Option<Session>> {
     match read_credential(&parts.headers)? {
-        Some(Credential::Session { token }) => load_session(parts, state, &token).await.map(Some),
+        Some(Credential::Session { token, bearer }) => {
+            load_session(parts, state, &token, bearer).await.map(Some)
+        }
         Some(Credential::ApiKey { .. }) => Err(ApiError::forbidden(
             "session_required",
             "this endpoint is for signed-in people, not API keys",
@@ -260,8 +292,8 @@ impl FromRequestParts<AppState> for WsCtx {
             Some(Credential::ApiKey { key_id, secret }) => {
                 api_key_ctx(parts, state, key_id, &secret, requested).await?
             }
-            Some(Credential::Session { token }) => {
-                let session = load_session(parts, state, &token).await?;
+            Some(Credential::Session { token, bearer }) => {
+                let session = load_session(parts, state, &token, bearer).await?;
                 if !session.mfa_verified {
                     return Err(ApiError::unauthorized(
                         "mfa_required",
@@ -374,6 +406,12 @@ pub async fn session_ctx(
         .await?
         .ok_or_else(not_found)?;
     check_status(workspace.status, false)?;
+    if session.is_app && !state.config.apps_allowed(&workspace.plan) {
+        return Err(ApiError::forbidden(
+            "apps_not_in_plan",
+            "the desktop and mobile apps are not part of this workspace's plan; use the website instead",
+        ));
+    }
     if workspace.require_staff_2fa && role.is_staff() {
         let user = core_db::users::get(&mut tx, session.user_id)
             .await?
@@ -463,6 +501,13 @@ mod tests {
             }
             Credential::Session { .. } => panic!("expected an API key"),
         }
+        assert!(matches!(
+            read_credential(&HeaderMap::from_iter([(
+                header::AUTHORIZATION,
+                "Bearer ohs_abc".parse().expect("header")
+            )])),
+            Ok(Some(Credential::Session { bearer: true, .. }))
+        ));
         for bad in [
             "",
             "ohk_",

@@ -129,6 +129,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/app/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve or refuse an app's sign-in. */
+        post: operations["decide_app_sign_in"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/app/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The app waiting for a code, before approving it. */
+        get: operations["lookup_app_sign_in"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/app/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start signing in a desktop or mobile app.
+         * @description The app shows `user_code`, opens `verification_url` in the browser and
+         *     polls `POST /auth/app/token`. The person signs in there as usual, types
+         *     the code and approves.
+         */
+        post: operations["start_app_sign_in"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/app/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Collect the app's session once the sign-in is approved.
+         * @description Until then this answers 400 `authorization_pending`. A refused sign-in is
+         *     403 `access_denied`; an expired or already collected one is 400
+         *     `expired_token`.
+         */
+        post: operations["app_sign_in_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -1617,6 +1695,36 @@ export interface components {
             /** Format: date-time */
             revoked_at?: string | null;
         };
+        AppSession: {
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            session_id: string;
+            /** @description Send as `Authorization: Bearer <token>`. Store it in the device's keychain. */
+            token: string;
+            user_id: components["schemas"]["UserId"];
+        };
+        AppSignInStarted: {
+            /** Format: date-time */
+            expires_at: string;
+            /**
+             * Format: int32
+             * @description Poll no more often than this.
+             */
+            interval_seconds: number;
+            /** @description Keep this secret and poll `POST /auth/app/token` with it. */
+            poll_token: string;
+            /** @description Show this to the person, who types it on the approval page. */
+            user_code: string;
+            /**
+             * @description The approval page, to open in the browser. It deliberately does not
+             *     carry the code.
+             */
+            verification_url: string;
+        };
+        AppSignInTokenRequest: {
+            poll_token: string;
+        };
         AuditEntryView: {
             action: string;
             /** Format: uuid */
@@ -1891,6 +1999,8 @@ export interface components {
             workspace_id: components["schemas"]["WorkspaceId"];
         };
         CurrentSessionView: {
+            /** @description `browser` or `app`. */
+            client: string;
             csrf_token: string;
             /** Format: date-time */
             expires_at: string;
@@ -1903,6 +2013,11 @@ export interface components {
          * @enum {string}
          */
         DateOrder: "dmy" | "mdy" | "ymd";
+        DecideAppSignInRequest: {
+            /** @description True signs the app in as you; false refuses it. */
+            approve: boolean;
+            code: string;
+        };
         DeliveryPage: {
             deliveries: components["schemas"]["DeliveryView"][];
             /** Format: uuid */
@@ -2346,6 +2461,11 @@ export interface components {
             minor: number;
         };
         MyWorkspaceView: {
+            /**
+             * @description False when the workspace's plan does not include the desktop and
+             *     mobile apps; an app's requests to it are then refused.
+             */
+            apps_allowed: boolean;
             id: components["schemas"]["WorkspaceId"];
             name: string;
             role: components["schemas"]["Role"];
@@ -2485,6 +2605,16 @@ export interface components {
             /** @description Required when the account already has a password. */
             current_password?: string | null;
             new_password: string;
+        };
+        PendingAppSignInView: {
+            /** Format: date-time */
+            created_at: string;
+            device_name: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** @description Where the request came from, so the person can tell it is theirs. */
+            ip?: string | null;
+            user_agent?: string | null;
         };
         /**
          * @description A `resource:action` permission.
@@ -2719,9 +2849,13 @@ export interface components {
         };
         SessionInfoView: {
             auth_method: string;
+            /** @description `browser` or `app` (the desktop and mobile apps). */
+            client: string;
             /** Format: date-time */
             created_at: string;
             current: boolean;
+            /** @description The app's name for its device, such as "Sam's MacBook". */
+            device_name?: string | null;
             /** Format: date-time */
             expires_at: string;
             /** Format: uuid */
@@ -2768,6 +2902,10 @@ export interface components {
             required_fields: string[];
             /** Format: int32 */
             sla_days?: number | null;
+        };
+        StartAppSignInRequest: {
+            /** @description Shown when approving and in the session list, such as "Sam's MacBook". */
+            device_name: string;
         };
         StartImpersonationRequest: {
             /** @description Recorded in the customer's audit log. */
@@ -3475,6 +3613,135 @@ export interface operations {
                 };
                 content: {
                     "text/csv": string;
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    decide_app_sign_in: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideAppSignInRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    lookup_app_sign_in: {
+        parameters: {
+            query: {
+                /** @description The code the app shows, with or without the dash. */
+                code: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingAppSignInView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_app_sign_in: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartAppSignInRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppSignInStarted"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    app_sign_in_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppSignInTokenRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppSession"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             403: {

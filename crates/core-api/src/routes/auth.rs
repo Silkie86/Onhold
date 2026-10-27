@@ -21,6 +21,7 @@ use crate::AppState;
 use crate::error::{ApiError, ApiResult, ErrorBody};
 use crate::extract::{ClientMeta, CurrentSession, OptionalSession, PendingSession};
 use crate::oidc::{self, STATE_COOKIE};
+use crate::services::app_sign_in as app_svc;
 use crate::services::auth as svc;
 
 pub fn router() -> OpenApiRouter<AppState> {
@@ -43,6 +44,10 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(oidc_callback))
         .routes(routes!(preview_invitation))
         .routes(routes!(accept_invitation))
+        .routes(routes!(start_app_sign_in))
+        .routes(routes!(app_sign_in_token))
+        .routes(routes!(lookup_app_sign_in))
+        .routes(routes!(decide_app_sign_in))
 }
 
 // Sign-in ---------------------------------------------------------------------------
@@ -104,11 +109,16 @@ pub struct MyWorkspaceView {
     pub name: String,
     pub status: WorkspaceStatus,
     pub role: Role,
+    /// False when the workspace's plan does not include the desktop and
+    /// mobile apps; an app's requests to it are then refused.
+    pub apps_allowed: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CurrentSessionView {
     pub id: Uuid,
+    /// `browser` or `app`.
+    pub client: String,
     pub csrf_token: String,
     pub mfa_verified: bool,
     pub expires_at: DateTime<Utc>,
@@ -165,10 +175,12 @@ async fn me(
                 name: w.name,
                 status: w.status,
                 role: w.role,
+                apps_allowed: state.config.apps_allowed(&w.plan),
             })
             .collect(),
         session: CurrentSessionView {
             id: session.id,
+            client: if session.is_app { "app" } else { "browser" }.to_owned(),
             csrf_token: session.csrf_token.clone(),
             mfa_verified: session.mfa_verified,
             expires_at: session.expires_at,
@@ -316,6 +328,10 @@ pub struct SessionInfoView {
     pub last_seen_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub current: bool,
+    /// `browser` or `app` (the desktop and mobile apps).
+    pub client: String,
+    /// The app's name for its device, such as "Sam's MacBook".
+    pub device_name: Option<String>,
 }
 
 /// Every active session of the signed-in user.
@@ -337,6 +353,8 @@ async fn list_sessions(
                 created_at: s.created_at,
                 last_seen_at: s.last_seen_at,
                 expires_at: s.expires_at,
+                client: s.client,
+                device_name: s.device_name,
             })
             .collect(),
     ))
@@ -612,4 +630,137 @@ async fn accept_invitation(
             session: accepted.session.as_ref().map(SessionResponse::from),
         }),
     ))
+}
+
+// Desktop and mobile apps -----------------------------------------------------------------
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct StartAppSignInRequest {
+    /// Shown when approving and in the session list, such as "Sam's MacBook".
+    pub device_name: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AppSignInStarted {
+    /// Show this to the person, who types it on the approval page.
+    pub user_code: String,
+    /// Keep this secret and poll `POST /auth/app/token` with it.
+    pub poll_token: String,
+    /// The approval page, to open in the browser. It deliberately does not
+    /// carry the code.
+    pub verification_url: String,
+    pub expires_at: DateTime<Utc>,
+    /// Poll no more often than this.
+    pub interval_seconds: u32,
+}
+
+/// Start signing in a desktop or mobile app.
+///
+/// The app shows `user_code`, opens `verification_url` in the browser and
+/// polls `POST /auth/app/token`. The person signs in there as usual, types
+/// the code and approves.
+#[utoipa::path(post, path = "/auth/app/start", tag = "auth", request_body = StartAppSignInRequest,
+    responses((status = 200, body = AppSignInStarted), (status = 422, body = ErrorBody)))]
+async fn start_app_sign_in(
+    State(state): State<AppState>,
+    ClientMeta(meta): ClientMeta,
+    Json(body): Json<StartAppSignInRequest>,
+) -> ApiResult<Json<AppSignInStarted>> {
+    let started = app_svc::start(&state, &body.device_name, &meta).await?;
+    Ok(Json(AppSignInStarted {
+        user_code: started.user_code,
+        poll_token: started.poll_token,
+        verification_url: started.verification_url,
+        expires_at: started.expires_at,
+        interval_seconds: app_svc::POLL_INTERVAL_SECS,
+    }))
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AppSignInTokenRequest {
+    pub poll_token: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AppSession {
+    /// Send as `Authorization: Bearer <token>`. Store it in the device's keychain.
+    pub token: String,
+    pub session_id: Uuid,
+    pub user_id: UserId,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// Collect the app's session once the sign-in is approved.
+///
+/// Until then this answers 400 `authorization_pending`. A refused sign-in is
+/// 403 `access_denied`; an expired or already collected one is 400
+/// `expired_token`.
+#[utoipa::path(post, path = "/auth/app/token", tag = "auth", request_body = AppSignInTokenRequest,
+    responses((status = 200, body = AppSession), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody)))]
+async fn app_sign_in_token(
+    State(state): State<AppState>,
+    ClientMeta(meta): ClientMeta,
+    Json(body): Json<AppSignInTokenRequest>,
+) -> ApiResult<Json<AppSession>> {
+    let issued = app_svc::collect(&state, &body.poll_token, &meta).await?;
+    Ok(Json(AppSession {
+        token: issued.token,
+        session_id: issued.session_id,
+        user_id: issued.user_id,
+        expires_at: issued.expires_at,
+    }))
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct AppSignInLookup {
+    /// The code the app shows, with or without the dash.
+    pub code: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PendingAppSignInView {
+    pub device_name: String,
+    /// Where the request came from, so the person can tell it is theirs.
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// The app waiting for a code, before approving it.
+#[utoipa::path(get, path = "/auth/app/lookup", tag = "auth", params(AppSignInLookup),
+    responses((status = 200, body = PendingAppSignInView), (status = 400, body = ErrorBody)),
+    security(("session" = [])))]
+async fn lookup_app_sign_in(
+    State(state): State<AppState>,
+    CurrentSession(session): CurrentSession,
+    Query(query): Query<AppSignInLookup>,
+) -> ApiResult<Json<PendingAppSignInView>> {
+    let found = app_svc::lookup(&state, &session, &query.code).await?;
+    Ok(Json(PendingAppSignInView {
+        device_name: found.device_name,
+        ip: found.ip.map(|ip| ip.to_string()),
+        user_agent: found.user_agent,
+        created_at: found.created_at,
+        expires_at: found.expires_at,
+    }))
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DecideAppSignInRequest {
+    pub code: String,
+    /// True signs the app in as you; false refuses it.
+    pub approve: bool,
+}
+
+/// Approve or refuse an app's sign-in.
+#[utoipa::path(post, path = "/auth/app/decide", tag = "auth", request_body = DecideAppSignInRequest,
+    responses((status = 204), (status = 400, body = ErrorBody)), security(("session" = [])))]
+async fn decide_app_sign_in(
+    State(state): State<AppState>,
+    CurrentSession(session): CurrentSession,
+    Json(body): Json<DecideAppSignInRequest>,
+) -> ApiResult<StatusCode> {
+    app_svc::decide(&state, &session, &body.code, body.approve).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

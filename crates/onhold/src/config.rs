@@ -40,6 +40,26 @@ pub struct ApiArgs {
     #[arg(long, env = "SESSION_TTL_DAYS", default_value_t = 30, global = true)]
     session_ttl_days: u64,
 
+    /// Lifetime of the desktop and mobile apps' sessions, in days.
+    #[arg(
+        long,
+        env = "APP_SESSION_TTL_DAYS",
+        default_value_t = 90,
+        global = true
+    )]
+    app_session_ttl_days: u64,
+
+    /// Plans whose workspaces may use the desktop and mobile apps,
+    /// comma-separated. Unset: every plan. The website is always available.
+    #[arg(long, env = "APP_PLANS", value_delimiter = ',', global = true)]
+    app_plans: Option<Vec<String>>,
+
+    /// More origins allowed to call the API with bearer tokens, comma-separated,
+    /// beside the apps' own (`tauri://localhost`, `http(s)://tauri.localhost`).
+    /// For example a development server of the app on another port.
+    #[arg(long, env = "CORS_ORIGINS", value_delimiter = ',', global = true)]
+    cors_origins: Vec<String>,
+
     #[arg(long, env = "OIDC_GOOGLE_CLIENT_ID", global = true)]
     google_client_id: Option<String>,
     #[arg(
@@ -154,10 +174,38 @@ impl ApiArgs {
             );
         }
 
+        let mut cors_origins: Vec<String> = core_api::config::APP_ORIGINS
+            .iter()
+            .map(|o| (*o).to_owned())
+            .collect();
+        for origin in self
+            .cors_origins
+            .iter()
+            .map(|o| o.trim())
+            .filter(|o| !o.is_empty())
+        {
+            let parsed = Url::parse(origin).with_context(|| format!("CORS_ORIGINS: {origin}"))?;
+            anyhow::ensure!(
+                parsed.origin().ascii_serialization() == origin.trim_end_matches('/'),
+                "CORS_ORIGINS: {origin} is not an origin (scheme://host[:port], no path)"
+            );
+            cors_origins.push(origin.trim_end_matches('/').to_owned());
+        }
+        let app_plans = self.app_plans.map(|plans| {
+            plans
+                .into_iter()
+                .map(|p| p.trim().to_owned())
+                .filter(|p| !p.is_empty())
+                .collect()
+        });
+
         Ok(Config {
             cookie_secure: self.cookie_secure,
             trust_proxy_headers: self.trust_proxy_headers,
             session_ttl: Duration::from_secs(self.session_ttl_days * 24 * 3600),
+            app_session_ttl: Duration::from_secs(self.app_session_ttl_days * 24 * 3600),
+            app_plans,
+            cors_origins,
             oidc,
             webhooks_allow_private: self.webhooks_allow_private,
             ..Config::new(self.public_base_url, keyring)
@@ -217,6 +265,38 @@ mod tests {
                 .build(true)
                 .expect("config")
                 .cookie_secure
+        );
+    }
+
+    #[test]
+    fn the_apps_origins_are_always_allowed_and_more_can_be_added() {
+        let config = args(&[KEY]).build(true).expect("config");
+        assert_eq!(config.cors_origins, core_api::config::APP_ORIGINS);
+        assert!(config.apps_allowed("anything"));
+
+        let config = args(&[
+            KEY,
+            "--cors-origins=http://localhost:5174/",
+            "--app-plans=pro, team",
+        ])
+        .build(true)
+        .expect("config");
+        assert_eq!(
+            config.cors_origins.last().map(String::as_str),
+            Some("http://localhost:5174")
+        );
+        assert!(config.apps_allowed("team"));
+        assert!(!config.apps_allowed("standard"));
+
+        assert!(
+            args(&[KEY, "--cors-origins=http://localhost:5174/app"])
+                .build(true)
+                .is_err()
+        );
+        assert!(
+            args(&[KEY, "--cors-origins=not a url"])
+                .build(true)
+                .is_err()
         );
     }
 }

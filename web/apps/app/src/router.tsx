@@ -1,6 +1,6 @@
-// Every page and its address. Addresses the API puts in emails (`/sign-in`,
-// `/auth/magic`, `/auth/mfa`, `/invitations/accept`, `/crm/<entity>/<id>`)
-// must keep working.
+// Every page and its address. Addresses the API puts in emails and
+// responses (`/sign-in`, `/auth/magic`, `/auth/mfa`, `/invitations/accept`,
+// `/link-app`, `/crm/<entity>/<id>`) must keep working.
 
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -11,8 +11,9 @@ import {
   lazyRouteComponent,
   redirect,
 } from "@tanstack/react-router";
-import { AcceptInvitationPage, MagicLinkPage, MfaPage, SignInPage } from "./pages/auth.tsx";
+import { AcceptInvitationPage, LinkAppPage, MagicLinkPage, MfaPage, SignInPage } from "./pages/auth.tsx";
 import { EntityListPage, EntityRecordPage, validateListSearch } from "./pages/crm.tsx";
+import { SyncPage } from "./pages/sync.tsx";
 import { AppShell } from "./shell.tsx";
 
 const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
@@ -53,6 +54,9 @@ const invitation = createRoute({
   component: AcceptInvitationPage,
 });
 
+// Where people approve a desktop or mobile app's sign-in (the API's `verification_url`).
+const linkApp = createRoute({ getParentRoute: () => root, path: "/link-app", component: LinkAppPage });
+
 const app = createRoute({ getParentRoute: () => root, id: "app", component: AppShell });
 const home = createRoute({
   getParentRoute: () => app,
@@ -82,12 +86,15 @@ const pipelines = createRoute({
   component: lazyRouteComponent(settings, "PipelinesPage"),
 });
 
+const sync = createRoute({ getParentRoute: () => app, path: "/sync", component: SyncPage });
+
 const tree = root.addChildren([
   signIn,
   magic,
   mfa,
   invitation,
-  app.addChildren([home, list, record, imports, fields, pipelines]),
+  linkApp,
+  app.addChildren([home, list, record, imports, fields, pipelines, sync]),
 ]);
 
 export function makeRouter(queryClient: QueryClient) {

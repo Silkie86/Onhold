@@ -1,0 +1,7 @@
+{
+  "slug": "example",
+  "name": "Example Bookings",
+  "identifier": "com.example.bookings",
+  "icon": "example.svg",
+  "server": "https://bookings.example.com"
+}

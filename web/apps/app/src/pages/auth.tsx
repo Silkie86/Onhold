@@ -1,11 +1,15 @@
 // Signing in (password, emailed link, Google or Microsoft), the second
-// factor, and accepting an invitation.
+// factor, accepting an invitation, and signing in the desktop and mobile
+// apps by approving their code here in the browser.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Alert, Button, Card, Input, Label, Spinner } from "@onhold/ui";
+import { Alert, Button, Card, Input, Label, Spinner, relativeTime } from "@onhold/ui";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ApiFailure, api, ok, setCsrfToken, setWorkspace } from "../api.ts";
+import { GoTo } from "../go-to.tsx";
+import { isNetworkError } from "../offline/sync.ts";
+import { APP_NAME, IS_APP, deviceName, openInBrowser, saveAppToken, serverUrl, setServerUrl, validServerUrl } from "../platform.ts";
 import { useMe } from "../session.tsx";
 
 const ERRORS: Record<string, string> = {
@@ -37,6 +41,10 @@ function message(e: unknown): string {
 }
 
 export function SignInPage() {
+  return IS_APP ? <AppSignIn /> : <BrowserSignIn />;
+}
+
+function BrowserSignIn() {
   const { redirect, error } = useSearch({ from: "/sign-in" });
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -63,7 +71,7 @@ export function SignInPage() {
     try {
       const session = await ok(api.POST("/api/v1/auth/login", { body: { email, password } }));
       setCsrfToken(session.csrf_token);
-      await qc.invalidateQueries({ queryKey: ["me"] });
+      await qc.refetchQueries({ queryKey: ["me"], type: "all" });
       if (session.mfa_required) await navigate({ to: "/auth/mfa", search: { redirect: target } });
       else await navigate({ to: target });
     } catch (err) {
@@ -152,7 +160,7 @@ export function MagicLinkPage() {
       try {
         const session = await ok(api.POST("/api/v1/auth/magic-link/consume", { body: { token: token ?? "" } }));
         setCsrfToken(session.csrf_token);
-        await qc.invalidateQueries({ queryKey: ["me"] });
+        await qc.refetchQueries({ queryKey: ["me"], type: "all" });
         const target = safeRedirect(redirect);
         if (session.mfa_required) await navigate({ to: "/auth/mfa", search: { redirect: target }, replace: true });
         else await navigate({ to: target, replace: true });
@@ -194,7 +202,7 @@ export function MfaPage() {
     try {
       const body = recovery ? { recovery_code: code.trim() } : { code: code.replace(/\s/g, "") };
       await ok(api.POST("/api/v1/auth/mfa/verify", { body }));
-      await qc.invalidateQueries({ queryKey: ["me"] });
+      await qc.refetchQueries({ queryKey: ["me"], type: "all" });
       await navigate({ to: safeRedirect(redirect), replace: true });
     } catch (err) {
       setProblem(message(err));
@@ -258,7 +266,7 @@ export function AcceptInvitationPage() {
       );
       if (res.session) setCsrfToken(res.session.csrf_token);
       setWorkspace(res.workspace_id);
-      await qc.invalidateQueries({ queryKey: ["me"] });
+      await qc.refetchQueries({ queryKey: ["me"], type: "all" });
       await navigate({ to: "/", replace: true });
     } catch (err) {
       if (err instanceof ApiFailure && err.code === "account_exists") {
@@ -330,6 +338,256 @@ export function AcceptInvitationPage() {
           </Link>
         )}
       </form>
+    </AuthCard>
+  );
+}
+
+// The desktop and mobile apps ---------------------------------------------------------------
+
+type AppSignInState =
+  | { step: "start" }
+  | { step: "waiting"; code: string; url: string; expiresAt: string }
+  | { step: "stopped"; message: string };
+
+/** In the apps: show a code, open the browser, and wait for it to be approved there. */
+function AppSignIn() {
+  const { redirect } = useSearch({ from: "/sign-in" });
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [state, setState] = useState<AppSignInState>({ step: "start" });
+  const [busy, setBusy] = useState(false);
+  const [server, setServer] = useState(serverUrl());
+  const [editingServer, setEditingServer] = useState(!serverUrl());
+  const [serverInput, setServerInput] = useState(serverUrl());
+  const [problem, setProblem] = useState<string | null>(null);
+  const cancelled = useRef(false);
+  useEffect(() => {
+    cancelled.current = false;
+    return () => {
+      cancelled.current = true;
+    };
+  }, []);
+
+  const saveServer = (e: FormEvent) => {
+    e.preventDefault();
+    const url = validServerUrl(serverInput);
+    if (!url) {
+      setProblem("Enter the address you use OnHold at, starting with https://.");
+      return;
+    }
+    setServerUrl(url);
+    setServer(url);
+    setEditingServer(false);
+    setProblem(null);
+  };
+
+  const poll = async (pollToken: string, intervalMs: number) => {
+    while (!cancelled.current) {
+      await new Promise((r) => setTimeout(r, intervalMs));
+      if (cancelled.current) return;
+      try {
+        const session = await ok(api.POST("/api/v1/auth/app/token", { body: { poll_token: pollToken } }));
+        await saveAppToken(session.token);
+        await qc.refetchQueries({ queryKey: ["me"], type: "all" });
+        await navigate({ to: safeRedirect(redirect), replace: true });
+        return;
+      } catch (e) {
+        if (e instanceof ApiFailure && e.code === "authorization_pending") continue;
+        // No connection for a moment: keep waiting.
+        if (isNetworkError(e)) continue;
+        const why =
+          e instanceof ApiFailure && e.code === "access_denied"
+            ? "The sign-in was refused in the browser."
+            : e instanceof ApiFailure && e.code === "expired_token"
+              ? "The code expired before it was approved. Start again."
+              : message(e);
+        setState({ step: "stopped", message: why });
+        return;
+      }
+    }
+  };
+
+  const start = async () => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const started = await ok(api.POST("/api/v1/auth/app/start", { body: { device_name: await deviceName() } }));
+      setState({ step: "waiting", code: started.user_code, url: started.verification_url, expiresAt: started.expires_at });
+      void openInBrowser(started.verification_url).catch(() => undefined);
+      void poll(started.poll_token, started.interval_seconds * 1000);
+    } catch (e) {
+      setProblem(isNetworkError(e) ? `Could not reach ${server}. Check the address and your connection.` : message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AuthCard title={`Sign in to ${APP_NAME}`}>
+      {editingServer ? (
+        <form className="flex flex-col gap-4" onSubmit={saveServer}>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="server">Your OnHold address</Label>
+            <Input
+              id="server"
+              inputMode="url"
+              placeholder="https://yourcompany.onhold.app"
+              value={serverInput}
+              onChange={(e) => setServerInput(e.target.value)}
+            />
+          </div>
+          {problem && <Alert>{problem}</Alert>}
+          <Button type="submit">Continue</Button>
+        </form>
+      ) : state.step === "waiting" ? (
+        <div className="flex flex-col gap-4 text-sm">
+          <p>Your browser is open at the OnHold website. Sign in there if you need to, then enter this code:</p>
+          <p className="text-center font-mono text-3xl font-semibold tracking-widest" aria-label="Sign-in code">
+            {state.code}
+          </p>
+          <p className="text-muted-foreground">
+            The code works until {new Date(state.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+            This screen moves on by itself once you approve.
+          </p>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Spinner /> Waiting for approval…
+          </div>
+          <Button variant="outline" onClick={() => void openInBrowser(state.url)}>
+            Open the website again
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4 text-sm">
+          {state.step === "stopped" && <Alert>{state.message}</Alert>}
+          {problem && <Alert>{problem}</Alert>}
+          <p>You sign in with your browser, the same way you do on the website, and approve this device there.</p>
+          <Button disabled={busy} onClick={() => void start()}>
+            {busy && <Spinner />}
+            Sign in with your browser
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Server: {server}{" "}
+            <button type="button" className="text-primary underline" onClick={() => setEditingServer(true)}>
+              Change
+            </button>
+          </p>
+        </div>
+      )}
+    </AuthCard>
+  );
+}
+
+/** On the website: approve (or refuse) an app that is waiting with a code. */
+export function LinkAppPage() {
+  const me = useMe();
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [found, setFound] = useState<{
+    code: string;
+    device_name: string;
+    ip?: string | null;
+    user_agent?: string | null;
+    created_at: string;
+  } | null>(null);
+  const [done, setDone] = useState<"approved" | "refused" | null>(null);
+
+  if (me.isPending) {
+    return (
+      <AuthCard title="Sign in an app">
+        <Spinner />
+      </AuthCard>
+    );
+  }
+  if (!me.data?.session.mfa_verified) {
+    return <GoTo to="/sign-in" redirect="/link-app" />;
+  }
+
+  const lookUp = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setProblem(null);
+    try {
+      const pending = await ok(api.GET("/api/v1/auth/app/lookup", { params: { query: { code } } }));
+      setFound({ ...pending, code });
+    } catch (err) {
+      setProblem(message(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const decide = async (approve: boolean) => {
+    if (!found) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await ok(api.POST("/api/v1/auth/app/decide", { body: { code: found.code, approve } }));
+      setDone(approve ? "approved" : "refused");
+    } catch (err) {
+      setProblem(message(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <AuthCard title={done === "approved" ? "App signed in" : "Sign-in refused"}>
+        <p className="text-sm">
+          {done === "approved"
+            ? `${found?.device_name} is now signed in as ${me.data.user.email}. You can go back to the app.`
+            : "The app was not signed in. If you did not start this sign-in yourself, you can ignore it."}
+        </p>
+      </AuthCard>
+    );
+  }
+
+  return (
+    <AuthCard title="Sign in an app">
+      {found ? (
+        <div className="flex flex-col gap-4 text-sm">
+          <p>
+            Sign in <strong>{found.device_name}</strong> as {me.data.user.email}?
+          </p>
+          <p className="text-muted-foreground">
+            Asked {relativeTime(found.created_at)}
+            {found.ip ? ` from ${found.ip}` : ""}. Only approve a sign-in you started yourself just now: whoever has
+            that device will be able to see and change your workspaces.
+          </p>
+          {problem && <Alert>{problem}</Alert>}
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" disabled={busy} onClick={() => void decide(false)}>
+              Refuse
+            </Button>
+            <Button className="flex-1" disabled={busy} onClick={() => void decide(true)}>
+              Approve
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <form className="flex flex-col gap-4" onSubmit={lookUp}>
+          <p className="text-sm">Enter the code the OnHold app is showing.</p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="app-code">Code</Label>
+            <Input
+              id="app-code"
+              autoFocus
+              autoComplete="off"
+              autoCapitalize="characters"
+              placeholder="ABCD-EFGH"
+              className="font-mono uppercase tracking-widest"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+          </div>
+          {problem && <Alert>{problem}</Alert>}
+          <Button type="submit" disabled={busy || code.replace(/[^a-z]/gi, "").length < 8}>
+            {busy && <Spinner />}
+            Continue
+          </Button>
+        </form>
+      )}
     </AuthCard>
   );
 }
