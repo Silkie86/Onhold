@@ -330,6 +330,56 @@ async fn an_import_runs_with_what_its_member_may_still_do(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_import_whose_job_gives_up_is_marked_failed(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    h.drain().await;
+    let last_attempt = "UPDATE jobs SET attempts = max_attempts - 1 \
+                        WHERE kind = 'crm.import' AND status = 'queued'";
+
+    // Its last attempt times out.
+    let path = h
+        .queue_import(&owner, "talent", "Name\nAct One\n", json!({}))
+        .await;
+    sqlx::query(last_attempt)
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    let mut impatient = h.worker.clone();
+    impatient.settings.job_timeout = Duration::ZERO;
+    assert_eq!(impatient.run_jobs_once().await.unwrap(), 1);
+    let import = h.get(&owner, &path).await;
+    assert_eq!(import["status"], "failed", "{import}");
+    assert!(
+        import["error"].as_str().unwrap().contains("timed out"),
+        "{import}"
+    );
+
+    // Its worker stops during the last attempt.
+    let path = h
+        .queue_import(&owner, "talent", "Name\nAct Two\n", json!({}))
+        .await;
+    sqlx::query(last_attempt)
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    assert_eq!(h.worker.claim(10).await.unwrap().len(), 1);
+    sqlx::query(
+        "UPDATE jobs SET locked_until = now() - interval '1 second' WHERE status = 'running'",
+    )
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    h.worker.schedule_once().await.unwrap();
+    let import = h.get(&owner, &path).await;
+    assert_eq!(import["status"], "failed", "{import}");
+    assert!(
+        import["error"].as_str().unwrap().contains("worker stopped"),
+        "{import}"
+    );
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn rules_email_contacts_and_the_email_shows_on_their_timeline(pool: PgPool) {
     let h = harness(pool, Settings::default()).await;
     let (_, owner) = h.app.workspace_with_owner("acme").await;
