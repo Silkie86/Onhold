@@ -383,6 +383,7 @@ fn outgoing(
             html: Some(layout(&rendered.body, footer)),
             text: rendered.text,
             message_id: message_id(state, job_id),
+            attachments: Vec::new(),
         },
         workspace,
         user,

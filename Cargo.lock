@@ -652,6 +652,7 @@ name = "core-domain"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "chrono",
  "chrono-tz",
  "data-encoding",
  "getrandom 0.4.3",
@@ -702,8 +703,11 @@ name = "core-integrations"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
+ "hmac 0.13.0",
  "lettre",
  "reqwest",
+ "sha2 0.11.1",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -722,6 +726,7 @@ dependencies = [
  "chrono",
  "core-domain",
  "core-engines",
+ "html2text",
  "pdf-extract",
  "regex",
  "serde",

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use lettre::message::header::ContentType;
-use lettre::message::{Mailbox, MultiPart, SinglePart};
+use lettre::message::{Attachment as Part, Mailbox, MultiPart, SinglePart};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
 /// One message to send.
@@ -20,6 +20,16 @@ pub struct Email {
     pub text: String,
     /// Stable per logical message, so a retried send can be recognised downstream.
     pub message_id: String,
+    /// Files sent with it, such as an invoice's PDF.
+    pub attachments: Vec<Attachment>,
+}
+
+/// A file attached to an email.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attachment {
+    pub filename: String,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,25 +94,33 @@ impl SmtpMailer {
                     .map_err(|e| bad("reply-to", &e))?,
             );
         }
-        let message = match &email.html {
-            Some(html) => builder.multipart(
-                MultiPart::alternative()
-                    .singlepart(
-                        SinglePart::builder()
-                            .header(ContentType::TEXT_PLAIN)
-                            .body(email.text.clone()),
-                    )
-                    .singlepart(
-                        SinglePart::builder()
-                            .header(ContentType::TEXT_HTML)
-                            .body(html.clone()),
-                    ),
+        let text = SinglePart::builder()
+            .header(ContentType::TEXT_PLAIN)
+            .body(email.text.clone());
+        let body = match &email.html {
+            Some(html) => MultiPart::alternative().singlepart(text).singlepart(
+                SinglePart::builder()
+                    .header(ContentType::TEXT_HTML)
+                    .body(html.clone()),
             ),
-            None => builder
-                .header(ContentType::TEXT_PLAIN)
-                .body(email.text.clone()),
+            None if email.attachments.is_empty() => {
+                return builder
+                    .header(ContentType::TEXT_PLAIN)
+                    .body(email.text.clone())
+                    .map_err(|e| bad("message", &e));
+            }
+            None => MultiPart::mixed().singlepart(text),
         };
-        message.map_err(|e| bad("message", &e))
+        if email.attachments.is_empty() {
+            return builder.multipart(body).map_err(|e| bad("message", &e));
+        }
+        let mut mixed = MultiPart::mixed().multipart(body);
+        for a in &email.attachments {
+            let content_type =
+                ContentType::parse(&a.content_type).map_err(|e| bad("attachment", &e))?;
+            mixed = mixed.singlepart(Part::new(a.filename.clone()).body(a.bytes.clone(), content_type));
+        }
+        builder.multipart(mixed).map_err(|e| bad("message", &e))
     }
 }
 
@@ -196,6 +214,7 @@ mod tests {
             html: Some("<p>Hi</p>".into()),
             text: "Hi".into(),
             message_id: "<1@onhold.test>".into(),
+            attachments: Vec::new(),
         }
     }
 
@@ -213,6 +232,16 @@ mod tests {
         assert!(raw.contains("Reply-To: office@acme.test"), "{raw}");
         assert!(raw.contains("Message-ID: <1@onhold.test>"), "{raw}");
         assert!(raw.contains("multipart/alternative"), "{raw}");
+        let mut with_pdf = email();
+        with_pdf.attachments.push(Attachment {
+            filename: "INV-2026-0001.pdf".into(),
+            content_type: "application/pdf".into(),
+            bytes: b"%PDF-1.7".to_vec(),
+        });
+        let raw = String::from_utf8(mailer.build(&with_pdf).expect("builds").formatted())
+            .expect("utf8");
+        assert!(raw.contains("multipart/mixed"), "{raw}");
+        assert!(raw.contains("filename=\"INV-2026-0001.pdf\""), "{raw}");
         let mut bad = email();
         bad.to = "not an address".into();
         assert!(matches!(mailer.build(&bad), Err(MailError::Permanent(_))));

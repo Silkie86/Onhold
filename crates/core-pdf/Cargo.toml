@@ -14,6 +14,7 @@ core-engines.workspace = true
 # re-exports the lopdf version it reads with, which we use for metadata
 # and images.
 pdf-extract = "0.12"
+html2text.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
