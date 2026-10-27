@@ -1,6 +1,7 @@
 // Every page and its address. Addresses the API puts in emails and
 // responses (`/sign-in`, `/auth/magic`, `/auth/mfa`, `/invitations/accept`,
-// `/link-app`, `/crm/<entity>/<id>`) must keep working.
+// `/link-app`, `/crm/<entity>/<id>`, `/quote/<token>`, `/bookings/<id>`,
+// `/enquiries/<id>`, `/tasks`) must keep working.
 
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -12,7 +13,12 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AcceptInvitationPage, LinkAppPage, MagicLinkPage, MfaPage, SignInPage } from "./pages/auth.tsx";
+import { BookingPage, BookingsPage, validateBookingsSearch } from "./pages/bookings.tsx";
+import { CalendarPage, validateCalendarSearch } from "./pages/calendar.tsx";
 import { EntityListPage, EntityRecordPage, validateListSearch } from "./pages/crm.tsx";
+import { EnquiriesPage, EnquiryPage } from "./pages/enquiries.tsx";
+import { PublicQuotePage } from "./pages/quotes.tsx";
+import { TasksPage, validateTasksSearch } from "./pages/tasks.tsx";
 import { SyncPage } from "./pages/sync.tsx";
 import { AppShell } from "./shell.tsx";
 
@@ -54,6 +60,13 @@ const invitation = createRoute({
   component: AcceptInvitationPage,
 });
 
+// The buyer's page for a quote: no sign-in, the link is the key.
+const publicQuote = createRoute({
+  getParentRoute: () => root,
+  path: "/quote/$token",
+  component: PublicQuotePage,
+});
+
 // Where people approve a desktop or mobile app's sign-in (the API's `verification_url`).
 const linkApp = createRoute({ getParentRoute: () => root, path: "/link-app", component: LinkAppPage });
 
@@ -72,6 +85,22 @@ const list = createRoute({
   component: EntityListPage,
 });
 const record = createRoute({ getParentRoute: () => app, path: "/crm/$entity/$id", component: EntityRecordPage });
+const enquiries = createRoute({ getParentRoute: () => app, path: "/enquiries", component: EnquiriesPage });
+const enquiry = createRoute({ getParentRoute: () => app, path: "/enquiries/$id", component: EnquiryPage });
+const bookings = createRoute({
+  getParentRoute: () => app,
+  path: "/bookings",
+  validateSearch: validateBookingsSearch,
+  component: BookingsPage,
+});
+const booking = createRoute({ getParentRoute: () => app, path: "/bookings/$id", component: BookingPage });
+const calendar = createRoute({
+  getParentRoute: () => app,
+  path: "/calendar",
+  validateSearch: validateCalendarSearch,
+  component: CalendarPage,
+});
+const tasks = createRoute({ getParentRoute: () => app, path: "/tasks", validateSearch: validateTasksSearch, component: TasksPage });
 const imports = createRoute({ getParentRoute: () => app, path: "/imports", component: lazyRouteComponent(() => import("./pages/imports.tsx"), "ImportsPage") });
 // Pages used now and then load when first opened.
 const settings = () => import("./pages/settings.tsx");
@@ -86,6 +115,12 @@ const pipelines = createRoute({
   component: lazyRouteComponent(settings, "PipelinesPage"),
 });
 
+const calendarSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/calendar",
+  component: lazyRouteComponent(() => import("./pages/calendar-settings.tsx"), "CalendarSettingsPage"),
+});
+
 const sync = createRoute({ getParentRoute: () => app, path: "/sync", component: SyncPage });
 
 const tree = root.addChildren([
@@ -94,7 +129,23 @@ const tree = root.addChildren([
   mfa,
   invitation,
   linkApp,
-  app.addChildren([home, list, record, imports, fields, pipelines, sync]),
+  publicQuote,
+  app.addChildren([
+    home,
+    calendar,
+    enquiries,
+    enquiry,
+    bookings,
+    booking,
+    tasks,
+    list,
+    record,
+    imports,
+    fields,
+    pipelines,
+    calendarSettings,
+    sync,
+  ]),
 ]);
 
 export function makeRouter(queryClient: QueryClient) {

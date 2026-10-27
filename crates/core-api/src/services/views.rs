@@ -563,7 +563,8 @@ pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<Enti
             field_type: c.t,
             core: true,
             required: c.required,
-            read_only: c.key == "contact_count",
+            // A booking's status moves through its own actions, not the form.
+            read_only: c.key == "contact_count" || (entity == "booking" && c.key == "status"),
             in_list: c.in_list,
             sort: if c.sortable {
                 sort_key(entity, c.key)

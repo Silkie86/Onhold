@@ -21,7 +21,12 @@ import {
 } from "@onhold/ui";
 import {
   Building2,
+  CalendarCheck,
+  CalendarDays,
+  CalendarCog,
+  CheckSquare,
   ChevronsUpDown,
+  Inbox,
   CloudOff,
   Download,
   Contact,
@@ -51,6 +56,15 @@ import { type Session, SessionContext, useMe, useSessionActions } from "./sessio
 
 const NAV: { group: string; items: { to: string; label: string; icon: ReactNode }[] }[] = [
   {
+    group: "Bookings",
+    items: [
+      { to: "/calendar", label: "Calendar", icon: <CalendarDays /> },
+      { to: "/enquiries", label: "Enquiries", icon: <Inbox /> },
+      { to: "/bookings", label: "Bookings", icon: <CalendarCheck /> },
+      { to: "/tasks", label: "Tasks", icon: <CheckSquare /> },
+    ],
+  },
+  {
     group: "CRM",
     items: [
       { to: "/crm/contacts", label: "Contacts", icon: <Contact /> },
@@ -67,6 +81,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
     items: [
       { to: "/settings/fields", label: "Custom fields", icon: <SlidersHorizontal /> },
       { to: "/settings/pipelines", label: "Pipelines", icon: <Workflow /> },
+      { to: "/settings/calendar", label: "Calendar settings", icon: <CalendarCog /> },
     ],
   },
 ];

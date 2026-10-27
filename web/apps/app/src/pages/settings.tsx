@@ -19,10 +19,15 @@ const FIELD_ENTITIES = [
   { entity: "contact", label: "Contacts" },
   { entity: "organisation", label: "Organisations" },
   { entity: "talent", label: "Talent" },
+  { entity: "enquiry", label: "Enquiries" },
+  { entity: "booking", label: "Bookings" },
 ];
 
-// Bookings and enquiries join when they arrive; `thing` is the engines' test entity.
-const PIPELINE_ENTITIES = [{ entity: "thing", label: "Things (test records)" }];
+// `thing` is the engines' test entity.
+const PIPELINE_ENTITIES = [
+  { entity: "enquiry", label: "Enquiries" },
+  { entity: "thing", label: "Things (test records)" },
+];
 
 const TYPES: { value: FieldType; label: string }[] = [
   { value: "text", label: "Text" },
@@ -344,7 +349,7 @@ function FieldDialog({ entity, field, onClose, onSaved }: { entity: string; fiel
 export function PipelinesPage() {
   const { workspace } = useSession();
   const qc = useQueryClient();
-  const [entity, setEntity] = useState("thing");
+  const [entity, setEntity] = useState("enquiry");
   const [editing, setEditing] = useState<Pipeline | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pipelines = useQuery({
@@ -371,7 +376,7 @@ export function PipelinesPage() {
           </Button>
         )}
       </div>
-      <p className="text-sm text-muted-foreground">The stages a record moves through, in order. Enquiries and bookings get theirs as they arrive.</p>
+      <p className="text-sm text-muted-foreground">The stages a record moves through, in order. Enquiries get a standard pipeline with the first one; change it here.</p>
       <Tabs value={entity} onChange={setEntity} items={PIPELINE_ENTITIES} />
       {error && <Alert>{error}</Alert>}
       {pipelines.isPending && <Spinner />}

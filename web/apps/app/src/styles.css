@@ -1,3 +1,12 @@
 @import "@onhold/ui/styles.css";
 
 @source "../../../packages/ui/src";
+
+/* Marked-off time on the calendar: diagonal stripes, readable in both themes. */
+.unavailable-hatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, currentColor 14%, transparent) 0 4px,
+    transparent 4px 8px
+  );
+}

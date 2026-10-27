@@ -458,7 +458,11 @@ async fn read_only_roles_cannot_change_anything(pool: PgPool) {
             "event:read",
             "talent:read",
             "organisation:read",
-            "contact:read"
+            "contact:read",
+            "enquiry:read",
+            "booking:read",
+            "quote:read",
+            "task:read"
         ])
     );
     app.post("/api/v1/things")
