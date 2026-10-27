@@ -25,6 +25,8 @@ import {
 import { Check, Copy, FilePlus2, Pencil, Plus, Send, Trash2, Undo2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
+import { fetchQuotes, useOffline, useSyncStatus } from "../data.ts";
+import { isLocalId } from "../offline/store.ts";
 import { type Booking, type Quote, formatWhen } from "../work.ts";
 import { failureIssues, useWorkspaceCurrency } from "./crm.tsx";
 
@@ -58,14 +60,18 @@ function failure(e: unknown): string {
 
 export function QuotesPanel({ booking, onBookingChanged }: { booking: Booking; onBookingChanged: () => void }) {
   const qc = useQueryClient();
+  const sync = useOffline();
+  const status = useSyncStatus();
   const [editing, setEditing] = useState<Quote | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [links, setLinks] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const quotes = useQuery({
     queryKey: ["quotes", booking.id],
-    queryFn: () => ok(api.GET("/api/v1/bookings/{id}/quotes", { params: { path: { id: booking.id } } })),
+    queryFn: async () => (await fetchQuotes(sync, booking.id)).data,
   });
+  // Quotes are made and sent on the server: offline they can be read, not changed.
+  const offline = status?.online === false || isLocalId(booking.id);
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["quotes", booking.id] });
     void qc.invalidateQueries({ queryKey: ["timeline", "bookings", booking.id] });
@@ -79,7 +85,7 @@ export function QuotesPanel({ booking, onBookingChanged }: { booking: Booking; o
       setError(failure(e));
     }
   };
-  const open = ["hold", "pending", "confirmed"].includes(booking.status);
+  const open = !offline && ["hold", "pending", "confirmed"].includes(booking.status);
   // Always the latest copy, so its version is current.
   const sending = quotes.data?.items.find((q) => q.id === sendingId) ?? null;
   const saved = (q: Quote) =>
@@ -106,6 +112,7 @@ export function QuotesPanel({ booking, onBookingChanged }: { booking: Booking; o
           </Button>
         )}
       </div>
+      {offline && <p className="text-sm text-muted-foreground">Quotes can be made and sent when you are online.</p>}
       {error && <Alert>{error}</Alert>}
       {quotes.isPending ? (
         <Spinner />
@@ -131,7 +138,7 @@ export function QuotesPanel({ booking, onBookingChanged }: { booking: Booking; o
                 </ul>
                 <QuoteFacts quote={q} />
                 {links[q.id] && <CopyLink url={links[q.id]!} />}
-                <div className="flex flex-wrap gap-2">
+                <div className={cn("flex flex-wrap gap-2", offline && "hidden")}>
                   {q.status === "draft" && (
                     <>
                       <Button size="sm" variant="outline" onClick={() => setEditing(q)}>

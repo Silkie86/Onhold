@@ -5,9 +5,10 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Alert, Button, Checkbox, Dialog, type FieldIssue, Input, Label, NativeSelect, Spinner, Textarea, cn } from "@onhold/ui";
 import { Plus } from "lucide-react";
 import { useState } from "react";
-import { api, ok } from "../api.ts";
+import { createRecord, fetchMembers, fetchTasks, updateRecord, useOffline, useSyncStatus } from "../data.ts";
+import { useSession } from "../session.tsx";
 import { type Task, fromLocalInput } from "../work.ts";
-import { failureIssues } from "./crm.tsx";
+import { OfflineNote, failureIssues } from "./crm.tsx";
 
 const RELATED_PATH: Record<string, string> = {
   booking: "/bookings/$id",
@@ -18,7 +19,8 @@ const RELATED_PATH: Record<string, string> = {
 };
 
 function useMembers() {
-  return useQuery({ queryKey: ["members"], queryFn: () => ok(api.GET("/api/v1/members")) });
+  const sync = useOffline();
+  return useQuery({ queryKey: ["members"], queryFn: async () => (await fetchMembers(sync)).data });
 }
 
 function due(task: Task): { text: string; late: boolean } | null {
@@ -31,6 +33,7 @@ function due(task: Task): { text: string; late: boolean } | null {
 }
 
 function TaskRow({ task, onChanged, showRelated }: { task: Task; onChanged: () => void; showRelated?: boolean }) {
+  const sync = useOffline();
   const [error, setError] = useState<string | null>(null);
   const when = due(task);
   const done = task.status === "done";
@@ -44,13 +47,7 @@ function TaskRow({ task, onChanged, showRelated }: { task: Task; onChanged: () =
         onChange={async () => {
           setError(null);
           try {
-            await ok(
-              api.PATCH("/api/v1/tasks/{id}", {
-                params: { path: { id: task.id } },
-                headers: { "If-Match": `"${task.version}"` },
-                body: { status: done ? "open" : "done" },
-              }),
-            );
+            await updateRecord(sync, "task", task.id, { status: done ? "open" : "done" }, task.version);
             onChanged();
           } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
@@ -88,6 +85,7 @@ function NewTaskDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const sync = useOffline();
   const members = useMembers();
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
@@ -104,18 +102,14 @@ function NewTaskDialog({
           setIssues([]);
           setError(null);
           try {
-            await ok(
-              api.POST("/api/v1/tasks", {
-                body: {
-                  title,
-                  notes: notes || null,
-                  due_at: fromLocalInput(dueAt),
-                  assignee_id: assignee || null,
-                  related_entity: related?.entity ?? null,
-                  related_id: related?.id ?? null,
-                },
-              }),
-            );
+            await createRecord(sync, "task", {
+              title,
+              notes: notes || null,
+              due_at: fromLocalInput(dueAt),
+              assignee_id: assignee || null,
+              related_entity: related?.entity ?? null,
+              related_id: related?.id ?? null,
+            });
             onCreated();
             onClose();
           } catch (err) {
@@ -158,10 +152,12 @@ function NewTaskDialog({
 /** The tasks about one record, with a button to add another. */
 export function RelatedTasks({ entity, id }: { entity: string; id: string }) {
   const qc = useQueryClient();
+  const sync = useOffline();
+  const { me } = useSession();
   const [adding, setAdding] = useState(false);
   const tasks = useQuery({
     queryKey: ["tasks", "related", id],
-    queryFn: () => ok(api.GET("/api/v1/tasks", { params: { query: { related_id: id, status: "all", limit: 100 } } })),
+    queryFn: async () => (await fetchTasks(sync, { related_id: id, status: "all", limit: 100 }, me.user.id)).data,
   });
   const refresh = () => void qc.invalidateQueries({ queryKey: ["tasks"] });
   return (
@@ -202,16 +198,14 @@ export function TasksPage() {
   const search = useSearch({ from: "/app/tasks" });
   const navigate = useNavigate({ from: "/tasks" });
   const qc = useQueryClient();
+  const sync = useOffline();
+  const syncStatus = useSyncStatus();
+  const { me } = useSession();
   const [adding, setAdding] = useState(false);
   const status = search.status ?? "open";
   const tasks = useQuery({
     queryKey: ["tasks", "page", status, !!search.mine],
-    queryFn: () =>
-      ok(
-        api.GET("/api/v1/tasks", {
-          params: { query: { status, assignee: search.mine ? "me" : undefined, limit: 200 } },
-        }),
-      ),
+    queryFn: () => fetchTasks(sync, { status, mine: search.mine, limit: 200 }, me.user.id),
     placeholderData: (prev) => prev,
   });
   const refresh = () => void qc.invalidateQueries({ queryKey: ["tasks"] });
@@ -245,16 +239,17 @@ export function TasksPage() {
           <Plus /> New task
         </Button>
       </div>
+      {(tasks.data?.offline || syncStatus?.online === false) && <OfflineNote />}
       {tasks.isError && <Alert>{tasks.error.message}</Alert>}
       {tasks.isPending ? (
         <Spinner />
-      ) : (tasks.data?.items.length ?? 0) === 0 ? (
+      ) : (tasks.data?.data.items.length ?? 0) === 0 ? (
         <p className="py-12 text-center text-sm text-muted-foreground">
           {status === "open" ? "Nothing to do. Tasks you add, and ones your rules make, show here." : "No tasks here."}
         </p>
       ) : (
         <ul className="divide-y rounded-md border">
-          {tasks.data?.items.map((t) => (
+          {tasks.data?.data.items.map((t) => (
             <TaskRow key={t.id} task={t} onChanged={refresh} showRelated />
           ))}
         </ul>

@@ -9,9 +9,28 @@ import { useEffect } from "react";
 import { ENTITIES } from "../api.ts";
 import { useOffline, useSyncStatus } from "../data.ts";
 import type { OutboxItem } from "../offline/store.ts";
+import { type BookingStatus, STATUS_LABEL } from "../work.ts";
 import { Loading } from "./crm.tsx";
 
-const OPS: Record<OutboxItem["op"], string> = { create: "New", update: "Edited", delete: "Deleted" };
+const OPS: Record<OutboxItem["op"], string> = { create: "New", update: "Edited", delete: "Deleted", status: "Status" };
+
+/** What each kind of record is called, and where it opens. */
+function kind(item: OutboxItem): { label: string; link?: { to: string; params: Record<string, string> } } {
+  switch (item.entity) {
+    case "enquiry":
+      return { label: "enquiry", link: { to: "/enquiries/$id", params: { id: item.id } } };
+    case "booking":
+      return { label: "booking", link: { to: "/bookings/$id", params: { id: item.id } } };
+    case "task":
+      return { label: "task", link: { to: "/tasks", params: {} } };
+    case "availability":
+      return { label: "marked time" };
+    default: {
+      const entity = ENTITIES[item.entity];
+      return { label: entity.label.toLowerCase(), link: { to: "/crm/$entity/$id", params: { entity: entity.path, id: item.id } } };
+    }
+  }
+}
 
 function show(v: unknown): string {
   if (v === null || v === undefined || v === "") return "(empty)";
@@ -142,21 +161,22 @@ export function SyncPage() {
 }
 
 function ChangeCard({ item, children }: { item: OutboxItem; children?: React.ReactNode }) {
-  const name = String(item.body.name ?? item.server?.name ?? "A record");
-  const entity = ENTITIES[item.entity];
+  const name = String(item.body.name ?? item.body.title ?? item.label ?? item.server?.name ?? item.server?.title ?? "A record");
+  const { label, link } = kind(item);
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Badge>{OPS[item.op]}</Badge>
-        {item.op === "delete" ? (
+        {item.op === "delete" || !link ? (
           <span className="font-medium">{name}</span>
         ) : (
-          <Link to="/crm/$entity/$id" params={{ entity: entity.path, id: item.id }} className="font-medium hover:underline">
+          <Link to={link.to} params={link.params as never} className="font-medium hover:underline">
             {name}
           </Link>
         )}
         <span className="text-muted-foreground">
-          {entity.label.toLowerCase()} · {relativeTime(item.createdAt)}
+          {label}
+          {item.op === "status" && ` to ${STATUS_LABEL[item.body.status as BookingStatus] ?? String(item.body.status)}`} · {relativeTime(item.createdAt)}
         </span>
       </div>
       {children}

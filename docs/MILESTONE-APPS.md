@@ -30,7 +30,7 @@ This runs the app's own code in Chromium, built with `VITE_APP_MODE=app` on its 
 
 - **iOS and Android builds** come next, from the same shell (`tauri ios init`, `tauri android init`). They need Xcode on a Mac runner and the Android SDK, and publishing needs Apple and Google developer accounts. How clients get branded phone apps is Solomon's decision first (see the thread).
 - **Signing and auto-update.** Unsigned installers warn when installed. Signing needs an Apple Developer account ($99 a year) and a Windows code-signing certificate, and updates need a place to publish them. All are worth setting up once there is a client to ship to.
-- **Offline for everything else.** Settings, imports, saved views, timelines and talent members need a connection, and the app says so. Bookings, documents and money will join the offline copy as those milestones land.
+- **Offline for everything else.** Settings, imports, saved views, timelines, talent members, marking time off, and making or sending quotes need a connection, and the app says so. Documents and money will join the offline copy as those milestones land.
 - **Branding inside the website** (logo, colours, the website's own name). The spec puts branding on the workspace record. The branded apps cover name and icon now, and in-app theming arrives with the workspace branding settings.
 
 ## Installable website
@@ -44,3 +44,15 @@ Solomon's preferred first step. People "save" the website to their home screen o
 - **Fixed on the way:** offline changes that hit an expired session or a stale form token now wait for the next sign-in instead of being marked as failed, and a website opened offline restores its form token.
 
 **Verified** by `e2e/installed.spec.ts` (Playwright project `installed`, phone size, against a production build). It signs up, checks the manifest and the service worker, creates a contact, goes offline and reloads. The page still opens and shows the contact from the device. It then edits the contact offline, reconnects, and sees the change on the server.
+
+## Bookings offline
+
+Added after M4, at Solomon's go-ahead: enquiries, bookings, tasks and the calendar work with no connection too, in the apps and the installed website.
+
+- **On the device:** every enquiry, booking and task; the talent's marked-off time from two months back to about a year ahead (moved on daily); the enquiry stages, the members (whom a task is for), the workspace's hold period, and the enquiry and booking fields. All kept current from the changes feed. A device whose copy was made before this downloads everything once more by itself.
+- **Read offline:** the enquiry board and each enquiry, the bookings list and each booking, tasks (all, mine, and a record's own), the calendar in every view, and a booking's quotes as they were last seen.
+- **Changed offline:** new enquiries, holds and bookings, and tasks; edits, stage moves, reschedules (including dragging on the calendar), deletes, ticking tasks off, and a booking's status moves (confirm, cancel, release). Records made offline show as the server would show them: talent names, the stage's name, when a new hold lapses.
+- **Clash checks offline** run on the device's copy with the server's rules: a confirmed booking or unavailable time blocks confirming, holds and tentative time warn. Confirming over a blocking clash offline asks an owner or admin for the reason, as online. The server checks again when the change arrives; if someone else confirmed the same talent meanwhile, the change shows on the Sync page with the server's reason.
+- **In order:** a status move is a step of its own in the queue, so an edit after it is not folded into one before it. Each accepted change moves the changes queued after it onto the record's new version, so they are not mistaken for someone else's. A change that links to a record made offline (a hold for an enquiry made offline, a task about it) waits until that record has its real id.
+
+**Verified** by `e2e/installed-bookings.spec.ts` (project `installed`). It places a hold online, cuts the connection and reloads. The calendar and the booking open from the device, and the hold is confirmed. A new enquiry is made offline, and so is a hold for it. Confirming that hold over the now-confirmed booking is refused on the device, and keeping it as a hold is allowed. A task is added. Back online, all four changes reach the server, and the bookings and tasks pages, read from the server, show them linked up. Unit tests in `src/offline/work.test.ts` cover the lists, the calendar, the clash check, filling in records changed offline, and the queue's ordering and id rules.

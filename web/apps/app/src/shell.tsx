@@ -87,6 +87,26 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
 ];
 
 /** Starts keeping the workspace on the device (apps only) for as long as it is open. */
+/** The queries that read the device's copy, refreshed when it changes. */
+const REFRESHED_BY_SYNC = [
+  "list",
+  "record",
+  "tags",
+  "schema",
+  "org-search",
+  "enquiries",
+  "enquiry",
+  "enquiry-stages",
+  "bookings",
+  "booking",
+  "tasks",
+  "calendar",
+  "clashes",
+  "members",
+  "quotes",
+  "pick",
+];
+
 function useOfflineSync(workspaceId: string | undefined, userId: string): OfflineSync | null {
   const qc = useQueryClient();
   const [sync, setSync] = useState<OfflineSync | null>(null);
@@ -96,7 +116,7 @@ function useOfflineSync(workspaceId: string | undefined, userId: string): Offlin
     let stopped = false;
     const off = engine.onRecordsChanged(() => {
       void qc.invalidateQueries({
-        predicate: (q) => ["list", "record", "tags", "schema", "org-search"].includes(String(q.queryKey[0])),
+        predicate: (q) => REFRESHED_BY_SYNC.includes(String(q.queryKey[0])),
       });
     });
     void claimFor(userId).then(() => {
