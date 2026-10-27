@@ -1350,6 +1350,16 @@ async fn a_booking_never_has_two_accepted_quotes(pool: PgPool) {
     send(third)
         .await
         .expect(StatusCode::CONFLICT, "quote_already_accepted");
+
+    // The buyer asks for a change instead, so the sent revision is revised
+    // unaccepted: the new one still goes out, can be accepted, and revised.
+    let changed = revise(again).await;
+    accept(token(send(changed).await)).await.ok();
+    let later = revise(changed).await;
+    send(later).await.ok();
+    send(third)
+        .await
+        .expect(StatusCode::CONFLICT, "quote_already_accepted");
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]

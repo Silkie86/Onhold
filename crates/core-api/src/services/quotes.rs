@@ -952,15 +952,16 @@ pub struct DeclineQuote {
     pub reason: Option<String>,
 }
 
-/// Refuses when the booking already has an accepted quote that `q` is not a
-/// revision of, so a booking never has two acceptances standing. The booking
-/// is locked first, so two quotes answered at once are taken in turn.
+/// Refuses when the booking already has an accepted quote under another
+/// number, so a booking never has two acceptances standing. Any revision of
+/// the accepted number may still go out, as it replaces it. The booking is
+/// locked first, so two quotes answered at once are taken in turn.
 async fn check_not_accepted(tx: &mut Tx, q: &QuoteView) -> ApiResult<()> {
     core_db::bookings::lock(tx, q.booking_id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    let accepted = core_db::quotes::accepted_for_booking(tx, q.booking_id).await?;
-    if accepted.iter().any(|a| Some(*a) != q.supersedes_id) {
+    let accepted = core_db::quotes::accepted_numbers_for_booking(tx, q.booking_id).await?;
+    if accepted.iter().any(|n| *n != q.number) {
         return Err(ApiError::conflict(
             "quote_already_accepted",
             "another quote for this booking has already been accepted",
