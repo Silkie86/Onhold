@@ -517,18 +517,27 @@ pub async fn find_public_signature(
     .map(|r| (r.id, r.workspace_id)))
 }
 
-/// Documents running out between two days, for reminders.
+/// Documents whose `expires_on` (at midnight in the workspace's time zone,
+/// plus a rule's offset) falls in `(from, to]`, for date-offset rules.
 pub async fn expiring_between(
     conn: &mut PgConnection,
-    from: NaiveDate,
-    to: NaiveDate,
+    timezone: &str,
+    offset_minutes: i64,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
     limit: i64,
-) -> Result<Vec<(Uuid, NaiveDate)>> {
+) -> Result<Vec<(Uuid, DateTime<Utc>)>> {
     Ok(sqlx::query!(
-        r#"SELECT id, expires_on AS "expires_on!" FROM documents
-           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
-             AND expires_on >= $1 AND expires_on <= $2
-           ORDER BY expires_on, id LIMIT $3"#,
+        r#"SELECT id AS "id!", at AS "at!" FROM (
+               SELECT id, expires_on::timestamp AT TIME ZONE $1 + make_interval(mins => $2::int) AS at
+               FROM documents
+               WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL AND expires_on IS NOT NULL
+           ) t
+           WHERE at > $3 AND at <= $4
+           ORDER BY at, id
+           LIMIT $5"#,
+        timezone,
+        offset_minutes as i32,
         from,
         to,
         limit
@@ -536,6 +545,6 @@ pub async fn expiring_between(
     .fetch_all(conn)
     .await?
     .into_iter()
-    .map(|r| (r.id, r.expires_on))
+    .map(|r| (r.id, r.at))
     .collect())
 }

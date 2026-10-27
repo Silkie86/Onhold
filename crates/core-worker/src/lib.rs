@@ -26,6 +26,7 @@ use core_api::AppState;
 use core_api::services::automation::{JOB_DISPATCH, JOB_SYSTEM_MAIL};
 use core_api::services::bookings::{JOB_COMPLETE, JOB_EXPIRE_HOLD};
 use core_api::services::events::CHANNEL as EVENTS_CHANNEL;
+use core_api::services::invoices::JOB_OVERDUE;
 use core_api::services::mail::SYSTEM_TOPICS;
 use core_api::services::quotes::JOB_EXPIRE as JOB_EXPIRE_QUOTE;
 use core_db::DbError;
@@ -76,6 +77,28 @@ pub struct Settings {
     pub upload_retention: chrono::Duration,
     /// Delay before retry number `attempt` (from 1).
     pub backoff: fn(i32) -> Duration,
+    /// Where to fetch reference exchange rates (the ECB feeds); `None`
+    /// turns fetching off, leaving manual rates only.
+    pub fx_rates: Option<FxFeeds>,
+    /// How often to look for new exchange rates (fetched once a day at most).
+    pub fx_every: Duration,
+}
+
+/// The exchange rate feeds: the day's rates, and a longer history for the
+/// first fetch or after a gap.
+#[derive(Debug, Clone)]
+pub struct FxFeeds {
+    pub daily: String,
+    pub history: String,
+}
+
+impl Default for FxFeeds {
+    fn default() -> Self {
+        Self {
+            daily: core_integrations::fx::ECB_DAILY.to_owned(),
+            history: core_integrations::fx::ECB_90_DAYS.to_owned(),
+        }
+    }
 }
 
 impl Default for Settings {
@@ -92,6 +115,8 @@ impl Default for Settings {
             job_retention: chrono::Duration::days(7),
             upload_retention: chrono::Duration::days(7),
             backoff: core_engines::schedule::retry_delay,
+            fx_rates: Some(FxFeeds::default()),
+            fx_every: Duration::from_secs(60 * 60),
         }
     }
 }
@@ -299,6 +324,16 @@ impl Worker {
             .await?;
             queued += 1;
         }
+        for i in core_db::invoices::overdue(tx, now, DUE_BATCH).await? {
+            let key = format!("{}@{}", i.id, i.due_date);
+            let payload = json!({ "invoice_id": i.id });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(i.workspace_id), JOB_OVERDUE, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
         for q in core_db::quotes::lapsed(tx, now, DUE_BATCH).await? {
             let key = format!("{}@{}", q.id, q.valid_until);
             let payload = json!({ "quote_id": q.id });
@@ -329,14 +364,58 @@ impl Worker {
             core_db::imports::delete_stale_uploads(&mut tx, now - self.settings.upload_retention)
                 .await?;
         tx.commit().await?;
+        // Files uploaded but never attached to anything.
+        let mut conn = self.queue.acquire().await?;
+        let files = match core_api::services::files::sweep_unattached(&self.app, &mut conn).await {
+            Ok(n) => n,
+            Err(err) => {
+                tracing::warn!(error = %err, "removing unattached files failed");
+                0
+            }
+        };
         tracing::info!(
             events,
             jobs,
             idempotency_keys = keys,
             uploads,
+            files,
             "deleted old data"
         );
         Ok(())
+    }
+
+    /// Fetches reference exchange rates when today's are not stored yet
+    /// (the whole recent history after a gap). Returns how many days were
+    /// stored. Rates are published on working days, so most checks after
+    /// the first of the day find nothing new and cost one small request.
+    pub async fn fetch_rates_once(&self) -> Result<usize, DbError> {
+        let Some(feeds) = &self.settings.fx_rates else {
+            return Ok(0);
+        };
+        let mut conn = self.queue.acquire().await?;
+        let today = Utc::now().date_naive();
+        let latest = core_db::finance::latest_rate_day(&mut conn).await?;
+        if latest == Some(today) {
+            return Ok(0);
+        }
+        let gap = latest.is_none_or(|d| (today - d).num_days() > 4);
+        let url = if gap { &feeds.history } else { &feeds.daily };
+        let days = match core_integrations::fx::fetch_ecb(url).await {
+            Ok(days) => days,
+            Err(err) => {
+                tracing::warn!(error = %err, "fetching exchange rates failed");
+                return Ok(0);
+            }
+        };
+        let mut stored = 0;
+        for day in days.iter().filter(|d| latest.is_none_or(|l| d.date > l)) {
+            core_db::finance::store_rates(&mut conn, day.date, &day.rates, "ecb").await?;
+            stored += 1;
+        }
+        if stored > 0 {
+            tracing::info!(days = stored, "stored exchange rates");
+        }
+        Ok(stored)
     }
 }
 
@@ -435,6 +514,7 @@ async fn runner(worker: Worker, notify: Arc<Notify>, shutdown: CancellationToken
 async fn scheduler(worker: Worker, shutdown: CancellationToken) {
     let mut schedule = tokio::time::interval(worker.settings.schedule_every);
     let mut cleanup = tokio::time::interval(worker.settings.cleanup_every);
+    let mut rates = tokio::time::interval(worker.settings.fx_every);
     loop {
         tokio::select! {
             () = shutdown.cancelled() => break,
@@ -446,6 +526,11 @@ async fn scheduler(worker: Worker, shutdown: CancellationToken) {
             _ = cleanup.tick() => {
                 if let Err(err) = worker.cleanup_once().await {
                     tracing::error!(error = %err, "cleanup failed");
+                }
+            }
+            _ = rates.tick() => {
+                if let Err(err) = worker.fetch_rates_once().await {
+                    tracing::error!(error = %err, "storing exchange rates failed");
                 }
             }
         }

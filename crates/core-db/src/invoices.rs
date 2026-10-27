@@ -557,21 +557,44 @@ pub async fn overdue(conn: &mut PgConnection, now: DateTime<Utc>, limit: i64) ->
     .await?)
 }
 
-/// Invoices whose due date falls in a window (for date-offset rules).
+/// An invoice whose date (plus a rule's offset) falls in a scan window.
 #[derive(Debug, Clone)]
 pub struct Reached {
     pub id: Uuid,
-    pub on: NaiveDate,
+    pub at: DateTime<Utc>,
 }
 
-pub async fn due_between(conn: &mut PgConnection, from: NaiveDate, to: NaiveDate) -> Result<Vec<Reached>> {
+/// Open invoices whose `due_date` or `issue_date` (at midnight in the
+/// workspace's time zone, plus the offset) falls in `(from, to]`, for
+/// date-offset rules such as chasing a balance.
+pub async fn date_between(
+    conn: &mut PgConnection,
+    field: &str,
+    timezone: &str,
+    offset_minutes: i64,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+    limit: i64,
+) -> Result<Vec<Reached>> {
     Ok(sqlx::query_as!(
         Reached,
-        r#"SELECT id, due_date AS "on!" FROM invoices
-           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL AND due_date BETWEEN $1 AND $2
-             AND status IN ('issued', 'part_paid', 'overdue')"#,
+        r#"SELECT id AS "id!", at AS "at!" FROM (
+               SELECT id,
+                      (CASE WHEN $1 = 'issue_date' THEN issue_date ELSE due_date END)::timestamp AT TIME ZONE $2
+                          + make_interval(mins => $3::int) AS at
+               FROM invoices
+               WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                 AND kind = 'invoice' AND status IN ('issued', 'part_paid', 'overdue')
+           ) t
+           WHERE at > $4 AND at <= $5
+           ORDER BY at, id
+           LIMIT $6"#,
+        field,
+        timezone,
+        offset_minutes as i32,
         from,
-        to
+        to,
+        limit
     )
     .fetch_all(conn)
     .await?)

@@ -6,6 +6,8 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::Args;
 use core_api::Config;
+use core_api::config::{PdfConfig, StorageConfig};
+use core_integrations::storage::S3Config;
 use core_api::oidc::OidcProvider;
 use core_domain::crypto::Keyring;
 use core_integrations::mail::{LogMailer, Mailer, SmtpMailer};
@@ -91,6 +93,41 @@ pub struct ApiArgs {
     /// Let webhooks reach private and internal addresses. Local development only.
     #[arg(long, env = "WEBHOOKS_ALLOW_PRIVATE", default_value_t = false, action = clap::ArgAction::Set, global = true)]
     webhooks_allow_private: bool,
+
+    /// Where uploaded files and printed PDFs are kept: `database` (in
+    /// Postgres), `directory` (under STORAGE_DIR) or `s3` (an S3-compatible
+    /// bucket such as Cloudflare R2, set with the S3_* variables).
+    #[arg(long, env = "STORAGE", default_value = "database", global = true)]
+    storage: String,
+    #[arg(long, env = "STORAGE_DIR", global = true)]
+    storage_dir: Option<std::path::PathBuf>,
+    /// `https://<account>.r2.cloudflarestorage.com`, `https://s3.<region>.amazonaws.com`…
+    #[arg(long, env = "S3_ENDPOINT", global = true)]
+    s3_endpoint: Option<Url>,
+    #[arg(long, env = "S3_BUCKET", global = true)]
+    s3_bucket: Option<String>,
+    /// `auto` for R2.
+    #[arg(long, env = "S3_REGION", default_value = "auto", global = true)]
+    s3_region: String,
+    #[arg(long, env = "S3_ACCESS_KEY_ID", global = true)]
+    s3_access_key_id: Option<String>,
+    #[arg(long, env = "S3_SECRET_ACCESS_KEY", hide_env_values = true, global = true)]
+    s3_secret_access_key: Option<String>,
+
+    /// How documents become PDFs: `auto` (Chromium if installed, else a
+    /// plain layout), `chromium` (CHROMIUM_PATH, required) or `plain`.
+    #[arg(long, env = "PDF_RENDERER", default_value = "auto", global = true)]
+    pdf_renderer: String,
+    #[arg(long, env = "CHROMIUM_PATH", global = true)]
+    chromium_path: Option<std::path::PathBuf>,
+    /// Run Chromium without its sandbox. Only where the container cannot
+    /// give it one (it still has no network and no file access).
+    #[arg(long, env = "CHROMIUM_NO_SANDBOX", default_value_t = false, action = clap::ArgAction::Set, global = true)]
+    chromium_no_sandbox: bool,
+
+    /// The largest file one upload may be, in megabytes.
+    #[arg(long, env = "MAX_UPLOAD_MB", default_value_t = 25, global = true)]
+    max_upload_mb: usize,
 }
 
 /// Worker settings.
@@ -108,6 +145,11 @@ pub struct WorkerArgs {
     /// Jobs this process runs at the same time.
     #[arg(long, env = "WORKER_CONCURRENCY", default_value_t = 8)]
     concurrency: usize,
+
+    /// Fetch the European Central Bank's daily reference exchange rates.
+    /// Off: invoices in another currency need a rate typed in.
+    #[arg(long, env = "FX_RATES", default_value_t = true, action = clap::ArgAction::Set)]
+    fx_rates: bool,
 }
 
 impl WorkerArgs {
@@ -130,6 +172,7 @@ impl WorkerArgs {
         );
         Ok(core_worker::Settings {
             concurrency: self.concurrency,
+            fx_rates: self.fx_rates.then(core_worker::FxFeeds::default),
             ..Default::default()
         })
     }
@@ -199,7 +242,46 @@ impl ApiArgs {
                 .collect()
         });
 
+        let storage = match self.storage.as_str() {
+            "database" => StorageConfig::Database,
+            "directory" => StorageConfig::Directory(
+                self.storage_dir
+                    .context("STORAGE=directory needs STORAGE_DIR")?,
+            ),
+            "s3" => StorageConfig::S3(S3Config {
+                endpoint: self.s3_endpoint.context("STORAGE=s3 needs S3_ENDPOINT")?,
+                bucket: self.s3_bucket.context("STORAGE=s3 needs S3_BUCKET")?,
+                region: self.s3_region,
+                access_key_id: self
+                    .s3_access_key_id
+                    .context("STORAGE=s3 needs S3_ACCESS_KEY_ID")?,
+                secret_access_key: self
+                    .s3_secret_access_key
+                    .context("STORAGE=s3 needs S3_SECRET_ACCESS_KEY")?,
+            }),
+            other => anyhow::bail!("STORAGE must be database, directory or s3, not `{other}`"),
+        };
+        let no_sandbox = self.chromium_no_sandbox;
+        let pdf = match self.pdf_renderer.as_str() {
+            "auto" => PdfConfig::Auto { no_sandbox },
+            "chromium" => PdfConfig::Chromium {
+                path: self
+                    .chromium_path
+                    .context("PDF_RENDERER=chromium needs CHROMIUM_PATH")?,
+                no_sandbox,
+            },
+            "plain" => PdfConfig::Plain,
+            other => anyhow::bail!("PDF_RENDERER must be auto, chromium or plain, not `{other}`"),
+        };
+        anyhow::ensure!(
+            (1..=100).contains(&self.max_upload_mb),
+            "MAX_UPLOAD_MB must be 1 to 100"
+        );
+
         Ok(Config {
+            storage,
+            pdf,
+            max_upload_bytes: self.max_upload_mb * 1024 * 1024,
             cookie_secure: self.cookie_secure,
             trust_proxy_headers: self.trust_proxy_headers,
             session_ttl: Duration::from_secs(self.session_ttl_days * 24 * 3600),

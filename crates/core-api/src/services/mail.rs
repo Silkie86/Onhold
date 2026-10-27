@@ -12,7 +12,7 @@
 use core_db::jobs::Claimed;
 use core_domain::{UserId, WorkspaceId};
 use core_engines::templates::{Kind, Options, Rendered};
-use core_integrations::mail::{Email, MailError, Sent};
+use core_integrations::mail::{Attachment, Email, MailError, Sent};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -23,13 +23,30 @@ use crate::error::{ApiError, ApiResult};
 pub const SYSTEM_INVITATION: &str = "system.invitation";
 pub const SYSTEM_MAGIC_LINK: &str = "system.magic_link";
 pub const SYSTEM_QUOTE: &str = "system.quote";
+pub const SYSTEM_INVOICE: &str = "system.invoice";
+pub const SYSTEM_SIGNATURE: &str = "system.signature_request";
 
 /// Event topics that become platform mail.
 pub const SYSTEM_TOPICS: &[&str] = &[
     "invitation.created",
     "auth.magic_link_requested",
     "quote.sent",
+    "invoice.sent",
+    "document.signature_requested",
 ];
+
+const INVOICE_SUBJECT: &str =
+    "{% if invoice.kind == 'credit_note' %}Credit note{% else %}Invoice{% endif %} {{ invoice.reference }} from {{ workspace.name }}";
+const INVOICE_BODY: &str = r#"<p>Hello,</p>
+<p>Please find attached {% if invoice.kind == 'credit_note' %}credit note{% else %}invoice{% endif %} <strong>{{ invoice.reference }}</strong> from {{ workspace.name }}{% if invoice.booking_title %} for {{ invoice.booking_title }}{% endif %}.</p>
+<p>Total: <strong>{{ invoice.total | money }}</strong>{% if invoice.due_date and invoice.kind != 'credit_note' %}, due {{ invoice.due_date | date }}{% endif %}.</p>
+<p><a href="{{ invoice.url }}">View or download it online</a></p>"#;
+
+const SIGNATURE_SUBJECT: &str = "Please sign: {{ document.title }}";
+const SIGNATURE_BODY: &str = r#"<p>Hello {{ signer.name }},</p>
+<p>{{ workspace.name }} has asked you to sign <strong>{{ document.title }}</strong>.</p>
+<p><a href="{{ link.url }}">Read and sign it</a></p>
+<p>The link is just for you, so please don't forward this email.</p>"#;
 
 const QUOTE_SUBJECT: &str =
     "Quote {{ quote.reference }} from {{ workspace.name }}: {{ booking.title }}";
@@ -285,8 +302,123 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 vec![url],
             ))
         }
+        "invoice.sent" => {
+            let ws = job
+                .workspace_id
+                .ok_or_else(|| permanent("invoice without a workspace"))?;
+            let to = event
+                .pointer("/after/sent_to")
+                .and_then(Value::as_str)
+                .ok_or_else(|| permanent("invoice without an address"))?
+                .to_owned();
+            let id: Uuid = event
+                .get("object_id")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse().ok())
+                .ok_or_else(|| permanent("invoice without an id"))?;
+            let mut invoice = event.get("after").cloned().unwrap_or(Value::Null);
+            if let Some(i) = invoice.as_object_mut() {
+                i.insert("url".into(), Value::String(url.clone()));
+            }
+            let mut tx = core_db::begin(&state.db, Some(ws), None).await?;
+            // The PDF as issued; still printing means try again shortly.
+            let pdf = super::invoices::pdf_in(state, &mut tx, id).await?;
+            let mut out = workspace_mail(
+                state,
+                &mut tx,
+                job.id,
+                ws,
+                &to,
+                SYSTEM_INVOICE,
+                (INVOICE_SUBJECT, INVOICE_BODY),
+                json!({ "invoice": invoice }),
+                url,
+            )
+            .await?;
+            tx.commit().await?;
+            out.email.attachments.push(Attachment {
+                filename: pdf.filename,
+                content_type: pdf.content_type,
+                bytes: pdf.bytes,
+            });
+            Ok(out)
+        }
+        "document.signature_requested" => {
+            let ws = job
+                .workspace_id
+                .ok_or_else(|| permanent("signature request without a workspace"))?;
+            let to = event
+                .pointer("/signer/email")
+                .and_then(Value::as_str)
+                .ok_or_else(|| permanent("signature request without an address"))?
+                .to_owned();
+            let mut tx = core_db::begin(&state.db, Some(ws), None).await?;
+            let out = workspace_mail(
+                state,
+                &mut tx,
+                job.id,
+                ws,
+                &to,
+                SYSTEM_SIGNATURE,
+                (SIGNATURE_SUBJECT, SIGNATURE_BODY),
+                json!({
+                    "signer": event.get("signer"),
+                    "document": event.get("document"),
+                    "link": { "url": url },
+                }),
+                url,
+            )
+            .await?;
+            tx.commit().await?;
+            Ok(out)
+        }
         other => Err(permanent(format!("no system mail for `{other}`"))),
     }
+}
+
+/// A workspace's own system email: its wording if it saved a template under
+/// `key`, else the default, sent in its name.
+#[allow(clippy::too_many_arguments)]
+async fn workspace_mail(
+    state: &AppState,
+    tx: &mut core_db::Tx,
+    job_id: Uuid,
+    ws: WorkspaceId,
+    to: &str,
+    key: &str,
+    default: (&str, &str),
+    extra: Value,
+    url: String,
+) -> ApiResult<Outgoing> {
+    let (workspace, options) = context::workspace(tx, state).await?;
+    let mut ctx_json = extra;
+    if let Some(o) = ctx_json.as_object_mut() {
+        o.insert("workspace".into(), workspace.clone());
+    }
+    let custom = core_db::templates::find(tx, key, &options.locale).await?;
+    let (subject, body) = match &custom {
+        Some(t) => (t.subject.as_deref(), t.body.as_str()),
+        None => (Some(default.0), default.1),
+    };
+    let rendered = super::templates::render_in(tx, Kind::Email, subject, body, &ctx_json, &options).await?;
+    let name = workspace
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("OnHold")
+        .to_owned();
+    Ok(outgoing(
+        state,
+        job_id,
+        rendered,
+        to,
+        Some(name.clone()),
+        &format!("Sent by {name} via OnHold."),
+        Some(ws),
+        None,
+        key,
+        None,
+        vec![url],
+    ))
 }
 
 /// Builds a rule's email for a `mail.send` job.

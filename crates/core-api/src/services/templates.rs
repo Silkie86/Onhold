@@ -18,8 +18,12 @@ use crate::error::{ApiError, ApiResult};
 
 /// Keys under `system.` belong to platform mail; a workspace may override
 /// these ones with its own wording.
-pub const OVERRIDABLE_SYSTEM_KEYS: &[&str] =
-    &[super::mail::SYSTEM_INVITATION, super::mail::SYSTEM_QUOTE];
+pub const OVERRIDABLE_SYSTEM_KEYS: &[&str] = &[
+    super::mail::SYSTEM_INVITATION,
+    super::mail::SYSTEM_QUOTE,
+    super::mail::SYSTEM_INVOICE,
+    super::mail::SYSTEM_SIGNATURE,
+];
 
 fn check_key(key: &str) -> ApiResult<()> {
     let ok = !key.is_empty()

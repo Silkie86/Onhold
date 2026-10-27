@@ -110,7 +110,7 @@ impl BlobStore for DirectoryStore {
 
 // S3 -----------------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct S3Config {
     /// `https://<account>.r2.cloudflarestorage.com`, `https://s3.eu-west-2.amazonaws.com`…
     pub endpoint: url::Url,
@@ -119,6 +119,18 @@ pub struct S3Config {
     pub region: String,
     pub access_key_id: String,
     pub secret_access_key: String,
+}
+
+impl std::fmt::Debug for S3Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("S3Config")
+            .field("endpoint", &self.endpoint.as_str())
+            .field("bucket", &self.bucket)
+            .field("region", &self.region)
+            .field("access_key_id", &self.access_key_id)
+            .field("secret_access_key", &"<redacted>")
+            .finish()
+    }
 }
 
 pub struct S3Store {

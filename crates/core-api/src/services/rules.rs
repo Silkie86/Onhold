@@ -29,12 +29,18 @@ pub(crate) struct Catalog {
 
 /// A booking's own dates a date-offset rule can count from.
 pub const BOOKING_DATES: &[&str] = &["starts_at", "ends_at", "hold_expires_at"];
+/// An invoice's dates a rule can count from (only open invoices are found).
+pub const INVOICE_DATES: &[&str] = &["due_date", "issue_date"];
+/// A document's date a rule can count from.
+pub const DOCUMENT_DATES: &[&str] = &["expires_on"];
 
 impl engine::Catalog for Catalog {
     fn date_fields(&self, entity: &str) -> Option<Vec<String>> {
         match entity {
             "thing" => Some(self.thing_dates.clone()),
             "booking" => Some(self.booking_dates.clone()),
+            "invoice" => Some(INVOICE_DATES.iter().map(|d| (*d).to_owned()).collect()),
+            "document" => Some(DOCUMENT_DATES.iter().map(|d| (*d).to_owned()).collect()),
             _ => None,
         }
     }
@@ -202,7 +208,43 @@ async fn check_references(tx: &mut Tx, def: &RuleDef) -> ApiResult<()> {
                     ));
                 }
             }
-            Action::SendEmail { .. } | Action::CreateTask { .. } => {}
+            Action::CreateInvoice { .. } | Action::SetBookingStatus { .. }
+                if entity != super::bookings::ENTITY =>
+            {
+                return Err(ApiError::invalid(
+                    format!("actions[{i}]"),
+                    "this action works on bookings; trigger the rule from a booking",
+                ));
+            }
+            Action::SetBookingStatus { status } => {
+                if core_domain::BookingStatus::parse(status).is_none() {
+                    return Err(ApiError::invalid(
+                        format!("actions[{i}].status"),
+                        format!("`{status}` is not a booking status"),
+                    ));
+                }
+            }
+            Action::GenerateDocument { template } => {
+                if !super::documents::RELATED.contains(&entity.as_str())
+                    || entity == super::invoices::ENTITY
+                {
+                    return Err(ApiError::invalid(
+                        format!("actions[{i}]"),
+                        "documents are made from a booking, enquiry, talent, organisation or contact",
+                    ));
+                }
+                let saved = core_db::templates::list(tx, Some(core_engines::templates::Kind::Document.as_str()))
+                    .await?
+                    .into_iter()
+                    .any(|t| t.key == *template);
+                if !saved && core_engines::documents::built_in(template).is_none() {
+                    return Err(ApiError::invalid(
+                        format!("actions[{i}].template"),
+                        format!("there is no document template `{template}`"),
+                    ));
+                }
+            }
+            Action::SendEmail { .. } | Action::CreateTask { .. } | Action::CreateInvoice { .. } => {}
         }
     }
     Ok(())

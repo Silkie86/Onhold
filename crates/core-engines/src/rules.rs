@@ -89,12 +89,32 @@ pub enum Action {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         assignee_id: Option<Uuid>,
     },
+    /// Make a document (contract, confirmation, advance sheet…) from a
+    /// template, about the booking (or other record) the rule is about.
+    GenerateDocument { template: String },
+    /// Draft an invoice for the booking: `deposit`, `balance` or `full`.
+    /// With `issue`, it is numbered and its PDF made straight away.
+    CreateInvoice {
+        purpose: String,
+        #[serde(default)]
+        issue: bool,
+    },
+    /// Change the booking's status (`confirmed`, `completed`…), with the same
+    /// checks as a person doing it.
+    SetBookingStatus { status: String },
 }
+
+/// What a create-invoice action may draft.
+pub const INVOICE_PURPOSES: &[&str] = &["deposit", "balance", "full"];
 
 impl Action {
     pub fn needs_object(&self) -> bool {
         match self {
-            Action::SetField { .. } | Action::MoveStage { .. } => true,
+            Action::SetField { .. }
+            | Action::MoveStage { .. }
+            | Action::GenerateDocument { .. }
+            | Action::CreateInvoice { .. }
+            | Action::SetBookingStatus { .. } => true,
             Action::SendEmail { to, .. } => matches!(to, Recipient::Field { .. }),
             Action::CallWebhook { .. } | Action::CreateTask { .. } => false,
         }
@@ -257,6 +277,24 @@ pub fn parse(
                 }
             }
             Action::CallWebhook { .. } => {}
+            Action::GenerateDocument { template } => {
+                if !crate::fields::is_valid_key(template) {
+                    return Err(Issue::new(at("template"), "name a document template key"));
+                }
+            }
+            Action::CreateInvoice { purpose, .. } => {
+                if !INVOICE_PURPOSES.contains(&purpose.as_str()) {
+                    return Err(Issue::new(
+                        at("purpose"),
+                        format!("must be one of: {}", INVOICE_PURPOSES.join(", ")),
+                    ));
+                }
+            }
+            Action::SetBookingStatus { status } => {
+                if !crate::fields::is_valid_key(status) {
+                    return Err(Issue::new(at("status"), "name a booking status"));
+                }
+            }
             Action::CreateTask {
                 title,
                 due_in_minutes,
