@@ -443,21 +443,53 @@ mod tests {
             timezone: chrono_tz::Europe::London,
         };
         for b in BUILT_IN {
-            check(Kind::Document, Some(b.subject), b.body).unwrap_or_else(|e| panic!("{}: {e}", b.key));
-            let out = render(Kind::Document, Some(b.subject), b.body, BTreeMap::new(), &ctx, &opts)
+            check(Kind::Document, Some(b.subject), b.body)
                 .unwrap_or_else(|e| panic!("{}: {e}", b.key));
+            let out = render(
+                Kind::Document,
+                Some(b.subject),
+                b.body,
+                BTreeMap::new(),
+                &ctx,
+                &opts,
+            )
+            .unwrap_or_else(|e| panic!("{}: {e}", b.key));
             assert!(!out.body.trim().is_empty(), "{}", b.key);
             assert!(out.subject.is_some_and(|s| !s.is_empty()), "{}", b.key);
         }
-        let invoice = render(Kind::Document, None, INVOICE_BODY, BTreeMap::new(), &ctx, &opts).expect("renders");
+        let invoice = render(
+            Kind::Document,
+            None,
+            INVOICE_BODY,
+            BTreeMap::new(),
+            &ctx,
+            &opts,
+        )
+        .expect("renders");
         assert!(invoice.body.contains("INV-2031-0001"));
         assert!(invoice.body.contains("£1,500.00"));
         assert!(invoice.body.contains("VAT 20% (20% of £1,250.00)"));
         assert!(invoice.body.contains("GB123456789"));
-        let contract = render(Kind::Document, None, CONTRACT_BODY, BTreeMap::new(), &ctx, &opts).expect("renders");
+        let contract = render(
+            Kind::Document,
+            None,
+            CONTRACT_BODY,
+            BTreeMap::new(),
+            &ctx,
+            &opts,
+        )
+        .expect("renders");
         assert!(contract.body.contains("A deposit of 50% of the fee"));
         assert!(contract.body.contains("20:00–00:00"), "{}", contract.body);
-        let statement = render(Kind::Document, None, STATEMENT_BODY, BTreeMap::new(), &ctx, &opts).expect("renders");
+        let statement = render(
+            Kind::Document,
+            None,
+            STATEMENT_BODY,
+            BTreeMap::new(),
+            &ctx,
+            &opts,
+        )
+        .expect("renders");
         assert!(statement.body.contains("£2,075.00"));
         assert!(statement.body.contains("Commission (15%)"));
     }

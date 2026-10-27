@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE invoices SET status = 'void', voided_at = now(), void_reason = $2, updated_by = $3\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "51f4132ca44070e8d1ca817db1ea8471f43400eb9de2c016dc76e9c8fce89f9b"
+}

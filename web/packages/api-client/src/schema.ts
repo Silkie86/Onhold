@@ -580,6 +580,40 @@ export interface paths {
         patch: operations["update_booking"];
         trace?: never;
     };
+    "/api/v1/bookings/{id}/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A deposit, balance or full invoice for a booking, from its accepted quote or fee. */
+        post: operations["invoice_booking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{id}/pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every document of a booking and its invoices, as one zip. */
+        get: operations["booking_pack"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bookings/{id}/quotes": {
         parameters: {
             query?: never;
@@ -595,6 +629,23 @@ export interface paths {
          *     talent's default fees unless lines are given.
          */
         post: operations["create_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{id}/settlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Draft a settlement for each talent on a booking that has none. */
+        post: operations["settle_booking"];
         delete?: never;
         options?: never;
         head?: never;
@@ -824,6 +875,168 @@ export interface paths {
         patch: operations["update_field"];
         trace?: never;
     };
+    "/api/v1/document-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The templates documents can be made from. */
+        get: operations["document_templates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/document-templates/{key}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A built-in template's source, to start the workspace's own version from
+         *     (save it as a `document` template with the same key).
+         */
+        get: operations["document_template_source"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Documents, newest first. `q` searches titles, tags and the text inside PDFs. */
+        get: operations["list_documents"];
+        put?: never;
+        /** A document from an uploaded file. */
+        post: operations["create_document"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a document from a template (a contract, confirmation or advance
+         *     sheet from a booking) and print it.
+         */
+        post: operations["generate_document"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A document with its versions and signature requests. */
+        get: operations["get_document"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_document"];
+        options?: never;
+        head?: never;
+        /** Change what is recorded about a document. */
+        patch: operations["update_document"];
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A version's PDF (or uploaded file). */
+        get: operations["download_document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make a generated document again from its template, as a new version. */
+        post: operations["regenerate_document"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/signatures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send the current version for e-signature: each signer gets their own link. */
+        post: operations["request_signatures"];
+        /** Stop waiting for signatures. */
+        delete: operations["cancel_signatures"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A new version of an uploaded document from another uploaded file. */
+        post: operations["add_document_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/enquiries": {
         parameters: {
             query?: never;
@@ -912,6 +1125,110 @@ export interface paths {
          *     `cursor_expired` message means events were missed: load everything again.
          */
         get: operations["stream_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a file as the raw request body (up to 25 MB). It is kept for a
+         *     day unless a document or import uses it. A PDF's text is read in the
+         *     background so it can be searched.
+         */
+        post: operations["upload_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["download_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{id}/reading": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fields suggested from a stored PDF's text, without importing it. */
+        get: operations["read_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_finance_settings"];
+        /** Replace the finance settings (needs `finance:config`). */
+        put: operations["update_finance_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fx-rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The reference exchange rate (ECB, crossed through the euro) on a day. */
+        get: operations["fx_rate"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1059,6 +1376,159 @@ export interface paths {
         post?: never;
         /** Withdraw an invitation that hasn't been accepted. */
         delete: operations["revoke_invitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_invoices"];
+        put?: never;
+        /** A new draft invoice. */
+        post: operations["create_invoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/historical": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record an invoice from before OnHold, as it was. */
+        post: operations["create_historical_invoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_invoice"];
+        put?: never;
+        post?: never;
+        /** Delete a draft. */
+        delete: operations["delete_invoice"];
+        options?: never;
+        head?: never;
+        /** Change a draft (or an issued invoice's tags, custom fields and notes). */
+        patch: operations["update_invoice"];
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The payments allocated to an invoice. */
+        get: operations["invoice_allocations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/credit-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A credit note against an issued invoice (all of it by default). */
+        post: operations["credit_invoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue a draft: number it, fix its parties and exchange rate, print its PDF. */
+        post: operations["issue_invoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["invoice_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email an issued invoice with its PDF and a link to view it. */
+        post: operations["send_invoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void an issued invoice nothing has been paid or credited on. */
+        post: operations["void_invoice"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1261,6 +1731,222 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_payments"];
+        put?: never;
+        /** Record money received, allocated to the invoices it pays. */
+        post: operations["create_payment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_payment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}/allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Allocate what is left of a payment to an invoice. */
+        post: operations["allocate_payment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}/allocations/{allocation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["remove_allocation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return money from what is unallocated of a payment. */
+        post: operations["refund_payment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void a payment recorded in error; its invoices owe again. */
+        post: operations["void_payment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_pdf_imports"];
+        put?: never;
+        /** Start reading a batch of uploaded PDFs. */
+        post: operations["create_pdf_imports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-imports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_pdf_import"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-imports/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Keep the PDF as a document on a record, and for an invoice, as a past invoice. */
+        post: operations["confirm_pdf_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-imports/{id}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["discard_pdf_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-imports/{id}/rematch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read a ready import's text again, with the current issuer templates. */
+        post: operations["rematch_pdf_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Field patterns for issuers whose PDFs arrive often. */
+        get: operations["list_pdf_templates"];
+        put?: never;
+        post: operations["create_pdf_template"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["archive_pdf_template"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pipelines": {
         parameters: {
             query?: never;
@@ -1304,6 +1990,38 @@ export interface paths {
         };
         /** An iCal feed (`<token>.ics`) for calendar apps to subscribe to. */
         get: operations["public_calendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/invoices/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["public_invoice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/invoices/{token}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["public_invoice_pdf"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1360,6 +2078,41 @@ export interface paths {
         put?: never;
         /** Decline the quote behind a buyer's link. */
         post: operations["decline_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/sign/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What a signer's link shows. */
+        get: operations["public_signing"];
+        put?: never;
+        /** Sign (typing one's name) or decline. */
+        post: operations["public_sign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/sign/{token}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The PDF to sign (the signed copy once everyone has signed). */
+        get: operations["public_signing_pdf"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1449,6 +2202,40 @@ export interface paths {
         put?: never;
         /** Take back a sent quote before the buyer answers. */
         post: operations["withdraw_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/finance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Revenue, what is owed, cash and the enquiry funnel, in the base currency. */
+        get: operations["finance_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/{table}/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A report table, or the invoice or payment list, as CSV. */
+        get: operations["export_csv"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1550,6 +2337,88 @@ export interface paths {
         get: operations["search"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_settlements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settlements/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_settlement"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_settlement"];
+        options?: never;
+        head?: never;
+        patch: operations["update_settlement"];
+        trace?: never;
+    };
+    "/api/v1/settlements/{id}/finalise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fix a settlement and print its statement. */
+        post: operations["finalise_settlement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settlements/{id}/payouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record paying the talent. */
+        post: operations["settlement_payout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settlements/{id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reopen_settlement"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1746,6 +2615,39 @@ export interface paths {
         head?: never;
         /** Change a task, or mark it done (`status: "done"`) or open again. */
         patch: operations["update_task"];
+        trace?: never;
+    };
+    "/api/v1/tax-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tax codes; a workspace starts with its country's usual rates. */
+        get: operations["list_tax_codes"];
+        put?: never;
+        post: operations["create_tax_code"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tax-codes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["update_tax_code"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/templates": {
@@ -2146,6 +3048,36 @@ export interface components {
             slug: string;
             status: components["schemas"]["WorkspaceStatus"];
         };
+        Ageing: {
+            current: components["schemas"]["Money"];
+            days_1_30: components["schemas"]["Money"];
+            days_31_60: components["schemas"]["Money"];
+            days_61_90: components["schemas"]["Money"];
+            over_90: components["schemas"]["Money"];
+        };
+        AllocationInput: {
+            /**
+             * Format: int64
+             * @description Default: what the invoice still owes, up to what is left of the payment.
+             */
+            amount_minor?: number | null;
+            /** Format: uuid */
+            invoice_id: string;
+        };
+        AllocationView: {
+            /** Format: int64 */
+            amount_minor: number;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            invoice_id: string;
+            invoice_reference?: string | null;
+            method: string;
+            /** Format: date */
+            paid_on: string;
+            /** Format: uuid */
+            payment_id: string;
+        };
         ApiKeyView: {
             /** Format: date-time */
             created_at: string;
@@ -2264,6 +3196,13 @@ export interface components {
             updated_at: string;
             /** Format: int64 */
             version: number;
+        };
+        BankAccount: {
+            /** @description The currency invoices in it are paid in. */
+            currency: string;
+            /** @description Account name, number, sort code, IBAN, SWIFT: as it should print. */
+            details: string;
+            label?: string | null;
         };
         BookingPage: {
             items: components["schemas"]["BookingView"][];
@@ -2398,6 +3337,15 @@ export interface components {
             availability: components["schemas"]["AvailabilityView"][];
             bookings: components["schemas"]["BookingView"][];
         };
+        CashRow: {
+            currency: string;
+            /** Format: int64 */
+            paid_out_minor: number;
+            /** Format: int64 */
+            received_minor: number;
+            /** Format: int64 */
+            refunded_minor: number;
+        };
         /** @enum {string} */
         Channel: "email" | "phone" | "sms" | "whatsapp";
         /** @description One comparison as evaluated, for the dry-run explanation. */
@@ -2454,6 +3402,22 @@ export interface components {
         CloseWorkspaceRequest: {
             /** @description The workspace's slug, typed again to confirm. */
             confirm_slug: string;
+        };
+        /** @enum {string} */
+        Confidence: "low" | "medium" | "high";
+        ConfirmPdfImport: {
+            /** Format: date */
+            document_date?: string | null;
+            /** Format: date */
+            expires_on?: string | null;
+            invoice?: components["schemas"]["HistoricalInvoice"] | null;
+            /** @description The kind of document (contract, invoice, rider…). */
+            kind: string;
+            related_entity?: string | null;
+            /** Format: uuid */
+            related_id?: string | null;
+            tags?: string[];
+            title?: string | null;
         };
         ContactDuplicateQuery: {
             emails?: string[];
@@ -2715,6 +3679,98 @@ export interface components {
             succeeded: boolean;
             topic?: string | null;
         };
+        DocumentDetail: components["schemas"]["DocumentView"] & {
+            signatures: components["schemas"]["SignatureView"][];
+            versions: components["schemas"]["VersionView"][];
+        };
+        DocumentFile: {
+            content_type: string;
+            filename: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            size_bytes: number;
+        };
+        /** @enum {string} */
+        DocumentKind: "invoice" | "credit_note" | "receipt" | "quote" | "purchase_order" | "statement" | "contract";
+        DocumentPage: {
+            items: components["schemas"]["DocumentView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        DocumentPatch: {
+            custom?: Record<string, never> | null;
+            /** Format: date */
+            document_date?: string | null;
+            /** Format: date */
+            expires_on?: string | null;
+            kind?: string | null;
+            notes?: string | null;
+            related_entity?: string | null;
+            /** Format: uuid */
+            related_id?: string | null;
+            tags?: string[] | null;
+            title?: string | null;
+        };
+        /**
+         * @description Document templates: the built-in ones, with the workspace's own wording
+         *     where it has saved a template with the same key, and its other ones.
+         */
+        DocumentTemplate: {
+            built_in: boolean;
+            /** @description The record it is made from. */
+            entity: string;
+            key: string;
+            /** @description What it makes. */
+            kind: string;
+            name: string;
+            /**
+             * Format: uuid
+             * @description The workspace's saved template, if it has changed or added one.
+             */
+            template_id?: string | null;
+        };
+        DocumentView: {
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** Format: int32 */
+            current_version: number;
+            custom: Record<string, never>;
+            /** Format: date */
+            document_date?: string | null;
+            /**
+             * Format: date
+             * @description For insurance, visas and the like: when it runs out.
+             */
+            expires_on?: string | null;
+            file?: components["schemas"]["DocumentFile"] | null;
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description contract, rider, invoice, credit_note, receipt, statement, confirmation,
+             *     advance_sheet, quote, purchase_order, insurance, other…
+             */
+            kind: string;
+            notes?: string | null;
+            related_entity?: string | null;
+            /** Format: uuid */
+            related_id?: string | null;
+            /** @description none, awaiting, signed or declined. */
+            signature_status: string;
+            /** @description generated, uploaded or imported. */
+            source: string;
+            /** @description The current version: `rendering`, `ready` or `failed`. */
+            status?: string | null;
+            tags: string[];
+            template_key?: string | null;
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+        };
         DraftPreviewRequest: {
             body: string;
             /** @description What the template is about; default `thing`. */
@@ -2912,6 +3968,11 @@ export interface components {
             seq: number;
             topic: string;
         };
+        Expense: {
+            /** Format: int64 */
+            amount_minor: number;
+            description: string;
+        };
         FeedView: {
             /** Format: date-time */
             created_at: string;
@@ -2977,8 +4038,173 @@ export interface components {
             /** @description `staff`, `portal` or `both`. */
             visibility: string;
         };
+        /** @description What people see of a file. */
+        FileView: {
+            content_type: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            filename: string;
+            /** Format: uuid */
+            id: string;
+            /** @description Pages look scanned: only OCR could read them. */
+            needs_ocr: boolean;
+            /** Format: int32 */
+            page_count?: number | null;
+            read_error?: string | null;
+            /** @description For PDFs: `pending` until its text is read, then `done` or `failed`. */
+            read_state: string;
+            /** @description Hex SHA-256 of the bytes. */
+            sha256: string;
+            /** Format: int64 */
+            size_bytes: number;
+        };
+        FinanceReport: {
+            ageing: components["schemas"]["Ageing"];
+            base_currency: string;
+            by_month: components["schemas"]["RevenueRow"][];
+            by_payer: components["schemas"]["RevenueRow"][];
+            by_talent: components["schemas"]["RevenueRow"][];
+            cash: components["schemas"]["CashRow"][];
+            /** Format: date */
+            from: string;
+            funnel: components["schemas"]["FunnelReport"];
+            outstanding: components["schemas"]["OutstandingRow"][];
+            /** Format: date */
+            to: string;
+        };
+        FinanceSettings: {
+            /** @description {line1, line2, city, region, postcode, country} */
+            address: Record<string, never>;
+            bank_accounts: components["schemas"]["BankAccount"][];
+            /** @description Reports and conversions are in this currency. */
+            base_currency: string;
+            company_number?: string | null;
+            credit_note_format: string;
+            email?: string | null;
+            invoice_footer?: string | null;
+            /** @description e.g. `INV-{YYYY}-{0000}`: {YYYY} {YY} {MM}, {0000} (padded) or {N}. */
+            invoice_format: string;
+            /**
+             * @description Who invoices the buyer: `agency` (the agency invoices and pays the
+             *     talent out), `talent` (the talent invoices; the agency invoices
+             *     them for commission) or `split` (deposit by the agency, balance by
+             *     the talent).
+             */
+            invoicing_model: string;
+            late_fee_text?: string | null;
+            /** @description The name invoices are issued in; default the workspace's name. */
+            legal_name?: string | null;
+            /** Format: int32 */
+            payment_terms_days: number;
+            phone?: string | null;
+            /** @description VAT, GST or sales tax number. */
+            tax_number?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        FinanceSettingsInput: {
+            address?: Record<string, never> | null;
+            bank_accounts?: components["schemas"]["BankAccount"][] | null;
+            company_number?: string | null;
+            credit_note_format?: string | null;
+            email?: string | null;
+            invoice_footer?: string | null;
+            invoice_format?: string | null;
+            invoicing_model?: string | null;
+            late_fee_text?: string | null;
+            legal_name?: string | null;
+            /** Format: int32 */
+            payment_terms_days?: number | null;
+            phone?: string | null;
+            tax_number?: string | null;
+        };
+        FunnelReport: {
+            /** Format: int64 */
+            enquiries: number;
+            /** Format: int64 */
+            lost: number;
+            /** Format: int64 */
+            open: number;
+            /** Format: int64 */
+            quoted: number;
+            /**
+             * Format: double
+             * @description Won out of enquiries decided (won or lost), 0 to 1.
+             */
+            win_rate?: number | null;
+            /** Format: int64 */
+            won: number;
+        };
+        /** @description A conversion rate with where it came from. */
+        FxQuote: {
+            /**
+             * Format: date
+             * @description The day the rate is for.
+             */
+            date: string;
+            from: string;
+            /** @description Units of `to` per unit of `from`. */
+            rate: components["schemas"]["Rate"];
+            /** @description same, ecb, booking or manual. */
+            source: string;
+            to: string;
+        };
+        GenerateDocument: {
+            /** Format: date */
+            document_date?: string | null;
+            /** @description Default: what the template makes, else `misc`. */
+            kind?: string | null;
+            /** @description The record it is made from (a booking for the built-in templates). */
+            related_entity: string;
+            /** Format: uuid */
+            related_id: string;
+            /**
+             * @description `document.contract`, `document.confirmation`, `document.advance_sheet`
+             *     or a workspace template's key.
+             */
+            template_key: string;
+            /** @description Default: the template's subject. */
+            title?: string | null;
+        };
         HealthBody: {
             status: string;
+        };
+        HistoricalInvoice: {
+            /** Format: uuid */
+            booking_id?: string | null;
+            currency: string;
+            /**
+             * Format: uuid
+             * @description The PDF it came from, if any.
+             */
+            document_id?: string | null;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: date */
+            issue_date: string;
+            /** Format: uuid */
+            issuer_talent_id?: string | null;
+            /** @description Default invoice. */
+            kind?: string | null;
+            /** @description Default: one line for the whole amount, untaxed. */
+            line_items?: components["schemas"]["LineInput"][] | null;
+            notes?: string | null;
+            paid?: boolean;
+            /**
+             * Format: int64
+             * @description How much was paid (default: none; all of it when `paid` is true).
+             */
+            paid_minor?: number | null;
+            payer: components["schemas"]["Payer"];
+            /** @description Its own number as printed. */
+            reference: string;
+            tags?: string[];
+            /**
+             * Format: int64
+             * @description When there are no lines: the total, tax included.
+             */
+            total_minor?: number | null;
         };
         ImpersonationView: {
             /** Format: date-time */
@@ -3088,6 +4314,144 @@ export interface components {
             revoked_at?: string | null;
             role: components["schemas"]["Role"];
         };
+        InvoiceBooking: {
+            /** @description Issue it straight away (default false: a draft to check first). */
+            issue?: boolean;
+            /**
+             * Format: uuid
+             * @description Default: what the workspace's invoicing model says.
+             */
+            issuer_talent_id?: string | null;
+            /** @description deposit, balance or full. */
+            purpose: string;
+        };
+        InvoiceLine: {
+            /**
+             * Format: int64
+             * @description Net of tax.
+             */
+            amount_minor: number;
+            description: string;
+            /** Format: double */
+            quantity: number;
+            /** Format: uuid */
+            talent_id?: string | null;
+            /** Format: uuid */
+            tax_code_id?: string | null;
+            tax_name?: string | null;
+            /** Format: int32 */
+            tax_rate_bps: number;
+            /** Format: int64 */
+            unit_minor: number;
+        };
+        InvoicePage: {
+            items: components["schemas"]["InvoiceView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        InvoicePatch: {
+            currency?: string | null;
+            custom?: Record<string, never> | null;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: date */
+            issue_date?: string | null;
+            line_items?: components["schemas"]["LineInput"][] | null;
+            notes?: string | null;
+            payer?: components["schemas"]["Payer"] | null;
+            purpose?: string | null;
+            tags?: string[] | null;
+            terms?: string | null;
+        };
+        /**
+         * @description Where an invoice stands. Issued means numbered and frozen; part paid,
+         *     paid, overdue and credited follow from the money allocated to it, and
+         *     void takes it out of the books while keeping its number.
+         * @enum {string}
+         */
+        InvoiceStatus: "draft" | "issued" | "part_paid" | "paid" | "overdue" | "credited" | "void";
+        InvoiceView: {
+            base_currency?: string | null;
+            base_total?: components["schemas"]["Money"] | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            booking_title?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            credited: components["schemas"]["Money"];
+            /** Format: uuid */
+            credits_invoice_id?: string | null;
+            currency: string;
+            custom: Record<string, never>;
+            /**
+             * Format: uuid
+             * @description The PDF made on issue.
+             */
+            document_id?: string | null;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: date */
+            fx_date?: string | null;
+            /** @description Units of the base currency per unit of the invoice's, fixed at issue. */
+            fx_rate?: string | null;
+            fx_source?: string | null;
+            /** @description Brought in from before OnHold, kept as it was. */
+            historical: boolean;
+            /** Format: uuid */
+            id: string;
+            /** Format: date */
+            issue_date?: string | null;
+            /** @description As printed, fixed at issue. */
+            issuer?: Record<string, never> | null;
+            /** @description workspace, or talent (invoicing in their own name). */
+            issuer_kind: string;
+            /** Format: uuid */
+            issuer_talent_id?: string | null;
+            /** @description invoice or credit_note. */
+            kind: string;
+            line_items: components["schemas"]["InvoiceLine"][];
+            notes?: string | null;
+            /** Format: int64 */
+            number?: number | null;
+            /** @description What is still owed: total less payments and credit notes. */
+            outstanding: components["schemas"]["Money"];
+            paid: components["schemas"]["Money"];
+            payer?: Record<string, never> | null;
+            /** Format: uuid */
+            payer_contact_id?: string | null;
+            /** @description organisation, talent or other. */
+            payer_kind: string;
+            payer_name: string;
+            /** Format: uuid */
+            payer_organisation_id?: string | null;
+            /** Format: uuid */
+            payer_talent_id?: string | null;
+            /** @description deposit, balance, full, commission or other. */
+            purpose: string;
+            /** @description As printed: `INV-2026-0042`. None for a draft. */
+            reference?: string | null;
+            /** Format: date-time */
+            sent_at?: string | null;
+            sent_to?: string | null;
+            status: components["schemas"]["InvoiceStatus"];
+            subtotal: components["schemas"]["Money"];
+            tags: string[];
+            tax: components["schemas"]["Money"];
+            tax_lines: components["schemas"]["TaxLine"][];
+            terms?: string | null;
+            total: components["schemas"]["Money"];
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            viewed_at?: string | null;
+            void_reason?: string | null;
+            /** Format: date-time */
+            voided_at?: string | null;
+        };
         /**
          * @description A problem with one input field, for validation errors that name the
          *     field at fault (`custom.budget`, `stages[2].key`, `actions[0].template`).
@@ -3095,6 +4459,23 @@ export interface components {
         Issue: {
             field: string;
             message: string;
+        };
+        IssueInvoice: {
+            /**
+             * Format: date
+             * @description Default: the payer's or workspace's payment terms after the issue date.
+             */
+            due_date?: string | null;
+            /**
+             * @description Units of the base currency per unit of the invoice's, when there is
+             *     no reference rate (or to use another).
+             */
+            fx_rate?: string | null;
+            /**
+             * Format: date
+             * @description Default today.
+             */
+            issue_date?: string | null;
         };
         JobDetail: {
             job: components["schemas"]["JobView"];
@@ -3158,7 +4539,15 @@ export interface components {
             status: components["schemas"]["JobStatus"];
         };
         /** @enum {string} */
-        Kind: "email" | "sms" | "whatsapp" | "notification" | "partial";
+        Kind: "email" | "sms" | "whatsapp" | "notification" | "partial" | "document";
+        KindGuess: {
+            kind: components["schemas"]["DocumentKind"];
+            /**
+             * Format: float
+             * @description The share of keyword evidence for this kind, 0 to 1.
+             */
+            score: number;
+        };
         /** @description A line with its amount worked out. */
         Line: {
             /** Format: int64 */
@@ -3340,6 +4729,33 @@ export interface components {
             tags?: string[];
             whatsapp_opt_in?: boolean;
         };
+        NewCreditNote: {
+            /** @description Issue it straight away (default true). */
+            issue?: boolean | null;
+            /** @description Default: every line of the invoice (a full credit). */
+            line_items?: components["schemas"]["LineInput"][] | null;
+            notes?: string | null;
+        };
+        NewDocument: {
+            custom?: Record<string, never> | null;
+            /** Format: date */
+            document_date?: string | null;
+            /** Format: date */
+            expires_on?: string | null;
+            /**
+             * Format: uuid
+             * @description An uploaded file (`POST /files`).
+             */
+            file_id: string;
+            kind: string;
+            notes?: string | null;
+            related_entity?: string | null;
+            /** Format: uuid */
+            related_id?: string | null;
+            tags?: string[];
+            /** @description Default: the file's name. */
+            title?: string | null;
+        };
         NewEnquiry: {
             budget?: components["schemas"]["Money"] | null;
             /** Format: uuid */
@@ -3386,6 +4802,29 @@ export interface components {
             entity: string;
             filename?: string | null;
         };
+        NewInvoice: {
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** @description Default: the booking's fee currency, else the workspace's. */
+            currency?: string | null;
+            custom?: Record<string, never> | null;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: date */
+            issue_date?: string | null;
+            /**
+             * Format: uuid
+             * @description A talent issuing in their own name; default the workspace.
+             */
+            issuer_talent_id?: string | null;
+            line_items?: components["schemas"]["LineInput"][];
+            notes?: string | null;
+            payer?: components["schemas"]["Payer"] | null;
+            /** @description Default `other`. */
+            purpose?: string | null;
+            tags?: string[];
+            terms?: string | null;
+        };
         NewOrganisation: {
             addresses?: components["schemas"]["Address"][];
             /** @description Custom field values by key. Missing fields take their defaults. */
@@ -3399,6 +4838,42 @@ export interface components {
             tags?: string[];
             tax_id?: string | null;
         };
+        NewPayment: {
+            /** @description Invoices it pays, in order. */
+            allocations?: components["schemas"]["AllocationInput"][];
+            amount: components["schemas"]["Money"];
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** @description Default bank_transfer. */
+            method?: string | null;
+            notes?: string | null;
+            /**
+             * Format: uuid
+             * @description Default: the first allocated invoice's payer.
+             */
+            organisation_id?: string | null;
+            /**
+             * Format: date
+             * @description Default today.
+             */
+            paid_on?: string | null;
+            reference?: string | null;
+        };
+        NewPayout: {
+            /**
+             * Format: int64
+             * @description Default: what is still owed to the talent.
+             */
+            amount_minor?: number | null;
+            method?: string | null;
+            /** Format: date */
+            paid_on?: string | null;
+            reference?: string | null;
+        };
+        NewPdfImports: {
+            /** @description Uploaded PDFs (`POST /files`), up to 200 at a time. */
+            file_ids: string[];
+        };
         NewQuote: {
             /** @description Default: the booking's fee currency, else the first talent's, else the workspace's. */
             currency?: string | null;
@@ -3411,6 +4886,15 @@ export interface components {
              * @description Default: two weeks from today.
              */
             valid_until?: string | null;
+        };
+        NewRefund: {
+            /** Format: int64 */
+            amount_minor: number;
+            method?: string | null;
+            notes?: string | null;
+            /** Format: date */
+            paid_on?: string | null;
+            reference?: string | null;
         };
         NewTalent: {
             base_location?: string | null;
@@ -3442,6 +4926,10 @@ export interface components {
             /** Format: uuid */
             related_id?: string | null;
             title: string;
+        };
+        NewVersionFile: {
+            /** Format: uuid */
+            file_id: string;
         };
         OidcProviderView: {
             display_name: string;
@@ -3516,10 +5004,119 @@ export interface components {
         };
         /** @enum {string} */
         Outcome: "open" | "won" | "lost";
+        OutstandingRow: {
+            base_outstanding?: components["schemas"]["Money"] | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** Format: int64 */
+            days_overdue: number;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: uuid */
+            invoice_id: string;
+            /** Format: date */
+            issue_date?: string | null;
+            outstanding: components["schemas"]["Money"];
+            payer: string;
+            reference?: string | null;
+            status: string;
+        };
         PasswordChangeRequest: {
             /** @description Required when the account already has a password. */
             current_password?: string | null;
             new_password: string;
+        };
+        Payer: {
+            /** Format: uuid */
+            contact_id?: string | null;
+            /** @description For someone with no record: their name as it should print. */
+            name?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            /** Format: uuid */
+            talent_id?: string | null;
+        };
+        PaymentPage: {
+            items: components["schemas"]["PaymentView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        PaymentView: {
+            /** @description Allocated to invoices or refunded. */
+            allocated: components["schemas"]["Money"];
+            allocations: components["schemas"]["AllocationView"][];
+            amount: components["schemas"]["Money"];
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** Format: uuid */
+            id: string;
+            /** @description payment (money in), refund or payout (money out to talent). */
+            kind: string;
+            method: string;
+            notes?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            organisation_name?: string | null;
+            /** Format: date */
+            paid_on: string;
+            reference?: string | null;
+            /** Format: uuid */
+            refund_of?: string | null;
+            /** Format: uuid */
+            settlement_id?: string | null;
+            /** Format: uuid */
+            talent_id?: string | null;
+            talent_name?: string | null;
+            /** @description What is left to allocate. */
+            unallocated: components["schemas"]["Money"];
+            /** Format: int64 */
+            version: number;
+            void_reason?: string | null;
+            /** Format: date-time */
+            voided_at?: string | null;
+        };
+        PdfImportView: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            document_id?: string | null;
+            error?: string | null;
+            /** Format: uuid */
+            file_id: string;
+            filename: string;
+            /**
+             * @description What reading found: `kinds` (likely kinds of document, best first),
+             *     `fields` (suggestions with the line each came from) and `templates`
+             *     (the workspace's issuer templates that applied).
+             */
+            found: Record<string, never>;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            invoice_id?: string | null;
+            /** @description Records it may belong to, best first: [{entity, id, name, reason}]. */
+            matches: Record<string, never>[];
+            /** @description Pages look scanned: only OCR can read them. */
+            needs_ocr: boolean;
+            /** Format: int32 */
+            page_count?: number | null;
+            /** Format: int64 */
+            size_bytes: number;
+            /** @description reading, ready, confirmed, discarded or failed. */
+            status: string;
+            /** Format: int64 */
+            version: number;
+        };
+        PdfTemplateView: {
+            definition: components["schemas"]["Template"];
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: int64 */
+            version: number;
         };
         PendingAppSignInView: {
             /** Format: date-time */
@@ -3535,7 +5132,7 @@ export interface components {
          * @description A `resource:action` permission.
          * @enum {string}
          */
-        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write" | "enquiry:read" | "enquiry:write" | "booking:read" | "booking:write" | "booking:override" | "quote:read" | "quote:write" | "task:read" | "task:write";
+        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write" | "enquiry:read" | "enquiry:write" | "booking:read" | "booking:write" | "booking:override" | "quote:read" | "quote:write" | "task:read" | "task:write" | "document:read" | "document:write" | "invoice:read" | "invoice:write" | "payment:write" | "report:read" | "finance:config";
         /**
          * @description Whether the workspace represents talent (`sells`), books talent for its
          *     own events (`buys`), or both. Changes vocabulary and defaults, never the
@@ -3595,6 +5192,27 @@ export interface components {
              */
             thing_id?: string | null;
         };
+        PublicInvoice: {
+            /** @description How to pay, from the issuer's bank details. */
+            bank_account?: Record<string, never> | null;
+            branding: Record<string, never>;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: date */
+            issue_date?: string | null;
+            issuer: Record<string, never>;
+            kind: string;
+            line_items: components["schemas"]["InvoiceLine"][];
+            outstanding: components["schemas"]["Money"];
+            payer: Record<string, never>;
+            reference: string;
+            status: components["schemas"]["InvoiceStatus"];
+            subtotal: components["schemas"]["Money"];
+            tax: components["schemas"]["Money"];
+            tax_lines: components["schemas"]["TaxLine"][];
+            total: components["schemas"]["Money"];
+            workspace_name: string;
+        };
         PublicLine: {
             amount: components["schemas"]["Money"];
             description: string;
@@ -3628,6 +5246,20 @@ export interface components {
             /** Format: date */
             valid_until?: string | null;
             venue?: string | null;
+            workspace_name: string;
+        };
+        /** @description What a signer sees. */
+        PublicSigning: {
+            branding: Record<string, never>;
+            /** Format: date-time */
+            decided_at?: string | null;
+            document_title: string;
+            /** @description SHA-256 of the PDF being signed, in hex. */
+            sha256: string;
+            signed_name?: string | null;
+            signer_name: string;
+            /** @description pending, signed, declined, or cancelled (a newer version replaced it). */
+            status: string;
             workspace_name: string;
         };
         QueuedResponse: {
@@ -3702,6 +5334,20 @@ export interface components {
             /** Format: date-time */
             viewed_at?: string | null;
         };
+        /**
+         * @description A positive exchange rate with up to ten decimal places, kept exactly.
+         *     On the wire it is a decimal string, `"1.1734"`.
+         * @example 1.1734
+         */
+        Rate: string;
+        /**
+         * @description Search inside documents' text: the documents list does this with `q`;
+         *     this answers what a PDF says without making a document of it.
+         */
+        Reading: {
+            suggestions: components["schemas"]["Suggestions"];
+            templates: string[];
+        };
         RecoveryCodesResponse: {
             /** @description Shown once. Each works once if the authenticator app is lost. */
             recovery_codes: string[];
@@ -3709,6 +5355,21 @@ export interface components {
         ReplayRequest: {
             /** Format: uuid */
             event_id: string;
+        };
+        RequestSignatures: {
+            /** @description Who signs, in order. Default: the booking's contact. */
+            signers?: components["schemas"]["Signer"][];
+        };
+        RevenueRow: {
+            /** Format: uuid */
+            id?: string | null;
+            /** @description Net of credit notes, tax included (by talent: net of tax). */
+            invoiced: components["schemas"]["Money"];
+            /** Format: int64 */
+            invoices: number;
+            /** @description `2026-10`, a payer's name or a talent's name. */
+            key: string;
+            tax: components["schemas"]["Money"];
         };
         /**
          * @description A workspace membership role. A fixed set in v1.
@@ -3868,9 +5529,18 @@ export interface components {
             label: string;
             value: string;
         };
+        SendInvoice: {
+            /** @description Default: the payer contact's first email address. */
+            to?: string | null;
+        };
         SendQuote: {
             /** @description Default: the booking contact's first email address. */
             to?: string | null;
+        };
+        SentInvoice: {
+            invoice: components["schemas"]["InvoiceView"];
+            /** @description The payer's link to view and download it. Shown once. */
+            link: string;
         };
         SentQuote: {
             /** @description The buyer's link, to copy into another message if needed. Shown once. */
@@ -3903,6 +5573,103 @@ export interface components {
             /** @description When true, call `POST /auth/mfa/verify` before anything else. */
             mfa_required: boolean;
             user_id: components["schemas"]["UserId"];
+        };
+        SettlementPatch: {
+            /** Format: int32 */
+            commission_bps?: number | null;
+            expenses?: components["schemas"]["Expense"][] | null;
+            /** Format: int64 */
+            gross_minor?: number | null;
+            notes?: string | null;
+        };
+        SettlementView: {
+            /** Format: uuid */
+            booking_id: string;
+            booking_title: string;
+            commission: components["schemas"]["Money"];
+            /** Format: int32 */
+            commission_bps: number;
+            /** Format: uuid */
+            commission_invoice_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: uuid
+             * @description The statement.
+             */
+            document_id?: string | null;
+            expenses: components["schemas"]["Expense"][];
+            expenses_total: components["schemas"]["Money"];
+            /** Format: date-time */
+            finalised_at?: string | null;
+            gross: components["schemas"]["Money"];
+            /** Format: uuid */
+            id: string;
+            /** @description What the talent is owed. */
+            net: components["schemas"]["Money"];
+            notes?: string | null;
+            paid_out: components["schemas"]["Money"];
+            /** @description draft or final. */
+            status: string;
+            /** Format: uuid */
+            talent_id: string;
+            talent_name: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            version: number;
+        };
+        SignDecision: {
+            /** @description Must be true to sign: they agree to sign electronically. */
+            agree?: boolean;
+            reason?: string | null;
+            /** @description Sign (true) or decline (false). */
+            sign: boolean;
+            /** @description The signer's name, typed as their signature. Required to sign. */
+            signed_name?: string | null;
+        };
+        SignatureView: {
+            /** Format: date-time */
+            decided_at?: string | null;
+            decline_reason?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            sent_at: string;
+            signed_ip?: string | null;
+            signed_name?: string | null;
+            signed_user_agent?: string | null;
+            signer_email: string;
+            signer_name: string;
+            /** @description pending, signed, declined or cancelled. */
+            status: string;
+            /** Format: int32 */
+            version_number: number;
+            /** Format: date-time */
+            viewed_at?: string | null;
+        };
+        Signer: {
+            email: string;
+            name: string;
+        };
+        /** @description Where in the text a suggestion came from, so the screen can show it. */
+        Source: {
+            /** @description The label the value was found by, if any (`Invoice No.`). */
+            label?: string | null;
+            /**
+             * Format: int32
+             * @description From 1, within the page.
+             */
+            line: number;
+            /**
+             * Format: int32
+             * @description From 1.
+             */
+            page: number;
+            /** @description The template that found it, if any. */
+            template?: string | null;
+            /** @description The line as written. */
+            text: string;
         };
         StageRequest: {
             allowed_next?: string[] | null;
@@ -3948,6 +5715,19 @@ export interface components {
             /** @description Why it was cancelled. */
             reason?: string | null;
             status: components["schemas"]["BookingStatus"];
+        };
+        Suggestion: {
+            confidence: components["schemas"]["Confidence"];
+            /** @description A [`Field`] in snake case, or `custom.<key>` from a template. */
+            field: string;
+            source: components["schemas"]["Source"];
+            value: unknown;
+        };
+        Suggestions: {
+            /** @description Best first within each field; fields in [`Field`] order. */
+            fields: components["schemas"]["Suggestion"][];
+            /** @description Likely kinds of document, best first. */
+            kinds: components["schemas"]["KindGuess"][];
         };
         TagCount: {
             /**
@@ -4116,11 +5896,92 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        TaxCodeInput: {
+            /** @description Updates only: archive (true) or bring back (false). */
+            archived?: boolean | null;
+            is_default?: boolean;
+            kind?: components["schemas"]["TaxKind"] | null;
+            name: string;
+            note?: string | null;
+            /** Format: int32 */
+            position?: number | null;
+            /** Format: int32 */
+            rate_bps: number;
+        };
+        TaxCodeView: {
+            archived: boolean;
+            /** Format: uuid */
+            id: string;
+            is_default: boolean;
+            kind: components["schemas"]["TaxKind"];
+            name: string;
+            /** @description Printed on invoices that use it. */
+            note?: string | null;
+            /** Format: int32 */
+            position: number;
+            /**
+             * Format: int32
+             * @description Hundredths of a percent: 2000 is 20%.
+             */
+            rate_bps: number;
+            /** Format: int64 */
+            version: number;
+        };
+        /**
+         * @description What kind of tax a code is. Zero, exempt, reverse-charge and
+         *     out-of-scope codes charge nothing but print different wording.
+         * @enum {string}
+         */
+        TaxKind: "standard" | "reduced" | "zero" | "exempt" | "reverse_charge" | "out_of_scope";
+        TaxLine: {
+            name: string;
+            /** Format: int64 */
+            net_minor: number;
+            note?: string | null;
+            /** Format: int32 */
+            rate_bps: number;
+            /** Format: uuid */
+            tax_code_id?: string | null;
+            /** Format: int64 */
+            tax_minor: number;
+        };
+        Template: {
+            /** @description For amounts without a currency mark. */
+            currency?: string | null;
+            date_order?: components["schemas"]["DateOrder"] | null;
+            /** @description None may appear. */
+            exclude_keywords?: string[];
+            /**
+             * @description A [`Field`] name or `custom.<key>`, to a regular expression. The
+             *     first capture group is the value; with none, the whole match.
+             */
+            fields?: {
+                [key: string]: components["schemas"]["TemplateField"];
+            };
+            /**
+             * @description All must appear in the document (ignoring case) for the template to
+             *     apply.
+             */
+            keywords: string[];
+            kind?: components["schemas"]["DocumentKind"] | null;
+            name: string;
+        };
+        TemplateField: string | {
+            pattern: string;
+            type?: components["schemas"]["ValueKind"] | null;
+        };
         TemplatePatchRequest: {
             body?: string | null;
             description?: string | null;
             name?: string | null;
             subject?: string | null;
+        };
+        /** @description A built-in template's source, to start a workspace's own from. */
+        TemplateSource: {
+            body: string;
+            key: string;
+            name: string;
+            subject: string;
         };
         TemplateView: {
             body: string;
@@ -4294,11 +6155,36 @@ export interface components {
             /** @description text, phone: the whole value must match this regular expression. */
             regex?: string | null;
         };
+        /**
+         * @description The kind of value a field holds.
+         * @enum {string}
+         */
+        ValueKind: "text" | "reference" | "date" | "money";
         /** @description One variable a template can use. */
         Variable: {
             description: string;
             field_type?: string | null;
             path: string;
+        };
+        VersionView: {
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            error?: string | null;
+            file?: components["schemas"]["DocumentFile"] | null;
+            /** Format: int32 */
+            number: number;
+            /** @description original, or signed (the original with its signing certificate). */
+            purpose: string;
+            /** @description SHA-256 of the PDF, in hex. */
+            sha256?: string | null;
+            status: string;
+        };
+        VoidInvoice: {
+            reason?: string | null;
+        };
+        VoidPayment: {
+            reason?: string | null;
         };
         WebhookPatchRequest: {
             description?: string | null;
@@ -5705,6 +7591,81 @@ export interface operations {
             };
         };
     };
+    invoice_booking: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceBooking"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    booking_pack: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_booking_quotes: {
         parameters: {
             query?: never;
@@ -5784,6 +7745,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    settle_booking: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"][];
                 };
             };
             409: {
@@ -6591,6 +8584,489 @@ export interface operations {
             };
         };
     };
+    document_templates: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentTemplate"][];
+                };
+            };
+        };
+    };
+    document_template_source: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateSource"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_documents: {
+        parameters: {
+            query?: {
+                /** @description Documents of one record. */
+                related_id?: string | null;
+                /** @description Comma-separated kinds. */
+                kind?: string | null;
+                /** @description Words in the title, tags or the PDF's text. */
+                q?: string | null;
+                /** @description Documents that run out on or before this day. */
+                expires_before?: string | null;
+                offset?: number | null;
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentPage"];
+                };
+            };
+        };
+    };
+    create_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewDocument"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    generate_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateDocument"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    download_document: {
+        parameters: {
+            query?: {
+                /** @description Default: the current version. */
+                version?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    regenerate_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    request_signatures: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestSignatures"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cancel_signatures: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_document_version: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewVersionFile"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_enquiries: {
         parameters: {
             query?: {
@@ -6956,6 +9432,249 @@ export interface operations {
                 };
             };
             410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    upload_file: {
+        parameters: {
+            query: {
+                /** @description The file's name, as it should be kept. */
+                filename: string;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": number[];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_file: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    download_file: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_file: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reading"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_finance_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceSettings"];
+                };
+            };
+        };
+    };
+    update_finance_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinanceSettingsInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceSettings"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    fx_rate: {
+        parameters: {
+            query: {
+                from: string;
+                /** @description Default: the base currency. */
+                to?: string | null;
+                /** @description Default today. */
+                on?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FxQuote"];
+                };
+            };
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7340,6 +10059,478 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_invoices: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated statuses. */
+                status?: string | null;
+                /** @description invoice or credit_note. */
+                kind?: string | null;
+                booking_id?: string | null;
+                organisation_id?: string | null;
+                talent_id?: string | null;
+                /** @description Words in the reference, payer or tags. */
+                q?: string | null;
+                issued_from?: string | null;
+                issued_to?: string | null;
+                offset?: number | null;
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewInvoice"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_historical_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoricalInvoice"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicePatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    invoice_allocations: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllocationView"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    credit_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewCreditNote"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    issue_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueInvoice"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    invoice_pdf: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendInvoice"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SentInvoice"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    void_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidInvoice"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
                 };
             };
             409: {
@@ -7986,6 +11177,540 @@ export interface operations {
             };
         };
     };
+    list_payments: {
+        parameters: {
+            query?: {
+                /** @description payment, refund or payout. */
+                kind?: string | null;
+                booking_id?: string | null;
+                organisation_id?: string | null;
+                talent_id?: string | null;
+                /** @description Payments allocated to this invoice. */
+                invoice_id?: string | null;
+                from?: string | null;
+                to?: string | null;
+                offset?: number | null;
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentPage"];
+                };
+            };
+        };
+    };
+    create_payment: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPayment"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_payment: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    allocate_payment: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AllocationInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_allocation: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+                allocation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    refund_payment: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewRefund"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    void_payment: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidPayment"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_pdf_imports: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated: reading, ready, confirmed, discarded, failed. */
+                status?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"][];
+                };
+            };
+        };
+    };
+    create_pdf_imports: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPdfImports"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_pdf_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    confirm_pdf_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmPdfImport"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    discard_pdf_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rematch_pdf_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_pdf_templates: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTemplateView"][];
+                };
+            };
+        };
+    };
+    create_pdf_template: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Template"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTemplateView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    archive_pdf_template: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_pipelines: {
         parameters: {
             query?: {
@@ -8212,6 +11937,64 @@ export interface operations {
             };
         };
     };
+    public_invoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicInvoice"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_invoice_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     public_quote: {
         parameters: {
             query?: never;
@@ -8330,6 +12113,113 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_signing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSigning"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_sign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignDecision"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSigning"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_signing_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": number[];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8639,6 +12529,77 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finance_report: {
+        parameters: {
+            query?: {
+                /** @description Default: the first of the month a year ago. */
+                from?: string | null;
+                /** @description Default: today. */
+                to?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceReport"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    export_csv: {
+        parameters: {
+            query?: {
+                /** @description Default: the first of the month a year ago. */
+                from?: string | null;
+                /** @description Default: today. */
+                to?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                /** @description invoices, payments, revenue_by_month, revenue_by_payer, revenue_by_talent or outstanding */
+                table: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8961,6 +12922,244 @@ export interface operations {
                 };
             };
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_settlements: {
+        parameters: {
+            query?: {
+                booking_id?: string | null;
+                talent_id?: string | null;
+                /** @description draft or final. */
+                status?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"][];
+                };
+            };
+        };
+    };
+    get_settlement: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_settlement: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_settlement: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettlementPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finalise_settlement: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    settlement_payout: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPayout"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reopen_settlement: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9767,6 +13966,107 @@ export interface operations {
                 };
             };
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_tax_codes: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxCodeView"][];
+                };
+            };
+        };
+    };
+    create_tax_code: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxCodeInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxCodeView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_tax_code: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxCodeInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxCodeView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

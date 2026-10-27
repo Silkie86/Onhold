@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE settlements SET status = 'draft', finalised_at = NULL, finalised_by = NULL, updated_by = $2\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6d8d52f20dc0a9c41e1327d55a5a03ce959bb3a13665d163ece2cfef578ec692"
+}

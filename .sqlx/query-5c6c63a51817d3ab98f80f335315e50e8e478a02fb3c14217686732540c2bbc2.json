@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO file_blobs (file_id, workspace_id, data) VALUES ($1, app_workspace_id(), $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5c6c63a51817d3ab98f80f335315e50e8e478a02fb3c14217686732540c2bbc2"
+}

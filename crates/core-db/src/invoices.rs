@@ -85,7 +85,8 @@ pub struct Filter<'a> {
 }
 
 pub async fn list(conn: &mut PgConnection, f: Filter<'_>) -> Result<(Vec<Invoice>, i64)> {
-    let q = f.q.map(|q| format!("%{}%", q.to_lowercase().replace(['%', '_'], "")));
+    let q =
+        f.q.map(|q| format!("%{}%", q.to_lowercase().replace(['%', '_'], "")));
     let rows = sqlx::query!(
         r#"SELECT i.id, count(*) OVER () AS "total!" FROM invoices i
            WHERE i.workspace_id = app_workspace_id() AND i.deleted_at IS NULL
@@ -240,7 +241,11 @@ pub async fn insert(
     v: Values<'_>,
     by: Option<UserId>,
 ) -> Result<()> {
-    let issuer_kind = if c.issuer_talent_id.is_some() { "talent" } else { "workspace" };
+    let issuer_kind = if c.issuer_talent_id.is_some() {
+        "talent"
+    } else {
+        "workspace"
+    };
     // Past invoices go in as drafts and take their status in a second
     // step, so the caller can finish them before the freeze applies.
     let status = InvoiceStatus::Draft;
@@ -293,7 +298,12 @@ pub async fn insert(
 }
 
 /// Replaces a draft's values. The caller has locked it and checked it is a draft.
-pub async fn update(conn: &mut PgConnection, id: Uuid, v: Values<'_>, by: Option<UserId>) -> Result<()> {
+pub async fn update(
+    conn: &mut PgConnection,
+    id: Uuid,
+    v: Values<'_>,
+    by: Option<UserId>,
+) -> Result<()> {
     sqlx::query!(
         r#"UPDATE invoices SET purpose = $2, payer_kind = $3, payer_organisation_id = $4, payer_talent_id = $5,
                   payer_contact_id = $6, payer_name = $7, booking_id = $8, currency = $9, line_items = $10,
@@ -366,7 +376,12 @@ pub struct Issue<'a> {
     pub base_total_minor: i64,
 }
 
-pub async fn issue(conn: &mut PgConnection, id: Uuid, i: Issue<'_>, by: Option<UserId>) -> Result<()> {
+pub async fn issue(
+    conn: &mut PgConnection,
+    id: Uuid,
+    i: Issue<'_>,
+    by: Option<UserId>,
+) -> Result<()> {
     sqlx::query!(
         r#"UPDATE invoices SET status = $2, number = $3, reference = $4, issue_date = $5, due_date = $6,
                   issuer = $7, payer = $8, base_currency = $9, fx_rate = $10::text::numeric, fx_date = $11,
@@ -465,7 +480,12 @@ pub async fn mark_viewed(conn: &mut PgConnection, id: Uuid) -> Result<bool> {
     Ok(done.rows_affected() == 1)
 }
 
-pub async fn void(conn: &mut PgConnection, id: Uuid, reason: Option<&str>, by: Option<UserId>) -> Result<()> {
+pub async fn void(
+    conn: &mut PgConnection,
+    id: Uuid,
+    reason: Option<&str>,
+    by: Option<UserId>,
+) -> Result<()> {
     sqlx::query!(
         r#"UPDATE invoices SET status = 'void', voided_at = now(), void_reason = $2, updated_by = $3
            WHERE workspace_id = app_workspace_id() AND id = $1"#,
@@ -563,7 +583,11 @@ pub struct DueItem {
 }
 
 /// Issued or part-paid invoices now overdue, across workspaces (worker role).
-pub async fn overdue(conn: &mut PgConnection, now: DateTime<Utc>, limit: i64) -> Result<Vec<DueItem>> {
+pub async fn overdue(
+    conn: &mut PgConnection,
+    now: DateTime<Utc>,
+    limit: i64,
+) -> Result<Vec<DueItem>> {
     Ok(sqlx::query_as!(
         DueItem,
         r#"SELECT i.id, i.workspace_id AS "workspace_id: WorkspaceId", i.due_date AS "due_date!"

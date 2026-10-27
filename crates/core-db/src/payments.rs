@@ -213,7 +213,12 @@ pub async fn add_allocated(conn: &mut PgConnection, id: Uuid, delta: i64) -> Res
     Ok(())
 }
 
-pub async fn void(conn: &mut PgConnection, id: Uuid, reason: Option<&str>, by: Option<UserId>) -> Result<()> {
+pub async fn void(
+    conn: &mut PgConnection,
+    id: Uuid,
+    reason: Option<&str>,
+    by: Option<UserId>,
+) -> Result<()> {
     sqlx::query!(
         r#"UPDATE payments SET voided_at = now(), void_reason = $2, allocated_minor = 0, updated_by = $3
            WHERE workspace_id = app_workspace_id() AND id = $1"#,

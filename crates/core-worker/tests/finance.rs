@@ -75,7 +75,12 @@ impl Harness {
 
     async fn post(&self, who: &Client, path: &str, body: Value) -> common::Resp {
         let res = self.app.post(path).signed_in(who).json(body).send().await;
-        assert!(res.status.is_success(), "{path}: {} {}", res.status, res.body);
+        assert!(
+            res.status.is_success(),
+            "{path}: {} {}",
+            res.status,
+            res.body
+        );
         res
     }
 
@@ -101,7 +106,11 @@ struct Cast {
 async fn cast(h: &Harness) -> Cast {
     let (_, owner) = h.app.workspace_with_owner("acme").await;
     let talent = h
-        .post(&owner, "/api/v1/talent", json!({ "name": "The Midnight Owls" }))
+        .post(
+            &owner,
+            "/api/v1/talent",
+            json!({ "name": "The Midnight Owls" }),
+        )
         .await
         .id("/id");
     let organisation = h
@@ -197,8 +206,22 @@ async fn deposit_paid_and_balance_chased_in_two_currencies(pool: PgPool) {
         .await
         .unwrap();
 
-    let gbp = booking(&h, &c, "London gala", json!({ "minor": 200_000, "currency": "GBP" }), 60).await;
-    let eur = booking(&h, &c, "Paris gala", json!({ "minor": 300_000, "currency": "EUR" }), 61).await;
+    let gbp = booking(
+        &h,
+        &c,
+        "London gala",
+        json!({ "minor": 200_000, "currency": "GBP" }),
+        60,
+    )
+    .await;
+    let eur = booking(
+        &h,
+        &c,
+        "Paris gala",
+        json!({ "minor": 300_000, "currency": "EUR" }),
+        61,
+    )
+    .await;
     h.drain().await;
 
     let mut deposits = Vec::new();
@@ -227,18 +250,32 @@ async fn deposit_paid_and_balance_chased_in_two_currencies(pool: PgPool) {
             assert_eq!(inv["base_total"]["minor"], 60_000);
         }
         let id = Uuid::parse_str(inv["id"].as_str().unwrap()).unwrap();
-        deposits.push((id, inv["reference"].as_str().unwrap().to_owned(), net * 6 / 5));
+        deposits.push((
+            id,
+            inv["reference"].as_str().unwrap().to_owned(),
+            net * 6 / 5,
+        ));
 
         // Sent to the booker with a link and the PDF attached.
         let sent = h
             .post(&c.owner, &format!("/api/v1/invoices/{id}/send"), json!({}))
             .await
             .body;
-        let token = sent["link"].as_str().unwrap().rsplit('/').next().unwrap().to_owned();
+        let token = sent["link"]
+            .as_str()
+            .unwrap()
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .to_owned();
         h.drain().await;
         let mail = h.mailer.sent().pop().unwrap();
         assert_eq!(mail.to, "bea@grand.test");
-        assert!(mail.subject.contains(inv["reference"].as_str().unwrap()), "{}", mail.subject);
+        assert!(
+            mail.subject.contains(inv["reference"].as_str().unwrap()),
+            "{}",
+            mail.subject
+        );
         assert_eq!(mail.attachments.len(), 1);
         assert_eq!(mail.attachments[0].content_type, "application/pdf");
         assert!(mail.attachments[0].bytes.starts_with(b"%PDF-"));
@@ -257,7 +294,9 @@ async fn deposit_paid_and_balance_chased_in_two_currencies(pool: PgPool) {
     assert_ne!(deposits[0].1, deposits[1].1);
 
     // The deposits are paid; each booking is confirmed and gets a confirmation.
-    for ((invoice, _, amount), (booking, currency)) in deposits.iter().zip([(gbp, "GBP"), (eur, "EUR")]) {
+    for ((invoice, _, amount), (booking, currency)) in
+        deposits.iter().zip([(gbp, "GBP"), (eur, "EUR")])
+    {
         h.post(
             &c.owner,
             "/api/v1/payments",
@@ -266,12 +305,19 @@ async fn deposit_paid_and_balance_chased_in_two_currencies(pool: PgPool) {
         )
         .await;
         h.drain().await;
-        let inv = h.get(&c.owner, &format!("/api/v1/invoices/{invoice}")).await;
+        let inv = h
+            .get(&c.owner, &format!("/api/v1/invoices/{invoice}"))
+            .await;
         assert_eq!(inv["status"], "paid", "{inv}");
-        let b = h.get(&c.owner, &format!("/api/v1/bookings/{booking}")).await;
+        let b = h
+            .get(&c.owner, &format!("/api/v1/bookings/{booking}"))
+            .await;
         assert_eq!(b["status"], "confirmed", "{b}");
         let docs = h
-            .get(&c.owner, &format!("/api/v1/documents?related_entity=booking&related_id={booking}"))
+            .get(
+                &c.owner,
+                &format!("/api/v1/documents?related_entity=booking&related_id={booking}"),
+            )
             .await;
         let kinds: Vec<&str> = docs["items"]
             .as_array()
@@ -282,7 +328,13 @@ async fn deposit_paid_and_balance_chased_in_two_currencies(pool: PgPool) {
         assert!(kinds.contains(&"confirmation"), "{docs}");
     }
     let topics = h.topics().await;
-    assert_eq!(topics.iter().filter(|t| *t == "booking.deposit_paid").count(), 2);
+    assert_eq!(
+        topics
+            .iter()
+            .filter(|t| *t == "booking.deposit_paid")
+            .count(),
+        2
+    );
 
     // The balances: the fee less the deposit, issued with terms already run out.
     let mut balances = Vec::new();
@@ -338,7 +390,11 @@ async fn deposit_paid_and_balance_chased_in_two_currencies(pool: PgPool) {
         .iter()
         .map(|t| t["title"].as_str().unwrap().to_owned())
         .collect();
-    assert_eq!(titles.iter().filter(|t| t.starts_with("Chase ")).count(), 2, "{titles:?}");
+    assert_eq!(
+        titles.iter().filter(|t| t.starts_with("Chase ")).count(),
+        2,
+        "{titles:?}"
+    );
     // Chased once, however often the scheduler looks.
     h.tick().await;
     let tasks = h.get(&c.owner, "/api/v1/tasks?status=all").await;
@@ -347,7 +403,11 @@ async fn deposit_paid_and_balance_chased_in_two_currencies(pool: PgPool) {
     // The report shows what is owed, in pounds.
     let report = h.get(&c.owner, "/api/v1/reports/finance").await;
     assert_eq!(report["base_currency"], "GBP");
-    assert_eq!(report["outstanding"].as_array().unwrap().len(), 2, "{report}");
+    assert_eq!(
+        report["outstanding"].as_array().unwrap().len(),
+        2,
+        "{report}"
+    );
     // 180,000 + 270,000 × 0.85 = 409,500 owed, 1 to 30 days late.
     assert_eq!(report["ageing"]["days_1_30"]["minor"], 409_500, "{report}");
     let cash: i64 = report["cash"]
@@ -363,7 +423,14 @@ async fn deposit_paid_and_balance_chased_in_two_currencies(pool: PgPool) {
 async fn signers_are_emailed_their_own_link(pool: PgPool) {
     let h = harness(pool).await;
     let c = cast(&h).await;
-    let b = booking(&h, &c, "London gala", json!({ "minor": 200_000, "currency": "GBP" }), 60).await;
+    let b = booking(
+        &h,
+        &c,
+        "London gala",
+        json!({ "minor": 200_000, "currency": "GBP" }),
+        60,
+    )
+    .await;
     let doc = h
         .post(
             &c.owner,
@@ -384,7 +451,10 @@ async fn signers_are_emailed_their_own_link(pool: PgPool) {
     )
     .await;
     h.drain().await;
-    let mut to: Vec<String> = h.mailer.sent()[before..].iter().map(|m| m.to.clone()).collect();
+    let mut to: Vec<String> = h.mailer.sent()[before..]
+        .iter()
+        .map(|m| m.to.clone())
+        .collect();
     to.sort();
     assert_eq!(to, ["bea@grand.test", "tom@owls.test"]);
     let mail = &h.mailer.sent()[before];
@@ -397,7 +467,10 @@ async fn signers_are_emailed_their_own_link(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(stored.len(), 2);
-    assert!(stored.iter().all(|s| !s.contains("sign&#x2f;")), "{stored:?}");
+    assert!(
+        stored.iter().all(|s| !s.contains("sign&#x2f;")),
+        "{stored:?}"
+    );
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]

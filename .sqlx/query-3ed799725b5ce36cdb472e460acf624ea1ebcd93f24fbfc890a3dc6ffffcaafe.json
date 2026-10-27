@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE settlements SET status = 'final', finalised_at = now(), finalised_by = $4, document_id = $2,\n                  commission_invoice_id = $3, updated_by = $4\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3ed799725b5ce36cdb472e460acf624ea1ebcd93f24fbfc890a3dc6ffffcaafe"
+}

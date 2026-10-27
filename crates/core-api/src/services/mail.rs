@@ -35,8 +35,7 @@ pub const SYSTEM_TOPICS: &[&str] = &[
     "document.signature_requested",
 ];
 
-const INVOICE_SUBJECT: &str =
-    "{% if invoice.kind == 'credit_note' %}Credit note{% else %}Invoice{% endif %} {{ invoice.reference }} from {{ workspace.name }}";
+const INVOICE_SUBJECT: &str = "{% if invoice.kind == 'credit_note' %}Credit note{% else %}Invoice{% endif %} {{ invoice.reference }} from {{ workspace.name }}";
 const INVOICE_BODY: &str = r#"<p>Hello,</p>
 <p>Please find attached {% if invoice.kind == 'credit_note' %}credit note{% else %}invoice{% endif %} <strong>{{ invoice.reference }}</strong> from {{ workspace.name }}{% if invoice.booking_title %} for {{ invoice.booking_title }}{% endif %}.</p>
 <p>Total: <strong>{{ invoice.total | money }}</strong>{% if invoice.due_date and invoice.kind != 'credit_note' %}, due {{ invoice.due_date | date }}{% endif %}.</p>
@@ -400,7 +399,8 @@ async fn workspace_mail(
         Some(t) => (t.subject.as_deref(), t.body.as_str()),
         None => (Some(default.0), default.1),
     };
-    let rendered = super::templates::render_in(tx, Kind::Email, subject, body, &ctx_json, &options).await?;
+    let rendered =
+        super::templates::render_in(tx, Kind::Email, subject, body, &ctx_json, &options).await?;
     let name = workspace
         .get("name")
         .and_then(Value::as_str)
@@ -599,7 +599,13 @@ mod tests {
         assert!(!out.contains("abc"), "{out}");
         assert_eq!(out.matches(REDACTED).count(), 2);
         let escaped = "<a href=\"https:&#x2f;&#x2f;app.test&#x2f;accept?token=abc&amp;x=1\">go</a>";
-        assert!(!redact(escaped, &["https://app.test/accept?token=abc&x=1".to_owned()]).contains("abc"));
+        assert!(
+            !redact(
+                escaped,
+                &["https://app.test/accept?token=abc&x=1".to_owned()]
+            )
+            .contains("abc")
+        );
     }
 
     #[test]

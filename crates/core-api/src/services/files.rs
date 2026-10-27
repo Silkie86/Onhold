@@ -154,11 +154,17 @@ pub fn clean_filename(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
     let cleaned: String = base
         .chars()
-        .filter(|c| !c.is_control() && !matches!(c, '"' | '\\' | '/' | ':' | '*' | '?' | '<' | '>' | '|'))
+        .filter(|c| {
+            !c.is_control() && !matches!(c, '"' | '\\' | '/' | ':' | '*' | '?' | '<' | '>' | '|')
+        })
         .take(200)
         .collect();
     let cleaned = cleaned.trim().trim_matches('.').to_owned();
-    if cleaned.is_empty() { "file".into() } else { cleaned }
+    if cleaned.is_empty() {
+        "file".into()
+    } else {
+        cleaned
+    }
 }
 
 /// Keeps bytes and records the file, in the caller's transaction. Bytes
@@ -178,10 +184,13 @@ pub(crate) async fn store(
     let key = format!("{}/{}", ctx.workspace_id.0, id.simple());
     let storage = state.storage.kind();
     if let Some(remote) = &state.storage.remote {
-        remote.put(&key, bytes, content_type).await.map_err(|e| match e {
-            StorageError::Unavailable(m) => ApiError::internal(m),
-            other => ApiError::internal(other.to_string()),
-        })?;
+        remote
+            .put(&key, bytes, content_type)
+            .await
+            .map_err(|e| match e {
+                StorageError::Unavailable(m) => ApiError::internal(m),
+                other => ApiError::internal(other.to_string()),
+            })?;
     }
     let is_pdf = content_type == PDF;
     core_db::files::insert(
@@ -217,7 +226,9 @@ pub(crate) async fn store(
 /// A file's bytes.
 pub(crate) async fn bytes(state: &AppState, tx: &mut Tx, file: &File) -> ApiResult<Vec<u8>> {
     if file.storage == "database" {
-        return core_db::files::blob(tx, file.id).await?.ok_or(ApiError::NotFound);
+        return core_db::files::blob(tx, file.id)
+            .await?
+            .ok_or(ApiError::NotFound);
     }
     state
         .storage
@@ -246,7 +257,10 @@ pub async fn upload(
     if body.len() > state.config.max_upload_bytes {
         return Err(ApiError::invalid(
             "file",
-            format!("files may be at most {} MB", state.config.max_upload_bytes / (1024 * 1024)),
+            format!(
+                "files may be at most {} MB",
+                state.config.max_upload_bytes / (1024 * 1024)
+            ),
         ));
     }
     let filename = clean_filename(filename);
@@ -260,7 +274,9 @@ pub async fn upload(
 pub async fn get(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<FileView> {
     ctx.authorize(Permission::DocumentRead)?;
     let mut tx = begin(state, ctx).await?;
-    let file = core_db::files::get(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let file = core_db::files::get(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     tx.commit().await?;
     Ok(file.into())
 }
@@ -286,7 +302,9 @@ impl Download {
 pub async fn download(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Download> {
     ctx.authorize(Permission::DocumentRead)?;
     let mut tx = begin(state, ctx).await?;
-    let file = core_db::files::get(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let file = core_db::files::get(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let bytes = bytes(state, &mut tx, &file).await?;
     tx.commit().await?;
     Ok(Download {
@@ -308,11 +326,10 @@ pub async fn read(state: &AppState, workspace: WorkspaceId, id: Uuid) -> ApiResu
         return Ok(());
     }
     let data = bytes(state, &mut tx, &file).await?;
-    let extracted = tokio::task::spawn_blocking(move || {
-        core_pdf::extract(&data, &core_pdf::Limits::default())
-    })
-    .await
-    .map_err(ApiError::internal)?;
+    let extracted =
+        tokio::task::spawn_blocking(move || core_pdf::extract(&data, &core_pdf::Limits::default()))
+            .await
+            .map_err(ApiError::internal)?;
     match &extracted {
         Ok(x) => {
             let text = x.text();
@@ -354,7 +371,10 @@ pub async fn read(state: &AppState, workspace: WorkspaceId, id: Uuid) -> ApiResu
 }
 
 /// Removes uploads nobody attached within a day (the worker's sweep).
-pub async fn sweep_unattached(state: &AppState, worker: &mut sqlx::PgConnection) -> ApiResult<usize> {
+pub async fn sweep_unattached(
+    state: &AppState,
+    worker: &mut sqlx::PgConnection,
+) -> ApiResult<usize> {
     let before = Utc::now() - UNATTACHED_TTL;
     let mut removed = 0;
     for f in core_db::files::unattached_before(worker, before, 200).await? {
@@ -374,9 +394,12 @@ mod tests {
     fn sniffs_by_content() {
         assert_eq!(sniff(b"%PDF-1.7\n...", Some("text/plain"), "a.txt"), PDF);
         assert_eq!(sniff(b"\x89PNG\r\n\x1a\nxxxx", None, "a"), "image/png");
-        assert_eq!(sniff(b"<html><script>", Some("text/html"), "a.html"), "application/octet-stream");
+        assert_eq!(
+            sniff(b"<html><script>", Some("text/html"), "a.html"),
+            "application/octet-stream"
+        );
         assert_eq!(sniff(b"a,b\n1,2", Some("text/csv"), "a.csv"), "text/csv");
-        assert_eq!(sniff(b"PK\x03\x04....", None, "Contract.DOCX").len() > 20, true);
+        assert!(sniff(b"PK\x03\x04....", None, "Contract.DOCX").len() > 20);
     }
 
     #[test]

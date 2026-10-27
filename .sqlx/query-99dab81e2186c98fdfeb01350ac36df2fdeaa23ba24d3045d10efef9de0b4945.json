@@ -1,0 +1,304 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT d.id, d.kind, d.title, d.related_entity, d.related_id, d.source, d.template_key, d.current_version,\n                  d.document_date, d.expires_on, d.signature_status, d.notes, d.tags, d.custom, d.version,\n                  d.created_at, d.updated_at, d.created_by AS \"created_by: UserId\", d.updated_by AS \"updated_by: UserId\",\n                  v.status AS \"status?\", v.file_id AS \"file_id?\", fl.filename AS \"filename?\",\n                  fl.content_type AS \"content_type?\", fl.size_bytes AS \"size_bytes?\"\n           FROM documents d\n           LEFT JOIN document_versions v ON v.document_id = d.id AND v.number = d.current_version\n           LEFT JOIN files fl ON fl.id = v.file_id\n           WHERE d.workspace_id = app_workspace_id() AND d.id = $1 AND d.deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "related_entity",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "related_entity"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "related_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "related_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "source",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "template_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "template_key"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "current_version",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "current_version"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "document_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "document_date"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "expires_on",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "expires_on"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "signature_status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "signature_status"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "tags",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "tags"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "custom",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "custom"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "updated_by"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "status?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "document_versions",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "file_id?",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "document_versions",
+            "name": "file_id"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "filename?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "files",
+            "name": "filename"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "content_type?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "files",
+            "name": "content_type"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "size_bytes?",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "files",
+            "name": "size_bytes"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "99dab81e2186c98fdfeb01350ac36df2fdeaa23ba24d3045d10efef9de0b4945"
+}

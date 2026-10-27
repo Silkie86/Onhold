@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE tax_codes SET is_default = false WHERE workspace_id = app_workspace_id() AND is_default",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "56c277c43cc99e7b44cd12ca04db6466406549ea7d2927113bac78073536f2ea"
+}

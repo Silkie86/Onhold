@@ -136,7 +136,10 @@ fn check_address(check: &mut Check, field: &str, value: &Value) -> Value {
     let mut out = serde_json::Map::new();
     for (k, v) in obj {
         if !ADDRESS_KEYS.contains(&k.as_str()) {
-            check.issue(format!("{field}.{k}"), format!("use only: {}", ADDRESS_KEYS.join(", ")));
+            check.issue(
+                format!("{field}.{k}"),
+                format!("use only: {}", ADDRESS_KEYS.join(", ")),
+            );
             continue;
         }
         match v {
@@ -146,7 +149,10 @@ fn check_address(check: &mut Check, field: &str, value: &Value) -> Value {
                     out.insert(k.clone(), json!(s.trim()));
                 }
             }
-            _ => check.issue(format!("{field}.{k}"), "must be text of at most 200 characters"),
+            _ => check.issue(
+                format!("{field}.{k}"),
+                "must be text of at most 200 characters",
+            ),
         }
     }
     Value::Object(out)
@@ -167,7 +173,11 @@ pub async fn update_settings(
     let before = load_settings(&mut tx, ctx).await?;
     let mut check = Check::default();
     let legal_name = check.optional("legal_name", input.legal_name.as_deref(), 200);
-    let address = check_address(&mut check, "address", input.address.as_ref().unwrap_or(&json!({})));
+    let address = check_address(
+        &mut check,
+        "address",
+        input.address.as_ref().unwrap_or(&json!({})),
+    );
     let tax_number = check.optional("tax_number", input.tax_number.as_deref(), 50);
     let company_number = check.optional("company_number", input.company_number.as_deref(), 50);
     let email = check.optional("email", input.email.as_deref(), 320);
@@ -177,30 +187,51 @@ pub async fn update_settings(
         check.issue("email", "is not an email address");
     }
     let phone = check.optional("phone", input.phone.as_deref(), 50);
-    let invoice_format = input.invoice_format.unwrap_or(before.invoice_format.clone());
+    let invoice_format = input
+        .invoice_format
+        .unwrap_or(before.invoice_format.clone());
     if let Err(e) = check_number_format(&invoice_format) {
         check.issue("invoice_format", e);
     }
-    let credit_note_format = input.credit_note_format.unwrap_or(before.credit_note_format.clone());
+    let credit_note_format = input
+        .credit_note_format
+        .unwrap_or(before.credit_note_format.clone());
     if let Err(e) = check_number_format(&credit_note_format) {
         check.issue("credit_note_format", e);
     }
-    let terms = input.payment_terms_days.unwrap_or(before.payment_terms_days);
+    let terms = input
+        .payment_terms_days
+        .unwrap_or(before.payment_terms_days);
     if !(0..=365).contains(&terms) {
         check.issue("payment_terms_days", "must be 0 to 365");
     }
-    let model = input.invoicing_model.unwrap_or(before.invoicing_model.clone());
+    let model = input
+        .invoicing_model
+        .unwrap_or(before.invoicing_model.clone());
     if !INVOICING_MODELS.contains(&model.as_str()) {
-        check.issue("invoicing_model", format!("must be one of: {}", INVOICING_MODELS.join(", ")));
+        check.issue(
+            "invoicing_model",
+            format!("must be one of: {}", INVOICING_MODELS.join(", ")),
+        );
     }
     let mut accounts = Vec::new();
     for (i, a) in input.bank_accounts.unwrap_or_default().iter().enumerate() {
-        let Some(currency) = check.currency(&format!("bank_accounts[{i}].currency"), Some(&a.currency)) else {
+        let Some(currency) =
+            check.currency(&format!("bank_accounts[{i}].currency"), Some(&a.currency))
+        else {
             continue;
         };
-        let label = check.optional(&format!("bank_accounts[{i}].label"), a.label.as_deref(), 100);
+        let label = check.optional(
+            &format!("bank_accounts[{i}].label"),
+            a.label.as_deref(),
+            100,
+        );
         let details = check.required(&format!("bank_accounts[{i}].details"), &a.details, 1000);
-        accounts.push(BankAccount { currency, label, details });
+        accounts.push(BankAccount {
+            currency,
+            label,
+            details,
+        });
     }
     if accounts.len() > 20 {
         check.issue("bank_accounts", "give at most 20 accounts");
@@ -250,9 +281,15 @@ pub async fn update_settings(
 /// Who an invoice is from, as printed: the workspace (from its finance
 /// settings), or a talent invoicing in their own name (their billing
 /// details: legal name, address, tax number).
-pub(crate) async fn issuer_json(tx: &mut Tx, ctx: &Ctx, talent_id: Option<Uuid>) -> ApiResult<Value> {
+pub(crate) async fn issuer_json(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    talent_id: Option<Uuid>,
+) -> ApiResult<Value> {
     if let Some(t) = talent_id {
-        let talent = core_db::talent::get(tx, t).await?.ok_or(ApiError::NotFound)?;
+        let talent = core_db::talent::get(tx, t)
+            .await?
+            .ok_or(ApiError::NotFound)?;
         let billing = sqlx::query_scalar!(
             r#"SELECT billing FROM talent WHERE workspace_id = app_workspace_id() AND id = $1"#,
             t
@@ -272,7 +309,9 @@ pub(crate) async fn issuer_json(tx: &mut Tx, ctx: &Ctx, talent_id: Option<Uuid>)
         }));
     }
     let s = core_db::finance::settings(tx).await?;
-    let w = core_db::workspaces::get(tx, ctx.workspace_id).await?.ok_or(ApiError::NotFound)?;
+    let w = core_db::workspaces::get(tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     Ok(json!({
         "kind": "workspace",
         "name": s.legal_name.unwrap_or(w.name),
@@ -285,7 +324,11 @@ pub(crate) async fn issuer_json(tx: &mut Tx, ctx: &Ctx, talent_id: Option<Uuid>)
 }
 
 /// A talent's bank details for invoices they issue, from their billing.
-pub(crate) async fn talent_bank(tx: &mut Tx, talent_id: Uuid, currency: &str) -> ApiResult<Option<Value>> {
+pub(crate) async fn talent_bank(
+    tx: &mut Tx,
+    talent_id: Uuid,
+    currency: &str,
+) -> ApiResult<Option<Value>> {
     let billing = sqlx::query_scalar!(
         r#"SELECT billing FROM talent WHERE workspace_id = app_workspace_id() AND id = $1"#,
         talent_id
@@ -366,7 +409,11 @@ pub(crate) async fn ensure_tax_codes(tx: &mut Tx, ctx: &Ctx) -> ApiResult<()> {
     Ok(())
 }
 
-pub async fn tax_codes(state: &AppState, ctx: &Ctx, include_archived: bool) -> ApiResult<Vec<TaxCodeView>> {
+pub async fn tax_codes(
+    state: &AppState,
+    ctx: &Ctx,
+    include_archived: bool,
+) -> ApiResult<Vec<TaxCodeView>> {
     ctx.authorize(Permission::InvoiceRead)?;
     let mut tx = begin(state, ctx).await?;
     ensure_tax_codes(&mut tx, ctx).await?;
@@ -401,7 +448,11 @@ fn check_tax(check: &mut Check, input: &TaxCodeInput) -> (String, TaxKind, Optio
     (name, kind, note)
 }
 
-pub async fn create_tax_code(state: &AppState, ctx: &Ctx, input: TaxCodeInput) -> ApiResult<TaxCodeView> {
+pub async fn create_tax_code(
+    state: &AppState,
+    ctx: &Ctx,
+    input: TaxCodeInput,
+) -> ApiResult<TaxCodeView> {
     ctx.authorize(Permission::FinanceConfig)?;
     let mut check = Check::default();
     let (name, kind, note) = check_tax(&mut check, &input);
@@ -423,7 +474,10 @@ pub async fn create_tax_code(state: &AppState, ctx: &Ctx, input: TaxCodeInput) -
         ctx.user_id(),
     )
     .await?;
-    let view: TaxCodeView = core_db::finance::tax_code(&mut tx, id).await?.ok_or(ApiError::NotFound)?.into();
+    let view: TaxCodeView = core_db::finance::tax_code(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?
+        .into();
     record(
         &mut tx,
         ctx,
@@ -455,7 +509,10 @@ pub async fn update_tax_code(
     let (name, kind, note) = check_tax(&mut check, &input);
     check.finish()?;
     let mut tx = begin(state, ctx).await?;
-    let before: TaxCodeView = core_db::finance::tax_code(&mut tx, id).await?.ok_or(ApiError::NotFound)?.into();
+    let before: TaxCodeView = core_db::finance::tax_code(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?
+        .into();
     check_version(before.version, if_match)?;
     core_db::finance::update_tax_code(
         &mut tx,
@@ -472,7 +529,10 @@ pub async fn update_tax_code(
         ctx.user_id(),
     )
     .await?;
-    let after: TaxCodeView = core_db::finance::tax_code(&mut tx, id).await?.ok_or(ApiError::NotFound)?.into();
+    let after: TaxCodeView = core_db::finance::tax_code(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?
+        .into();
     record(
         &mut tx,
         ctx,
@@ -506,7 +566,11 @@ pub struct FxQuote {
 }
 
 /// One euro buys this many of `currency` on the latest day at or before `on`.
-async fn per_eur(tx: &mut Tx, currency: &str, on: NaiveDate) -> ApiResult<Option<(NaiveDate, Rate)>> {
+async fn per_eur(
+    tx: &mut Tx,
+    currency: &str,
+    on: NaiveDate,
+) -> ApiResult<Option<(NaiveDate, Rate)>> {
     if currency == "EUR" {
         return Ok(Some((on, Rate::ONE)));
     }
@@ -533,7 +597,8 @@ pub(crate) async fn reference_rate(
             source: "same".into(),
         }));
     }
-    let (Some((d1, a)), Some((d2, b))) = (per_eur(tx, from, on).await?, per_eur(tx, to, on).await?) else {
+    let (Some((d1, a)), Some((d2, b))) = (per_eur(tx, from, on).await?, per_eur(tx, to, on).await?)
+    else {
         return Ok(None);
     };
     Ok(Rate::cross(a, b).map(|rate| FxQuote {
@@ -545,7 +610,13 @@ pub(crate) async fn reference_rate(
     }))
 }
 
-pub async fn rate(state: &AppState, ctx: &Ctx, from: &str, to: Option<&str>, on: Option<NaiveDate>) -> ApiResult<FxQuote> {
+pub async fn rate(
+    state: &AppState,
+    ctx: &Ctx,
+    from: &str,
+    to: Option<&str>,
+    on: Option<NaiveDate>,
+) -> ApiResult<FxQuote> {
     ctx.authorize(Permission::InvoiceRead)?;
     let mut check = Check::default();
     let from = check.currency("from", Some(from));

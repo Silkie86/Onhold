@@ -119,7 +119,10 @@ mod tests {
     fn reads_the_ecb_feed() {
         let days = parse_ecb(FEED).expect("parses");
         assert_eq!(days.len(), 2);
-        assert_eq!(days[0].date, NaiveDate::from_ymd_opt(2026, 10, 26).expect("date"));
+        assert_eq!(
+            days[0].date,
+            NaiveDate::from_ymd_opt(2026, 10, 26).expect("date")
+        );
         assert_eq!(days[0].rates[2], ("GBP".into(), "0.86915".into()));
         assert_eq!(days[1].rates[1], ("GBP".into(), "0.8701".into()));
         assert!(parse_ecb("<html>maintenance</html>").is_err());

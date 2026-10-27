@@ -511,7 +511,6 @@ impl<'de> Deserialize<'de> for Rate {
     }
 }
 
-
 /// Converts `minor` units of `from` into `to` at `rate` (units of `to` per
 /// unit of `from`), allowing for currencies with different minor units,
 /// rounded half away from zero. `None` if the result overflows.
@@ -684,12 +683,12 @@ mod tests {
         let r: Rate = "1.1734".parse().expect("rate");
         assert_eq!(r.to_string(), "1.1734");
         assert_eq!("160".parse::<Rate>().expect("rate").to_string(), "160");
+        assert_eq!("0.0000000001".parse::<Rate>().expect("rate").scaled(), 1);
         assert_eq!(
-            "0.0000000001".parse::<Rate>().expect("rate").scaled(),
-            1
-        );
-        assert_eq!(
-            "1.50000000000000".parse::<Rate>().expect("rate").to_string(),
+            "1.50000000000000"
+                .parse::<Rate>()
+                .expect("rate")
+                .to_string(),
             "1.5"
         );
         for bad in ["", "0", "-1", "1.2.3", "abc", "1.00000000001", ".5"] {

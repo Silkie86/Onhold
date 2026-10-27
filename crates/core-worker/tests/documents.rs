@@ -70,7 +70,12 @@ impl Harness {
 
     async fn post(&self, who: &Client, path: &str, body: Value) -> common::Resp {
         let res = self.app.post(path).signed_in(who).json(body).send().await;
-        assert!(res.status.is_success(), "{path}: {} {}", res.status, res.body);
+        assert!(
+            res.status.is_success(),
+            "{path}: {} {}",
+            res.status,
+            res.body
+        );
         res
     }
 
@@ -78,7 +83,13 @@ impl Harness {
         self.app.get(path).signed_in(who).send().await.ok().body
     }
 
-    async fn upload(&self, who: &Client, name: &str, content_type: &str, bytes: Vec<u8>) -> common::Resp {
+    async fn upload(
+        &self,
+        who: &Client,
+        name: &str,
+        content_type: &str,
+        bytes: Vec<u8>,
+    ) -> common::Resp {
         self.app
             .post(&format!("/api/v1/files?filename={name}"))
             .signed_in(who)
@@ -100,15 +111,31 @@ fn old_invoice_pdf() -> Vec<u8> {
         <p>Subtotal: £1,000.00</p>\
         <p>VAT 20%: £200.00</p>\
         <p>Total: £1,200.00</p>";
-    core_pdf::write::PlainText.render(html, "Invoice OWL-2023-017").unwrap()
+    core_pdf::write::PlainText
+        .render(html, "Invoice OWL-2023-017")
+        .unwrap()
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn documents_are_made_signed_sealed_and_packed(pool: PgPool) {
     let h = harness(pool).await;
     let (_, owner) = h.app.workspace_with_owner("acme").await;
-    let talent = h.post(&owner, "/api/v1/talent", json!({ "name": "The Midnight Owls" })).await.id("/id");
-    let org = h.post(&owner, "/api/v1/organisations", json!({ "name": "The Grand Hall" })).await.id("/id");
+    let talent = h
+        .post(
+            &owner,
+            "/api/v1/talent",
+            json!({ "name": "The Midnight Owls" }),
+        )
+        .await
+        .id("/id");
+    let org = h
+        .post(
+            &owner,
+            "/api/v1/organisations",
+            json!({ "name": "The Grand Hall" }),
+        )
+        .await
+        .id("/id");
     let contact = h
         .post(
             &owner,
@@ -137,7 +164,11 @@ async fn documents_are_made_signed_sealed_and_packed(pool: PgPool) {
         .iter()
         .map(|t| t["key"].as_str().unwrap())
         .collect();
-    for k in ["document.contract", "document.confirmation", "document.advance_sheet"] {
+    for k in [
+        "document.contract",
+        "document.confirmation",
+        "document.advance_sheet",
+    ] {
         assert!(keys.contains(&k), "{keys:?}");
     }
 
@@ -172,7 +203,11 @@ async fn documents_are_made_signed_sealed_and_packed(pool: PgPool) {
     // Signing goes to the booking's contact by default.
     let before = h.mailer.sent().len();
     let requested = h
-        .post(&owner, &format!("/api/v1/documents/{doc}/signatures"), json!({}))
+        .post(
+            &owner,
+            &format!("/api/v1/documents/{doc}/signatures"),
+            json!({}),
+        )
         .await
         .body;
     assert_eq!(requested["signature_status"], "awaiting", "{requested}");
@@ -180,14 +215,32 @@ async fn documents_are_made_signed_sealed_and_packed(pool: PgPool) {
     let mail = h.mailer.sent()[before].clone();
     assert_eq!(mail.to, "bea@grand.test");
     let html = mail.html.unwrap().replace("&#x2f;", "/");
-    let token = html.split("/sign/").nth(1).unwrap().split('"').next().unwrap().to_owned();
+    let token = html
+        .split("/sign/")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_owned();
 
     // The signer sees the document without signing in; nothing private shows.
-    let public = h.app.get(&format!("/api/v1/public/sign/{token}")).send().await.ok().body;
+    let public = h
+        .app
+        .get(&format!("/api/v1/public/sign/{token}"))
+        .send()
+        .await
+        .ok()
+        .body;
     assert_eq!(public["signer_name"], "Bea Booker");
     assert_eq!(public["status"], "pending", "{public}");
     assert!(!public.to_string().contains(&booking.to_string()));
-    let shown = h.app.get(&format!("/api/v1/public/sign/{token}/pdf")).send().await.ok();
+    let shown = h
+        .app
+        .get(&format!("/api/v1/public/sign/{token}/pdf"))
+        .send()
+        .await
+        .ok();
     assert_eq!(shown.headers["content-type"], "application/pdf");
 
     // Signing needs the box ticked and a name.
@@ -228,9 +281,27 @@ async fn documents_are_made_signed_sealed_and_packed(pool: PgPool) {
     assert!(topics.iter().any(|t| t == "document.signed"));
 
     // An upload: the type comes from the bytes, not the name.
-    let up = h.upload(&owner, "rider.pdf", "application/pdf", b"not a pdf at all".to_vec()).await;
-    assert_eq!(up.body["content_type"], "application/octet-stream", "{}", up.body);
-    let up = h.upload(&owner, "rider.pdf", "application/octet-stream", old_invoice_pdf()).await;
+    let up = h
+        .upload(
+            &owner,
+            "rider.pdf",
+            "application/pdf",
+            b"not a pdf at all".to_vec(),
+        )
+        .await;
+    assert_eq!(
+        up.body["content_type"], "application/octet-stream",
+        "{}",
+        up.body
+    );
+    let up = h
+        .upload(
+            &owner,
+            "rider.pdf",
+            "application/octet-stream",
+            old_invoice_pdf(),
+        )
+        .await;
     assert_eq!(up.status, StatusCode::CREATED, "{}", up.body);
     assert_eq!(up.body["content_type"], "application/pdf");
     let file = up.id("/id");
@@ -256,9 +327,14 @@ async fn documents_are_made_signed_sealed_and_packed(pool: PgPool) {
     let raw = raw_get(&h.app, &owner, &format!("/api/v1/bookings/{booking}/pack")).await;
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(raw)).unwrap();
     assert_eq!(zip.len(), 2);
-    let mut names: Vec<String> = (0..zip.len()).map(|i| zip.by_index(i).unwrap().name().to_owned()).collect();
+    let mut names: Vec<String> = (0..zip.len())
+        .map(|i| zip.by_index(i).unwrap().name().to_owned())
+        .collect();
     names.sort();
-    assert_eq!(names, ["contract-Contract-Gala-night-signed.pdf", "rider-rider.pdf"]);
+    assert_eq!(
+        names,
+        ["contract-Contract-Gala-night-signed.pdf", "rider-rider.pdf"]
+    );
     let mut first = Vec::new();
     zip.by_index(0).unwrap().read_to_end(&mut first).unwrap();
     assert!(first.starts_with(b"%PDF-"));
@@ -304,8 +380,22 @@ async fn raw_get(app: &TestApp, who: &Client, path: &str) -> Vec<u8> {
 async fn past_pdfs_are_read_matched_and_kept(pool: PgPool) {
     let h = harness(pool).await;
     let (_, owner) = h.app.workspace_with_owner("acme").await;
-    let talent = h.post(&owner, "/api/v1/talent", json!({ "name": "The Midnight Owls" })).await.id("/id");
-    let org = h.post(&owner, "/api/v1/organisations", json!({ "name": "The Grand Hall" })).await.id("/id");
+    let talent = h
+        .post(
+            &owner,
+            "/api/v1/talent",
+            json!({ "name": "The Midnight Owls" }),
+        )
+        .await
+        .id("/id");
+    let org = h
+        .post(
+            &owner,
+            "/api/v1/organisations",
+            json!({ "name": "The Grand Hall" }),
+        )
+        .await
+        .id("/id");
     h.post(
         &owner,
         "/api/v1/contacts",
@@ -314,7 +404,11 @@ async fn past_pdfs_are_read_matched_and_kept(pool: PgPool) {
     .await;
 
     // Uploaded in bulk, then read in the background.
-    let file = h.upload(&owner, "owl-017.pdf", "application/pdf", old_invoice_pdf()).await.ok().id("/id");
+    let file = h
+        .upload(&owner, "owl-017.pdf", "application/pdf", old_invoice_pdf())
+        .await
+        .ok()
+        .id("/id");
     let created = h
         .post(&owner, "/api/v1/pdf-imports", json!({ "file_ids": [file] }))
         .await;
@@ -322,7 +416,9 @@ async fn past_pdfs_are_read_matched_and_kept(pool: PgPool) {
     let import = Uuid::parse_str(created.body[0]["id"].as_str().unwrap()).unwrap();
     h.drain().await;
 
-    let i = h.get(&owner, &format!("/api/v1/pdf-imports/{import}")).await;
+    let i = h
+        .get(&owner, &format!("/api/v1/pdf-imports/{import}"))
+        .await;
     assert_eq!(i["status"], "ready", "{i}");
     assert_eq!(i["found"]["kinds"][0]["kind"], "invoice", "{i}");
     let best = |field: &str| -> Value {
@@ -336,20 +432,37 @@ async fn past_pdfs_are_read_matched_and_kept(pool: PgPool) {
     };
     assert_eq!(best("invoice_number"), "OWL-2023-017", "{i}");
     assert_eq!(best("issue_date"), "2023-09-14", "{i}");
-    assert_eq!(best("total"), json!({ "minor": 120_000, "currency": "GBP" }), "{i}");
+    assert_eq!(
+        best("total"),
+        json!({ "minor": 120_000, "currency": "GBP" }),
+        "{i}"
+    );
     let matched: Vec<(&str, &str)> = i["matches"]
         .as_array()
         .unwrap()
         .iter()
         .map(|m| (m["entity"].as_str().unwrap(), m["name"].as_str().unwrap()))
         .collect();
-    assert!(matched.contains(&("organisation", "The Grand Hall")), "{matched:?}");
-    assert!(matched.contains(&("talent", "The Midnight Owls")), "{matched:?}");
+    assert!(
+        matched.contains(&("organisation", "The Grand Hall")),
+        "{matched:?}"
+    );
+    assert!(
+        matched.contains(&("talent", "The Midnight Owls")),
+        "{matched:?}"
+    );
     assert!(matched.contains(&("contact", "Bea Booker")), "{matched:?}");
 
     // What was read can be fetched again for the file.
-    let reading = h.get(&owner, &format!("/api/v1/files/{file}/reading")).await;
-    assert!(reading["suggestions"]["fields"].as_array().is_some_and(|f| !f.is_empty()), "{reading}");
+    let reading = h
+        .get(&owner, &format!("/api/v1/files/{file}/reading"))
+        .await;
+    assert!(
+        reading["suggestions"]["fields"]
+            .as_array()
+            .is_some_and(|f| !f.is_empty()),
+        "{reading}"
+    );
 
     // Confirmed as a document on the buyer, and as a paid past invoice.
     let confirmed = h
@@ -382,17 +495,36 @@ async fn past_pdfs_are_read_matched_and_kept(pool: PgPool) {
     assert_eq!(none["items"].as_array().unwrap().len(), 0);
 
     // The same PDF again is flagged as already recorded.
-    let again = h.upload(&owner, "owl-017-copy.pdf", "application/pdf", old_invoice_pdf()).await.ok().id("/id");
+    let again = h
+        .upload(
+            &owner,
+            "owl-017-copy.pdf",
+            "application/pdf",
+            old_invoice_pdf(),
+        )
+        .await
+        .ok()
+        .id("/id");
     let second = h
-        .post(&owner, "/api/v1/pdf-imports", json!({ "file_ids": [again] }))
+        .post(
+            &owner,
+            "/api/v1/pdf-imports",
+            json!({ "file_ids": [again] }),
+        )
         .await
         .body;
     let second = Uuid::parse_str(second[0]["id"].as_str().unwrap()).unwrap();
     h.drain().await;
-    let i = h.get(&owner, &format!("/api/v1/pdf-imports/{second}")).await;
+    let i = h
+        .get(&owner, &format!("/api/v1/pdf-imports/{second}"))
+        .await;
     assert_eq!(i["matches"][0]["entity"], "invoice", "{i}");
     let discarded = h
-        .post(&owner, &format!("/api/v1/pdf-imports/{second}/discard"), json!({}))
+        .post(
+            &owner,
+            &format!("/api/v1/pdf-imports/{second}/discard"),
+            json!({}),
+        )
         .await
         .body;
     assert_eq!(discarded["status"], "discarded");

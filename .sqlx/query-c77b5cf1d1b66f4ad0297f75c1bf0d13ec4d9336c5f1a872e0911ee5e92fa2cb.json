@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT i.id, i.workspace_id AS \"workspace_id: WorkspaceId\", i.due_date AS \"due_date!\"\n           FROM invoices i JOIN workspaces w ON w.id = i.workspace_id\n           WHERE i.status IN ('issued', 'part_paid') AND i.deleted_at IS NULL\n             AND i.due_date < ($1 AT TIME ZONE w.default_timezone)::date\n             AND w.status IN ('trial', 'active')\n           ORDER BY i.due_date\n           LIMIT $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "workspace_id: WorkspaceId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "workspace_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "due_date!",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "due_date"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "c77b5cf1d1b66f4ad0297f75c1bf0d13ec4d9336c5f1a872e0911ee5e92fa2cb"
+}

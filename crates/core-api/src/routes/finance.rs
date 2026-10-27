@@ -18,16 +18,21 @@ use super::{IdempotencyHeader, IfMatchHeader, WorkspaceHeader, with_etag};
 use crate::AppState;
 use crate::error::{ApiResult, ErrorBody};
 use crate::extract::{ClientMeta, IfMatch, WsCtx};
-use crate::services::finance::{self, FinanceSettings, FinanceSettingsInput, FxQuote, TaxCodeInput, TaxCodeView};
+use crate::services::finance::{
+    self, FinanceSettings, FinanceSettingsInput, FxQuote, TaxCodeInput, TaxCodeView,
+};
 use crate::services::invoices::{
-    self, HistoricalInvoice, InvoiceBooking, InvoiceFilter, InvoicePage, InvoicePatch, InvoiceView, IssueInvoice,
-    NewCreditNote, NewInvoice, PublicInvoice, SendInvoice, SentInvoice, VoidInvoice,
+    self, HistoricalInvoice, InvoiceBooking, InvoiceFilter, InvoicePage, InvoicePatch, InvoiceView,
+    IssueInvoice, NewCreditNote, NewInvoice, PublicInvoice, SendInvoice, SentInvoice, VoidInvoice,
 };
 use crate::services::payments::{
-    self, AllocationInput, AllocationView, NewPayment, NewRefund, PaymentFilter, PaymentPage, PaymentView, VoidPayment,
+    self, AllocationInput, AllocationView, NewPayment, NewRefund, PaymentFilter, PaymentPage,
+    PaymentView, VoidPayment,
 };
 use crate::services::reports::{self, FinanceReport, Period};
-use crate::services::settlements::{self, NewPayout, SettlementFilter, SettlementPatch, SettlementView};
+use crate::services::settlements::{
+    self, NewPayout, SettlementFilter, SettlementPatch, SettlementView,
+};
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -53,7 +58,11 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(void_payment))
         .routes(routes!(list_settlements))
         .routes(routes!(settle_booking))
-        .routes(routes!(get_settlement, update_settlement, delete_settlement))
+        .routes(routes!(
+            get_settlement,
+            update_settlement,
+            delete_settlement
+        ))
         .routes(routes!(finalise_settlement))
         .routes(routes!(reopen_settlement))
         .routes(routes!(settlement_payout))
@@ -67,7 +76,10 @@ pub fn router() -> OpenApiRouter<AppState> {
 
 #[utoipa::path(get, path = "/finance/settings", tag = "finance", params(WorkspaceHeader),
     responses((status = 200, body = FinanceSettings)), security(("session" = []), ("api_key" = [])))]
-async fn get_finance_settings(State(state): State<AppState>, WsCtx(ctx): WsCtx) -> ApiResult<Response> {
+async fn get_finance_settings(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Response> {
     let s = finance::get_settings(&state, &ctx).await?;
     Ok(with_etag(s.version, s))
 }
@@ -101,7 +113,9 @@ async fn list_tax_codes(
     WsCtx(ctx): WsCtx,
     Query(q): Query<ArchivedQuery>,
 ) -> ApiResult<Json<Vec<TaxCodeView>>> {
-    Ok(Json(finance::tax_codes(&state, &ctx, q.include_archived).await?))
+    Ok(Json(
+        finance::tax_codes(&state, &ctx, q.include_archived).await?,
+    ))
 }
 
 #[utoipa::path(post, path = "/tax-codes", tag = "finance", params(WorkspaceHeader, IdempotencyHeader),
@@ -113,7 +127,10 @@ async fn create_tax_code(
     WsCtx(ctx): WsCtx,
     Json(b): Json<TaxCodeInput>,
 ) -> ApiResult<(StatusCode, Json<TaxCodeView>)> {
-    Ok((StatusCode::CREATED, Json(finance::create_tax_code(&state, &ctx, b).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(finance::create_tax_code(&state, &ctx, b).await?),
+    ))
 }
 
 #[utoipa::path(put, path = "/tax-codes/{id}", tag = "finance", params(WorkspaceHeader, IfMatchHeader, ("id" = Uuid, Path)),
@@ -127,7 +144,9 @@ async fn update_tax_code(
     IfMatch(if_match): IfMatch,
     Json(b): Json<TaxCodeInput>,
 ) -> ApiResult<Json<TaxCodeView>> {
-    Ok(Json(finance::update_tax_code(&state, &ctx, id, b, if_match).await?))
+    Ok(Json(
+        finance::update_tax_code(&state, &ctx, id, b, if_match).await?,
+    ))
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -143,8 +162,14 @@ pub struct FxQuery {
 #[utoipa::path(get, path = "/fx-rates", tag = "finance", params(WorkspaceHeader, FxQuery),
     responses((status = 200, body = FxQuote), (status = 422, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn fx_rate(State(state): State<AppState>, WsCtx(ctx): WsCtx, Query(q): Query<FxQuery>) -> ApiResult<Json<FxQuote>> {
-    Ok(Json(finance::rate(&state, &ctx, &q.from, q.to.as_deref(), q.on).await?))
+async fn fx_rate(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Query(q): Query<FxQuery>,
+) -> ApiResult<Json<FxQuote>> {
+    Ok(Json(
+        finance::rate(&state, &ctx, &q.from, q.to.as_deref(), q.on).await?,
+    ))
 }
 
 // Invoices ----------------------------------------------------------------------------------------
@@ -170,7 +195,10 @@ async fn create_invoice(
     WsCtx(ctx): WsCtx,
     Json(b): Json<NewInvoice>,
 ) -> ApiResult<(StatusCode, Json<InvoiceView>)> {
-    Ok((StatusCode::CREATED, Json(invoices::create(&state, &ctx, b).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(invoices::create(&state, &ctx, b).await?),
+    ))
 }
 
 /// Record an invoice from before OnHold, as it was.
@@ -183,13 +211,20 @@ async fn create_historical_invoice(
     WsCtx(ctx): WsCtx,
     Json(b): Json<HistoricalInvoice>,
 ) -> ApiResult<(StatusCode, Json<InvoiceView>)> {
-    Ok((StatusCode::CREATED, Json(invoices::create_historical(&state, &ctx, b).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(invoices::create_historical(&state, &ctx, b).await?),
+    ))
 }
 
 #[utoipa::path(get, path = "/invoices/{id}", tag = "invoices", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, body = InvoiceView), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn get_invoice(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Response> {
+async fn get_invoice(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Response> {
     let v = invoices::get(&state, &ctx, id).await?;
     Ok(with_etag(v.version, v))
 }
@@ -215,7 +250,11 @@ async fn update_invoice(
 #[utoipa::path(delete, path = "/invoices/{id}", tag = "invoices", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 204), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn delete_invoice(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<StatusCode> {
+async fn delete_invoice(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
     invoices::delete(&state, &ctx, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -278,13 +317,20 @@ async fn credit_invoice(
     Path(id): Path<Uuid>,
     Json(b): Json<NewCreditNote>,
 ) -> ApiResult<(StatusCode, Json<InvoiceView>)> {
-    Ok((StatusCode::CREATED, Json(invoices::credit(&state, &ctx, id, b).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(invoices::credit(&state, &ctx, id, b).await?),
+    ))
 }
 
 #[utoipa::path(get, path = "/invoices/{id}/pdf", tag = "invoices", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, content_type = "application/pdf", body = Vec<u8>), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn invoice_pdf(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Response> {
+async fn invoice_pdf(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Response> {
     Ok(file_response(invoices::pdf(&state, &ctx, id).await?))
 }
 
@@ -311,7 +357,10 @@ async fn invoice_booking(
     Path(id): Path<Uuid>,
     Json(b): Json<InvoiceBooking>,
 ) -> ApiResult<(StatusCode, Json<InvoiceView>)> {
-    Ok((StatusCode::CREATED, Json(invoices::from_booking(&state, &ctx, id, b).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(invoices::from_booking(&state, &ctx, id, b).await?),
+    ))
 }
 
 // Payments ----------------------------------------------------------------------------------------
@@ -336,13 +385,20 @@ async fn create_payment(
     WsCtx(ctx): WsCtx,
     Json(b): Json<NewPayment>,
 ) -> ApiResult<(StatusCode, Json<PaymentView>)> {
-    Ok((StatusCode::CREATED, Json(payments::create(&state, &ctx, b).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(payments::create(&state, &ctx, b).await?),
+    ))
 }
 
 #[utoipa::path(get, path = "/payments/{id}", tag = "payments", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, body = PaymentView), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn get_payment(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Response> {
+async fn get_payment(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Response> {
     let v = payments::get(&state, &ctx, id).await?;
     Ok(with_etag(v.version, v))
 }
@@ -359,7 +415,9 @@ async fn allocate_payment(
     IfMatch(if_match): IfMatch,
     Json(b): Json<AllocationInput>,
 ) -> ApiResult<Json<PaymentView>> {
-    Ok(Json(payments::allocate(&state, &ctx, id, b, if_match).await?))
+    Ok(Json(
+        payments::allocate(&state, &ctx, id, b, if_match).await?,
+    ))
 }
 
 #[utoipa::path(delete, path = "/payments/{id}/allocations/{allocation_id}", tag = "payments",
@@ -371,7 +429,9 @@ async fn remove_allocation(
     WsCtx(ctx): WsCtx,
     Path((id, allocation_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<PaymentView>> {
-    Ok(Json(payments::remove_allocation(&state, &ctx, id, allocation_id).await?))
+    Ok(Json(
+        payments::remove_allocation(&state, &ctx, id, allocation_id).await?,
+    ))
 }
 
 /// Return money from what is unallocated of a payment.
@@ -385,7 +445,10 @@ async fn refund_payment(
     Path(id): Path<Uuid>,
     Json(b): Json<NewRefund>,
 ) -> ApiResult<(StatusCode, Json<PaymentView>)> {
-    Ok((StatusCode::CREATED, Json(payments::refund(&state, &ctx, id, b).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(payments::refund(&state, &ctx, id, b).await?),
+    ))
 }
 
 /// Void a payment recorded in error; its invoices owe again.
@@ -425,13 +488,19 @@ async fn settle_booking(
     WsCtx(ctx): WsCtx,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<SettlementView>>> {
-    Ok(Json(settlements::create_for_booking(&state, &ctx, id).await?))
+    Ok(Json(
+        settlements::create_for_booking(&state, &ctx, id).await?,
+    ))
 }
 
 #[utoipa::path(get, path = "/settlements/{id}", tag = "settlements", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, body = SettlementView), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn get_settlement(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Response> {
+async fn get_settlement(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Response> {
     let v = settlements::get(&state, &ctx, id).await?;
     Ok(with_etag(v.version, v))
 }
@@ -453,7 +522,11 @@ async fn update_settlement(
 
 #[utoipa::path(delete, path = "/settlements/{id}", tag = "settlements", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 204), (status = 409, body = ErrorBody)), security(("session" = []), ("api_key" = [])))]
-async fn delete_settlement(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<StatusCode> {
+async fn delete_settlement(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
     settlements::delete(&state, &ctx, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -469,7 +542,9 @@ async fn finalise_settlement(
     Path(id): Path<Uuid>,
     IfMatch(if_match): IfMatch,
 ) -> ApiResult<Json<SettlementView>> {
-    Ok(Json(settlements::finalise(&state, &ctx, id, if_match).await?))
+    Ok(Json(
+        settlements::finalise(&state, &ctx, id, if_match).await?,
+    ))
 }
 
 #[utoipa::path(post, path = "/settlements/{id}/reopen", tag = "settlements",
@@ -526,7 +601,10 @@ async fn export_csv(
 ) -> ApiResult<Response> {
     let body = reports::csv(&state, &ctx, &table, &p).await?;
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv; charset=utf-8"));
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/csv; charset=utf-8"),
+    );
     if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename=\"{table}.csv\"")) {
         headers.insert(header::CONTENT_DISPOSITION, v);
     }
@@ -547,6 +625,9 @@ async fn public_invoice(
 
 #[utoipa::path(get, path = "/public/invoices/{token}/pdf", tag = "public", params(("token" = String, Path)),
     responses((status = 200, content_type = "application/pdf", body = Vec<u8>), (status = 404, body = ErrorBody)))]
-async fn public_invoice_pdf(State(state): State<AppState>, Path(token): Path<String>) -> ApiResult<Response> {
+async fn public_invoice_pdf(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> ApiResult<Response> {
     Ok(file_response(invoices::public_pdf(&state, &token).await?))
 }

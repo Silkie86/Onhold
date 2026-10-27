@@ -26,7 +26,11 @@ pub struct PdfImport {
     pub created_at: DateTime<Utc>,
 }
 
-pub async fn list(conn: &mut PgConnection, statuses: &[String], limit: i64) -> Result<Vec<PdfImport>> {
+pub async fn list(
+    conn: &mut PgConnection,
+    statuses: &[String],
+    limit: i64,
+) -> Result<Vec<PdfImport>> {
     Ok(sqlx::query_as!(
         PdfImport,
         r#"SELECT p.id, p.file_id, f.filename, f.size_bytes, f.page_count, f.needs_ocr, p.status, p.found,
@@ -64,7 +68,12 @@ pub async fn lock(conn: &mut PgConnection, id: Uuid) -> Result<Option<(i64, Stri
     .map(|r| (r.version, r.status)))
 }
 
-pub async fn insert(conn: &mut PgConnection, id: Uuid, file_id: Uuid, by: Option<UserId>) -> Result<()> {
+pub async fn insert(
+    conn: &mut PgConnection,
+    id: Uuid,
+    file_id: Uuid,
+    by: Option<UserId>,
+) -> Result<()> {
     sqlx::query!(
         r#"INSERT INTO pdf_imports (id, workspace_id, file_id, created_by, updated_by)
            VALUES ($1, app_workspace_id(), $2, $3, $3)"#,
@@ -181,7 +190,11 @@ pub async fn insert_template(
     Ok(())
 }
 
-pub async fn archive_template(conn: &mut PgConnection, id: Uuid, by: Option<UserId>) -> Result<bool> {
+pub async fn archive_template(
+    conn: &mut PgConnection,
+    id: Uuid,
+    by: Option<UserId>,
+) -> Result<bool> {
     let done = sqlx::query!(
         r#"UPDATE pdf_templates SET archived_at = now(), updated_by = $2
            WHERE workspace_id = app_workspace_id() AND id = $1 AND archived_at IS NULL"#,

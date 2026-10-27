@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE pdf_imports SET status = 'confirmed', document_id = $2, invoice_id = $3, updated_by = $4\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e677d7748544e79e8a74da6f8747ca78bd85dbabe53c7e47fa90c063b01e26c3"
+}

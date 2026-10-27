@@ -118,7 +118,8 @@ impl SmtpMailer {
         for a in &email.attachments {
             let content_type =
                 ContentType::parse(&a.content_type).map_err(|e| bad("attachment", &e))?;
-            mixed = mixed.singlepart(Part::new(a.filename.clone()).body(a.bytes.clone(), content_type));
+            mixed =
+                mixed.singlepart(Part::new(a.filename.clone()).body(a.bytes.clone(), content_type));
         }
         builder.multipart(mixed).map_err(|e| bad("message", &e))
     }
@@ -238,8 +239,8 @@ mod tests {
             content_type: "application/pdf".into(),
             bytes: b"%PDF-1.7".to_vec(),
         });
-        let raw = String::from_utf8(mailer.build(&with_pdf).expect("builds").formatted())
-            .expect("utf8");
+        let raw =
+            String::from_utf8(mailer.build(&with_pdf).expect("builds").formatted()).expect("utf8");
         assert!(raw.contains("multipart/mixed"), "{raw}");
         assert!(raw.contains("filename=\"INV-2026-0001.pdf\""), "{raw}");
         let mut bad = email();

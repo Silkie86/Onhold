@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE signature_requests\n           SET status = CASE WHEN $2 THEN 'signed' ELSE 'declined' END, decided_at = now(), signed_name = $3,\n               signed_ip = $4, signed_user_agent = $5, pdf_sha256 = $6, decline_reason = $7\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND status = 'pending'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bool",
+        "Text",
+        "Inet",
+        "Text",
+        "Bytea",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e4bdcb3671db4ac100c2b5653a00f4ab10d2ab6101f8aded11ffe9defcab67db"
+}

@@ -117,7 +117,9 @@ fn renderer(pdf: &config::PdfConfig) -> Arc<dyn core_pdf::write::Renderer> {
                 Arc::new(c)
             }
             None => {
-                tracing::warn!("no Chromium found: documents print in the plain layout (set CHROMIUM_PATH)");
+                tracing::warn!(
+                    "no Chromium found: documents print in the plain layout (set CHROMIUM_PATH)"
+                );
                 Arc::new(PlainText)
             }
         },

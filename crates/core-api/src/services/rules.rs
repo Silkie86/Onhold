@@ -233,10 +233,13 @@ async fn check_references(tx: &mut Tx, def: &RuleDef) -> ApiResult<()> {
                         "documents are made from a booking, enquiry, talent, organisation or contact",
                     ));
                 }
-                let saved = core_db::templates::list(tx, Some(core_engines::templates::Kind::Document.as_str()))
-                    .await?
-                    .into_iter()
-                    .any(|t| t.key == *template);
+                let saved = core_db::templates::list(
+                    tx,
+                    Some(core_engines::templates::Kind::Document.as_str()),
+                )
+                .await?
+                .into_iter()
+                .any(|t| t.key == *template);
                 if !saved && core_engines::documents::built_in(template).is_none() {
                     return Err(ApiError::invalid(
                         format!("actions[{i}].template"),
@@ -244,7 +247,8 @@ async fn check_references(tx: &mut Tx, def: &RuleDef) -> ApiResult<()> {
                     ));
                 }
             }
-            Action::SendEmail { .. } | Action::CreateTask { .. } | Action::CreateInvoice { .. } => {}
+            Action::SendEmail { .. } | Action::CreateTask { .. } | Action::CreateInvoice { .. } => {
+            }
         }
     }
     Ok(())

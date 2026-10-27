@@ -217,7 +217,12 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewPayment) -> ApiResult<P
     Ok(v)
 }
 
-pub(crate) async fn create_in(tx: &mut Tx, ctx: &Ctx, new: NewPayment, method_override: Option<&str>) -> ApiResult<Uuid> {
+pub(crate) async fn create_in(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    new: NewPayment,
+    method_override: Option<&str>,
+) -> ApiResult<Uuid> {
     let mut check = Check::default();
     let amount = check.money("amount", Some(&new.amount));
     if new.amount.minor <= 0 {
@@ -249,7 +254,12 @@ pub(crate) async fn create_in(tx: &mut Tx, ctx: &Ctx, new: NewPayment, method_ov
     for (i, a) in new.allocations.iter().enumerate() {
         let inv = super::invoices::load(tx, a.invoice_id)
             .await?
-            .ok_or_else(|| ApiError::invalid(format!("allocations[{i}].invoice_id"), "there is no such invoice"))?;
+            .ok_or_else(|| {
+                ApiError::invalid(
+                    format!("allocations[{i}].invoice_id"),
+                    "there is no such invoice",
+                )
+            })?;
         if inv.kind != "invoice" || !inv.status.is_issued() {
             return Err(ApiError::invalid(
                 format!("allocations[{i}].invoice_id"),
@@ -259,18 +269,27 @@ pub(crate) async fn create_in(tx: &mut Tx, ctx: &Ctx, new: NewPayment, method_ov
         if inv.currency != amount.currency {
             return Err(ApiError::invalid(
                 format!("allocations[{i}].invoice_id"),
-                format!("the invoice is in {}; the payment in {}", inv.currency, amount.currency),
+                format!(
+                    "the invoice is in {}; the payment in {}",
+                    inv.currency, amount.currency
+                ),
             ));
         }
         let want = a.amount_minor.unwrap_or(inv.outstanding.minor.min(left));
         if want <= 0 || want > inv.outstanding.minor {
             return Err(ApiError::invalid(
                 format!("allocations[{i}].amount_minor"),
-                format!("must be more than zero and at most {} (what it still owes)", inv.outstanding.minor),
+                format!(
+                    "must be more than zero and at most {} (what it still owes)",
+                    inv.outstanding.minor
+                ),
             ));
         }
         if want > left {
-            return Err(ApiError::invalid("allocations", "the allocations add up to more than the payment"));
+            return Err(ApiError::invalid(
+                "allocations",
+                "the allocations add up to more than the payment",
+            ));
         }
         left -= want;
         organisation = organisation.or(inv.payer_organisation_id);
@@ -332,11 +351,16 @@ pub async fn allocate(
 ) -> ApiResult<PaymentView> {
     ctx.authorize(Permission::PaymentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let version = core_db::payments::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let version = core_db::payments::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.kind != "payment" || before.voided_at.is_some() {
-        return Err(ApiError::conflict("payment_closed", "only a live payment can be allocated"));
+        return Err(ApiError::conflict(
+            "payment_closed",
+            "only a live payment can be allocated",
+        ));
     }
     core_db::invoices::lock(&mut tx, a.invoice_id).await?;
     let inv = super::invoices::load(&mut tx, a.invoice_id)
@@ -348,7 +372,9 @@ pub async fn allocate(
             "payments go against issued invoices in the same currency",
         ));
     }
-    let want = a.amount_minor.unwrap_or(inv.outstanding.minor.min(before.unallocated.minor));
+    let want = a
+        .amount_minor
+        .unwrap_or(inv.outstanding.minor.min(before.unallocated.minor));
     if want <= 0 || want > inv.outstanding.minor || want > before.unallocated.minor {
         return Err(ApiError::invalid(
             "amount_minor",
@@ -377,18 +403,26 @@ pub async fn allocate(
 }
 
 /// Takes one allocation back.
-pub async fn remove_allocation(state: &AppState, ctx: &Ctx, id: Uuid, allocation_id: Uuid) -> ApiResult<PaymentView> {
+pub async fn remove_allocation(
+    state: &AppState,
+    ctx: &Ctx,
+    id: Uuid,
+    allocation_id: Uuid,
+) -> ApiResult<PaymentView> {
     ctx.authorize(Permission::PaymentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    core_db::payments::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    core_db::payments::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     let Some(a) = before.allocations.iter().find(|a| a.id == allocation_id) else {
         return Err(ApiError::NotFound);
     };
     core_db::invoices::lock(&mut tx, a.invoice_id).await?;
-    let (_, invoice, amount) = core_db::payments::remove_allocation(&mut tx, allocation_id, ctx.user_id())
-        .await?
-        .ok_or(ApiError::NotFound)?;
+    let (_, invoice, amount) =
+        core_db::payments::remove_allocation(&mut tx, allocation_id, ctx.user_id())
+            .await?
+            .ok_or(ApiError::NotFound)?;
     core_db::payments::add_allocated(&mut tx, id, -amount).await?;
     let after = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     record(
@@ -423,10 +457,15 @@ pub struct NewRefund {
 pub async fn refund(state: &AppState, ctx: &Ctx, id: Uuid, r: NewRefund) -> ApiResult<PaymentView> {
     ctx.authorize(Permission::PaymentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    core_db::payments::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    core_db::payments::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.kind != "payment" || before.voided_at.is_some() {
-        return Err(ApiError::conflict("payment_closed", "only a live payment can be refunded"));
+        return Err(ApiError::conflict(
+            "payment_closed",
+            "only a live payment can be refunded",
+        ));
     }
     let mut check = Check::default();
     if r.amount_minor <= 0 || r.amount_minor > before.unallocated.minor {
@@ -502,7 +541,9 @@ pub async fn void(
 ) -> ApiResult<PaymentView> {
     ctx.authorize(Permission::PaymentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let version = core_db::payments::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let version = core_db::payments::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.voided_at.is_some() {
@@ -548,7 +589,11 @@ pub async fn void(
 }
 
 /// An invoice's allocations, for its page.
-pub async fn for_invoice(state: &AppState, ctx: &Ctx, invoice_id: Uuid) -> ApiResult<Vec<AllocationView>> {
+pub async fn for_invoice(
+    state: &AppState,
+    ctx: &Ctx,
+    invoice_id: Uuid,
+) -> ApiResult<Vec<AllocationView>> {
     ctx.authorize(Permission::InvoiceRead)?;
     let mut tx = begin(state, ctx).await?;
     if core_db::invoices::get(&mut tx, invoice_id).await?.is_none() {

@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT currency AS \"currency!\",\n                  coalesce(sum(amount_minor) FILTER (WHERE kind = 'payment'), 0)::bigint AS \"received_minor!\",\n                  coalesce(sum(amount_minor) FILTER (WHERE kind = 'refund'), 0)::bigint AS \"refunded_minor!\",\n                  coalesce(sum(amount_minor) FILTER (WHERE kind = 'payout'), 0)::bigint AS \"paid_out_minor!\"\n           FROM payments\n           WHERE workspace_id = app_workspace_id() AND voided_at IS NULL AND paid_on BETWEEN $1 AND $2\n           GROUP BY currency ORDER BY currency",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "currency!",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "received_minor!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "refunded_minor!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "paid_out_minor!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "93eac5db12efc546d554728a37bd4f94a1acd95da2371ba5ea52c21f06b8e4f7"
+}

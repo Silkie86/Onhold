@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO payment_allocations (id, workspace_id, payment_id, invoice_id, amount_minor, created_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e7db0429d12319844837e019bffd35d3e586d6a8a8436675118426353a23081d"
+}

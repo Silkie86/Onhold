@@ -201,7 +201,12 @@ pub struct Edit<'a> {
     pub custom: &'a Value,
 }
 
-pub async fn update(conn: &mut PgConnection, id: Uuid, e: Edit<'_>, by: Option<UserId>) -> Result<()> {
+pub async fn update(
+    conn: &mut PgConnection,
+    id: Uuid,
+    e: Edit<'_>,
+    by: Option<UserId>,
+) -> Result<()> {
     sqlx::query!(
         r#"UPDATE documents SET kind = $2, title = $3, related_entity = $4, related_id = $5, document_date = $6,
                   expires_on = $7, notes = $8, tags = $9, custom = $10, updated_by = $11

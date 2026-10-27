@@ -1,0 +1,263 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT s.id, s.booking_id, b.title AS booking_title, s.talent_id, t.name AS talent_name, s.status,\n                  s.currency, s.gross_minor, s.commission_bps, s.commission_minor, s.expenses, s.expenses_minor,\n                  s.net_minor,\n                  (SELECT coalesce(sum(p.amount_minor), 0) FROM payments p\n                   WHERE p.settlement_id = s.id AND p.kind = 'payout' AND p.voided_at IS NULL)::bigint\n                      AS \"paid_out_minor!\",\n                  s.notes, s.finalised_at, s.document_id, s.commission_invoice_id, s.version, s.created_at,\n                  s.updated_at\n           FROM settlements s JOIN bookings b ON b.id = s.booking_id JOIN talent t ON t.id = s.talent_id\n           WHERE s.workspace_id = app_workspace_id() AND s.id = $1 AND s.deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "booking_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "booking_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "booking_title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "talent_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "talent_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "currency",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "gross_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "gross_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "commission_bps",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "commission_bps"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "commission_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "commission_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "expenses",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "expenses"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "expenses_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "expenses_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "net_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "net_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "paid_out_minor!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 14,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "finalised_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "finalised_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "document_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "document_id"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "commission_invoice_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "commission_invoice_id"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      null,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5e533ee243ebe446969f5d15fedf177a4cb28c0d03bbeaf2dcb033dfd7edf959"
+}

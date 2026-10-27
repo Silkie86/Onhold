@@ -18,8 +18,9 @@ use crate::AppState;
 use crate::error::{ApiResult, ErrorBody};
 use crate::extract::{ClientMeta, IfMatch, WsCtx};
 use crate::services::documents::{
-    self, DocumentDetail, DocumentFilter, DocumentPage, DocumentPatch, DocumentTemplate, GenerateDocument,
-    NewDocument, NewVersionFile, PublicSigning, RequestSignatures, SignDecision, TemplateSource,
+    self, DocumentDetail, DocumentFilter, DocumentPage, DocumentPatch, DocumentTemplate,
+    GenerateDocument, NewDocument, NewVersionFile, PublicSigning, RequestSignatures, SignDecision,
+    TemplateSource,
 };
 use crate::services::files::{self, Download, FileView};
 use crate::services::pdf_imports::{
@@ -64,7 +65,13 @@ pub(crate) fn file_response(d: Download) -> Response {
     let ascii: String = d
         .filename
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || "-_. ".contains(c) { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || "-_. ".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let encoded: String = url::form_urlencoded::byte_serialize(d.filename.as_bytes()).collect();
     let disposition = format!(
@@ -75,9 +82,18 @@ pub(crate) fn file_response(d: Download) -> Response {
     if let Ok(v) = HeaderValue::from_str(&disposition) {
         headers.insert(header::CONTENT_DISPOSITION, v);
     }
-    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("sandbox; default-src 'none'"));
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("sandbox; default-src 'none'"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
     (headers, d.bytes).into_response()
 }
 
@@ -103,7 +119,9 @@ async fn upload_file(
     headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult<(StatusCode, Json<FileView>)> {
-    let claimed = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok());
+    let claimed = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok());
     Ok((
         StatusCode::CREATED,
         Json(files::upload(&state, &ctx, &q.filename, claimed, &body).await?),
@@ -113,14 +131,22 @@ async fn upload_file(
 #[utoipa::path(get, path = "/files/{id}", tag = "documents", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, body = FileView), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn get_file(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Json<FileView>> {
+async fn get_file(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<FileView>> {
     Ok(Json(files::get(&state, &ctx, id).await?))
 }
 
 #[utoipa::path(get, path = "/files/{id}/content", tag = "documents", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, content_type = "application/octet-stream", body = Vec<u8>), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn download_file(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Response> {
+async fn download_file(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Response> {
     Ok(file_response(files::download(&state, &ctx, id).await?))
 }
 
@@ -128,7 +154,11 @@ async fn download_file(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id
 #[utoipa::path(get, path = "/files/{id}/reading", tag = "documents", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, body = Reading), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn read_file(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Json<Reading>> {
+async fn read_file(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<Reading>> {
     Ok(Json(pdf_imports::read_file(&state, &ctx, id).await?))
 }
 
@@ -155,7 +185,10 @@ async fn create_document(
     WsCtx(ctx): WsCtx,
     Json(b): Json<NewDocument>,
 ) -> ApiResult<(StatusCode, Json<DocumentDetail>)> {
-    Ok((StatusCode::CREATED, Json(documents::create(&state, &ctx, b).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(documents::create(&state, &ctx, b).await?),
+    ))
 }
 
 /// Make a document from a template (a contract, confirmation or advance
@@ -169,13 +202,19 @@ async fn generate_document(
     WsCtx(ctx): WsCtx,
     Json(b): Json<GenerateDocument>,
 ) -> ApiResult<(StatusCode, Json<DocumentDetail>)> {
-    Ok((StatusCode::CREATED, Json(documents::generate(&state, &ctx, b).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(documents::generate(&state, &ctx, b).await?),
+    ))
 }
 
 /// The templates documents can be made from.
 #[utoipa::path(get, path = "/document-templates", tag = "documents", params(WorkspaceHeader),
     responses((status = 200, body = Vec<DocumentTemplate>)), security(("session" = []), ("api_key" = [])))]
-async fn document_templates(State(state): State<AppState>, WsCtx(ctx): WsCtx) -> ApiResult<Json<Vec<DocumentTemplate>>> {
+async fn document_templates(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<Vec<DocumentTemplate>>> {
     Ok(Json(documents::templates(&state, &ctx).await?))
 }
 
@@ -185,7 +224,10 @@ async fn document_templates(State(state): State<AppState>, WsCtx(ctx): WsCtx) ->
     params(WorkspaceHeader, ("key" = String, Path)),
     responses((status = 200, body = TemplateSource), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn document_template_source(WsCtx(_ctx): WsCtx, Path(key): Path<String>) -> ApiResult<Json<TemplateSource>> {
+async fn document_template_source(
+    WsCtx(_ctx): WsCtx,
+    Path(key): Path<String>,
+) -> ApiResult<Json<TemplateSource>> {
     Ok(Json(documents::built_in_source(&key)?))
 }
 
@@ -193,7 +235,11 @@ async fn document_template_source(WsCtx(_ctx): WsCtx, Path(key): Path<String>) -
 #[utoipa::path(get, path = "/documents/{id}", tag = "documents", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, body = DocumentDetail), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn get_document(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Response> {
+async fn get_document(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Response> {
     let d = documents::get(&state, &ctx, id).await?;
     Ok(with_etag(d.document.version, d))
 }
@@ -218,7 +264,11 @@ async fn update_document(
 #[utoipa::path(delete, path = "/documents/{id}", tag = "documents", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 204), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn delete_document(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<StatusCode> {
+async fn delete_document(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
     documents::delete(&state, &ctx, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -241,7 +291,9 @@ async fn download_document(
     Path(id): Path<Uuid>,
     Query(q): Query<VersionQuery>,
 ) -> ApiResult<Response> {
-    Ok(file_response(documents::download(&state, &ctx, id, q.version).await?))
+    Ok(file_response(
+        documents::download(&state, &ctx, id, q.version).await?,
+    ))
 }
 
 /// Make a generated document again from its template, as a new version.
@@ -255,7 +307,9 @@ async fn regenerate_document(
     Path(id): Path<Uuid>,
     IfMatch(if_match): IfMatch,
 ) -> ApiResult<Json<DocumentDetail>> {
-    Ok(Json(documents::regenerate(&state, &ctx, id, if_match).await?))
+    Ok(Json(
+        documents::regenerate(&state, &ctx, id, if_match).await?,
+    ))
 }
 
 /// A new version of an uploaded document from another uploaded file.
@@ -270,7 +324,9 @@ async fn add_document_version(
     IfMatch(if_match): IfMatch,
     Json(b): Json<NewVersionFile>,
 ) -> ApiResult<Json<DocumentDetail>> {
-    Ok(Json(documents::add_file_version(&state, &ctx, id, b, if_match).await?))
+    Ok(Json(
+        documents::add_file_version(&state, &ctx, id, b, if_match).await?,
+    ))
 }
 
 /// Send the current version for e-signature: each signer gets their own link.
@@ -285,7 +341,9 @@ async fn request_signatures(
     IfMatch(if_match): IfMatch,
     Json(b): Json<RequestSignatures>,
 ) -> ApiResult<Json<DocumentDetail>> {
-    Ok(Json(documents::request_signatures(&state, &ctx, id, b, if_match).await?))
+    Ok(Json(
+        documents::request_signatures(&state, &ctx, id, b, if_match).await?,
+    ))
 }
 
 /// Stop waiting for signatures.
@@ -305,8 +363,14 @@ async fn cancel_signatures(
 #[utoipa::path(get, path = "/bookings/{id}/pack", tag = "documents", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, content_type = "application/zip", body = Vec<u8>), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn booking_pack(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Response> {
-    Ok(file_response(documents::booking_pack(&state, &ctx, id).await?))
+async fn booking_pack(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Response> {
+    Ok(file_response(
+        documents::booking_pack(&state, &ctx, id).await?,
+    ))
 }
 
 // Past PDFs ------------------------------------------------------------------------------------
@@ -324,7 +388,9 @@ async fn list_pdf_imports(
     WsCtx(ctx): WsCtx,
     Query(q): Query<ImportStatusQuery>,
 ) -> ApiResult<Json<Vec<PdfImportView>>> {
-    Ok(Json(pdf_imports::list(&state, &ctx, q.status.as_deref()).await?))
+    Ok(Json(
+        pdf_imports::list(&state, &ctx, q.status.as_deref()).await?,
+    ))
 }
 
 /// Start reading a batch of uploaded PDFs.
@@ -337,13 +403,20 @@ async fn create_pdf_imports(
     WsCtx(ctx): WsCtx,
     Json(b): Json<NewPdfImports>,
 ) -> ApiResult<(StatusCode, Json<Vec<PdfImportView>>)> {
-    Ok((StatusCode::CREATED, Json(pdf_imports::create(&state, &ctx, b).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(pdf_imports::create(&state, &ctx, b).await?),
+    ))
 }
 
 #[utoipa::path(get, path = "/pdf-imports/{id}", tag = "documents", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, body = PdfImportView), (status = 404, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn get_pdf_import(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Response> {
+async fn get_pdf_import(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Response> {
     let v = pdf_imports::get(&state, &ctx, id).await?;
     Ok(with_etag(v.version, v))
 }
@@ -360,13 +433,19 @@ async fn confirm_pdf_import(
     IfMatch(if_match): IfMatch,
     Json(b): Json<ConfirmPdfImport>,
 ) -> ApiResult<Json<PdfImportView>> {
-    Ok(Json(pdf_imports::confirm(&state, &ctx, id, b, if_match).await?))
+    Ok(Json(
+        pdf_imports::confirm(&state, &ctx, id, b, if_match).await?,
+    ))
 }
 
 #[utoipa::path(post, path = "/pdf-imports/{id}/discard", tag = "documents", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, body = PdfImportView), (status = 409, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn discard_pdf_import(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Json<PdfImportView>> {
+async fn discard_pdf_import(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<PdfImportView>> {
     Ok(Json(pdf_imports::discard(&state, &ctx, id).await?))
 }
 
@@ -374,14 +453,21 @@ async fn discard_pdf_import(State(state): State<AppState>, WsCtx(ctx): WsCtx, Pa
 #[utoipa::path(post, path = "/pdf-imports/{id}/rematch", tag = "documents", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 200, body = PdfImportView), (status = 409, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
-async fn rematch_pdf_import(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<Json<PdfImportView>> {
+async fn rematch_pdf_import(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<PdfImportView>> {
     Ok(Json(pdf_imports::rematch(&state, &ctx, id).await?))
 }
 
 /// Field patterns for issuers whose PDFs arrive often.
 #[utoipa::path(get, path = "/pdf-templates", tag = "documents", params(WorkspaceHeader),
     responses((status = 200, body = Vec<PdfTemplateView>)), security(("session" = []), ("api_key" = [])))]
-async fn list_pdf_templates(State(state): State<AppState>, WsCtx(ctx): WsCtx) -> ApiResult<Json<Vec<PdfTemplateView>>> {
+async fn list_pdf_templates(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<Vec<PdfTemplateView>>> {
     Ok(Json(pdf_imports::templates(&state, &ctx).await?))
 }
 
@@ -394,12 +480,19 @@ async fn create_pdf_template(
     WsCtx(ctx): WsCtx,
     Json(b): Json<core_pdf::templates::Template>,
 ) -> ApiResult<(StatusCode, Json<PdfTemplateView>)> {
-    Ok((StatusCode::CREATED, Json(pdf_imports::create_template(&state, &ctx, b).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(pdf_imports::create_template(&state, &ctx, b).await?),
+    ))
 }
 
 #[utoipa::path(delete, path = "/pdf-templates/{id}", tag = "documents", params(WorkspaceHeader, ("id" = Uuid, Path)),
     responses((status = 204), (status = 404, body = ErrorBody)), security(("session" = []), ("api_key" = [])))]
-async fn archive_pdf_template(State(state): State<AppState>, WsCtx(ctx): WsCtx, Path(id): Path<Uuid>) -> ApiResult<StatusCode> {
+async fn archive_pdf_template(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
     pdf_imports::archive_template(&state, &ctx, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -428,12 +521,17 @@ async fn public_sign(
     Path(token): Path<String>,
     Json(b): Json<SignDecision>,
 ) -> ApiResult<Json<PublicSigning>> {
-    Ok(Json(documents::public_decide(&state, &token, meta, b).await?))
+    Ok(Json(
+        documents::public_decide(&state, &token, meta, b).await?,
+    ))
 }
 
 /// The PDF to sign (the signed copy once everyone has signed).
 #[utoipa::path(get, path = "/public/sign/{token}/pdf", tag = "public", params(("token" = String, Path)),
     responses((status = 200, content_type = "application/pdf", body = Vec<u8>), (status = 404, body = ErrorBody)))]
-async fn public_signing_pdf(State(state): State<AppState>, Path(token): Path<String>) -> ApiResult<Response> {
+async fn public_signing_pdf(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> ApiResult<Response> {
     Ok(file_response(documents::public_pdf(&state, &token).await?))
 }

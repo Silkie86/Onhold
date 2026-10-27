@@ -39,10 +39,15 @@ async fn cast(app: &TestApp) -> Cast {
     .await
     .ok()
     .id("/id");
-    let organisation = post(app, &owner, "/api/v1/organisations", json!({ "name": "The Grand Hall" }))
-        .await
-        .ok()
-        .id("/id");
+    let organisation = post(
+        app,
+        &owner,
+        "/api/v1/organisations",
+        json!({ "name": "The Grand Hall" }),
+    )
+    .await
+    .ok()
+    .id("/id");
     Cast {
         owner,
         talent,
@@ -100,9 +105,14 @@ async fn tax_codes_and_settings_start_from_the_country(pool: PgPool) {
         .map(|t| t["name"].as_str().unwrap())
         .collect();
     assert_eq!(defaults, ["No VAT (not registered)"]);
-    post(&app, &c.owner, "/api/v1/tax-codes", json!({ "name": "Silly", "rate_bps": 20_000 }))
-        .await
-        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+    post(
+        &app,
+        &c.owner,
+        "/api/v1/tax-codes",
+        json!({ "name": "Silly", "rate_bps": 20_000 }),
+    )
+    .await
+    .expect(StatusCode::BAD_REQUEST, "invalid_input");
 
     // Settings: the base currency follows the workspace; formats are checked.
     let s = get(&app, &c.owner, "/api/v1/finance/settings").await;
@@ -117,10 +127,12 @@ async fn tax_codes_and_settings_start_from_the_country(pool: PgPool) {
     let saved = app
         .put("/api/v1/finance/settings")
         .signed_in(&c.owner)
-        .json(json!({ "invoice_format": "OH{YY}-{000}", "payment_terms_days": 30,
+        .json(
+            json!({ "invoice_format": "OH{YY}-{000}", "payment_terms_days": 30,
                       "legal_name": "Acme Agency Ltd", "tax_number": "GB123456789",
                       "bank_accounts": [{ "currency": "GBP", "name": "Acme Agency Ltd",
-                                          "details": "Sort code 00-00-00, account 12345678" }] }))
+                                          "details": "Sort code 00-00-00, account 12345678" }] }),
+        )
         .send()
         .await
         .ok()
@@ -128,11 +140,21 @@ async fn tax_codes_and_settings_start_from_the_country(pool: PgPool) {
     assert_eq!(saved["invoice_format"], "OH{YY}-{000}");
 
     // The numbers follow the format.
-    let d = draft(&app, &c, json!([{ "description": "Fee", "unit_minor": 10_000 }])).await;
-    let issued = post(&app, &c.owner, &format!("/api/v1/invoices/{}/issue", id(&d)), json!({}))
-        .await
-        .ok()
-        .body;
+    let d = draft(
+        &app,
+        &c,
+        json!([{ "description": "Fee", "unit_minor": 10_000 }]),
+    )
+    .await;
+    let issued = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{}/issue", id(&d)),
+        json!({}),
+    )
+    .await
+    .ok()
+    .body;
     let yy = chrono::Utc::now().format("%y").to_string();
     assert_eq!(issued["reference"], format!("OH{yy}-001"));
     assert_eq!(issued["tax"]["minor"], 0);
@@ -172,10 +194,15 @@ async fn an_invoice_is_issued_part_paid_credited_and_refunded(pool: PgPool) {
     assert_eq!(edited["notes"], "Thank you!");
 
     // Issuing numbers and freezes it.
-    let issued = post(&app, &c.owner, &format!("/api/v1/invoices/{inv}/issue"), json!({}))
-        .await
-        .ok()
-        .body;
+    let issued = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{inv}/issue"),
+        json!({}),
+    )
+    .await
+    .ok()
+    .body;
     let year = chrono::Utc::now().format("%Y").to_string();
     assert_eq!(issued["reference"], format!("INV-{year}-0001"));
     assert_eq!(issued["status"], "issued");
@@ -236,9 +263,14 @@ async fn an_invoice_is_issued_part_paid_credited_and_refunded(pool: PgPool) {
     .expect(StatusCode::BAD_REQUEST, "invalid_input");
 
     // Paid money means no voiding: a credit note instead, for the travel.
-    post(&app, &c.owner, &format!("/api/v1/invoices/{inv}/void"), json!({}))
-        .await
-        .expect(StatusCode::CONFLICT, "invoice_has_payments");
+    post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{inv}/void"),
+        json!({}),
+    )
+    .await
+    .expect(StatusCode::CONFLICT, "invoice_has_payments");
     let credit = post(
         &app,
         &c.owner,
@@ -301,23 +333,50 @@ async fn an_invoice_is_issued_part_paid_credited_and_refunded(pool: PgPool) {
     assert_eq!(refund.body["kind"], "refund");
 
     // Voiding the first payment takes it off the invoice again.
-    post(&app, &c.owner, &format!("/api/v1/payments/{payment}/void"), json!({ "reason": "Bounced" }))
-        .await
-        .ok();
+    post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/payments/{payment}/void"),
+        json!({ "reason": "Bounced" }),
+    )
+    .await
+    .ok();
     let i = get(&app, &c.owner, &format!("/api/v1/invoices/{inv}")).await;
     assert_eq!(i["status"], "part_paid", "{i}");
     assert_eq!(i["outstanding"]["minor"], 50_000);
-    let allocations = get(&app, &c.owner, &format!("/api/v1/invoices/{inv}/allocations")).await;
+    let allocations = get(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{inv}/allocations"),
+    )
+    .await;
     assert_eq!(allocations.as_array().unwrap().len(), 1, "{allocations}");
 
     // An invoice nobody paid can be voided; it keeps its number.
-    let other = draft(&app, &c, json!([{ "description": "Fee", "unit_minor": 1_000 }])).await;
+    let other = draft(
+        &app,
+        &c,
+        json!([{ "description": "Fee", "unit_minor": 1_000 }]),
+    )
+    .await;
     let other = id(&other);
-    post(&app, &c.owner, &format!("/api/v1/invoices/{other}/issue"), json!({})).await.ok();
-    let voided = post(&app, &c.owner, &format!("/api/v1/invoices/{other}/void"), json!({ "reason": "Duplicate" }))
-        .await
-        .ok()
-        .body;
+    post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{other}/issue"),
+        json!({}),
+    )
+    .await
+    .ok();
+    let voided = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{other}/void"),
+        json!({ "reason": "Duplicate" }),
+    )
+    .await
+    .ok()
+    .body;
     assert_eq!(voided["status"], "void");
     assert_eq!(voided["reference"], format!("INV-{year}-0002"));
 
@@ -332,17 +391,28 @@ async fn an_invoice_is_issued_part_paid_credited_and_refunded(pool: PgPool) {
     let list = get(&app, &c.owner, "/api/v1/invoices?status=part_paid").await;
     assert_eq!(list["items"].as_array().unwrap().len(), 1);
     let report = get(&app, &c.owner, "/api/v1/reports/finance").await;
-    assert_eq!(report["outstanding"][0]["outstanding"]["minor"], 50_000, "{report}");
+    assert_eq!(
+        report["outstanding"][0]["outstanding"]["minor"], 50_000,
+        "{report}"
+    );
     let csv = app
         .get("/api/v1/reports/invoices/csv")
         .signed_in(&c.owner)
         .send()
         .await
         .ok();
-    assert!(csv.headers["content-type"].to_str().unwrap().starts_with("text/csv"));
+    assert!(
+        csv.headers["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("text/csv")
+    );
     let text = csv.body.as_str().unwrap();
     assert!(text.starts_with("reference,kind,status"), "{text}");
-    assert!(text.contains(&format!("INV-{year}-0001,invoice,part_paid,The Grand Hall")), "{text}");
+    assert!(
+        text.contains(&format!("INV-{year}-0001,invoice,part_paid,The Grand Hall")),
+        "{text}"
+    );
     assert!(text.contains("1320.00"), "{text}");
     app.get("/api/v1/reports/nothing/csv")
         .signed_in(&c.owner)
@@ -383,17 +453,35 @@ async fn past_invoices_are_kept_as_records_without_taking_a_number(pool: PgPool)
     .expect(StatusCode::CONFLICT, "invoice_number_taken");
 
     // The first invoice made in OnHold still takes the first number.
-    let d = draft(&app, &c, json!([{ "description": "Fee", "unit_minor": 10_000 }])).await;
-    let issued = post(&app, &c.owner, &format!("/api/v1/invoices/{}/issue", id(&d)), json!({}))
-        .await
-        .ok()
-        .body;
-    assert!(issued["reference"].as_str().unwrap().ends_with("-0001"), "{issued}");
+    let d = draft(
+        &app,
+        &c,
+        json!([{ "description": "Fee", "unit_minor": 10_000 }]),
+    )
+    .await;
+    let issued = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{}/issue", id(&d)),
+        json!({}),
+    )
+    .await
+    .ok()
+    .body;
+    assert!(
+        issued["reference"].as_str().unwrap().ends_with("-0001"),
+        "{issued}"
+    );
 
     // A past invoice cannot be sent.
-    post(&app, &c.owner, &format!("/api/v1/invoices/{}/send", id(&past.body)), json!({ "to": "a@b.test" }))
-        .await
-        .expect(StatusCode::CONFLICT, "invoice_not_issued");
+    post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/invoices/{}/send", id(&past.body)),
+        json!({ "to": "a@b.test" }),
+    )
+    .await
+    .expect(StatusCode::CONFLICT, "invoice_not_issued");
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -412,7 +500,13 @@ async fn a_settlement_pays_the_talent_their_share(pool: PgPool) {
     .ok()
     .id("/id");
 
-    let made = post(&app, &c.owner, &format!("/api/v1/bookings/{booking}/settlements"), json!({})).await;
+    let made = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/bookings/{booking}/settlements"),
+        json!({}),
+    )
+    .await;
     assert_eq!(made.status, StatusCode::OK, "{}", made.body);
     let s = &made.body[0];
     assert_eq!(s["talent_name"], "The Midnight Owls");
@@ -433,10 +527,15 @@ async fn a_settlement_pays_the_talent_their_share(pool: PgPool) {
     assert_eq!(patched["net"]["minor"], 150_000);
 
     // Finalising makes the statement; then it is fixed until reopened.
-    let fin = post(&app, &c.owner, &format!("/api/v1/settlements/{sid}/finalise"), json!({}))
-        .await
-        .ok()
-        .body;
+    let fin = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/settlements/{sid}/finalise"),
+        json!({}),
+    )
+    .await
+    .ok()
+    .body;
     assert_eq!(fin["status"], "final", "{fin}");
     assert!(fin["document_id"].is_string());
     app.patch(&format!("/api/v1/settlements/{sid}"))
@@ -447,18 +546,28 @@ async fn a_settlement_pays_the_talent_their_share(pool: PgPool) {
         .expect(StatusCode::CONFLICT, "settlement_final");
 
     // The payout: by default what is left to pay.
-    let paid = post(&app, &c.owner, &format!("/api/v1/settlements/{sid}/payouts"), json!({}))
-        .await
-        .ok()
-        .body;
+    let paid = post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/settlements/{sid}/payouts"),
+        json!({}),
+    )
+    .await
+    .ok()
+    .body;
     assert_eq!(paid["paid_out"]["minor"], 150_000, "{paid}");
     let payouts = get(&app, &c.owner, "/api/v1/payments?kind=payout").await;
     assert_eq!(payouts["items"][0]["amount"]["minor"], 150_000, "{payouts}");
     assert_eq!(payouts["items"][0]["talent_name"], "The Midnight Owls");
     // Nothing more is owed to them.
-    post(&app, &c.owner, &format!("/api/v1/settlements/{sid}/payouts"), json!({}))
-        .await
-        .expect(StatusCode::CONFLICT, "settlement_paid");
+    post(
+        &app,
+        &c.owner,
+        &format!("/api/v1/settlements/{sid}/payouts"),
+        json!({}),
+    )
+    .await
+    .expect(StatusCode::CONFLICT, "settlement_paid");
     let report = get(&app, &c.owner, "/api/v1/reports/finance").await;
     assert_eq!(report["cash"][0]["paid_out_minor"], 150_000, "{report}");
 }

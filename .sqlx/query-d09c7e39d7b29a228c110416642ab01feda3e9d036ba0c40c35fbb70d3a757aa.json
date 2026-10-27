@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT billing FROM talent WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "billing",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "billing"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d09c7e39d7b29a228c110416642ab01feda3e9d036ba0c40c35fbb70d3a757aa"
+}

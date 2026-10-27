@@ -50,7 +50,9 @@ fn check_key(key: &str) -> Result<(), StorageError> {
     if ok {
         Ok(())
     } else {
-        Err(StorageError::Failed(format!("`{key}` is not a storage key")))
+        Err(StorageError::Failed(format!(
+            "`{key}` is not a storage key"
+        )))
     }
 }
 
@@ -68,7 +70,9 @@ impl DirectoryStore {
 
     fn path(&self, key: &str) -> Result<PathBuf, StorageError> {
         check_key(key)?;
-        Ok(key.split('/').fold(self.root.clone(), |p, part| p.join(part)))
+        Ok(key
+            .split('/')
+            .fold(self.root.clone(), |p, part| p.join(part)))
     }
 }
 
@@ -331,10 +335,7 @@ fn sign(req: &Request<'_>, config: &S3Config, now: DateTime<Utc>) -> Vec<(String
             |k, part| hmac(&k, part),
         );
     let signature = hex(&hmac(&key, &to_sign));
-    let mut out: Vec<(String, String)> = headers
-        .into_iter()
-        .filter(|(n, _)| n != "host")
-        .collect();
+    let mut out: Vec<(String, String)> = headers.into_iter().filter(|(n, _)| n != "host").collect();
     out.push((
         "authorization".into(),
         format!(
@@ -363,7 +364,9 @@ mod tests {
     fn signs_like_the_aws_example() {
         // The "GET Object" example in AWS's Signature Version 4 documentation.
         let config = S3Config {
-            endpoint: "https://examplebucket.s3.amazonaws.com".parse().expect("url"),
+            endpoint: "https://examplebucket.s3.amazonaws.com"
+                .parse()
+                .expect("url"),
             bucket: "examplebucket".into(),
             region: "us-east-1".into(),
             access_key_id: "AKIAIOSFODNN7EXAMPLE".into(),
@@ -433,7 +436,10 @@ mod tests {
             store.get("ws/one").await,
             Err(StorageError::NotFound)
         ));
-        store.delete("ws/one").await.expect("deleting twice is fine");
+        store
+            .delete("ws/one")
+            .await
+            .expect("deleting twice is fine");
         assert!(writable(&root));
         let _ = std::fs::remove_dir_all(&root);
     }

@@ -7,10 +7,10 @@ use anyhow::Context;
 use clap::Args;
 use core_api::Config;
 use core_api::config::{PdfConfig, StorageConfig};
-use core_integrations::storage::S3Config;
 use core_api::oidc::OidcProvider;
 use core_domain::crypto::Keyring;
 use core_integrations::mail::{LogMailer, Mailer, SmtpMailer};
+use core_integrations::storage::S3Config;
 use url::Url;
 
 #[derive(Debug, Args)]
@@ -111,7 +111,12 @@ pub struct ApiArgs {
     s3_region: String,
     #[arg(long, env = "S3_ACCESS_KEY_ID", global = true)]
     s3_access_key_id: Option<String>,
-    #[arg(long, env = "S3_SECRET_ACCESS_KEY", hide_env_values = true, global = true)]
+    #[arg(
+        long,
+        env = "S3_SECRET_ACCESS_KEY",
+        hide_env_values = true,
+        global = true
+    )]
     s3_secret_access_key: Option<String>,
 
     /// How documents become PDFs: `auto` (Chromium if installed, else a

@@ -200,7 +200,12 @@ fn decimal(minor: i64, currency: &str) -> String {
     let scale = 10i64.pow(places);
     let sign = if minor < 0 { "-" } else { "" };
     let abs = minor.unsigned_abs();
-    format!("{sign}{}.{:0width$}", abs / scale as u64, abs % scale as u64, width = places as usize)
+    format!(
+        "{sign}{}.{:0width$}",
+        abs / scale as u64,
+        abs % scale as u64,
+        width = places as usize
+    )
 }
 
 /// One of the report's tables, or the invoice or payment list, as CSV.
@@ -222,8 +227,22 @@ pub async fn csv(state: &AppState, ctx: &Ctx, table: &str, p: &Period) -> ApiRes
             )
             .await?;
             w.write_record([
-                "reference", "kind", "status", "payer", "issue_date", "due_date", "currency", "subtotal", "tax",
-                "total", "paid", "credited", "outstanding", "base_currency", "fx_rate", "base_total",
+                "reference",
+                "kind",
+                "status",
+                "payer",
+                "issue_date",
+                "due_date",
+                "currency",
+                "subtotal",
+                "tax",
+                "total",
+                "paid",
+                "credited",
+                "outstanding",
+                "base_currency",
+                "fx_rate",
+                "base_total",
             ])
             .map_err(err)?;
             for i in page.items {
@@ -264,8 +283,18 @@ pub async fn csv(state: &AppState, ctx: &Ctx, table: &str, p: &Period) -> ApiRes
                 },
             )
             .await?;
-            w.write_record(["paid_on", "kind", "method", "currency", "amount", "reference", "organisation", "talent", "voided"])
-                .map_err(err)?;
+            w.write_record([
+                "paid_on",
+                "kind",
+                "method",
+                "currency",
+                "amount",
+                "reference",
+                "organisation",
+                "talent",
+                "voided",
+            ])
+            .map_err(err)?;
             for x in page.items {
                 w.write_record([
                     x.paid_on.to_string(),
@@ -284,8 +313,17 @@ pub async fn csv(state: &AppState, ctx: &Ctx, table: &str, p: &Period) -> ApiRes
         "revenue_by_month" | "revenue_by_payer" | "revenue_by_talent" | "outstanding" => {
             let r = finance(state, ctx, p).await?;
             if table == "outstanding" {
-                w.write_record(["reference", "payer", "status", "due_date", "days_overdue", "currency", "outstanding", "base_outstanding"])
-                    .map_err(err)?;
+                w.write_record([
+                    "reference",
+                    "payer",
+                    "status",
+                    "due_date",
+                    "days_overdue",
+                    "currency",
+                    "outstanding",
+                    "base_outstanding",
+                ])
+                .map_err(err)?;
                 for o in r.outstanding {
                     w.write_record([
                         o.reference.unwrap_or_default(),
@@ -295,7 +333,9 @@ pub async fn csv(state: &AppState, ctx: &Ctx, table: &str, p: &Period) -> ApiRes
                         o.days_overdue.to_string(),
                         o.outstanding.currency.clone(),
                         decimal(o.outstanding.minor, &o.outstanding.currency),
-                        o.base_outstanding.map(|m| decimal(m.minor, &m.currency)).unwrap_or_default(),
+                        o.base_outstanding
+                            .map(|m| decimal(m.minor, &m.currency))
+                            .unwrap_or_default(),
                     ])
                     .map_err(err)?;
                 }
@@ -305,7 +345,8 @@ pub async fn csv(state: &AppState, ctx: &Ctx, table: &str, p: &Period) -> ApiRes
                     "revenue_by_payer" => r.by_payer,
                     _ => r.by_talent,
                 };
-                w.write_record(["key", "invoices", "currency", "invoiced", "tax"]).map_err(err)?;
+                w.write_record(["key", "invoices", "currency", "invoiced", "tax"])
+                    .map_err(err)?;
                 for row in rows {
                     w.write_record([
                         row.key,
@@ -327,7 +368,9 @@ pub async fn csv(state: &AppState, ctx: &Ctx, table: &str, p: &Period) -> ApiRes
             ));
         }
     }
-    let bytes = w.into_inner().map_err(|e| ApiError::internal(e.to_string()))?;
+    let bytes = w
+        .into_inner()
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     String::from_utf8(bytes).map_err(ApiError::internal)
 }
 

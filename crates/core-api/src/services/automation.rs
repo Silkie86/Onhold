@@ -195,10 +195,13 @@ fn task_title(title: &str, ctx_json: &Value) -> String {
 /// Works out what an action would do, without doing it.
 async fn plan(tx: &mut Tx, action: &Action, ctx_json: &Value) -> ApiResult<ActionResult> {
     let (kind, detail) = match action {
-        Action::GenerateDocument { template } => ("generate_document", json!({ "template": template })),
-        Action::CreateInvoice { purpose, issue } => {
-            ("create_invoice", json!({ "purpose": purpose, "issue": issue }))
+        Action::GenerateDocument { template } => {
+            ("generate_document", json!({ "template": template }))
         }
+        Action::CreateInvoice { purpose, issue } => (
+            "create_invoice",
+            json!({ "purpose": purpose, "issue": issue }),
+        ),
         Action::SetBookingStatus { status } => ("set_booking_status", json!({ "status": status })),
         Action::SendEmail { template, to } => {
             let to = recipients(tx, to, ctx_json).await?;
@@ -262,20 +265,27 @@ async fn act(
                 return Ok(failed(planned, "there is no record to make it from".into()));
             };
             let ctx = rule_ctx(workspace, rule.id, input.depth.saturating_add(1));
-            let r = super::documents::generate_in(state, tx, &ctx, template, &input.entity, object_id)
-                .await
-                .map(|(id, _)| json!({ "template": template, "document_id": id }));
+            let r =
+                super::documents::generate_in(state, tx, &ctx, template, &input.entity, object_id)
+                    .await
+                    .map(|(id, _)| json!({ "template": template, "document_id": id }));
             outcome(planned, r)
         }
         Action::CreateInvoice { purpose, issue } => {
-            let Some(object_id) = input.object_id.filter(|_| input.entity == super::bookings::ENTITY) else {
+            let Some(object_id) = input
+                .object_id
+                .filter(|_| input.entity == super::bookings::ENTITY)
+            else {
                 return Ok(failed(planned, "there is no booking to invoice".into()));
             };
             let ctx = rule_ctx(workspace, rule.id, input.depth.saturating_add(1));
             let r = async {
-                let id = super::invoices::from_booking_in(state, tx, &ctx, object_id, purpose, None).await?;
+                let id =
+                    super::invoices::from_booking_in(state, tx, &ctx, object_id, purpose, None)
+                        .await?;
                 if *issue {
-                    super::invoices::issue_in(state, tx, &ctx, id, Default::default(), None).await?;
+                    super::invoices::issue_in(state, tx, &ctx, id, Default::default(), None)
+                        .await?;
                 }
                 Ok(json!({ "purpose": purpose, "issue": issue, "invoice_id": id }))
             }
@@ -283,11 +293,17 @@ async fn act(
             outcome(planned, r)
         }
         Action::SetBookingStatus { status } => {
-            let Some(object_id) = input.object_id.filter(|_| input.entity == super::bookings::ENTITY) else {
+            let Some(object_id) = input
+                .object_id
+                .filter(|_| input.entity == super::bookings::ENTITY)
+            else {
                 return Ok(failed(planned, "there is no booking to change".into()));
             };
             let Some(status) = core_domain::BookingStatus::parse(status) else {
-                return Ok(failed(planned, format!("`{status}` is not a booking status")));
+                return Ok(failed(
+                    planned,
+                    format!("`{status}` is not a booking status"),
+                ));
             };
             let ctx = rule_ctx(workspace, rule.id, input.depth.saturating_add(1));
             let req = super::bookings::StatusRequest {
@@ -615,7 +631,10 @@ async fn run_rule(
     let mut done = Vec::with_capacity(planned.len());
     let mut failure = None;
     for (i, (action, plan)) in def.actions.iter().zip(planned).enumerate() {
-        let result = act(state, tx, workspace, rule, i, action, &input, &ctx_json, plan).await?;
+        let result = act(
+            state, tx, workspace, rule, i, action, &input, &ctx_json, plan,
+        )
+        .await?;
         let ok = result.ok;
         if !ok {
             failure = result.error.clone();
@@ -762,7 +781,18 @@ pub async fn dispatch_event(
                 continue;
             }
             match super::rules::parse_stored(rule, &catalog) {
-                Ok(def) => run_rule(state, &mut tx, workspace, rule, &def, input, &workspace_json).await?,
+                Ok(def) => {
+                    run_rule(
+                        state,
+                        &mut tx,
+                        workspace,
+                        rule,
+                        &def,
+                        input,
+                        &workspace_json,
+                    )
+                    .await?
+                }
                 Err(reason) => {
                     log_run(
                         &mut tx,
@@ -905,50 +935,50 @@ pub async fn scan_rule(
         .await?
     } else {
         match (is_booking, field.strip_prefix("custom.")) {
-        (false, None) => {
-            core_db::things::due_between(&mut tx, *offset_minutes, from, until, SCAN_BATCH)
-                .await?
-                .into_iter()
-                .map(|r| (r.id, r.at))
-                .collect()
-        }
-        (false, Some(key)) => core_db::things::custom_date_between(
-            &mut tx,
-            key,
-            options.timezone.name(),
-            *offset_minutes,
-            from,
-            until,
-            SCAN_BATCH,
-        )
-        .await?
-        .into_iter()
-        .map(|r| (r.id, r.at))
-        .collect(),
-        (true, None) => core_db::bookings::date_between(
-            &mut tx,
-            field,
-            *offset_minutes,
-            from,
-            until,
-            SCAN_BATCH,
-        )
-        .await?
-        .into_iter()
-        .map(|r| (r.id, r.at))
-        .collect(),
-        (true, Some(key)) => core_db::bookings::custom_date_between(
-            &mut tx,
-            key,
-            *offset_minutes,
-            from,
-            until,
-            SCAN_BATCH,
-        )
-        .await?
-        .into_iter()
-        .map(|r| (r.id, r.at))
-        .collect(),
+            (false, None) => {
+                core_db::things::due_between(&mut tx, *offset_minutes, from, until, SCAN_BATCH)
+                    .await?
+                    .into_iter()
+                    .map(|r| (r.id, r.at))
+                    .collect()
+            }
+            (false, Some(key)) => core_db::things::custom_date_between(
+                &mut tx,
+                key,
+                options.timezone.name(),
+                *offset_minutes,
+                from,
+                until,
+                SCAN_BATCH,
+            )
+            .await?
+            .into_iter()
+            .map(|r| (r.id, r.at))
+            .collect(),
+            (true, None) => core_db::bookings::date_between(
+                &mut tx,
+                field,
+                *offset_minutes,
+                from,
+                until,
+                SCAN_BATCH,
+            )
+            .await?
+            .into_iter()
+            .map(|r| (r.id, r.at))
+            .collect(),
+            (true, Some(key)) => core_db::bookings::custom_date_between(
+                &mut tx,
+                key,
+                *offset_minutes,
+                from,
+                until,
+                SCAN_BATCH,
+            )
+            .await?
+            .into_iter()
+            .map(|r| (r.id, r.at))
+            .collect(),
         }
     };
     let scanned_until = match reached.last() {
@@ -970,7 +1000,16 @@ pub async fn scan_rule(
                 depth: 0,
                 occurrence: format!("{id}@{}", at.to_rfc3339()),
             };
-            run_rule(state, &mut tx, workspace, &rule, &def, input, &workspace_json).await?;
+            run_rule(
+                state,
+                &mut tx,
+                workspace,
+                &rule,
+                &def,
+                input,
+                &workspace_json,
+            )
+            .await?;
         }
     }
     core_db::rules::set_scanned_until(&mut tx, rule.id, scanned_until).await?;
@@ -1015,7 +1054,18 @@ pub async fn run_scheduled(
         let catalog = super::rules::catalog(&mut tx).await?;
         let (workspace_json, _) = context::workspace(&mut tx, state).await?;
         match super::rules::parse_stored(&rule, &catalog) {
-            Ok(def) => run_rule(state, &mut tx, workspace, &rule, &def, input, &workspace_json).await?,
+            Ok(def) => {
+                run_rule(
+                    state,
+                    &mut tx,
+                    workspace,
+                    &rule,
+                    &def,
+                    input,
+                    &workspace_json,
+                )
+                .await?
+            }
             Err(reason) => {
                 log_run(
                     &mut tx,

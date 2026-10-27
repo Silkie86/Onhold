@@ -1,0 +1,621 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT i.id, i.kind, i.purpose, i.status AS \"status: InvoiceStatus\", i.number, i.reference,\n                  i.historical, i.issuer_kind, i.issuer_talent_id, i.payer_kind, i.payer_organisation_id,\n                  i.payer_talent_id, i.payer_contact_id,\n                  coalesce(i.payer_name, o.name, pt.name, '') AS \"payer_display!\", i.payer_name,\n                  i.issuer, i.payer, i.booking_id, b.title AS \"booking_title?\", i.credits_invoice_id,\n                  i.currency, i.line_items, i.tax_lines, i.subtotal_minor, i.tax_minor, i.total_minor,\n                  i.paid_minor, i.credited_minor, i.issue_date, i.due_date, i.base_currency,\n                  i.fx_rate::text AS fx_rate, i.fx_date, i.fx_source, i.base_total_minor, i.notes, i.terms,\n                  i.sent_at, i.sent_to, i.viewed_at, i.document_id, i.voided_at, i.void_reason, i.tags,\n                  i.custom, i.version, i.created_at, i.updated_at,\n                  i.created_by AS \"created_by: UserId\", i.updated_by AS \"updated_by: UserId\"\n           FROM invoices i\n           LEFT JOIN organisations o ON o.id = i.payer_organisation_id\n           LEFT JOIN talent pt ON pt.id = i.payer_talent_id\n           LEFT JOIN bookings b ON b.id = i.booking_id\n           WHERE i.workspace_id = app_workspace_id() AND i.booking_id = $1 AND i.deleted_at IS NULL\n             ORDER BY i.created_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "purpose",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "purpose"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status: InvoiceStatus",
+        "type_info": {
+          "Custom": {
+            "name": "invoice_status",
+            "kind": {
+              "Enum": [
+                "draft",
+                "issued",
+                "part_paid",
+                "paid",
+                "overdue",
+                "credited",
+                "void"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "number",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "number"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "reference",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "reference"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "historical",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "historical"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "issuer_kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "issuer_kind"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "issuer_talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "issuer_talent_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "payer_kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "payer_kind"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "payer_organisation_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "payer_organisation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "payer_talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "payer_talent_id"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "payer_contact_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "payer_contact_id"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "payer_display!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 14,
+        "name": "payer_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "payer_name"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "issuer",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "issuer"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "payer",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "payer"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "booking_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "booking_id"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "booking_title?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "credits_invoice_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "credits_invoice_id"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "currency",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "line_items",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "line_items"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "tax_lines",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "tax_lines"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "subtotal_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "subtotal_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "tax_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "tax_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "total_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "total_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 26,
+        "name": "paid_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "paid_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 27,
+        "name": "credited_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "credited_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 28,
+        "name": "issue_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "issue_date"
+          }
+        }
+      },
+      {
+        "ordinal": 29,
+        "name": "due_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "due_date"
+          }
+        }
+      },
+      {
+        "ordinal": 30,
+        "name": "base_currency",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "base_currency"
+          }
+        }
+      },
+      {
+        "ordinal": 31,
+        "name": "fx_rate",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 32,
+        "name": "fx_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "fx_date"
+          }
+        }
+      },
+      {
+        "ordinal": 33,
+        "name": "fx_source",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "fx_source"
+          }
+        }
+      },
+      {
+        "ordinal": 34,
+        "name": "base_total_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "base_total_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 35,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 36,
+        "name": "terms",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "terms"
+          }
+        }
+      },
+      {
+        "ordinal": 37,
+        "name": "sent_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "sent_at"
+          }
+        }
+      },
+      {
+        "ordinal": 38,
+        "name": "sent_to",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "sent_to"
+          }
+        }
+      },
+      {
+        "ordinal": 39,
+        "name": "viewed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "viewed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 40,
+        "name": "document_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "document_id"
+          }
+        }
+      },
+      {
+        "ordinal": 41,
+        "name": "voided_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "voided_at"
+          }
+        }
+      },
+      {
+        "ordinal": 42,
+        "name": "void_reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "void_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 43,
+        "name": "tags",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "tags"
+          }
+        }
+      },
+      {
+        "ordinal": 44,
+        "name": "custom",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "custom"
+          }
+        }
+      },
+      {
+        "ordinal": 45,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 46,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 47,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 48,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 49,
+        "name": "updated_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "updated_by"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      null,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      null,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "8a1a536412505443491cdf4d2f7b356a5a5bf901c281fa2c47c2205bbf6efd88"
+}

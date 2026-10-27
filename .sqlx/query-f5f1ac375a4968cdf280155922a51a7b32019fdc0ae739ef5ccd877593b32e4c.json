@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT coalesce(sum(a.amount_minor), 0)::bigint AS \"s!\" FROM payment_allocations a\n           WHERE a.workspace_id = app_workspace_id() AND a.invoice_id = $1 AND a.removed_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "s!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "f5f1ac375a4968cdf280155922a51a7b32019fdc0ae739ef5ccd877593b32e4c"
+}

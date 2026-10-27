@@ -30,7 +30,13 @@ import {
   CloudOff,
   Download,
   Contact,
+  ChartColumn,
+  FileSearch,
+  FileText,
   FileUp,
+  HandCoins,
+  Landmark,
+  Receipt,
   RefreshCw,
   LogOut,
   Menu as MenuIcon,
@@ -65,6 +71,14 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
     ],
   },
   {
+    group: "Money",
+    items: [
+      { to: "/finance/invoices", label: "Invoices", icon: <Receipt /> },
+      { to: "/finance/payments", label: "Payments", icon: <HandCoins /> },
+      { to: "/finance/reports", label: "Reports", icon: <ChartColumn /> },
+    ],
+  },
+  {
     group: "CRM",
     items: [
       { to: "/crm/contacts", label: "Contacts", icon: <Contact /> },
@@ -74,7 +88,11 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
   },
   {
     group: "Data",
-    items: [{ to: "/imports", label: "Imports", icon: <FileUp /> }],
+    items: [
+      { to: "/documents", label: "Documents", icon: <FileText /> },
+      { to: "/documents/imports", label: "Import past PDFs", icon: <FileSearch /> },
+      { to: "/imports", label: "Imports", icon: <FileUp /> },
+    ],
   },
   {
     group: "Settings",
@@ -82,6 +100,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
       { to: "/settings/fields", label: "Custom fields", icon: <SlidersHorizontal /> },
       { to: "/settings/pipelines", label: "Pipelines", icon: <Workflow /> },
       { to: "/settings/calendar", label: "Calendar settings", icon: <CalendarCog /> },
+      { to: "/settings/finance", label: "Invoicing", icon: <Landmark /> },
     ],
   },
 ];

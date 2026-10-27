@@ -102,10 +102,15 @@ pub struct SettlementFilter {
     pub status: Option<String>,
 }
 
-pub async fn list(state: &AppState, ctx: &Ctx, f: &SettlementFilter) -> ApiResult<Vec<SettlementView>> {
+pub async fn list(
+    state: &AppState,
+    ctx: &Ctx,
+    f: &SettlementFilter,
+) -> ApiResult<Vec<SettlementView>> {
     ctx.authorize(Permission::InvoiceRead)?;
     let mut tx = begin(state, ctx).await?;
-    let rows = core_db::settlements::list(&mut tx, f.booking_id, f.talent_id, f.status.as_deref()).await?;
+    let rows =
+        core_db::settlements::list(&mut tx, f.booking_id, f.talent_id, f.status.as_deref()).await?;
     tx.commit().await?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
@@ -119,15 +124,30 @@ pub async fn get(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<SettlementV
 }
 
 /// Each talent's gross share of a booking, net of tax.
-async fn shares(tx: &mut Tx, booking: &super::bookings::BookingView) -> ApiResult<(String, Vec<(Uuid, i64)>)> {
-    let quotes = core_db::quotes::list(tx, Some(booking.id), &[core_domain::QuoteStatus::Accepted], 0, 1)
-        .await?
-        .0;
+async fn shares(
+    tx: &mut Tx,
+    booking: &super::bookings::BookingView,
+) -> ApiResult<(String, Vec<(Uuid, i64)>)> {
+    let quotes = core_db::quotes::list(
+        tx,
+        Some(booking.id),
+        &[core_domain::QuoteStatus::Accepted],
+        0,
+        1,
+    )
+    .await?
+    .0;
     let talent: Vec<Uuid> = booking.talent.iter().map(|t| t.id).collect();
     let (currency, lines): (String, Vec<(Option<Uuid>, i64)>) = match quotes.into_iter().next() {
         Some(q) => {
             let v: super::quotes::QuoteView = q.into();
-            (v.currency.clone(), v.line_items.iter().map(|l| (l.talent_id, l.amount_minor)).collect())
+            (
+                v.currency.clone(),
+                v.line_items
+                    .iter()
+                    .map(|l| (l.talent_id, l.amount_minor))
+                    .collect(),
+            )
         }
         None => match &booking.fee {
             Some(f) => (f.currency.clone(), vec![(None, f.minor)]),
@@ -156,10 +176,16 @@ async fn shares(tx: &mut Tx, booking: &super::bookings::BookingView) -> ApiResul
 }
 
 /// Drafts a settlement for each talent on a booking that has none yet.
-pub async fn create_for_booking(state: &AppState, ctx: &Ctx, booking_id: Uuid) -> ApiResult<Vec<SettlementView>> {
+pub async fn create_for_booking(
+    state: &AppState,
+    ctx: &Ctx,
+    booking_id: Uuid,
+) -> ApiResult<Vec<SettlementView>> {
     ctx.authorize(Permission::InvoiceWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let booking = super::bookings::load(&mut tx, booking_id).await?.ok_or(ApiError::NotFound)?;
+    let booking = super::bookings::load(&mut tx, booking_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let (currency, shares) = shares(&mut tx, &booking).await?;
     if currency.is_empty() || shares.is_empty() {
         return Err(ApiError::conflict(
@@ -168,13 +194,19 @@ pub async fn create_for_booking(state: &AppState, ctx: &Ctx, booking_id: Uuid) -
         ));
     }
     for (talent_id, gross) in shares {
-        if core_db::settlements::find(&mut tx, booking_id, talent_id).await?.is_some() {
+        if core_db::settlements::find(&mut tx, booking_id, talent_id)
+            .await?
+            .is_some()
+        {
             continue;
         }
-        let talent = core_db::talent::get(&mut tx, talent_id).await?.ok_or(ApiError::NotFound)?;
+        let talent = core_db::talent::get(&mut tx, talent_id)
+            .await?
+            .ok_or(ApiError::NotFound)?;
         let bps = talent.commission_bps.unwrap_or(0).clamp(0, 10_000);
         let gross = gross.max(0);
-        let s = settle(gross, bps, &[]).ok_or_else(|| ApiError::invalid("gross", "is too large"))?;
+        let s =
+            settle(gross, bps, &[]).ok_or_else(|| ApiError::invalid("gross", "is too large"))?;
         let id = core_domain::ids::new_id();
         core_db::settlements::insert(
             &mut tx,
@@ -231,15 +263,20 @@ pub async fn update(
 ) -> ApiResult<SettlementView> {
     ctx.authorize(Permission::InvoiceWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let version = core_db::settlements::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let version = core_db::settlements::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.status != "draft" {
-        return Err(ApiError::conflict("settlement_final", "reopen the settlement to change it"));
+        return Err(ApiError::conflict(
+            "settlement_final",
+            "reopen the settlement to change it",
+        ));
     }
     let mut check = Check::default();
     let gross = p.gross_minor.unwrap_or(before.gross.minor);
-    if gross < 0 || gross > core_domain::bookings::MAX_AMOUNT_MINOR {
+    if !(0..=core_domain::bookings::MAX_AMOUNT_MINOR).contains(&gross) {
         check.issue("gross_minor", "must be zero or more");
     }
     let bps = p.commission_bps.unwrap_or(before.commission_bps);
@@ -251,9 +288,15 @@ pub async fn update(
     for (i, e) in expenses.iter().enumerate() {
         let d = check.required(&format!("expenses[{i}].description"), &e.description, 200);
         if e.amount_minor <= 0 {
-            check.issue(format!("expenses[{i}].amount_minor"), "must be more than zero");
+            check.issue(
+                format!("expenses[{i}].amount_minor"),
+                "must be more than zero",
+            );
         }
-        clean.push(Expense { description: d, amount_minor: e.amount_minor });
+        clean.push(Expense {
+            description: d,
+            amount_minor: e.amount_minor,
+        });
     }
     if clean.len() > 50 {
         check.issue("expenses", "give at most 50 expenses");
@@ -264,7 +307,8 @@ pub async fn update(
     };
     check.finish()?;
     let amounts: Vec<i64> = clean.iter().map(|e| e.amount_minor).collect();
-    let s = settle(gross, bps, &amounts).ok_or_else(|| ApiError::invalid("expenses", "the amounts are too large"))?;
+    let s = settle(gross, bps, &amounts)
+        .ok_or_else(|| ApiError::invalid("expenses", "the amounts are too large"))?;
     let expenses_json = serde_json::to_value(&clean).map_err(ApiError::internal)?;
     core_db::settlements::update(
         &mut tx,
@@ -302,17 +346,28 @@ pub async fn update(
 
 /// Fixes a settlement: prints its statement and, when the talent invoices
 /// the buyer themselves, drafts the commission invoice to them.
-pub async fn finalise(state: &AppState, ctx: &Ctx, id: Uuid, if_match: Option<i64>) -> ApiResult<SettlementView> {
+pub async fn finalise(
+    state: &AppState,
+    ctx: &Ctx,
+    id: Uuid,
+    if_match: Option<i64>,
+) -> ApiResult<SettlementView> {
     ctx.authorize(Permission::InvoiceWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let version = core_db::settlements::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let version = core_db::settlements::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.status != "draft" {
-        return Err(ApiError::conflict("settlement_final", "this settlement is already final"));
+        return Err(ApiError::conflict(
+            "settlement_final",
+            "this settlement is already final",
+        ));
     }
     let today = super::finance::today(&mut tx, ctx).await?;
-    let mut record_json = super::documents::booking_context(&mut tx, state, before.booking_id).await?;
+    let mut record_json =
+        super::documents::booking_context(&mut tx, state, before.booking_id).await?;
     if let Some(o) = record_json.as_object_mut() {
         o.insert(
             "settlement".into(),
@@ -329,8 +384,11 @@ pub async fn finalise(state: &AppState, ctx: &Ctx, id: Uuid, if_match: Option<i6
         );
     }
     let doc_id = core_domain::ids::new_id();
-    let title = format!("Statement for {}: {}", before.talent_name, before.booking_title);
-    let reference = format!("S-{}", &id.simple().to_string()[..8].to_uppercase());
+    let title = format!(
+        "Statement for {}: {}",
+        before.talent_name, before.booking_title
+    );
+    let reference = format!("S-{}", id.simple().to_string()[..8].to_uppercase());
     let (title, html) = super::documents::render_html(
         state,
         &mut tx,
@@ -391,7 +449,8 @@ pub async fn finalise(state: &AppState, ctx: &Ctx, id: Uuid, if_match: Option<i6
     } else {
         None
     };
-    core_db::settlements::finalise(&mut tx, id, Some(doc_id), commission_invoice, ctx.user_id()).await?;
+    core_db::settlements::finalise(&mut tx, id, Some(doc_id), commission_invoice, ctx.user_id())
+        .await?;
     let after = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     record(
         &mut tx,
@@ -412,10 +471,17 @@ pub async fn finalise(state: &AppState, ctx: &Ctx, id: Uuid, if_match: Option<i6
 }
 
 /// Back to draft, to correct it. Its statement stays on file.
-pub async fn reopen(state: &AppState, ctx: &Ctx, id: Uuid, if_match: Option<i64>) -> ApiResult<SettlementView> {
+pub async fn reopen(
+    state: &AppState,
+    ctx: &Ctx,
+    id: Uuid,
+    if_match: Option<i64>,
+) -> ApiResult<SettlementView> {
     ctx.authorize(Permission::InvoiceWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let version = core_db::settlements::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let version = core_db::settlements::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.status != "final" {
@@ -449,10 +515,15 @@ pub async fn reopen(state: &AppState, ctx: &Ctx, id: Uuid, if_match: Option<i64>
 pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::InvoiceWrite)?;
     let mut tx = begin(state, ctx).await?;
-    core_db::settlements::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    core_db::settlements::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if !core_db::settlements::soft_delete(&mut tx, id, ctx.user_id()).await? {
-        return Err(ApiError::conflict("settlement_final", "reopen the settlement to delete it"));
+        return Err(ApiError::conflict(
+            "settlement_final",
+            "reopen the settlement to delete it",
+        ));
     }
     record(
         &mut tx,
@@ -481,17 +552,30 @@ pub struct NewPayout {
 }
 
 /// Records paying the talent what a final settlement says they are owed.
-pub async fn payout(state: &AppState, ctx: &Ctx, id: Uuid, p: NewPayout) -> ApiResult<SettlementView> {
+pub async fn payout(
+    state: &AppState,
+    ctx: &Ctx,
+    id: Uuid,
+    p: NewPayout,
+) -> ApiResult<SettlementView> {
     ctx.authorize(Permission::PaymentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    core_db::settlements::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    core_db::settlements::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.status != "final" {
-        return Err(ApiError::conflict("settlement_draft", "finalise the settlement first"));
+        return Err(ApiError::conflict(
+            "settlement_draft",
+            "finalise the settlement first",
+        ));
     }
     let owed = before.net.minor - before.paid_out.minor;
     if owed <= 0 {
-        return Err(ApiError::conflict("settlement_paid", "the talent has been paid everything owed"));
+        return Err(ApiError::conflict(
+            "settlement_paid",
+            "the talent has been paid everything owed",
+        ));
     }
     let amount = p.amount_minor.unwrap_or(owed);
     if amount <= 0 || amount > owed {

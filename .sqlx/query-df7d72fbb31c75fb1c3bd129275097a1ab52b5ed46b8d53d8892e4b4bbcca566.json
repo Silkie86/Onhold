@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH lines AS (\n               SELECT coalesce((l->>'talent_id')::uuid,\n                               (SELECT bt.talent_id FROM booking_talent bt WHERE bt.booking_id = i.booking_id\n                                ORDER BY bt.position LIMIT 1),\n                               i.issuer_talent_id) AS talent_id,\n                      CASE WHEN i.kind = 'credit_note' THEN -1 ELSE 1 END\n                        * round((l->>'amount_minor')::numeric * i.base_total_minor / nullif(i.total_minor, 0)) AS base_net,\n                      i.id AS invoice_id, i.kind\n               FROM invoices i, jsonb_array_elements(i.line_items) l\n               WHERE i.workspace_id = app_workspace_id() AND i.deleted_at IS NULL AND i.status NOT IN ('draft', 'void')\n                 AND i.issue_date BETWEEN $1 AND $2 AND i.base_total_minor IS NOT NULL\n                 AND i.purpose <> 'commission'\n           )\n           SELECT coalesce(t.name, 'No talent') AS \"key!\", l.talent_id AS id,\n                  coalesce(sum(l.base_net), 0)::bigint AS \"invoiced_minor!\", 0::bigint AS \"tax_minor!\",\n                  count(DISTINCT l.invoice_id) FILTER (WHERE l.kind = 'invoice') AS \"count!\"\n           FROM lines l LEFT JOIN talent t ON t.id = l.talent_id\n           GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 200",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "key!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "invoiced_minor!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "tax_minor!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "df7d72fbb31c75fb1c3bd129275097a1ab52b5ed46b8d53d8892e4b4bbcca566"
+}

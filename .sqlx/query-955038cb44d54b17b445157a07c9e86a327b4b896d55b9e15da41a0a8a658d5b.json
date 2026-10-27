@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT coalesce(sum(amount_minor), 0)::bigint AS \"s!\" FROM payments\n           WHERE workspace_id = app_workspace_id() AND refund_of = $1 AND voided_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "s!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "955038cb44d54b17b445157a07c9e86a327b4b896d55b9e15da41a0a8a658d5b"
+}

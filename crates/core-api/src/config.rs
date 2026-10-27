@@ -32,8 +32,13 @@ pub enum StorageConfig {
 #[derive(Debug, Clone)]
 pub enum PdfConfig {
     /// Chromium if one can be found, plain text otherwise.
-    Auto { no_sandbox: bool },
-    Chromium { path: PathBuf, no_sandbox: bool },
+    Auto {
+        no_sandbox: bool,
+    },
+    Chromium {
+        path: PathBuf,
+        no_sandbox: bool,
+    },
     /// The plain-text layout only (tests, and machines without a browser).
     Plain,
 }

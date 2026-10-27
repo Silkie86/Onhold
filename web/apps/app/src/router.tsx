@@ -1,7 +1,8 @@
 // Every page and its address. Addresses the API puts in emails and
 // responses (`/sign-in`, `/auth/magic`, `/auth/mfa`, `/invitations/accept`,
 // `/link-app`, `/crm/<entity>/<id>`, `/quote/<token>`, `/bookings/<id>`,
-// `/enquiries/<id>`, `/tasks`) must keep working.
+// `/enquiries/<id>`, `/tasks`, `/invoice/<token>`, `/sign/<token>`,
+// `/finance/invoices/<id>`, `/documents/<id>`) must keep working.
 
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -18,6 +19,8 @@ import { CalendarPage, validateCalendarSearch } from "./pages/calendar.tsx";
 import { EntityListPage, EntityRecordPage, validateListSearch } from "./pages/crm.tsx";
 import { EnquiriesPage, EnquiryPage } from "./pages/enquiries.tsx";
 import { PublicQuotePage } from "./pages/quotes.tsx";
+import { FinanceSettingsPage, InvoicePage, InvoicesPage, PaymentsPage, PublicInvoicePage, ReportsPage } from "./pages/finance.tsx";
+import { DocumentPage, DocumentsPage, PdfImportsPage, PublicSigningPage } from "./pages/documents.tsx";
 import { TasksPage, validateTasksSearch } from "./pages/tasks.tsx";
 import { SyncPage } from "./pages/sync.tsx";
 import { AppShell } from "./shell.tsx";
@@ -66,6 +69,10 @@ const publicQuote = createRoute({
   path: "/quote/$token",
   component: PublicQuotePage,
 });
+
+// The payer's page for an invoice, and a signer's for a document.
+const publicInvoice = createRoute({ getParentRoute: () => root, path: "/invoice/$token", component: PublicInvoicePage });
+const publicSigning = createRoute({ getParentRoute: () => root, path: "/sign/$token", component: PublicSigningPage });
 
 // Where people approve a desktop or mobile app's sign-in (the API's `verification_url`).
 const linkApp = createRoute({ getParentRoute: () => root, path: "/link-app", component: LinkAppPage });
@@ -123,6 +130,19 @@ const calendarSettings = createRoute({
 
 const sync = createRoute({ getParentRoute: () => app, path: "/sync", component: SyncPage });
 
+const invoices = createRoute({ getParentRoute: () => app, path: "/finance/invoices", component: InvoicesPage });
+const invoice = createRoute({ getParentRoute: () => app, path: "/finance/invoices/$id", component: InvoicePage });
+const payments = createRoute({ getParentRoute: () => app, path: "/finance/payments", component: PaymentsPage });
+const reports = createRoute({ getParentRoute: () => app, path: "/finance/reports", component: ReportsPage });
+const documents = createRoute({ getParentRoute: () => app, path: "/documents", component: DocumentsPage });
+const pdfImports = createRoute({ getParentRoute: () => app, path: "/documents/imports", component: PdfImportsPage });
+const documentPage = createRoute({ getParentRoute: () => app, path: "/documents/$id", component: DocumentPage });
+const financeSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/finance",
+  component: FinanceSettingsPage,
+});
+
 const tree = root.addChildren([
   signIn,
   magic,
@@ -130,6 +150,8 @@ const tree = root.addChildren([
   invitation,
   linkApp,
   publicQuote,
+  publicInvoice,
+  publicSigning,
   app.addChildren([
     home,
     calendar,
@@ -145,6 +167,14 @@ const tree = root.addChildren([
     pipelines,
     calendarSettings,
     sync,
+    invoices,
+    invoice,
+    payments,
+    reports,
+    documents,
+    pdfImports,
+    documentPage,
+    financeSettings,
   ]),
 ]);
 

@@ -35,7 +35,14 @@ use crate::routes::nullable;
 pub const ENTITY: &str = "document";
 pub const JOB_RENDER: &str = "document.render";
 /// Records a document can belong to.
-pub const RELATED: &[&str] = &["talent", "organisation", "contact", "enquiry", "booking", "invoice"];
+pub const RELATED: &[&str] = &[
+    "talent",
+    "organisation",
+    "contact",
+    "enquiry",
+    "booking",
+    "invoice",
+];
 pub const MAX_SIGNERS: usize = 10;
 
 // Views ----------------------------------------------------------------------------------
@@ -83,12 +90,14 @@ pub struct DocumentFile {
 impl From<Document> for DocumentView {
     fn from(d: Document) -> Self {
         let file = match (d.file_id, d.filename, d.content_type, d.size_bytes) {
-            (Some(id), Some(filename), Some(content_type), Some(size_bytes)) => Some(DocumentFile {
-                id,
-                filename,
-                content_type,
-                size_bytes,
-            }),
+            (Some(id), Some(filename), Some(content_type), Some(size_bytes)) => {
+                Some(DocumentFile {
+                    id,
+                    filename,
+                    content_type,
+                    size_bytes,
+                })
+            }
             _ => None,
         };
         Self {
@@ -142,12 +151,14 @@ pub struct VersionView {
 impl From<Version> for VersionView {
     fn from(v: Version) -> Self {
         let file = match (v.file_id, v.filename, v.content_type, v.size_bytes) {
-            (Some(id), Some(filename), Some(content_type), Some(size_bytes)) => Some(DocumentFile {
-                id,
-                filename,
-                content_type,
-                size_bytes,
-            }),
+            (Some(id), Some(filename), Some(content_type), Some(size_bytes)) => {
+                Some(DocumentFile {
+                    id,
+                    filename,
+                    content_type,
+                    size_bytes,
+                })
+            }
             _ => None,
         };
         Self {
@@ -294,10 +305,12 @@ pub async fn download(
     let v = core_db::documents::version(&mut tx, id, number.unwrap_or(doc.current_version))
         .await?
         .ok_or(ApiError::NotFound)?;
-    let file_id = v.file_id.ok_or_else(|| {
-        ApiError::conflict("document_not_ready", "this version is not ready yet")
-    })?;
-    let file = core_db::files::get(&mut tx, file_id).await?.ok_or(ApiError::NotFound)?;
+    let file_id = v
+        .file_id
+        .ok_or_else(|| ApiError::conflict("document_not_ready", "this version is not ready yet"))?;
+    let file = core_db::files::get(&mut tx, file_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let bytes = files::bytes(state, &mut tx, &file).await?;
     tx.commit().await?;
     Ok(files::Download {
@@ -336,12 +349,17 @@ async fn check_related(
             let found = if e == super::invoices::ENTITY {
                 core_db::invoices::get(tx, id).await?.is_some()
             } else {
-                super::context::load_object(tx, state, e, id).await?.is_some()
+                super::context::load_object(tx, state, e, id)
+                    .await?
+                    .is_some()
             };
             if found {
                 Ok(())
             } else {
-                Err(ApiError::invalid("related_id", format!("there is no such {e}")))
+                Err(ApiError::invalid(
+                    "related_id",
+                    format!("there is no such {e}"),
+                ))
             }
         }
         (Some(e), Some(_)) => Err(ApiError::invalid(
@@ -359,14 +377,22 @@ async fn check_related(
 
 /// The workspace's look for documents: `branding.logo` (a data URI) or
 /// `branding.logo_file_id` (an uploaded image), and `branding.primary_color`.
-pub(crate) async fn branding(state: &AppState, tx: &mut Tx, ctx: &Ctx, issuer: &Value) -> ApiResult<Branding> {
+pub(crate) async fn branding(
+    state: &AppState,
+    tx: &mut Tx,
+    ctx: &Ctx,
+    issuer: &Value,
+) -> ApiResult<Branding> {
     let w = core_db::workspaces::get(tx, ctx.workspace_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let b = &w.branding;
     let mut logo = b.get("logo").and_then(Value::as_str).and_then(engine::logo);
     if logo.is_none()
-        && let Some(file_id) = b.get("logo_file_id").and_then(Value::as_str).and_then(|s| s.parse().ok())
+        && let Some(file_id) = b
+            .get("logo_file_id")
+            .and_then(Value::as_str)
+            .and_then(|s| s.parse().ok())
         && let Some(file) = core_db::files::get(tx, file_id).await?
         && file.content_type.starts_with("image/")
         && file.size_bytes <= 1_000_000
@@ -403,14 +429,21 @@ pub(crate) async fn branding(state: &AppState, tx: &mut Tx, ctx: &Ctx, issuer: &
 }
 
 /// A template by key: the workspace's own, or the built-in one.
-pub(crate) async fn template(tx: &mut Tx, key: &str, locale: &str) -> ApiResult<(String, String, String)> {
+pub(crate) async fn template(
+    tx: &mut Tx,
+    key: &str,
+    locale: &str,
+) -> ApiResult<(String, String, String)> {
     if let Some(t) = core_db::templates::find(tx, key, locale).await?
         && t.kind == Kind::Document.as_str()
     {
         return Ok((t.name, t.subject.unwrap_or_default(), t.body));
     }
     let b = engine::built_in(key).ok_or_else(|| {
-        ApiError::invalid("template_key", format!("there is no document template `{key}`"))
+        ApiError::invalid(
+            "template_key",
+            format!("there is no document template `{key}`"),
+        )
     })?;
     Ok((b.name.to_owned(), b.subject.to_owned(), b.body.to_owned()))
 }
@@ -422,7 +455,11 @@ fn template_kind(key: &str) -> &'static str {
 
 /// What a booking's documents see: the booking, its first talent, the
 /// buyer, the contact and the accepted (or latest) quote.
-pub(crate) async fn booking_context(tx: &mut Tx, state: &AppState, booking_id: Uuid) -> ApiResult<Value> {
+pub(crate) async fn booking_context(
+    tx: &mut Tx,
+    state: &AppState,
+    booking_id: Uuid,
+) -> ApiResult<Value> {
     let b = super::bookings::load(tx, booking_id)
         .await?
         .ok_or_else(|| ApiError::invalid("related_id", "there is no such booking"))?;
@@ -430,7 +467,10 @@ pub(crate) async fn booking_context(tx: &mut Tx, state: &AppState, booking_id: U
     let names: Vec<&str> = b.talent.iter().map(|t| t.name.as_str()).collect();
     if let Some(o) = booking.as_object_mut() {
         o.insert("talent_names".into(), json!(join_names(&names)));
-        o.insert("venue".into(), json!(b.venue_name.clone().or(b.venue_text.clone())));
+        o.insert(
+            "venue".into(),
+            json!(b.venue_name.clone().or(b.venue_text.clone())),
+        );
         o.insert(
             "deposit_bps".into(),
             json!(b.deposit_percent.map(|p| (p * 100.0).round() as i64)),
@@ -464,10 +504,14 @@ pub(crate) async fn booking_context(tx: &mut Tx, state: &AppState, booking_id: U
         None => None,
     };
     let contact = match b.contact_id {
-        Some(id) => super::contacts::load(tx, id).await?.map(|c| super::contacts::to_json(&c)),
+        Some(id) => super::contacts::load(tx, id)
+            .await?
+            .map(|c| super::contacts::to_json(&c)),
         None => None,
     };
-    let quotes = core_db::quotes::list(tx, Some(booking_id), &[], 0, 20).await?.0;
+    let quotes = core_db::quotes::list(tx, Some(booking_id), &[], 0, 20)
+        .await?
+        .0;
     let quote = quotes
         .iter()
         .find(|q| q.status == core_domain::QuoteStatus::Accepted)
@@ -492,6 +536,7 @@ fn join_names(names: &[&str]) -> String {
 }
 
 /// Renders a template into a whole, branded HTML page.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn render_html(
     state: &AppState,
     tx: &mut Tx,
@@ -523,17 +568,24 @@ pub(crate) async fn render_html(
     // The title comes from the template's subject unless one is given.
     let rendered_title = match title {
         Some(t) => t.to_owned(),
-        None => super::templates::render_in(tx, Kind::Document, Some(&subject), "", &tree, &options)
-            .await?
-            .subject
-            .unwrap_or_default(),
+        None => {
+            super::templates::render_in(tx, Kind::Document, Some(&subject), "", &tree, &options)
+                .await?
+                .subject
+                .unwrap_or_default()
+        }
     };
     if let Some(d) = tree.get_mut("document").and_then(Value::as_object_mut) {
         d.insert("title".into(), json!(rendered_title));
     }
-    let rendered = super::templates::render_in(tx, Kind::Document, None, &body, &tree, &options).await?;
+    let rendered =
+        super::templates::render_in(tx, Kind::Document, None, &body, &tree, &options).await?;
     let branding = branding(state, tx, ctx, &issuer).await?;
-    let title = if rendered_title.trim().is_empty() { "Document".to_owned() } else { rendered_title };
+    let title = if rendered_title.trim().is_empty() {
+        "Document".to_owned()
+    } else {
+        rendered_title
+    };
     let html = engine::page(&title, &rendered.body, &branding);
     Ok((title, html))
 }
@@ -550,18 +602,37 @@ pub(crate) async fn print(state: &AppState, html: String, title: String) -> ApiR
 fn pdf_filename(title: &str, number: i32) -> String {
     let base: String = title
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
         .join("-");
-    let base = if base.is_empty() { "document".to_owned() } else { base.chars().take(80).collect() };
-    if number > 1 { format!("{base}-v{number}.pdf") } else { format!("{base}.pdf") }
+    let base = if base.is_empty() {
+        "document".to_owned()
+    } else {
+        base.chars().take(80).collect()
+    };
+    if number > 1 {
+        format!("{base}-v{number}.pdf")
+    } else {
+        format!("{base}.pdf")
+    }
 }
 
 /// Queues the printing of a version, then tries it at once; the job only
 /// does the work if this attempt did not.
-pub(crate) async fn queue_render(tx: &mut Tx, ctx: &Ctx, document_id: Uuid, number: i32) -> ApiResult<()> {
+pub(crate) async fn queue_render(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    document_id: Uuid,
+    number: i32,
+) -> ApiResult<()> {
     let payload = json!({ "document_id": document_id, "version": number });
     core_db::jobs::enqueue(
         tx,
@@ -582,7 +653,10 @@ pub async fn render_version(
 ) -> ApiResult<()> {
     let ctx = Ctx::system(workspace);
     let mut tx = begin(state, &ctx).await?;
-    if core_db::documents::lock(&mut tx, document_id).await?.is_none() {
+    if core_db::documents::lock(&mut tx, document_id)
+        .await?
+        .is_none()
+    {
         return Ok(());
     }
     let Some(v) = core_db::documents::version(&mut tx, document_id, number).await? else {
@@ -591,7 +665,9 @@ pub async fn render_version(
     if v.status == "ready" {
         return Ok(());
     }
-    let doc = load(&mut tx, document_id).await?.ok_or(ApiError::NotFound)?;
+    let doc = load(&mut tx, document_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let html = v.html.clone().unwrap_or_default();
     match print(state, html, doc.title.clone()).await {
         Ok(pdf) => {
@@ -605,8 +681,11 @@ pub async fn render_version(
                 true,
             )
             .await?;
-            core_db::documents::finish_version(&mut tx, document_id, number, Some(file.id), None).await?;
-            let after = load(&mut tx, document_id).await?.ok_or(ApiError::NotFound)?;
+            core_db::documents::finish_version(&mut tx, document_id, number, Some(file.id), None)
+                .await?;
+            let after = load(&mut tx, document_id)
+                .await?
+                .ok_or(ApiError::NotFound)?;
             record(
                 &mut tx,
                 &ctx,
@@ -616,14 +695,17 @@ pub async fn render_version(
                     object_id: Some(document_id),
                     before: None,
                     after: Some(to_json(&after)),
-                    event_extra: Some(json!({ "version": number, "renderer": state.renderer.name() })),
+                    event_extra: Some(
+                        json!({ "version": number, "renderer": state.renderer.name() }),
+                    ),
                 },
             )
             .await?;
         }
         Err(e) => {
             let message = e.to_string();
-            core_db::documents::finish_version(&mut tx, document_id, number, None, Some(&message)).await?;
+            core_db::documents::finish_version(&mut tx, document_id, number, None, Some(&message))
+                .await?;
             tx.commit().await?;
             return Err(e);
         }
@@ -657,12 +739,7 @@ pub struct GenerateDocument {
 }
 
 /// The record part of a template's context.
-async fn record_context(
-    tx: &mut Tx,
-    state: &AppState,
-    entity: &str,
-    id: Uuid,
-) -> ApiResult<Value> {
+async fn record_context(tx: &mut Tx, state: &AppState, entity: &str, id: Uuid) -> ApiResult<Value> {
     if entity == super::bookings::ENTITY {
         return booking_context(tx, state, id).await;
     }
@@ -673,7 +750,11 @@ async fn record_context(
 }
 
 /// Makes a document from a template and prints it.
-pub async fn generate(state: &AppState, ctx: &Ctx, req: GenerateDocument) -> ApiResult<DocumentDetail> {
+pub async fn generate(
+    state: &AppState,
+    ctx: &Ctx,
+    req: GenerateDocument,
+) -> ApiResult<DocumentDetail> {
     ctx.authorize(Permission::DocumentWrite)?;
     let mut tx = begin(state, ctx).await?;
     let entity = req.related_entity.trim();
@@ -685,13 +766,18 @@ pub async fn generate(state: &AppState, ctx: &Ctx, req: GenerateDocument) -> Api
     }
     ctx.authorize(super::context::read_permission(entity))?;
     let mut check = Check::default();
-    let kind = check_kind(&mut check, req.kind.as_deref().unwrap_or(template_kind(&req.template_key)));
+    let kind = check_kind(
+        &mut check,
+        req.kind
+            .as_deref()
+            .unwrap_or(template_kind(&req.template_key)),
+    );
     let title = check.optional("title", req.title.as_deref(), 200);
     check.finish()?;
     let today = super::finance::today(&mut tx, ctx).await?;
     let date = req.document_date.unwrap_or(today);
     let id = core_domain::ids::new_id();
-    let reference = format!("D-{}", &id.simple().to_string()[..8].to_uppercase());
+    let reference = format!("D-{}", id.simple().to_string()[..8].to_uppercase());
     let record_json = record_context(&mut tx, state, entity, req.related_id).await?;
     let (title, html) = render_html(
         state,
@@ -737,7 +823,11 @@ pub(crate) struct NewGenerated<'a> {
 
 /// Records a generated document with its first version waiting to print.
 /// The caller commits, then calls [`render_now`].
-pub(crate) async fn insert_generated(tx: &mut Tx, ctx: &Ctx, g: NewGenerated<'_>) -> ApiResult<DocumentView> {
+pub(crate) async fn insert_generated(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    g: NewGenerated<'_>,
+) -> ApiResult<DocumentView> {
     core_db::documents::insert(
         tx,
         core_db::documents::NewDocument {
@@ -789,15 +879,24 @@ pub(crate) async fn insert_generated(tx: &mut Tx, ctx: &Ctx, g: NewGenerated<'_>
 
 /// Makes a new version of a document from its template again (the record
 /// changed). Waiting signatures are cancelled: they were for the old text.
-pub async fn regenerate(state: &AppState, ctx: &Ctx, id: Uuid, if_match: Option<i64>) -> ApiResult<DocumentDetail> {
+pub async fn regenerate(
+    state: &AppState,
+    ctx: &Ctx,
+    id: Uuid,
+    if_match: Option<i64>,
+) -> ApiResult<DocumentDetail> {
     ctx.authorize(Permission::DocumentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let version = core_db::documents::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let version = core_db::documents::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
-    let (Some(key), Some(entity), Some(related)) =
-        (before.template_key.clone(), before.related_entity.clone(), before.related_id)
-    else {
+    let (Some(key), Some(entity), Some(related)) = (
+        before.template_key.clone(),
+        before.related_entity.clone(),
+        before.related_id,
+    ) else {
         return Err(ApiError::conflict(
             "document_not_generated",
             "only documents made from a template can be made again",
@@ -816,9 +915,21 @@ pub async fn regenerate(state: &AppState, ctx: &Ctx, id: Uuid, if_match: Option<
         ));
     }
     let record_json = record_context(&mut tx, state, &entity, related).await?;
-    let reference = format!("D-{}", &id.simple().to_string()[..8].to_uppercase());
-    let date = before.document_date.unwrap_or(super::finance::today(&mut tx, ctx).await?);
-    let (_, html) = render_html(state, &mut tx, ctx, &key, Some(&before.title), &reference, date, record_json).await?;
+    let reference = format!("D-{}", id.simple().to_string()[..8].to_uppercase());
+    let date = before
+        .document_date
+        .unwrap_or(super::finance::today(&mut tx, ctx).await?);
+    let (_, html) = render_html(
+        state,
+        &mut tx,
+        ctx,
+        &key,
+        Some(&before.title),
+        &reference,
+        date,
+        record_json,
+    )
+    .await?;
     core_db::documents::cancel_pending(&mut tx, id).await?;
     core_db::documents::set_signature_status(&mut tx, id, "none", ctx.user_id()).await?;
     let number = core_db::documents::add_version(
@@ -877,7 +988,12 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewDocument) -> ApiResult<
     get(state, ctx, id).await
 }
 
-pub(crate) async fn create_in(state: &AppState, ctx: &Ctx, new: NewDocument, source: &str) -> ApiResult<Uuid> {
+pub(crate) async fn create_in(
+    state: &AppState,
+    ctx: &Ctx,
+    new: NewDocument,
+    source: &str,
+) -> ApiResult<Uuid> {
     ctx.authorize(Permission::DocumentWrite)?;
     let mut tx = begin(state, ctx).await?;
     let id = insert_uploaded(state, &mut tx, ctx, new, source).await?;
@@ -979,7 +1095,9 @@ pub async fn add_file_version(
 ) -> ApiResult<DocumentDetail> {
     ctx.authorize(Permission::DocumentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let version = core_db::documents::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let version = core_db::documents::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.source == "generated" {
@@ -989,7 +1107,10 @@ pub async fn add_file_version(
         ));
     }
     if before.signature_status == "signed" {
-        return Err(ApiError::conflict("document_signed", "a signed document cannot change"));
+        return Err(ApiError::conflict(
+            "document_signed",
+            "a signed document cannot change",
+        ));
     }
     let file = core_db::files::get(&mut tx, req.file_id)
         .await?
@@ -1062,7 +1183,9 @@ pub async fn update(
 ) -> ApiResult<DocumentDetail> {
     ctx.authorize(Permission::DocumentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let version = core_db::documents::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let version = core_db::documents::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     let mut check = Check::default();
@@ -1142,9 +1265,13 @@ pub async fn update(
 pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::DocumentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    core_db::documents::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    core_db::documents::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
-    if before.related_entity.as_deref() == Some(super::invoices::ENTITY) && before.source == "generated" {
+    if before.related_entity.as_deref() == Some(super::invoices::ENTITY)
+        && before.source == "generated"
+    {
         return Err(ApiError::conflict(
             "document_locked",
             "an issued invoice's PDF is kept with the invoice",
@@ -1195,11 +1322,16 @@ pub async fn request_signatures(
 ) -> ApiResult<DocumentDetail> {
     ctx.authorize(Permission::DocumentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let version = core_db::documents::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let version = core_db::documents::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.signature_status == "signed" {
-        return Err(ApiError::conflict("document_signed", "this document is already signed"));
+        return Err(ApiError::conflict(
+            "document_signed",
+            "this document is already signed",
+        ));
     }
     let current = core_db::documents::version(&mut tx, id, before.current_version)
         .await?
@@ -1242,7 +1374,9 @@ pub async fn request_signatures(
     }
     check.finish()?;
     core_db::documents::cancel_pending(&mut tx, id).await?;
-    let w = core_db::workspaces::get(&mut tx, ctx.workspace_id).await?.ok_or(ApiError::NotFound)?;
+    let w = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     for (position, (name, email)) in clean.iter().enumerate() {
         let sid = core_domain::ids::new_id();
         let token = new_token();
@@ -1292,10 +1426,15 @@ pub async fn request_signatures(
 pub async fn cancel_signatures(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<DocumentDetail> {
     ctx.authorize(Permission::DocumentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    core_db::documents::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    core_db::documents::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     if before.signature_status == "signed" {
-        return Err(ApiError::conflict("document_signed", "this document is already signed"));
+        return Err(ApiError::conflict(
+            "document_signed",
+            "this document is already signed",
+        ));
     }
     core_db::documents::cancel_pending(&mut tx, id).await?;
     core_db::documents::set_signature_status(&mut tx, id, "none", ctx.user_id()).await?;
@@ -1346,7 +1485,9 @@ async fn open_public(
     core_db::set_context(&mut tx, Some(workspace), None).await?;
     let mut ctx = Ctx::system(workspace);
     ctx.meta = meta;
-    let s = core_db::documents::signature(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let s = core_db::documents::signature(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     Ok((tx, ctx, s))
 }
 
@@ -1361,7 +1502,9 @@ async fn signed_version(tx: &mut Tx, s: &Signature) -> ApiResult<Version> {
 }
 
 async fn public_view(tx: &mut Tx, ctx: &Ctx, s: &Signature) -> ApiResult<PublicSigning> {
-    let w = core_db::workspaces::get(tx, ctx.workspace_id).await?.ok_or(ApiError::NotFound)?;
+    let w = core_db::workspaces::get(tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let doc = load(tx, s.document_id).await?.ok_or(ApiError::NotFound)?;
     let v = signed_version(tx, s).await?;
     Ok(PublicSigning {
@@ -1407,7 +1550,9 @@ pub async fn public_get(
 /// The PDF the signer is asked to sign (or the signed copy, once made).
 pub async fn public_pdf(state: &AppState, token: &str) -> ApiResult<files::Download> {
     let (mut tx, _ctx, s) = open_public(state, token, Default::default()).await?;
-    let doc = load(&mut tx, s.document_id).await?.ok_or(ApiError::NotFound)?;
+    let doc = load(&mut tx, s.document_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     // Once everyone has signed, the signer may keep the signed copy.
     let number = if s.status == "signed" && doc.signature_status == "signed" {
         doc.current_version
@@ -1460,7 +1605,9 @@ pub async fn public_decide(
             },
         ));
     }
-    let doc = load(&mut tx, s.document_id).await?.ok_or(ApiError::NotFound)?;
+    let doc = load(&mut tx, s.document_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let v = signed_version(&mut tx, &s).await?;
     let mut check = Check::default();
     let name = if d.sign {
@@ -1470,11 +1617,17 @@ pub async fn public_decide(
         }
         name
     } else {
-        d.signed_name.as_deref().map(str::trim).unwrap_or(&s.signer_name).to_owned()
+        d.signed_name
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or(&s.signer_name)
+            .to_owned()
     };
     let reason = check.long("reason", d.reason.as_deref(), 2000);
     check.finish()?;
-    let agent = user_agent.as_deref().map(|u| u.chars().take(500).collect::<String>());
+    let agent = user_agent
+        .as_deref()
+        .map(|u| u.chars().take(500).collect::<String>());
     core_db::documents::decide_signature(
         &mut tx,
         s.id,
@@ -1488,7 +1641,11 @@ pub async fn public_decide(
         },
     )
     .await?;
-    let topic = if d.sign { "document.signature_signed" } else { "document.signature_declined" };
+    let topic = if d.sign {
+        "document.signature_signed"
+    } else {
+        "document.signature_declined"
+    };
     record(
         &mut tx,
         &ctx,
@@ -1515,7 +1672,9 @@ pub async fn public_decide(
             seal(state, &mut tx, &ctx, &doc, &v, &round).await?;
         }
     }
-    let s = core_db::documents::signature(&mut tx, s.id).await?.ok_or(ApiError::NotFound)?;
+    let s = core_db::documents::signature(&mut tx, s.id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let view = public_view(&mut tx, &ctx, &s).await?;
     tx.commit().await?;
     Ok(view)
@@ -1552,10 +1711,11 @@ async fn seal(
     let reference = format!("{} v{}", doc.id, v.number);
     let html = engine::certificate(&doc.title, &reference, &sha, &records, &branding);
     let cert = print(state, html, "Signing certificate".into()).await?;
-    let signed = tokio::task::spawn_blocking(move || core_pdf::write::append_pages(&original, &cert))
-        .await
-        .map_err(ApiError::internal)?
-        .map_err(|e| ApiError::internal(e.to_string()))?;
+    let signed =
+        tokio::task::spawn_blocking(move || core_pdf::write::append_pages(&original, &cert))
+            .await
+            .map_err(ApiError::internal)?
+            .map_err(|e| ApiError::internal(e.to_string()))?;
     let name = file.filename.trim_end_matches(".pdf").to_owned() + "-signed.pdf";
     let stored = files::store(state, tx, ctx, &name, PDF, &signed, true).await?;
     let number = core_db::documents::add_version(
@@ -1591,10 +1751,16 @@ async fn seal(
 // Booking pack -----------------------------------------------------------------------------
 
 /// Every current document of a booking and its invoices, zipped.
-pub async fn booking_pack(state: &AppState, ctx: &Ctx, booking_id: Uuid) -> ApiResult<files::Download> {
+pub async fn booking_pack(
+    state: &AppState,
+    ctx: &Ctx,
+    booking_id: Uuid,
+) -> ApiResult<files::Download> {
     ctx.authorize(Permission::DocumentRead)?;
     let mut tx = begin(state, ctx).await?;
-    let booking = super::bookings::load(&mut tx, booking_id).await?.ok_or(ApiError::NotFound)?;
+    let booking = super::bookings::load(&mut tx, booking_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let mut docs = core_db::documents::list(
         &mut tx,
         core_db::documents::Filter {
@@ -1644,7 +1810,10 @@ pub async fn booking_pack(state: &AppState, ctx: &Ctx, booking_id: Uuid) -> ApiR
     }
     tx.commit().await?;
     Ok(files::Download {
-        filename: format!("{}.zip", pdf_filename(&booking.title, 1).trim_end_matches(".pdf")),
+        filename: format!(
+            "{}.zip",
+            pdf_filename(&booking.title, 1).trim_end_matches(".pdf")
+        ),
         content_type: "application/zip".into(),
         bytes: buf.into_inner(),
     })
@@ -1662,9 +1831,19 @@ pub(crate) async fn generate_in(
 ) -> ApiResult<(Uuid, i32)> {
     let today = super::finance::today(tx, ctx).await?;
     let doc_id = core_domain::ids::new_id();
-    let reference = format!("D-{}", &doc_id.simple().to_string()[..8].to_uppercase());
+    let reference = format!("D-{}", doc_id.simple().to_string()[..8].to_uppercase());
     let record_json = record_context(tx, state, entity, id).await?;
-    let (title, html) = render_html(state, tx, ctx, template_key, None, &reference, today, record_json).await?;
+    let (title, html) = render_html(
+        state,
+        tx,
+        ctx,
+        template_key,
+        None,
+        &reference,
+        today,
+        record_json,
+    )
+    .await?;
     insert_generated(
         tx,
         ctx,

@@ -75,7 +75,11 @@ async fn load(tx: &mut Tx, id: Uuid) -> ApiResult<Option<PdfImportView>> {
     Ok(core_db::pdf_imports::get(tx, id).await?.map(Into::into))
 }
 
-pub async fn list(state: &AppState, ctx: &Ctx, status: Option<&str>) -> ApiResult<Vec<PdfImportView>> {
+pub async fn list(
+    state: &AppState,
+    ctx: &Ctx,
+    status: Option<&str>,
+) -> ApiResult<Vec<PdfImportView>> {
     ctx.authorize(Permission::DocumentRead)?;
     let statuses: Vec<String> = status
         .unwrap_or_default()
@@ -105,10 +109,17 @@ pub struct NewPdfImports {
 }
 
 /// Starts reading a batch of uploaded PDFs.
-pub async fn create(state: &AppState, ctx: &Ctx, req: NewPdfImports) -> ApiResult<Vec<PdfImportView>> {
+pub async fn create(
+    state: &AppState,
+    ctx: &Ctx,
+    req: NewPdfImports,
+) -> ApiResult<Vec<PdfImportView>> {
     ctx.authorize(Permission::DocumentWrite)?;
     if req.file_ids.is_empty() || req.file_ids.len() > MAX_BATCH {
-        return Err(ApiError::invalid("file_ids", format!("give 1 to {MAX_BATCH} files")));
+        return Err(ApiError::invalid(
+            "file_ids",
+            format!("give 1 to {MAX_BATCH} files"),
+        ));
     }
     let mut tx = begin(state, ctx).await?;
     let mut out = Vec::new();
@@ -117,7 +128,10 @@ pub async fn create(state: &AppState, ctx: &Ctx, req: NewPdfImports) -> ApiResul
             .await?
             .ok_or_else(|| ApiError::invalid(format!("file_ids[{i}]"), "there is no such file"))?;
         if file.content_type != super::files::PDF {
-            return Err(ApiError::invalid(format!("file_ids[{i}]"), format!("{} is not a PDF", file.filename)));
+            return Err(ApiError::invalid(
+                format!("file_ids[{i}]"),
+                format!("{} is not a PDF", file.filename),
+            ));
         }
         let id = core_domain::ids::new_id();
         core_db::pdf_imports::insert(&mut tx, id, file.id, ctx.user_id()).await?;
@@ -125,7 +139,14 @@ pub async fn create(state: &AppState, ctx: &Ctx, req: NewPdfImports) -> ApiResul
         // Already read (a file used twice): match it now.
         if file.read_state != "pending" {
             let text = core_db::files::text(&mut tx, file.id).await?;
-            after_text(&mut tx, ctx, id, text.as_deref(), file.read_error.as_deref()).await?;
+            after_text(
+                &mut tx,
+                ctx,
+                id,
+                text.as_deref(),
+                file.read_error.as_deref(),
+            )
+            .await?;
         }
         record(
             &mut tx,
@@ -166,16 +187,27 @@ pub(crate) async fn after_read(
 }
 
 async fn options(tx: &mut Tx, ctx: &Ctx) -> ApiResult<Options> {
-    let w = core_db::workspaces::get(tx, ctx.workspace_id).await?.ok_or(ApiError::NotFound)?;
-    let us_style = matches!(w.country.trim(), "US" | "PH" | "FM" | "PW") || w.locale.ends_with("-US");
+    let w = core_db::workspaces::get(tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let us_style =
+        matches!(w.country.trim(), "US" | "PH" | "FM" | "PW") || w.locale.ends_with("-US");
     Ok(Options {
-        date_order: if us_style { DateOrder::Mdy } else { DateOrder::Dmy },
+        date_order: if us_style {
+            DateOrder::Mdy
+        } else {
+            DateOrder::Dmy
+        },
         default_currency: w.default_currency.trim().to_owned(),
     })
 }
 
 /// The suggestions for a text, with the workspace's issuer templates.
-pub(crate) async fn suggestions(tx: &mut Tx, ctx: &Ctx, text: &str) -> ApiResult<(Suggestions, Vec<String>)> {
+pub(crate) async fn suggestions(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    text: &str,
+) -> ApiResult<(Suggestions, Vec<String>)> {
     let pages: Vec<&str> = text.split('\x0c').collect();
     let opts = options(tx, ctx).await?;
     let mut found = suggest::suggest(&pages, &opts);
@@ -220,22 +252,36 @@ async fn matches(tx: &mut Tx, found: &Suggestions) -> ApiResult<Vec<Value>> {
             .fetch_all(&mut **tx)
             .await?;
             for h in hits {
-                push(&mut out, 1.0, json!({ "entity": "invoice", "id": h.id, "name": h.reference,
-                                   "reason": format!("invoice number {n} is already recorded") }));
+                push(
+                    &mut out,
+                    1.0,
+                    json!({ "entity": "invoice", "id": h.id, "name": h.reference,
+                                   "reason": format!("invoice number {n} is already recorded") }),
+                );
             }
         }
     }
     for field in ["party", "issuer"] {
         for s in found.all(field).take(3) {
-            let Some(name) = text_of(&s.value) else { continue };
+            let Some(name) = text_of(&s.value) else {
+                continue;
+            };
             let lower = name.to_lowercase();
             for (c, _) in core_db::organisations::similar(tx, &lower, None, 0.4, None, 3).await? {
-                push(&mut out, c.similarity, json!({ "entity": "organisation", "id": c.id, "name": c.name,
-                                            "reason": format!("“{name}” appears in the document") }));
+                push(
+                    &mut out,
+                    c.similarity,
+                    json!({ "entity": "organisation", "id": c.id, "name": c.name,
+                                            "reason": format!("“{name}” appears in the document") }),
+                );
             }
             for c in core_db::talent::similar(tx, &lower, 0.4, None, 3).await? {
-                push(&mut out, c.similarity, json!({ "entity": "talent", "id": c.id, "name": c.name,
-                                            "reason": format!("“{name}” appears in the document") }));
+                push(
+                    &mut out,
+                    c.similarity,
+                    json!({ "entity": "talent", "id": c.id, "name": c.name,
+                                            "reason": format!("“{name}” appears in the document") }),
+                );
             }
         }
     }
@@ -246,15 +292,23 @@ async fn matches(tx: &mut Tx, found: &Suggestions) -> ApiResult<Vec<Value>> {
         .collect();
     if !emails.is_empty() {
         for c in core_db::contacts::similar(tx, "", &emails, &[], 1.1, None, 5).await? {
-            push(&mut out, 0.9, json!({ "entity": "contact", "id": c.id, "name": c.name,
-                               "reason": format!("{} appears in the document", c.emails.join(", ")) }));
+            push(
+                &mut out,
+                0.9,
+                json!({ "entity": "contact", "id": c.id, "name": c.name,
+                               "reason": format!("{} appears in the document", c.emails.join(", ")) }),
+            );
         }
     }
     // A booking on a date the document names, with a matched buyer.
     let orgs: Vec<Uuid> = out
         .iter()
         .filter(|(_, v)| v.get("entity").and_then(Value::as_str) == Some("organisation"))
-        .filter_map(|(_, v)| v.get("id").and_then(Value::as_str).and_then(|s| s.parse().ok()))
+        .filter_map(|(_, v)| {
+            v.get("id")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse().ok())
+        })
         .collect();
     let dates: Vec<NaiveDate> = ["start_date", "issue_date", "signed_date"]
         .iter()
@@ -277,18 +331,36 @@ async fn matches(tx: &mut Tx, found: &Suggestions) -> ApiResult<Vec<Value>> {
         .fetch_all(&mut **tx)
         .await?;
         for h in hits {
-            push(&mut out, 0.95, json!({ "entity": "booking", "id": h.id, "name": h.title,
-                                "reason": format!("a booking for this buyer on {}", h.starts_at.date_naive()) }));
+            push(
+                &mut out,
+                0.95,
+                json!({ "entity": "booking", "id": h.id, "name": h.title,
+                                "reason": format!("a booking for this buyer on {}", h.starts_at.date_naive()) }),
+            );
         }
     }
     out.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     Ok(out.into_iter().take(10).map(|(_, v)| v).collect())
 }
 
-async fn after_text(tx: &mut Tx, ctx: &Ctx, id: Uuid, text: Option<&str>, error: Option<&str>) -> ApiResult<()> {
+async fn after_text(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    id: Uuid,
+    text: Option<&str>,
+    error: Option<&str>,
+) -> ApiResult<()> {
     let Some(text) = text.filter(|t| !t.trim().is_empty()) else {
         let message = error.unwrap_or("the PDF has no text to read (it may be a scan)");
-        core_db::pdf_imports::set_read(tx, id, if error.is_some() { "failed" } else { "ready" }, &json!({ "kinds": [], "fields": [] }), &json!([]), Some(message)).await?;
+        core_db::pdf_imports::set_read(
+            tx,
+            id,
+            if error.is_some() { "failed" } else { "ready" },
+            &json!({ "kinds": [], "fields": [] }),
+            &json!([]),
+            Some(message),
+        )
+        .await?;
         return Ok(());
     };
     let (found, applied) = suggestions(tx, ctx, text).await?;
@@ -331,7 +403,9 @@ pub async fn confirm(
         ctx.authorize(Permission::InvoiceWrite)?;
     }
     let mut tx = begin(state, ctx).await?;
-    let (version, status) = core_db::pdf_imports::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let (version, status) = core_db::pdf_imports::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     if !matches!(status.as_str(), "ready" | "failed") {
         return Err(ApiError::conflict(
@@ -369,7 +443,9 @@ pub async fn confirm(
             if doc_entity.is_none() {
                 doc_entity = Some(super::invoices::ENTITY.into());
                 doc_related = Some(inv);
-                let d = core_db::documents::get(&mut tx, doc_id).await?.ok_or(ApiError::NotFound)?;
+                let d = core_db::documents::get(&mut tx, doc_id)
+                    .await?
+                    .ok_or(ApiError::NotFound)?;
                 core_db::documents::update(
                     &mut tx,
                     doc_id,
@@ -414,9 +490,14 @@ pub async fn confirm(
 pub async fn discard(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<PdfImportView> {
     ctx.authorize(Permission::DocumentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let (_, status) = core_db::pdf_imports::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let (_, status) = core_db::pdf_imports::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     if status == "confirmed" {
-        return Err(ApiError::conflict("import_confirmed", "delete the document it made instead"));
+        return Err(ApiError::conflict(
+            "import_confirmed",
+            "delete the document it made instead",
+        ));
     }
     core_db::pdf_imports::discard(&mut tx, id, ctx.user_id()).await?;
     let after = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
@@ -429,9 +510,14 @@ pub async fn discard(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<PdfImpo
 pub async fn rematch(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<PdfImportView> {
     ctx.authorize(Permission::DocumentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let (_, status) = core_db::pdf_imports::lock(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let (_, status) = core_db::pdf_imports::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     if status != "ready" {
-        return Err(ApiError::conflict("import_not_ready", "only a ready import can be read again"));
+        return Err(ApiError::conflict(
+            "import_not_ready",
+            "only a ready import can be read again",
+        ));
     }
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     let text = core_db::files::text(&mut tx, before.file_id).await?;
@@ -545,11 +631,18 @@ pub struct Reading {
 pub async fn read_file(state: &AppState, ctx: &Ctx, file_id: Uuid) -> ApiResult<Reading> {
     ctx.authorize(Permission::DocumentRead)?;
     let mut tx = begin(state, ctx).await?;
-    let file = core_db::files::get(&mut tx, file_id).await?.ok_or(ApiError::NotFound)?;
+    let file = core_db::files::get(&mut tx, file_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     if file.read_state == "pending" {
-        return Err(ApiError::conflict("file_not_read", "the file is still being read; try again shortly"));
+        return Err(ApiError::conflict(
+            "file_not_read",
+            "the file is still being read; try again shortly",
+        ));
     }
-    let text = core_db::files::text(&mut tx, file_id).await?.unwrap_or_default();
+    let text = core_db::files::text(&mut tx, file_id)
+        .await?
+        .unwrap_or_default();
     let (suggestions, templates) = suggestions(&mut tx, ctx, &text).await?;
     tx.commit().await?;
     Ok(Reading {

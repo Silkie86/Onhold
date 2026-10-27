@@ -289,7 +289,9 @@ pub async fn store_rates(
 
 /// The newest day with stored rates.
 pub async fn latest_rate_day(conn: &mut PgConnection) -> Result<Option<NaiveDate>> {
-    Ok(sqlx::query_scalar!(r#"SELECT max(rate_date) FROM fx_rates"#)
-        .fetch_one(conn)
-        .await?)
+    Ok(
+        sqlx::query_scalar!(r#"SELECT max(rate_date) FROM fx_rates"#)
+            .fetch_one(conn)
+            .await?,
+    )
 }

@@ -94,7 +94,11 @@ pub async fn lock(conn: &mut PgConnection, id: Uuid) -> Result<Option<i64>> {
     .await?)
 }
 
-pub async fn find(conn: &mut PgConnection, booking_id: Uuid, talent_id: Uuid) -> Result<Option<Uuid>> {
+pub async fn find(
+    conn: &mut PgConnection,
+    booking_id: Uuid,
+    talent_id: Uuid,
+) -> Result<Option<Uuid>> {
     Ok(sqlx::query_scalar!(
         r#"SELECT id FROM settlements
            WHERE workspace_id = app_workspace_id() AND booking_id = $1 AND talent_id = $2 AND deleted_at IS NULL"#,
@@ -147,7 +151,12 @@ pub async fn insert(
     Ok(())
 }
 
-pub async fn update(conn: &mut PgConnection, id: Uuid, v: Values<'_>, by: Option<UserId>) -> Result<()> {
+pub async fn update(
+    conn: &mut PgConnection,
+    id: Uuid,
+    v: Values<'_>,
+    by: Option<UserId>,
+) -> Result<()> {
     sqlx::query!(
         r#"UPDATE settlements SET currency = $2, gross_minor = $3, commission_bps = $4, commission_minor = $5,
                   expenses = $6, expenses_minor = $7, net_minor = $8, notes = $9, updated_by = $10

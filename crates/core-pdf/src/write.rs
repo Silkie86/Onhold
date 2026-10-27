@@ -340,8 +340,7 @@ impl Renderer for Chromium {
             _ => Err(RenderError::Failed(
                 message
                     .lines()
-                    .filter(|l| !l.contains("dbus") && !l.trim().is_empty())
-                    .last()
+                    .rfind(|l| !l.contains("dbus") && !l.trim().is_empty())
                     .unwrap_or("no PDF was written")
                     .chars()
                     .take(500)
@@ -452,7 +451,10 @@ mod tests {
     #[test]
     fn the_print_policy_comes_first() {
         let out = with_policy("<!doctype html><HTML><Head lang=en><title>x</title></head></html>");
-        assert!(out.starts_with("<!doctype html><HTML><Head lang=en><meta http-equiv"), "{out}");
+        assert!(
+            out.starts_with("<!doctype html><HTML><Head lang=en><meta http-equiv"),
+            "{out}"
+        );
         let bare = with_policy("<p>hi</p>");
         assert!(bare.starts_with("<meta http-equiv"), "{bare}");
         // `<header>` is not the head.

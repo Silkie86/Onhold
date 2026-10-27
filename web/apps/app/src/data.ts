@@ -541,3 +541,17 @@ export function fetchQuotes(sync: OfflineSync | null, bookingId: string): Promis
     (q) => setMeta(`${sync?.ws}:quotes:${bookingId}`, q),
   );
 }
+
+/**
+ * A server read kept on the device as last seen (invoices, payments,
+ * documents): offline, that copy is shown read-only; with none, it is
+ * `NotOnDevice`.
+ */
+export function fetchSaved<T>(sync: OfflineSync | null, key: string, server: () => Promise<T>): Promise<Fetched<T>> {
+  return serverOrDevice(
+    sync,
+    server,
+    () => getMeta<T>(`${sync?.ws}:${key}`),
+    (data) => setMeta(`${sync?.ws}:${key}`, data),
+  );
+}

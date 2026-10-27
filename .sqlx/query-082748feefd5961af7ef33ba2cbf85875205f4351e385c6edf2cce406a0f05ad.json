@@ -1,0 +1,208 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, document_id, version_number, position, signer_name, signer_email, status, sent_at, viewed_at,\n                  decided_at, signed_name, signed_ip AS \"signed_ip: IpAddr\", signed_user_agent, pdf_sha256,\n                  decline_reason, version\n           FROM signature_requests WHERE workspace_id = app_workspace_id() AND id = $1 FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "document_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "document_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "version_number",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "version_number"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "position",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "position"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "signer_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "signer_name"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "signer_email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "signer_email"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "sent_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "sent_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "viewed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "viewed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "decided_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "decided_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "signed_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "signed_name"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "signed_ip: IpAddr",
+        "type_info": "Inet",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "signed_ip"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "signed_user_agent",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "signed_user_agent"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "pdf_sha256",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "pdf_sha256"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "decline_reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "decline_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "signature_requests",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "082748feefd5961af7ef33ba2cbf85875205f4351e385c6edf2cce406a0f05ad"
+}

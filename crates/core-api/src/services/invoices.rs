@@ -14,7 +14,9 @@ use chrono::{DateTime, NaiveDate, Utc};
 use core_db::Tx;
 use core_db::invoices::Invoice;
 use core_domain::crypto::{hash_token, new_token};
-use core_domain::finance::{Rate, TaxedAmount, convert, format_number, percent_of, status_from_amounts, totals};
+use core_domain::finance::{
+    Rate, TaxedAmount, convert, format_number, percent_of, status_from_amounts, totals,
+};
 use core_domain::{Ctx, InvoiceStatus, Money, Permission, UserId, WorkspaceId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -234,7 +236,12 @@ pub struct InvoiceFilter {
 
 fn parse_statuses(s: Option<&str>) -> ApiResult<Vec<InvoiceStatus>> {
     let mut out = Vec::new();
-    for part in s.unwrap_or_default().split(',').map(str::trim).filter(|p| !p.is_empty()) {
+    for part in s
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+    {
         out.push(
             InvoiceStatus::parse(part)
                 .ok_or_else(|| ApiError::invalid("status", format!("`{part}` is not a status")))?,
@@ -365,7 +372,9 @@ pub(crate) async fn price(
 ) -> ApiResult<Priced> {
     super::finance::ensure_tax_codes(tx, ctx).await?;
     let codes = core_db::finance::tax_codes(tx, true).await?;
-    let default = codes.iter().find(|c| c.is_default && c.archived_at.is_none());
+    let default = codes
+        .iter()
+        .find(|c| c.is_default && c.archived_at.is_none());
     if inputs.len() > MAX_LINES {
         check.issue("line_items", format!("give at most {MAX_LINES} lines"));
     }
@@ -393,11 +402,17 @@ pub(crate) async fn price(
             Some(id) => match codes.iter().find(|c| c.id == id) {
                 Some(c) if c.archived_at.is_none() => Some(c),
                 Some(_) => {
-                    check.issue(format!("line_items[{i}].tax_code_id"), "that tax code is archived");
+                    check.issue(
+                        format!("line_items[{i}].tax_code_id"),
+                        "that tax code is archived",
+                    );
                     None
                 }
                 None => {
-                    check.issue(format!("line_items[{i}].tax_code_id"), "there is no such tax code");
+                    check.issue(
+                        format!("line_items[{i}].tax_code_id"),
+                        "there is no such tax code",
+                    );
                     None
                 }
             },
@@ -422,7 +437,13 @@ pub(crate) async fn price(
     }
     let Some(t) = totals(&taxed) else {
         check.issue("line_items", "the amounts are too large");
-        return Ok(Priced { lines: out, tax_lines: vec![], subtotal: 0, tax: 0, total: 0 });
+        return Ok(Priced {
+            lines: out,
+            tax_lines: vec![],
+            subtotal: 0,
+            tax: 0,
+            total: 0,
+        });
     };
     if t.total_minor < 0 {
         check.issue("line_items", "the total must not be negative");
@@ -523,7 +544,10 @@ async fn booking_payer(tx: &mut Tx, booking: &super::bookings::BookingView) -> A
 fn check_purpose(check: &mut Check, p: Option<&str>) -> String {
     let p = p.unwrap_or("other").trim();
     if !PURPOSES.contains(&p) {
-        check.issue("purpose", format!("must be one of: {}", PURPOSES.join(", ")));
+        check.issue(
+            "purpose",
+            format!("must be one of: {}", PURPOSES.join(", ")),
+        );
     }
     p.to_owned()
 }
@@ -593,7 +617,11 @@ pub(crate) async fn insert_draft(
         tx,
         core_db::invoices::Creation {
             id,
-            kind: if credits.is_some() { "credit_note" } else { "invoice" },
+            kind: if credits.is_some() {
+                "credit_note"
+            } else {
+                "invoice"
+            },
             issuer_talent_id: new.issuer_talent_id,
             credits_invoice_id: credits.map(|c| c.id),
             historical: None,
@@ -640,7 +668,9 @@ pub(crate) async fn insert_draft(
 }
 
 async fn locked(tx: &mut Tx, id: Uuid, if_match: Option<i64>) -> ApiResult<InvoiceView> {
-    let version = core_db::invoices::lock(tx, id).await?.ok_or(ApiError::NotFound)?;
+    let version = core_db::invoices::lock(tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     load(tx, id).await?.ok_or(ApiError::NotFound)
 }
@@ -698,7 +728,15 @@ pub async fn update(
             ));
         }
         check.finish()?;
-        core_db::invoices::update_labels(&mut tx, id, &tags, &custom, notes.as_deref(), ctx.user_id()).await?;
+        core_db::invoices::update_labels(
+            &mut tx,
+            id,
+            &tags,
+            &custom,
+            notes.as_deref(),
+            ctx.user_id(),
+        )
+        .await?;
     } else {
         let purpose = match &p.purpose {
             Some(x) => check_purpose(&mut check, Some(x)),
@@ -712,11 +750,23 @@ pub async fn update(
         });
         let payer = check_payer(&mut tx, &mut check, &payer_in).await?;
         let currency = match &p.currency {
-            Some(c) => check.currency("currency", Some(c)).unwrap_or(before.currency.clone()),
+            Some(c) => check
+                .currency("currency", Some(c))
+                .unwrap_or(before.currency.clone()),
             None => before.currency.clone(),
         };
-        let inputs = p.line_items.clone().unwrap_or_else(|| line_inputs(&before.line_items));
-        let priced = price(&mut tx, ctx, &mut check, &inputs, before.kind == "credit_note").await?;
+        let inputs = p
+            .line_items
+            .clone()
+            .unwrap_or_else(|| line_inputs(&before.line_items));
+        let priced = price(
+            &mut tx,
+            ctx,
+            &mut check,
+            &inputs,
+            before.kind == "credit_note",
+        )
+        .await?;
         let terms = match &p.terms {
             Some(t) => check.long("terms", t.as_deref(), 20_000),
             None => before.terms.clone(),
@@ -819,10 +869,19 @@ pub struct InvoiceBooking {
 }
 
 /// What a booking is sold for: the accepted quote's lines, else its fee.
-async fn booking_lines(tx: &mut Tx, booking: &super::bookings::BookingView) -> ApiResult<(String, Vec<LineInput>)> {
-    let quotes = core_db::quotes::list(tx, Some(booking.id), &[core_domain::QuoteStatus::Accepted], 0, 1)
-        .await?
-        .0;
+async fn booking_lines(
+    tx: &mut Tx,
+    booking: &super::bookings::BookingView,
+) -> ApiResult<(String, Vec<LineInput>)> {
+    let quotes = core_db::quotes::list(
+        tx,
+        Some(booking.id),
+        &[core_domain::QuoteStatus::Accepted],
+        0,
+        1,
+    )
+    .await?
+    .0;
     if let Some(q) = quotes.into_iter().next() {
         let v: super::quotes::QuoteView = q.into();
         let lines = v
@@ -867,7 +926,15 @@ pub async fn from_booking(
 ) -> ApiResult<InvoiceView> {
     ctx.authorize(Permission::InvoiceWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let id = from_booking_in(state, &mut tx, ctx, booking_id, &req.purpose, req.issuer_talent_id).await?;
+    let id = from_booking_in(
+        state,
+        &mut tx,
+        ctx,
+        booking_id,
+        &req.purpose,
+        req.issuer_talent_id,
+    )
+    .await?;
     let view = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     tx.commit().await?;
     if req.issue {
@@ -884,9 +951,14 @@ pub(crate) async fn from_booking_in(
     purpose: &str,
     issuer_talent_id: Option<Uuid>,
 ) -> ApiResult<Uuid> {
-    let booking = super::bookings::load(tx, booking_id).await?.ok_or(ApiError::NotFound)?;
+    let booking = super::bookings::load(tx, booking_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     if !matches!(purpose, "deposit" | "balance" | "full") {
-        return Err(ApiError::invalid("purpose", "must be deposit, balance or full"));
+        return Err(ApiError::invalid(
+            "purpose",
+            "must be deposit, balance or full",
+        ));
     }
     let settings = core_db::finance::settings(tx).await?;
     let (currency, full) = booking_lines(tx, &booking).await?;
@@ -915,7 +987,11 @@ pub(crate) async fn from_booking_in(
                         l.unit_minor,
                     )?;
                     Some(LineInput {
-                        description: format!("Deposit ({}): {}", core_engines::templates::percent(bps), l.description),
+                        description: format!(
+                            "Deposit ({}): {}",
+                            core_engines::templates::percent(bps),
+                            l.description
+                        ),
                         quantity: Some(1.0),
                         unit_minor: percent_of(amount, bps)?,
                         tax_code_id: l.tax_code_id,
@@ -943,10 +1019,15 @@ pub(crate) async fn from_booking_in(
             lines
         }
     };
-    if live.iter().any(|i| i.purpose == purpose || (i.purpose == "full" && purpose != "full")) {
+    if live
+        .iter()
+        .any(|i| i.purpose == purpose || (i.purpose == "full" && purpose != "full"))
+    {
         return Err(ApiError::conflict(
             "already_invoiced",
-            format!("this booking already has a {purpose} invoice (or a full one); void or credit it first"),
+            format!(
+                "this booking already has a {purpose} invoice (or a full one); void or credit it first"
+            ),
         ));
     }
     let payer = booking_payer(tx, &booking).await?;
@@ -989,7 +1070,9 @@ async fn payer_json(tx: &mut Tx, inv: &InvoiceView) -> ApiResult<Value> {
     };
     Ok(match (inv.payer_organisation_id, inv.payer_talent_id) {
         (Some(o), _) => {
-            let org = super::organisations::load(tx, o).await?.ok_or(ApiError::NotFound)?;
+            let org = super::organisations::load(tx, o)
+                .await?
+                .ok_or(ApiError::NotFound)?;
             json!({
                 "kind": "organisation",
                 "name": org.name,
@@ -999,7 +1082,9 @@ async fn payer_json(tx: &mut Tx, inv: &InvoiceView) -> ApiResult<Value> {
             })
         }
         (None, Some(t)) => {
-            let issuer = super::finance::issuer_json(tx, &Ctx::system(WorkspaceId(Uuid::nil())), Some(t)).await?;
+            let issuer =
+                super::finance::issuer_json(tx, &Ctx::system(WorkspaceId(Uuid::nil())), Some(t))
+                    .await?;
             json!({
                 "kind": "talent",
                 "name": issuer.get("name"),
@@ -1040,10 +1125,16 @@ pub(crate) async fn issue_in(
 ) -> ApiResult<(Uuid, i32)> {
     let before = locked(tx, id, if_match).await?;
     if before.status != InvoiceStatus::Draft {
-        return Err(ApiError::conflict("invoice_issued", "this invoice is already issued"));
+        return Err(ApiError::conflict(
+            "invoice_issued",
+            "this invoice is already issued",
+        ));
     }
     if before.line_items.is_empty() {
-        return Err(ApiError::invalid("line_items", "add at least one line before issuing"));
+        return Err(ApiError::invalid(
+            "line_items",
+            "add at least one line before issuing",
+        ));
     }
     let today = super::finance::today(tx, ctx).await?;
     let issue_date = req.issue_date.or(before.issue_date).unwrap_or(today);
@@ -1060,7 +1151,10 @@ pub(crate) async fn issue_in(
         .or(before.due_date)
         .unwrap_or(issue_date + chrono::Duration::days(i64::from(terms)));
     if due_date < issue_date {
-        return Err(ApiError::invalid("due_date", "must not be before the issue date"));
+        return Err(ApiError::invalid(
+            "due_date",
+            "must not be before the issue date",
+        ));
     }
     // Credit notes: against an issued invoice, for no more than it still owes.
     let original = match before.credits_invoice_id {
@@ -1068,10 +1162,16 @@ pub(crate) async fn issue_in(
             core_db::invoices::lock(tx, c).await?;
             let o = load(tx, c).await?.ok_or(ApiError::NotFound)?;
             if !o.status.is_issued() {
-                return Err(ApiError::conflict("invoice_not_issued", "the credited invoice is not issued"));
+                return Err(ApiError::conflict(
+                    "invoice_not_issued",
+                    "the credited invoice is not issued",
+                ));
             }
             if o.currency != before.currency {
-                return Err(ApiError::invalid("currency", "a credit note is in its invoice's currency"));
+                return Err(ApiError::invalid(
+                    "currency",
+                    "a credit note is in its invoice's currency",
+                ));
             }
             let room = o.total.minor - o.credited.minor;
             if before.total.minor > room {
@@ -1114,9 +1214,15 @@ pub(crate) async fn issue_in(
     let base_total = convert(before.total.minor, &before.currency, &base, rate)
         .ok_or_else(|| ApiError::invalid("fx_rate", "the converted total is too large"))?;
     let kind = before.kind.as_str();
-    let issuer_key = before.issuer_talent_id.map_or_else(|| "workspace".to_owned(), |t| t.to_string());
+    let issuer_key = before
+        .issuer_talent_id
+        .map_or_else(|| "workspace".to_owned(), |t| t.to_string());
     let number = core_db::finance::next_number(tx, &issuer_key, kind).await?;
-    let format = if kind == "credit_note" { &settings.credit_note_format } else { &settings.invoice_format };
+    let format = if kind == "credit_note" {
+        &settings.credit_note_format
+    } else {
+        &settings.invoice_format
+    };
     let reference = format_number(format, number, issue_date);
     let issuer = super::finance::issuer_json(tx, ctx, before.issuer_talent_id).await?;
     let payer = payer_json(tx, &before).await?;
@@ -1184,7 +1290,11 @@ async fn booking_rate(tx: &mut Tx, booking_id: Option<Uuid>) -> ApiResult<Option
 }
 
 /// What the invoice template sees.
-pub(crate) async fn template_context(tx: &mut Tx, inv: &InvoiceView, original: Option<&InvoiceView>) -> ApiResult<Value> {
+pub(crate) async fn template_context(
+    tx: &mut Tx,
+    inv: &InvoiceView,
+    original: Option<&InvoiceView>,
+) -> ApiResult<Value> {
     let settings = core_db::finance::settings(tx).await?;
     let bank = match inv.issuer_talent_id {
         Some(t) => super::finance::talent_bank(tx, t, &inv.currency).await?,
@@ -1198,7 +1308,9 @@ pub(crate) async fn template_context(tx: &mut Tx, inv: &InvoiceView, original: O
         }
     };
     let booking_date = match inv.booking_id {
-        Some(b) => super::bookings::load(tx, b).await?.map(|b| b.starts_at.date_naive()),
+        Some(b) => super::bookings::load(tx, b)
+            .await?
+            .map(|b| b.starts_at.date_naive()),
         None => None,
     };
     Ok(json!({
@@ -1245,7 +1357,11 @@ async fn make_pdf(
     let reference = inv.reference.clone().unwrap_or_default();
     let title = format!(
         "{} {reference}",
-        if inv.kind == "credit_note" { "Credit note" } else { "Invoice" }
+        if inv.kind == "credit_note" {
+            "Credit note"
+        } else {
+            "Invoice"
+        }
     );
     let (title, html) = super::documents::render_html(
         state,
@@ -1293,7 +1409,11 @@ pub(crate) async fn recompute(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<Inv
     }
     core_db::invoices::set_amounts(tx, id, paid, credited, status).await?;
     let after = load(tx, id).await?.ok_or(ApiError::NotFound)?;
-    let topic = if status == before.status { "invoice.updated" } else { status.topic() };
+    let topic = if status == before.status {
+        "invoice.updated"
+    } else {
+        status.topic()
+    };
     record(
         tx,
         ctx,
@@ -1341,7 +1461,12 @@ pub struct NewCreditNote {
 }
 
 /// A credit note against an issued invoice.
-pub async fn credit(state: &AppState, ctx: &Ctx, id: Uuid, req: NewCreditNote) -> ApiResult<InvoiceView> {
+pub async fn credit(
+    state: &AppState,
+    ctx: &Ctx,
+    id: Uuid,
+    req: NewCreditNote,
+) -> ApiResult<InvoiceView> {
     ctx.authorize(Permission::InvoiceWrite)?;
     let mut tx = begin(state, ctx).await?;
     let original = locked(&mut tx, id, None).await?;
@@ -1351,7 +1476,9 @@ pub async fn credit(state: &AppState, ctx: &Ctx, id: Uuid, req: NewCreditNote) -
             "only an issued invoice can be credited",
         ));
     }
-    let lines = req.line_items.unwrap_or_else(|| line_inputs(&original.line_items));
+    let lines = req
+        .line_items
+        .unwrap_or_else(|| line_inputs(&original.line_items));
     let note_id = insert_draft(
         &mut tx,
         ctx,
@@ -1403,7 +1530,10 @@ pub async fn void(
     let mut tx = begin(state, ctx).await?;
     let before = locked(&mut tx, id, if_match).await?;
     if !before.status.is_issued() || before.historical && before.status == InvoiceStatus::Void {
-        return Err(ApiError::conflict("invoice_not_issued", "only an issued invoice can be voided"));
+        return Err(ApiError::conflict(
+            "invoice_not_issued",
+            "only an issued invoice can be voided",
+        ));
     }
     if before.paid.minor > 0 || before.credited.minor > 0 {
         return Err(ApiError::conflict(
@@ -1477,7 +1607,9 @@ pub async fn send(
             {
                 found = contact.emails.first().cloned();
             }
-            found.ok_or_else(|| ApiError::invalid("to", "the payer has no contact email; give an address"))?
+            found.ok_or_else(|| {
+                ApiError::invalid("to", "the payer has no contact email; give an address")
+            })?
         }
     };
     if !core_engines::fields::is_email(&to) || to.len() > 320 {
@@ -1487,7 +1619,9 @@ pub async fn send(
     core_db::invoices::mark_sent(&mut tx, id, &hash_token(&token), &to, ctx.user_id()).await?;
     let link = state.config.app_url(&format!("/invoice/{token}"), &[]);
     let after = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
-    let w = core_db::workspaces::get(&mut tx, ctx.workspace_id).await?.ok_or(ApiError::NotFound)?;
+    let w = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     record_with_secret(
         &mut tx,
         ctx,
@@ -1504,7 +1638,10 @@ pub async fn send(
     )
     .await?;
     tx.commit().await?;
-    Ok(SentInvoice { invoice: after, link })
+    Ok(SentInvoice {
+        invoice: after,
+        link,
+    })
 }
 
 // The payer's side ------------------------------------------------------------------------------
@@ -1573,7 +1710,9 @@ pub async fn public_get(
         )
         .await?;
     }
-    let w = core_db::workspaces::get(&mut tx, ctx.workspace_id).await?.ok_or(ApiError::NotFound)?;
+    let w = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let context = template_context(&mut tx, &inv, None).await?;
     tx.commit().await?;
     Ok(PublicInvoice {
@@ -1592,7 +1731,10 @@ pub async fn public_get(
         tax: inv.tax,
         total: inv.total,
         outstanding: inv.outstanding,
-        bank_account: context.pointer("/invoice/bank_account").cloned().filter(|v| !v.is_null()),
+        bank_account: context
+            .pointer("/invoice/bank_account")
+            .cloned()
+            .filter(|v| !v.is_null()),
     })
 }
 
@@ -1605,15 +1747,23 @@ pub async fn public_pdf(state: &AppState, token: &str) -> ApiResult<super::files
 }
 
 /// An issued invoice's PDF, printing it now if the worker has not yet.
-pub(crate) async fn pdf_in(state: &AppState, tx: &mut Tx, id: Uuid) -> ApiResult<super::files::Download> {
+pub(crate) async fn pdf_in(
+    state: &AppState,
+    tx: &mut Tx,
+    id: Uuid,
+) -> ApiResult<super::files::Download> {
     let inv = load(tx, id).await?.ok_or(ApiError::NotFound)?;
     let doc_id = inv.document_id.ok_or(ApiError::NotFound)?;
-    let doc = core_db::documents::get(tx, doc_id).await?.ok_or(ApiError::NotFound)?;
+    let doc = core_db::documents::get(tx, doc_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let v = core_db::documents::version(tx, doc_id, doc.current_version)
         .await?
         .ok_or(ApiError::NotFound)?;
     if let Some(file_id) = v.file_id {
-        let file = core_db::files::get(tx, file_id).await?.ok_or(ApiError::NotFound)?;
+        let file = core_db::files::get(tx, file_id)
+            .await?
+            .ok_or(ApiError::NotFound)?;
         let bytes = super::files::bytes(state, tx, &file).await?;
         return Ok(super::files::Download {
             filename: file.filename,
@@ -1622,7 +1772,8 @@ pub(crate) async fn pdf_in(state: &AppState, tx: &mut Tx, id: Uuid) -> ApiResult
         });
     }
     // Not printed yet: print it for this answer (the job will store it).
-    let bytes = super::documents::print(state, v.html.unwrap_or_default(), doc.title.clone()).await?;
+    let bytes =
+        super::documents::print(state, v.html.unwrap_or_default(), doc.title.clone()).await?;
     Ok(super::files::Download {
         filename: format!("{}.pdf", inv.reference.unwrap_or_else(|| "invoice".into())),
         content_type: super::files::PDF.into(),
@@ -1669,7 +1820,11 @@ pub struct HistoricalInvoice {
 
 /// Records an invoice from before OnHold, as it was: its own number, no
 /// new number taken, never sent. It counts in reports and statements.
-pub async fn create_historical(state: &AppState, ctx: &Ctx, h: HistoricalInvoice) -> ApiResult<InvoiceView> {
+pub async fn create_historical(
+    state: &AppState,
+    ctx: &Ctx,
+    h: HistoricalInvoice,
+) -> ApiResult<InvoiceView> {
     ctx.authorize(Permission::InvoiceWrite)?;
     let mut tx = begin(state, ctx).await?;
     let id = insert_historical(&mut tx, ctx, h).await?;
@@ -1678,14 +1833,20 @@ pub async fn create_historical(state: &AppState, ctx: &Ctx, h: HistoricalInvoice
     Ok(view)
 }
 
-pub(crate) async fn insert_historical(tx: &mut Tx, ctx: &Ctx, h: HistoricalInvoice) -> ApiResult<Uuid> {
+pub(crate) async fn insert_historical(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    h: HistoricalInvoice,
+) -> ApiResult<Uuid> {
     let mut check = Check::default();
     let reference = check.required("reference", &h.reference, 60);
     let kind = h.kind.as_deref().unwrap_or("invoice");
     if !matches!(kind, "invoice" | "credit_note") {
         check.issue("kind", "must be invoice or credit_note");
     }
-    let currency = check.currency("currency", Some(&h.currency)).unwrap_or_default();
+    let currency = check
+        .currency("currency", Some(&h.currency))
+        .unwrap_or_default();
     let payer = check_payer(tx, &mut check, &h.payer).await?;
     let priced = match &h.line_items {
         Some(lines) => price(tx, ctx, &mut check, lines, false).await?,
@@ -1712,7 +1873,11 @@ pub(crate) async fn insert_historical(tx: &mut Tx, ctx: &Ctx, h: HistoricalInvoi
             }
         }
     };
-    let paid = if h.paid { priced.total } else { h.paid_minor.unwrap_or(0) };
+    let paid = if h.paid {
+        priced.total
+    } else {
+        h.paid_minor.unwrap_or(0)
+    };
     if paid < 0 || paid > priced.total {
         check.issue("paid_minor", "must be between 0 and the total");
     }
@@ -1783,7 +1948,9 @@ pub(crate) async fn insert_historical(tx: &mut Tx, ctx: &Ctx, h: HistoricalInvoi
     // freeze on issued invoices applies.
     let base = super::finance::base_currency(tx, ctx).await?;
     let q = super::finance::reference_rate(tx, &currency, &base, h.issue_date).await?;
-    let base_total = q.as_ref().and_then(|q| convert(priced.total, &currency, &base, q.rate));
+    let base_total = q
+        .as_ref()
+        .and_then(|q| convert(priced.total, &currency, &base, q.rate));
     sqlx::query!(
         r#"UPDATE invoices SET status = $2, base_currency = $3, fx_rate = $4::text::numeric, fx_date = $5,
                   fx_source = $6, base_total_minor = $7

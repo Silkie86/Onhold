@@ -19,7 +19,11 @@ pub struct Row {
 }
 
 /// Invoiced, net of credit notes, by month of issue.
-pub async fn revenue_by_month(conn: &mut PgConnection, from: NaiveDate, to: NaiveDate) -> Result<Vec<Row>> {
+pub async fn revenue_by_month(
+    conn: &mut PgConnection,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<Row>> {
     Ok(sqlx::query_as!(
         Row,
         r#"SELECT to_char(date_trunc('month', issue_date), 'YYYY-MM') AS "key!", NULL::uuid AS id,
@@ -39,7 +43,11 @@ pub async fn revenue_by_month(conn: &mut PgConnection, from: NaiveDate, to: Naiv
 }
 
 /// Invoiced, net of credit notes, by who was billed.
-pub async fn revenue_by_payer(conn: &mut PgConnection, from: NaiveDate, to: NaiveDate) -> Result<Vec<Row>> {
+pub async fn revenue_by_payer(
+    conn: &mut PgConnection,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<Row>> {
     Ok(sqlx::query_as!(
         Row,
         r#"SELECT coalesce(o.name, t.name, i.payer_name, '') AS "key!", coalesce(i.payer_organisation_id, i.payer_talent_id) AS id,
@@ -62,7 +70,11 @@ pub async fn revenue_by_payer(conn: &mut PgConnection, from: NaiveDate, to: Naiv
 
 /// Invoiced net of tax, by the talent each line is for (lines for no one in
 /// particular go to the invoice's booking's talent, else to no one).
-pub async fn revenue_by_talent(conn: &mut PgConnection, from: NaiveDate, to: NaiveDate) -> Result<Vec<Row>> {
+pub async fn revenue_by_talent(
+    conn: &mut PgConnection,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<Row>> {
     Ok(sqlx::query_as!(
         Row,
         r#"WITH lines AS (
