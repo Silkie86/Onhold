@@ -726,7 +726,18 @@ pub async fn create_api_key(
             };
             (created_by, expires_at)
         }
-        _ => (ctx.user_id(), expires_at),
+        Actor::User {
+            user_id,
+            impersonator: None,
+        } => (Some(user_id), expires_at),
+        // A key works only while its creator is a member, so one made by a
+        // visiting superadmin (or by no one) would never work.
+        _ => {
+            return Err(ApiError::forbidden(
+                "not_a_member",
+                "only a member of the workspace can create API keys, not a superadmin visiting it",
+            ));
+        }
     };
     core_db::api_keys::insert(
         &mut tx,

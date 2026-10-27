@@ -1153,6 +1153,13 @@ async fn impersonation_is_time_boxed_and_audited(pool: PgPool) {
         .send()
         .await
         .ok();
+    // A key needs a member behind it; a visitor's would never work.
+    app.post("/api/v1/api-keys")
+        .signed_in(&in_customer)
+        .json(json!({ "name": "support", "permissions": ["member:read"] }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
     let me = app.get("/api/v1/auth/me").signed_in(&ops).send().await.ok();
     assert_eq!(
         me.body["impersonation"]["workspace_id"],
