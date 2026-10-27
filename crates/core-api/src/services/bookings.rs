@@ -957,8 +957,8 @@ pub(crate) async fn update_in_tx(
     let moved = starts_at != current.starts_at || ends_at != current.ends_at;
     let talent_changed = talent != before_talent;
     // A confirmed booking that moves, or takes new talent, is checked again.
-    let override_reason = if current.status == BookingStatus::Confirmed && (moved || talent_changed)
-    {
+    let rechecked = current.status == BookingStatus::Confirmed && (moved || talent_changed);
+    let override_reason = if rechecked {
         check_firm(
             tx,
             ctx,
@@ -1032,6 +1032,14 @@ pub(crate) async fn update_in_tx(
     }
     if talent_changed {
         core_db::bookings::set_talent(tx, id, &talent)
+            .await
+            .map_err(refused)?;
+    }
+    // An override that no longer has a clash to excuse ends, which puts the
+    // booking back under the double-booking constraint. Only once it is at
+    // its new time and talent: at the old ones it still clashes.
+    if rechecked && override_reason.is_none() && current.clash_override {
+        core_db::bookings::clear_override(tx, id, ctx.user_id())
             .await
             .map_err(refused)?;
     }

@@ -332,6 +332,23 @@ pub async fn open_for_booking(conn: &mut PgConnection, booking_id: Uuid) -> Resu
     .await?)
 }
 
+/// A booking's accepted quotes that no accepted revision has replaced.
+pub async fn accepted_for_booking(conn: &mut PgConnection, booking_id: Uuid) -> Result<Vec<Uuid>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT q.id FROM quotes q
+           WHERE q.workspace_id = app_workspace_id() AND q.booking_id = $1 AND q.deleted_at IS NULL
+             AND q.status = 'accepted'
+             AND NOT EXISTS (
+                 SELECT 1 FROM quotes r
+                 WHERE r.workspace_id = q.workspace_id AND r.supersedes_id = q.id
+                   AND r.deleted_at IS NULL AND r.status = 'accepted')
+           ORDER BY q.number, q.revision"#,
+        booking_id
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
 /// The latest revision number of a quote number.
 pub async fn latest_revision(conn: &mut PgConnection, number: i64) -> Result<i32> {
     Ok(sqlx::query_scalar!(

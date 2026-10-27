@@ -9,6 +9,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use core_db::Tx;
 use core_db::quotes::{ACCEPTED_FROZEN, Quote};
 use core_domain::crypto::{hash_token, new_token};
+use core_domain::workspace::WorkspaceStatus;
 use core_domain::{BookingStatus, Ctx, Money, Permission, QuoteStatus, UserId, WorkspaceId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -627,6 +628,7 @@ pub async fn send(
     let booking = super::bookings::load(&mut tx, before.booking_id)
         .await?
         .ok_or(ApiError::NotFound)?;
+    check_not_accepted(&mut tx, &before).await?;
     if !matches!(
         booking.status,
         BookingStatus::Hold | BookingStatus::Pending | BookingStatus::Confirmed
@@ -848,6 +850,11 @@ async fn open_public(
         .await?
         .ok_or(ApiError::NotFound)?;
     core_db::set_context(&mut tx, Some(workspace), None).await?;
+    // A closed or suspended workspace's links stop working, as if withdrawn.
+    core_db::workspaces::get(&mut tx, workspace)
+        .await?
+        .filter(|w| matches!(w.status, WorkspaceStatus::Trial | WorkspaceStatus::Active))
+        .ok_or(ApiError::NotFound)?;
     let mut ctx = Ctx::system(workspace);
     ctx.meta = meta;
     Ok((tx, ctx, id))
@@ -945,6 +952,23 @@ pub struct DeclineQuote {
     pub reason: Option<String>,
 }
 
+/// Refuses when the booking already has an accepted quote that `q` is not a
+/// revision of, so a booking never has two acceptances standing. The booking
+/// is locked first, so two quotes answered at once are taken in turn.
+async fn check_not_accepted(tx: &mut Tx, q: &QuoteView) -> ApiResult<()> {
+    core_db::bookings::lock(tx, q.booking_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let accepted = core_db::quotes::accepted_for_booking(tx, q.booking_id).await?;
+    if accepted.iter().any(|a| Some(*a) != q.supersedes_id) {
+        return Err(ApiError::conflict(
+            "quote_already_accepted",
+            "another quote for this booking has already been accepted",
+        ));
+    }
+    Ok(())
+}
+
 async fn decidable(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<QuoteView> {
     core_db::quotes::lock(tx, id)
         .await?
@@ -967,6 +991,7 @@ async fn decidable(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<QuoteView> {
     {
         return Err(ApiError::conflict("quote_closed", "this quote has expired"));
     }
+    check_not_accepted(tx, &q).await?;
     Ok(q)
 }
 
