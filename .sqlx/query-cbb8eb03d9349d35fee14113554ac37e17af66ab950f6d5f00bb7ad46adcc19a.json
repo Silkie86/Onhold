@@ -1,0 +1,203 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, name, org_type, addresses, tax_id, default_currency, payment_terms_days, notes, tags,\n                  custom, version, created_at, updated_at, created_by AS \"created_by: UserId\",\n                  updated_by AS \"updated_by: UserId\", 0::bigint AS \"contact_count!\"\n           FROM organisations\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL\n           FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "org_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "org_type"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "addresses",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "addresses"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "tax_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "tax_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "default_currency",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "default_currency"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "payment_terms_days",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "payment_terms_days"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "tags",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "tags"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "custom",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "custom"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "updated_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "updated_by"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "contact_count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "cbb8eb03d9349d35fee14113554ac37e17af66ab950f6d5f00bb7ad46adcc19a"
+}

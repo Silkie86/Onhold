@@ -1,0 +1,60 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT entity AS \"entity!\", id AS \"id!\", name AS \"name!\", detail, score AS \"score!\" FROM (\n               SELECT 'talent' AS entity, t.id, t.name, coalesce(t.talent_type, t.kind::text) AS detail,\n                      (CASE WHEN lower(t.name) = $1 THEN 3 WHEN lower(t.name) LIKE $3 THEN 2\n                            WHEN t.search_text LIKE $2 THEN 1 ELSE 0 END\n                       + word_similarity($1, t.search_text))::real AS score\n               FROM talent t\n               WHERE $4 AND t.workspace_id = app_workspace_id() AND t.deleted_at IS NULL\n                 AND (t.search_text LIKE $2 OR $1 <% t.search_text\n                      OR EXISTS (SELECT 1 FROM jsonb_each_text(t.custom) e\n                                 WHERE e.key = ANY($5) AND lower(e.value) LIKE $2))\n               UNION ALL\n               SELECT 'organisation', o.id, o.name, o.org_type,\n                      (CASE WHEN lower(o.name) = $1 THEN 3 WHEN lower(o.name) LIKE $3 THEN 2\n                            WHEN o.search_text LIKE $2 THEN 1 ELSE 0 END\n                       + word_similarity($1, o.search_text))::real\n               FROM organisations o\n               WHERE $6 AND o.workspace_id = app_workspace_id() AND o.deleted_at IS NULL\n                 AND (o.search_text LIKE $2 OR $1 <% o.search_text\n                      OR EXISTS (SELECT 1 FROM jsonb_each_text(o.custom) e\n                                 WHERE e.key = ANY($7) AND lower(e.value) LIKE $2))\n               UNION ALL\n               SELECT 'contact', c.id, c.name,\n                      nullif(concat_ws(' · ', c.role, org.name, c.emails[1]), ''),\n                      (CASE WHEN lower(c.name) = $1 THEN 3 WHEN lower(c.name) LIKE $3 THEN 2\n                            WHEN c.search_text LIKE $2 THEN 1 ELSE 0 END\n                       + word_similarity($1, c.search_text))::real\n               FROM contacts c LEFT JOIN organisations org ON org.id = c.organisation_id\n               WHERE $8 AND c.workspace_id = app_workspace_id() AND c.deleted_at IS NULL\n                 AND (c.search_text LIKE $2 OR $1 <% c.search_text\n                      OR EXISTS (SELECT 1 FROM jsonb_each_text(c.custom) e\n                                 WHERE e.key = ANY($9) AND lower(e.value) LIKE $2))\n           ) hits\n           ORDER BY score DESC, name, id\n           LIMIT $10",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entity!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "name!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "detail",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "score!",
+        "type_info": "Float4",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "TextArray",
+        "Bool",
+        "TextArray",
+        "Bool",
+        "TextArray",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "957f5daa0a793af9d83310107e5538ef67321b02fb619787d1cb7e9d1384a682"
+}

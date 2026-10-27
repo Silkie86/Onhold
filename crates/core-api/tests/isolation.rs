@@ -95,7 +95,78 @@ struct World {
     b_webhook: uuid::Uuid,
     b_event: uuid::Uuid,
     b_job: uuid::Uuid,
+    b_crm: Crm,
     b_markers: Vec<String>,
+}
+
+/// One of everything M3 adds, in `owner`'s workspace, named after `slug`.
+struct Crm {
+    talent: uuid::Uuid,
+    member: uuid::Uuid,
+    organisation: uuid::Uuid,
+    contact: uuid::Uuid,
+    view: uuid::Uuid,
+    import: uuid::Uuid,
+}
+
+async fn crm(app: &TestApp, owner: &Client, slug: &str) -> Crm {
+    let post = |path: &str, body: Value| {
+        let req = app.post(path).signed_in(owner).json(body);
+        async move { req.send().await.ok() }
+    };
+    post(
+        "/api/v1/custom-fields",
+        json!({ "entity": "contact", "key": format!("{slug}_secret_contact_field"), "label": "Secret",
+                "field_type": "text", "searchable": true }),
+    )
+    .await;
+    let talent = post(
+        "/api/v1/talent",
+        json!({ "name": format!("{slug} secret act"), "kind": "act", "tags": [format!("{slug}-secret-tag")] }),
+    )
+    .await
+    .id("/id");
+    let member = post(
+        &format!("/api/v1/talent/{talent}/members"),
+        json!({ "name": format!("{slug} secret drummer") }),
+    )
+    .await
+    .id("/id");
+    let organisation = post(
+        "/api/v1/organisations",
+        json!({ "name": format!("{slug} secret venue"), "tags": [format!("{slug}-secret-tag")] }),
+    )
+    .await
+    .id("/id");
+    let contact = post(
+        "/api/v1/contacts",
+        json!({ "name": format!("{slug} secret booker"), "organisation_id": organisation,
+                "emails": [format!("booker@{slug}.test")], "tags": [format!("{slug}-secret-tag")],
+                "custom": { format!("{slug}_secret_contact_field"): format!("{slug} hidden value") } }),
+    )
+    .await
+    .id("/id");
+    let view = post(
+        "/api/v1/views",
+        json!({ "entity": "contact", "name": format!("{slug} secret view"), "shared": true, "config": {} }),
+    )
+    .await
+    .id("/id");
+    let import = post(
+        "/api/v1/imports",
+        json!({ "entity": "contact", "filename": format!("{slug}-secret.csv"),
+                "csv": format!("Name,Email\n{slug} imported person,imported@{slug}.test\n") }),
+    )
+    .await
+    .id("/import/id");
+    Crm {
+        talent,
+        member,
+        organisation,
+        contact,
+        view,
+        import,
+    }
 }
 
 /// One of everything M2 adds, in `owner`'s workspace, named after `slug`.
@@ -178,12 +249,19 @@ async fn world(app: &TestApp) -> World {
         "webhook:read",
         "webhook:write",
         "job:read",
-        "job:write"
+        "job:write",
+        "talent:read",
+        "talent:write",
+        "organisation:read",
+        "organisation:write",
+        "contact:read",
+        "contact:write"
     ]);
     let mut keys = Vec::new();
     let mut invitations = Vec::new();
     let mut clients = Vec::new();
     let mut configs = Vec::new();
+    let mut crms = Vec::new();
     for slug in ["alpha", "bravo"] {
         let (_, owner) = app.workspace_with_owner(slug).await;
         app.add_member(&owner, &format!("agent@{slug}.test"), "agent")
@@ -208,11 +286,13 @@ async fn world(app: &TestApp) -> World {
             key.body["secret"].as_str().unwrap().to_owned(),
         ));
         configs.push(configure(app, &owner, slug).await);
+        crms.push(crm(app, &owner, slug).await);
         clients.push(owner);
     }
     let b = clients.pop().unwrap();
     let a = clients.pop().unwrap();
     let bc = configs.pop().unwrap();
+    let b_crm = crms.pop().unwrap();
     app.publish_all().await;
     let b_event: uuid::Uuid = sqlx::query_scalar(
         "SELECT id FROM outbox WHERE workspace_id = $1 AND topic = 'thing.created'",
@@ -242,7 +322,14 @@ async fn world(app: &TestApp) -> World {
             bc.thing.to_string(),
             b_event.to_string(),
             b_job.to_string(),
+            b_crm.talent.to_string(),
+            b_crm.member.to_string(),
+            b_crm.organisation.to_string(),
+            b_crm.contact.to_string(),
+            b_crm.view.to_string(),
+            b_crm.import.to_string(),
         ],
+        b_crm,
         b_field: bc.field,
         b_pipeline: bc.pipeline,
         b_template: bc.template,
@@ -295,12 +382,38 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
             json!({ "url": "https://intruder.example/", "events": ["*"] })
         }
         ("POST", "/api/v1/webhooks/{id}/replay") => json!({ "event_id": w.b_event }),
+        ("POST", "/api/v1/talent" | "/api/v1/organisations" | "/api/v1/contacts") => {
+            json!({ "name": "Intruder" })
+        }
+        ("POST", p) if p.ends_with("/duplicates") => json!({ "name": "bravo secret" }),
+        ("POST", p) if p.ends_with("/bulk") => {
+            let ids = [w.b_crm.talent, w.b_crm.organisation, w.b_crm.contact];
+            json!({ "action": "delete", "ids": ids })
+        }
+        ("POST" | "PUT", p) if p.contains("/members") => json!({ "name": "Intruder" }),
+        ("POST" | "PUT", p) if p.starts_with("/api/v1/views") => {
+            json!({ "entity": "contact", "name": "Intruder", "shared": true, "config": {} })
+        }
+        ("POST", "/api/v1/imports") => {
+            json!({ "entity": "contact", "csv": "Name\nIntruder\n" })
+        }
+        ("POST", p) if p.starts_with("/api/v1/imports/") => json!({ "columns": ["name", null] }),
         _ => json!({}),
     }
 }
 
 fn fill_path(path: &str, w: &World) -> String {
-    let object = if path.contains("/members/") {
+    let object = if path.contains("/talent/") {
+        w.b_crm.talent
+    } else if path.contains("/organisations/") {
+        w.b_crm.organisation
+    } else if path.contains("/contacts/") {
+        w.b_crm.contact
+    } else if path.contains("/views/") {
+        w.b_crm.view
+    } else if path.contains("/imports/") {
+        w.b_crm.import
+    } else if path.contains("/members/") {
         w.b_agent
     } else if path.contains("/invitations/") {
         w.b_invitation
@@ -325,6 +438,8 @@ fn fill_path(path: &str, w: &World) -> String {
     };
     path.replace("{user_id}", &object.to_string())
         .replace("{id}", &object.to_string())
+        .replace("{member_id}", &w.b_crm.member.to_string())
+        .replace("{entity}", "contact")
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -381,7 +496,8 @@ async fn objects_of_another_workspace_do_not_exist_from_inside_this_one(pool: Pg
 
     for op in operations()
         .iter()
-        .filter(|o| o.workspace_scoped && o.path.contains('{'))
+        // An entity's schema names a kind of record, not one of B's.
+        .filter(|o| o.workspace_scoped && o.path.contains('{') && !o.path.contains("{entity}"))
     {
         let path = fill_path(&op.path, &w);
         let body = body_for(&op.method, &op.path, &w);
@@ -430,27 +546,93 @@ async fn nothing_from_another_workspace_appears_in_this_ones_reads(pool: PgPool)
                 && !o.path.ends_with("/stream")
         })
     {
-        for res in [
-            app.get(&op.path).signed_in(&w.a).send().await,
-            app.get(&op.path).bearer(&w.a_key).send().await,
-        ] {
-            assert!(
-                res.status.is_success(),
-                "GET {}: {} {}",
-                op.path,
-                res.status,
-                res.body
-            );
-            let text = res.body.to_string();
-            for marker in &w.b_markers {
-                assert!(
-                    !text.contains(marker.as_str()),
-                    "GET {} leaked {marker}",
-                    op.path
-                );
-            }
+        for query in read_queries(&op.path) {
+            assert_nothing_leaks(&app, &w, &format!("{}{query}", op.path)).await;
         }
     }
+    for entity in ["talent", "organisation", "contact"] {
+        assert_nothing_leaks(&app, &w, &format!("/api/v1/schema/{entity}")).await;
+    }
+}
+
+/// What to ask each list for, so that B's records would show if they could.
+fn read_queries(path: &str) -> Vec<&'static str> {
+    match path {
+        "/api/v1/search" => vec!["?q=bravo", "?q=secret", "?q=hidden%20value"],
+        "/api/v1/tags" | "/api/v1/views" => {
+            vec!["?entity=talent", "?entity=organisation", "?entity=contact"]
+        }
+        "/api/v1/talent" | "/api/v1/organisations" | "/api/v1/contacts" => {
+            vec!["", "?q=bravo", "?tag=bravo-secret-tag"]
+        }
+        _ => vec![""],
+    }
+}
+
+async fn assert_nothing_leaks(app: &TestApp, w: &World, path: &str) {
+    for res in [
+        app.get(path).signed_in(&w.a).send().await,
+        app.get(path).bearer(&w.a_key).send().await,
+    ] {
+        assert!(
+            res.status.is_success(),
+            "GET {path}: {} {}",
+            res.status,
+            res.body
+        );
+        let text = res.body.to_string();
+        for marker in &w.b_markers {
+            assert!(
+                !text.contains(marker.as_str()),
+                "GET {path} leaked {marker}"
+            );
+        }
+    }
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn bulk_actions_and_duplicate_checks_never_reach_another_workspace(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let w = world(&app).await;
+    for (entity, id) in [
+        ("talent", w.b_crm.talent),
+        ("organisations", w.b_crm.organisation),
+        ("contacts", w.b_crm.contact),
+    ] {
+        for action in ["delete", "add_tags"] {
+            let res = app
+                .post(&format!("/api/v1/{entity}/bulk"))
+                .signed_in(&w.a)
+                .json(json!({ "action": action, "ids": [id], "tags": ["taken"] }))
+                .send()
+                .await
+                .ok();
+            assert_eq!(res.body["done"], 0, "{entity} {action}");
+            assert_eq!(res.body["failed"][0]["message"], "not found");
+        }
+        // The same name in B is not a duplicate in A.
+        let res = app
+            .post(&format!("/api/v1/{entity}/duplicates"))
+            .signed_in(&w.a)
+            .json(json!({ "name": "bravo secret booker", "emails": ["booker@bravo.test"] }))
+            .send()
+            .await
+            .ok();
+        let text = res.body.to_string();
+        assert!(
+            !text.contains(&id.to_string()) && !text.contains("bravo"),
+            "{entity}: {text}"
+        );
+    }
+    // A contact in A cannot be placed at B's organisation.
+    let res = app
+        .post("/api/v1/contacts")
+        .signed_in(&w.a)
+        .json(json!({ "name": "Mole", "organisation_id": w.b_crm.organisation }))
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::BAD_REQUEST, "{}", res.body);
+    assert_untouched(&app, &w).await;
 }
 
 /// B looks exactly as it did: same name, members, invitations, keys and status.
@@ -531,4 +713,34 @@ async fn assert_untouched(app: &TestApp, w: &World) {
         .await
         .unwrap();
     assert_eq!(job, "dead");
+    for path in [
+        format!("/api/v1/talent/{}", w.b_crm.talent),
+        format!("/api/v1/organisations/{}", w.b_crm.organisation),
+        format!("/api/v1/contacts/{}", w.b_crm.contact),
+    ] {
+        let record = app.get(&path).signed_in(&w.b).send().await.ok();
+        assert_eq!(record.body["version"], 1, "{path}");
+    }
+    let members = app
+        .get(&format!("/api/v1/talent/{}/members", w.b_crm.talent))
+        .signed_in(&w.b)
+        .send()
+        .await
+        .ok();
+    assert_eq!(members.body[0]["name"], "bravo secret drummer");
+    let import = app
+        .get(&format!("/api/v1/imports/{}", w.b_crm.import))
+        .signed_in(&w.b)
+        .send()
+        .await
+        .ok();
+    assert_eq!(import.body["status"], "uploaded");
+    let views = app
+        .get("/api/v1/views?entity=contact")
+        .signed_in(&w.b)
+        .send()
+        .await
+        .ok();
+    assert_eq!(views.body.as_array().unwrap().len(), 1);
+    assert_eq!(views.body[0]["name"], "bravo secret view");
 }

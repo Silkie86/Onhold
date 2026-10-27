@@ -5,16 +5,24 @@
 pub mod admin;
 pub mod auth;
 pub mod automation;
+pub mod contacts;
 pub mod context;
+pub mod crm;
 pub mod events;
 pub mod fields;
+pub mod imports;
 pub mod jobs;
 pub mod mail;
+pub mod organisations;
 pub mod pipelines;
+pub mod records;
 pub mod rules;
+pub mod search;
+pub mod talent;
 pub mod templates;
 pub mod tenancy;
 pub mod things;
+pub mod views;
 pub mod webhooks;
 
 use core_db::Tx;

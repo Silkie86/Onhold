@@ -328,7 +328,9 @@ pub struct Preview {
 /// (optionally with some values overridden).
 #[derive(Debug, Default)]
 pub struct PreviewWith {
-    pub thing_id: Option<Uuid>,
+    /// What the template is about; default `thing`.
+    pub entity: Option<String>,
+    pub record_id: Option<Uuid>,
     pub overrides: Option<Value>,
 }
 
@@ -354,18 +356,34 @@ pub async fn preview(
     ctx.authorize(Permission::WorkspaceRead)?;
     let mut tx = begin(state, ctx).await?;
     let (workspace, options) = context::workspace(&mut tx, state).await?;
-    let thing = match with.thing_id {
+    let entity = with
+        .entity
+        .unwrap_or_else(|| super::things::ENTITY.to_owned());
+    if !context::is_entity(&entity) {
+        return Err(ApiError::invalid(
+            "entity",
+            format!("there are no `{entity}` records"),
+        ));
+    }
+    let object = match with.record_id {
         Some(id) => {
-            ctx.authorize(Permission::ThingRead)?;
-            let v = super::things::load(&mut tx, id)
+            ctx.authorize(context::read_permission(&entity))?;
+            context::load_object(&mut tx, state, &entity, id)
                 .await?
-                .ok_or(ApiError::NotFound)?;
-            context::with_url(state, super::things::to_json(&v))
+                .ok_or(ApiError::NotFound)?
         }
-        None => context::sample_thing(&mut tx, state).await?,
+        None => context::sample(&mut tx, state, &entity).await?,
     };
-    let event = json!({ "id": core_domain::ids::new_id(), "topic": "thing.created", "at": chrono::Utc::now() });
-    let mut ctx_json = context::build(workspace, Some(thing.clone()), Some(thing), Some(event));
+    let topic = format!("{entity}.created");
+    let event =
+        json!({ "id": core_domain::ids::new_id(), "topic": topic, "at": chrono::Utc::now() });
+    let mut ctx_json = context::build(
+        workspace,
+        &entity,
+        Some(object.clone()),
+        Some(object),
+        Some(event),
+    );
     if let Some(over) = with.overrides {
         merge(&mut ctx_json, over);
     }

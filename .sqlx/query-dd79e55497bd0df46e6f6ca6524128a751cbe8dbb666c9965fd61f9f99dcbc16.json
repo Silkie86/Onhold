@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE imports SET status = $2, error = $3, csv = NULL, finished_at = now()\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dd79e55497bd0df46e6f6ca6524128a751cbe8dbb666c9965fd61f9f99dcbc16"
+}

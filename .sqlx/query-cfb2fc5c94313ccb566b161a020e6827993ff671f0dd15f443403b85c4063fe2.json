@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE talent SET kind = $2, name = $3, legal_name = $4, talent_type = $5, bio = $6,\n                  base_location = $7, default_fee_minor = $8, default_fee_currency = $9,\n                  commission_bps = $10, status = $11, portal_user_id = $12, tags = $13, custom = $14,\n                  updated_by = $15\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "talent_kind",
+            "kind": {
+              "Enum": [
+                "person",
+                "act",
+                "space",
+                "equipment"
+              ]
+            }
+          }
+        },
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int8",
+        "Bpchar",
+        "Int4",
+        "Text",
+        "Uuid",
+        "TextArray",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cfb2fc5c94313ccb566b161a020e6827993ff671f0dd15f443403b85c4063fe2"
+}

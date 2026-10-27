@@ -68,8 +68,26 @@ pub(crate) fn parse_stored(rule: &Rule, catalog: &Catalog) -> Result<RuleDef, St
         .map_err(|i| i.to_string())
 }
 
+/// What kind of record a rule acts on: the entity an event topic or date
+/// trigger names (`contact.created` is about a contact). Scheduled rules,
+/// and events about anything else, act on no record type in particular.
+pub(crate) fn entity_of(trigger: &Trigger) -> String {
+    let name = match trigger {
+        Trigger::Event { topic } => topic.split('.').next().unwrap_or_default(),
+        Trigger::DateOffset { entity, .. } => entity.as_str(),
+        Trigger::Schedule { .. } => "",
+    };
+    if super::context::is_entity(name) {
+        name.to_owned()
+    } else {
+        super::things::ENTITY.to_owned()
+    }
+}
+
 /// Checks references the engine cannot: webhooks, custom fields and stages.
 async fn check_references(tx: &mut Tx, def: &RuleDef) -> ApiResult<()> {
+    let entity = entity_of(&def.trigger);
+    let is_thing = entity == super::things::ENTITY;
     for (i, action) in def.actions.iter().enumerate() {
         match action {
             Action::CallWebhook { webhook_id } => {
@@ -80,9 +98,21 @@ async fn check_references(tx: &mut Tx, def: &RuleDef) -> ApiResult<()> {
                     ));
                 }
             }
+            Action::SetField { field, .. } if field == "due_at" && !is_thing => {
+                return Err(ApiError::invalid(
+                    format!("actions[{i}].field"),
+                    format!("{entity} records have no due_at"),
+                ));
+            }
+            Action::MoveStage { .. } if !is_thing => {
+                return Err(ApiError::invalid(
+                    format!("actions[{i}]"),
+                    format!("{entity} records are not in a pipeline"),
+                ));
+            }
             Action::SetField { field, value } => {
                 if let Some(key) = field.strip_prefix("custom.") {
-                    let defs = super::fields::engine_defs(tx, super::things::ENTITY).await?;
+                    let defs = super::fields::engine_defs(tx, &entity).await?;
                     let def = defs
                         .iter()
                         .find(|d| d.key == key && !d.archived)

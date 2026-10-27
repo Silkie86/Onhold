@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM imports WHERE status = 'uploaded' AND created_at < $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c06ff5de21b88cb2ccd979d38f15fa1393ba874dfa52d96075f78db238a41a44"
+}

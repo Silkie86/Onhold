@@ -258,6 +258,7 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "rules",
         "workspaces",
         "idempotency_keys",
+        "imports",
     ];
     for table in tables(&app.owner).await {
         let read =
@@ -276,6 +277,8 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "SELECT name FROM workspaces",
         "SELECT actions FROM rules",
         "SELECT body FROM idempotency_keys",
+        "SELECT csv FROM imports",
+        "UPDATE imports SET status = 'queued'",
     ] {
         let err = sqlx::query(query).fetch_all(&worker).await.unwrap_err();
         assert!(

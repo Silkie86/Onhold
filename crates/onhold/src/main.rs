@@ -1,5 +1,6 @@
-//! The single OnHold binary: `onhold api`, `onhold worker`, `onhold migrate`,
-//! `onhold openapi` and the operator tools under `onhold admin`.
+//! The single OnHold binary: `onhold api`, `onhold worker`, both at once with
+//! `onhold serve`, `onhold migrate`, `onhold openapi` and the operator tools
+//! under `onhold admin`.
 
 mod config;
 mod telemetry;
@@ -50,6 +51,16 @@ enum Command {
     Api {
         #[arg(long, env = "BIND_ADDR", default_value = "0.0.0.0:8080")]
         bind: SocketAddr,
+    },
+    /// Serve the HTTP API and run the background worker in one process.
+    ///
+    /// One small machine for a small deployment; split into `api` and
+    /// `worker` to scale them separately.
+    Serve {
+        #[arg(long, env = "BIND_ADDR", default_value = "0.0.0.0:8080")]
+        bind: SocketAddr,
+        #[command(flatten)]
+        worker: config::WorkerArgs,
     },
     /// Run the background worker, with health probes on their own port.
     Worker {
@@ -170,6 +181,23 @@ async fn main() -> anyhow::Result<()> {
             let state =
                 core_api::AppState::new(core_db::connect_app(&pool_config)?, cli.api.build(true)?)?;
             core_api::serve(bind, core_api::router(state), shutdown).await?;
+        }
+        Command::Serve { bind, worker } => {
+            let config = cli.api.build(true)?;
+            let webhooks =
+                core_integrations::http::WebhookClient::new(config.webhooks_allow_private)
+                    .map_err(|e| anyhow::anyhow!("webhook client: {e}"))?;
+            let state = core_api::AppState::new(core_db::connect_app(&pool_config)?, config)?;
+            let worker = core_worker::Worker {
+                app: state.clone(),
+                queue: core_db::connect_worker(&pool_config)?,
+                mailer: worker.mailer()?,
+                webhooks,
+                settings: worker.settings()?,
+            };
+            let api = core_api::serve(bind, core_api::router(state), shutdown.clone());
+            let (api, ()) = tokio::join!(api, core_worker::run(worker, shutdown.clone()));
+            api?;
         }
         Command::Worker {
             health_bind,

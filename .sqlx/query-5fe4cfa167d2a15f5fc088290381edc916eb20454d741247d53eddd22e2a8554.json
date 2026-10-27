@@ -1,0 +1,162 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT a.id, a.actor_user_id AS \"actor_user_id: UserId\", u.name AS \"actor_name?\",\n                  a.actor_api_key_id, a.impersonator_id AS \"impersonator_id: UserId\", a.actor_rule_id,\n                  a.action, a.resource, a.object_id, a.before, a.after, a.at\n           FROM audit_log a LEFT JOIN users u ON u.id = a.actor_user_id\n           WHERE a.workspace_id = app_workspace_id() AND a.object_id = ANY($1)\n             AND ($2::uuid IS NULL OR a.id < $2)\n           ORDER BY a.id DESC\n           LIMIT $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "actor_user_id: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "actor_user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "actor_name?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "actor_api_key_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "actor_api_key_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "impersonator_id: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "impersonator_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "actor_rule_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "actor_rule_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "action",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "action"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "resource",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "resource"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "object_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "object_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "before",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "before"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "after",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "after"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "5fe4cfa167d2a15f5fc088290381edc916eb20454d741247d53eddd22e2a8554"
+}

@@ -451,7 +451,15 @@ async fn read_only_roles_cannot_change_anything(pool: PgPool) {
         .ok();
     assert_eq!(
         roles.body["mine"],
-        json!(["workspace:read", "member:read", "thing:read", "event:read"])
+        json!([
+            "workspace:read",
+            "member:read",
+            "thing:read",
+            "event:read",
+            "talent:read",
+            "organisation:read",
+            "contact:read"
+        ])
     );
     app.post("/api/v1/things")
         .signed_in(&viewer)

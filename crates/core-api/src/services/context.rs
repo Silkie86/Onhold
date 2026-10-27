@@ -1,6 +1,7 @@
-//! The context tree rules and templates see: `workspace`, the object
-//! (`thing`), its state `before` a change, and the triggering `event`.
-//! Documented by [`variables`] so the template editor can list them.
+//! The context tree rules and templates see: `workspace`, the object under
+//! its entity's name (`contact`, `talent`, `thing`…), its state `before` a
+//! change, and the triggering `event`. Documented by [`variables`] so the
+//! template editor can list them.
 
 use chrono::Utc;
 use core_db::Tx;
@@ -37,35 +38,79 @@ pub(crate) async fn workspace(tx: &mut Tx, state: &AppState) -> ApiResult<(Value
     Ok((json, options))
 }
 
+/// Where a record's page is in the web app.
+fn app_path(entity: &str, id: &str) -> String {
+    match entity {
+        "talent" => format!("/crm/talent/{id}"),
+        "organisation" => format!("/crm/organisations/{id}"),
+        "contact" => format!("/crm/contacts/{id}"),
+        _ => format!("/things/{id}"),
+    }
+}
+
 /// Adds the object's link in the web app.
-pub(crate) fn with_url(state: &AppState, mut thing: Value) -> Value {
-    if let Some(id) = thing.get("id").and_then(Value::as_str) {
-        let url = state.config.app_url(&format!("/things/{id}"), &[]);
-        if let Some(obj) = thing.as_object_mut() {
+pub(crate) fn with_url(state: &AppState, entity: &str, mut object: Value) -> Value {
+    if let Some(id) = object.get("id").and_then(Value::as_str) {
+        let url = state.config.app_url(&app_path(entity, id), &[]);
+        if let Some(obj) = object.as_object_mut() {
             obj.insert("url".into(), Value::String(url));
         }
     }
-    thing
+    object
+}
+
+/// The entities rules and templates can be about.
+pub(crate) fn is_entity(entity: &str) -> bool {
+    entity == super::things::ENTITY || super::records::is_crm(entity)
+}
+
+/// A record as rules and templates see it, with its link.
+pub(crate) async fn load_object(
+    tx: &mut Tx,
+    state: &AppState,
+    entity: &str,
+    id: uuid::Uuid,
+) -> ApiResult<Option<Value>> {
+    let json = if entity == super::things::ENTITY {
+        super::things::load(tx, id)
+            .await?
+            .map(|v| super::things::to_json(&v))
+    } else {
+        super::records::load_json(tx, entity, id).await?
+    };
+    Ok(json.map(|j| with_url(state, entity, j)))
+}
+
+/// The permission needed to read an entity's records.
+pub(crate) fn read_permission(entity: &str) -> core_domain::Permission {
+    use core_domain::Permission as P;
+    match entity {
+        "talent" => P::TalentRead,
+        "organisation" => P::OrganisationRead,
+        "contact" => P::ContactRead,
+        _ => P::ThingRead,
+    }
 }
 
 pub(crate) fn build(
     workspace: Value,
-    thing: Option<Value>,
+    entity: &str,
+    object: Option<Value>,
     before: Option<Value>,
     event: Option<Value>,
 ) -> Value {
-    json!({
-        "workspace": workspace,
-        "thing": thing,
-        "before": before,
-        "event": event,
-        "now": Utc::now(),
-    })
+    let mut tree = Map::new();
+    tree.insert("workspace".into(), workspace);
+    tree.insert(entity.to_owned(), object.unwrap_or(Value::Null));
+    tree.insert("before".into(), before.unwrap_or(Value::Null));
+    tree.insert("event".into(), event.unwrap_or(Value::Null));
+    tree.insert("now".into(), json!(Utc::now()));
+    Value::Object(tree)
 }
 
 /// Plausible values for each custom field, for previews without a real record.
-pub(crate) async fn sample_thing(tx: &mut Tx, state: &AppState) -> ApiResult<Value> {
-    let defs = core_db::fields::list(tx, Some(super::things::ENTITY), false).await?;
+async fn sample_custom(tx: &mut Tx, entity: &str) -> ApiResult<Map<String, Value>> {
+    let defs = core_db::fields::list(tx, Some(entity), false).await?;
     let mut custom = Map::new();
     for d in &defs {
         let Some(def) = super::fields::to_engine(d) else {
@@ -99,22 +144,43 @@ pub(crate) async fn sample_thing(tx: &mut Tx, state: &AppState) -> ApiResult<Val
         };
         custom.insert(def.key.clone(), value);
     }
+    Ok(custom)
+}
+
+/// A made-up record of the entity, for previews and dry runs without a real one.
+pub(crate) async fn sample(tx: &mut Tx, state: &AppState, entity: &str) -> ApiResult<Value> {
+    let custom = sample_custom(tx, entity).await?;
     let id = core_domain::ids::new_id();
-    Ok(with_url(
-        state,
-        json!({
-            "id": id,
-            "name": "Sample record",
-            "pipeline_id": null,
-            "stage": "new",
-            "stage_entered_at": Utc::now(),
-            "due_at": Utc::now() + chrono::Duration::days(14),
-            "custom": custom,
-            "version": 1,
-            "created_at": Utc::now(),
-            "updated_at": Utc::now(),
+    let now = Utc::now();
+    let base = match entity {
+        "talent" => json!({
+            "id": id, "kind": "person", "name": "Sample Artist", "legal_name": "Sam Artist",
+            "talent_type": "DJ", "base_location": "London",
+            "default_fee": { "minor": 150_000, "currency": "GBP" }, "commission_percent": 15.0,
+            "status": "active", "tags": ["sample"], "custom": custom, "version": 1,
+            "created_at": now, "updated_at": now,
         }),
-    ))
+        "organisation" => json!({
+            "id": id, "name": "Sample Venue", "org_type": "venue",
+            "addresses": [{ "line1": "1 High Street", "city": "London", "postcode": "N1 1AA", "country": "GB" }],
+            "tax_id": "GB123456789", "default_currency": "GBP", "payment_terms_days": 30,
+            "tags": ["sample"], "custom": custom, "version": 1, "created_at": now, "updated_at": now,
+        }),
+        "contact" => json!({
+            "id": id, "name": "Sam Sample", "organisation_id": null, "organisation_name": "Sample Venue",
+            "email": "sam@example.com", "emails": ["sam@example.com"],
+            "phone": "+44 20 7946 0000", "phones": ["+44 20 7946 0000"], "role": "Booker",
+            "preferred_channel": "email", "email_opt_in": true, "sms_opt_in": false,
+            "whatsapp_opt_in": false, "tags": ["sample"], "custom": custom, "version": 1,
+            "created_at": now, "updated_at": now,
+        }),
+        _ => json!({
+            "id": id, "name": "Sample record", "pipeline_id": null, "stage": "new",
+            "stage_entered_at": now, "due_at": now + chrono::Duration::days(14),
+            "custom": custom, "version": 1, "created_at": now, "updated_at": now,
+        }),
+    };
+    Ok(with_url(state, entity, base))
 }
 
 /// One variable a template can use.
@@ -150,31 +216,76 @@ pub(crate) async fn variables(tx: &mut Tx, entity: &str) -> ApiResult<Vec<Variab
         var("now", "When the message is rendered"),
         var(
             "event.topic",
-            "The event that triggered the rule, e.g. thing.created",
+            "The event that triggered the rule, e.g. contact.created",
         ),
         var("event.at", "When the event happened"),
     ];
-    if entity == super::things::ENTITY {
-        out.extend([
-            var("thing.id", "The record's id"),
-            var("thing.name", "Name"),
-            var("thing.stage", "Current stage key"),
-            var(
-                "thing.stage_entered_at",
-                "When it entered the current stage",
-            ),
-            var("thing.due_at", "Due date and time"),
-            var("thing.url", "Link to the record in the web app"),
-            var("thing.created_at", "When it was created"),
-            var("before.name", "Name before the change (update rules only)"),
-            var(
+    let core: &[(&str, &str)] = match entity {
+        "thing" => &[
+            ("id", "The record's id"),
+            ("name", "Name"),
+            ("stage", "Current stage key"),
+            ("stage_entered_at", "When it entered the current stage"),
+            ("due_at", "Due date and time"),
+        ],
+        "talent" => &[
+            ("id", "The record's id"),
+            ("name", "Stage or display name"),
+            ("kind", "person, act, space or equipment"),
+            ("legal_name", "Legal name"),
+            ("talent_type", "Type (solo, band, DJ…)"),
+            ("bio", "Bio"),
+            ("base_location", "Where they are based"),
+            ("default_fee", "Default fee (use the money filter)"),
+            ("commission_percent", "Commission percentage"),
+            ("status", "active or inactive"),
+            ("tags", "Tags"),
+        ],
+        "organisation" => &[
+            ("id", "The record's id"),
+            ("name", "Name"),
+            ("org_type", "Type (venue, promoter…)"),
+            ("addresses", "Addresses (use the address filter on one)"),
+            ("tax_id", "Tax or VAT number"),
+            ("default_currency", "Default currency"),
+            ("payment_terms_days", "Payment terms in days"),
+            ("tags", "Tags"),
+        ],
+        "contact" => &[
+            ("id", "The record's id"),
+            ("name", "Name"),
+            ("email", "Primary email"),
+            ("emails", "Every email address"),
+            ("phone", "Primary phone number"),
+            ("role", "Role or job title"),
+            ("organisation_name", "Their organisation"),
+            ("preferred_channel", "email, phone, sms or whatsapp"),
+            ("tags", "Tags"),
+        ],
+        _ => &[],
+    };
+    if !core.is_empty() {
+        for (field, description) in core {
+            out.push(var(&format!("{entity}.{field}"), description));
+        }
+        out.push(var(
+            &format!("{entity}.url"),
+            "Link to the record in the web app",
+        ));
+        out.push(var(&format!("{entity}.created_at"), "When it was created"));
+        out.push(var(
+            "before.name",
+            "Name before the change (update rules only)",
+        ));
+        if entity == super::things::ENTITY {
+            out.push(var(
                 "before.stage",
                 "Stage before the change (update rules only)",
-            ),
-        ]);
+            ));
+        }
         for d in core_db::fields::list(tx, Some(entity), false).await? {
             out.push(Variable {
-                path: format!("thing.custom.{}", d.key),
+                path: format!("{entity}.custom.{}", d.key),
                 description: d.label,
                 field_type: Some(d.field_type),
             });

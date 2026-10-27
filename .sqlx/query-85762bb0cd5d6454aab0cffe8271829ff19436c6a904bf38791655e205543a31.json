@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO imports (id, workspace_id, entity, filename, csv, headers, row_count, created_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "TextArray",
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "85762bb0cd5d6454aab0cffe8271829ff19436c6a904bf38791655e205543a31"
+}

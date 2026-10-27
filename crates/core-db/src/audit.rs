@@ -81,3 +81,47 @@ pub async fn list(conn: &mut PgConnection, before: Option<Uuid>, limit: i64) -> 
     .fetch_all(conn)
     .await?)
 }
+
+/// An audit entry about a record, with the acting member's name.
+#[derive(Debug, Clone)]
+pub struct ObjectEntry {
+    pub id: Uuid,
+    pub actor_user_id: Option<UserId>,
+    /// `None` when the actor is no longer a member of the workspace.
+    pub actor_name: Option<String>,
+    pub actor_api_key_id: Option<Uuid>,
+    pub impersonator_id: Option<UserId>,
+    pub actor_rule_id: Option<Uuid>,
+    pub action: String,
+    pub resource: String,
+    pub object_id: Option<Uuid>,
+    pub before: Option<Value>,
+    pub after: Option<Value>,
+    pub at: DateTime<Utc>,
+}
+
+/// The audit entries about these records, newest first; `before` is a
+/// keyset cursor on the entry id.
+pub async fn for_objects(
+    conn: &mut PgConnection,
+    ids: &[Uuid],
+    before: Option<Uuid>,
+    limit: i64,
+) -> Result<Vec<ObjectEntry>> {
+    Ok(sqlx::query_as!(
+        ObjectEntry,
+        r#"SELECT a.id, a.actor_user_id AS "actor_user_id: UserId", u.name AS "actor_name?",
+                  a.actor_api_key_id, a.impersonator_id AS "impersonator_id: UserId", a.actor_rule_id,
+                  a.action, a.resource, a.object_id, a.before, a.after, a.at
+           FROM audit_log a LEFT JOIN users u ON u.id = a.actor_user_id
+           WHERE a.workspace_id = app_workspace_id() AND a.object_id = ANY($1)
+             AND ($2::uuid IS NULL OR a.id < $2)
+           ORDER BY a.id DESC
+           LIMIT $3"#,
+        ids,
+        before,
+        limit
+    )
+    .fetch_all(conn)
+    .await?)
+}

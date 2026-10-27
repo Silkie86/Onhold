@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE imports SET status = 'running', started_at = coalesce(started_at, now())\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "560adbe8719bd9f49c358e5778c929d75eda783be7b53094a6784d8a6c92506a"
+}

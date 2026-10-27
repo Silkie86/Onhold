@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO organisations (id, workspace_id, name, org_type, addresses, tax_id, default_currency,\n                                      payment_terms_days, notes, tags, custom, created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Jsonb",
+        "Text",
+        "Bpchar",
+        "Int4",
+        "Text",
+        "TextArray",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ad920b8a1346b90cee4178eb9fadc3f671caea5ff98d990adf70ad9dacfdfede"
+}
