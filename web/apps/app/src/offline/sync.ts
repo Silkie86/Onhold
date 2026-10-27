@@ -28,6 +28,7 @@ import {
   type WorkEntity,
   allRecords,
   applyChange,
+  changeOutbox,
   deleteRecord,
   enqueue,
   getMeta,
@@ -61,6 +62,12 @@ export interface SyncStatus {
   ready: boolean;
 }
 
+/** A list as downloaded; not `complete` when it kept moving and records may be missing. */
+interface Downloaded {
+  items: RecordJson[];
+  complete: boolean;
+}
+
 const TOPICS =
   "contact.*,organisation.*,talent.*,custom_field.*,enquiry.*,booking.*,task.*,availability.*,pipeline.*";
 const PAGE = 500;
@@ -70,6 +77,12 @@ const EVERY_MS = 20_000;
  * (before bookings were kept offline) downloads everything again once.
  */
 const DATA_VERSION = 2;
+/** How many times a list that keeps moving under a full download is read again. */
+const DOWNLOAD_TRIES = 3;
+/** When the server is still on a change (or gave up waiting), it is tried again after this, doubling each time… */
+const RETRY_MS = 30_000;
+/** …up to this. */
+const RETRY_MAX_MS = 15 * 60_000;
 /** Marked-off time is kept from this many days back… */
 const AVAILABILITY_BACK_DAYS = 60;
 /** …to this many ahead (the calendar API gives at most 400 at a time)… */
@@ -94,10 +107,22 @@ export class OfflineSync {
   private timer: ReturnType<typeof setInterval> | null = null;
   private running: Promise<void> | null = null;
   private changed = new Set<() => void>();
+  /** Aborted by `stop()`: a run in progress ends, and its requests with it. */
+  private readonly stopping = new AbortController();
+  /** The queued change on its way to the server, which new changes must not fold into. */
+  private sending: number | undefined;
   /** Ids that records created offline were given by the server. */
   readonly renamed = new Map<string, string>();
 
   constructor(readonly ws: string) {}
+
+  /**
+   * Every request names this engine's workspace, whatever the app has
+   * switched to since, and stops when the engine does.
+   */
+  private get req() {
+    return { headers: { "X-Workspace-Id": this.ws }, signal: this.stopping.signal };
+  }
 
   get current(): SyncStatus {
     return this.status;
@@ -142,10 +167,12 @@ export class OfflineSync {
     window.removeEventListener("offline", this.offline);
     document.removeEventListener("visibilitychange", this.kick);
     if (this.timer) clearInterval(this.timer);
+    this.stopping.abort();
   }
 
   /** Sends waiting changes, then fetches what changed. One run at a time. */
   syncNow(): Promise<void> {
+    if (this.stopping.signal.aborted) return Promise.resolve();
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return Promise.resolve();
     this.running ??= this.run().finally(() => {
       this.running = null;
@@ -169,6 +196,7 @@ export class OfflineSync {
       await setMeta(`${this.ws}:lastSync`, now);
       this.set({ online: true, lastSync: now, ready: true });
     } catch (e) {
+      if (this.stopping.signal.aborted) return;
       if (isNetworkError(e)) this.set({ online: false });
       else console.warn("sync failed", e);
     } finally {
@@ -188,7 +216,7 @@ export class OfflineSync {
   // Downloading -------------------------------------------------------------------------
 
   private async latestPosition(): Promise<number> {
-    const page = await ok(api.GET("/api/v1/events", { params: { query: { limit: 1, topics: TOPICS } } }));
+    const page = await ok(api.GET("/api/v1/events", { ...this.req, params: { query: { limit: 1, topics: TOPICS } } }));
     return page.latest;
   }
 
@@ -197,26 +225,23 @@ export class OfflineSync {
     const latest = await this.latestPosition();
     const keep = new Set((await outbox(this.ws)).map((q) => q.id));
     for (const entity of OFFLINE_ENTITIES) {
-      const all: RecordJson[] = [];
-      for (let offset = 0; ; offset += PAGE) {
+      const list = await this.readAll(PAGE, async (offset, limit) => {
         const page = (await ok(
-          api.GET(P(entity), { params: { query: { offset, limit: PAGE, sort: "name" } } }),
-        )) as unknown as { items: RecordJson[]; total: number };
-        all.push(...page.items);
-        if (page.items.length < PAGE) break;
-      }
-      // Records waiting to be sent keep their offline edits.
-      await replaceAll(this.ws, entity, all.filter((r) => !keep.has(r.id)), keep);
+          api.GET(P(entity), { ...this.req, params: { query: { offset, limit, sort: "name" } } }),
+        )) as unknown as { items: RecordJson[] };
+        return page.items;
+      });
+      await this.keepList(entity, list, keep);
       await this.downloadSchema(entity);
     }
     for (const entity of ["enquiry", "booking", "task"] as const) {
-      let all: RecordJson[] = [];
+      let list: Downloaded = { items: [], complete: true };
       try {
-        all = await this.downloadWork(entity);
+        list = await this.downloadWork(entity);
       } catch (e) {
         if (!forbidden(e)) throw e;
       }
-      await replaceAll(this.ws, entity, all.filter((r) => !keep.has(r.id)), keep);
+      await this.keepList(entity, list, keep);
     }
     for (const entity of ["enquiry", "booking"] as const) await this.downloadSchema(entity);
     await this.downloadAvailability();
@@ -227,18 +252,52 @@ export class OfflineSync {
     this.notifyChanged();
   }
 
-  private async downloadWork(entity: "enquiry" | "booking" | "task"): Promise<RecordJson[]> {
-    const all: RecordJson[] = [];
+  /**
+   * Stores a downloaded list in place of the device's. Records waiting to be
+   * sent keep their offline edits. If the list kept moving while it was read,
+   * nothing is removed: a record not seen may simply have been skipped.
+   */
+  private async keepList(entity: StoredEntity, list: Downloaded, keep: Set<string>) {
+    const items = list.items.filter((r) => !keep.has(r.id));
+    if (list.complete) await replaceAll(this.ws, entity, items, keep);
+    else await putRecords(this.ws, entity, items);
+  }
+
+  /**
+   * Every record of a list the API pages by offset. A record deleted, added
+   * or renamed ahead of the page being read moves the rest along, so one
+   * could be skipped without a trace in the feed. Each page after the first
+   * therefore starts one back, on the last record already read; if that is
+   * not where it was, the list is read again from the start.
+   */
+  private async readAll(size: number, read: (offset: number, limit: number) => Promise<RecordJson[]>): Promise<Downloaded> {
+    let all: RecordJson[] = [];
+    for (let attempt = 0; attempt < DOWNLOAD_TRIES; attempt++) {
+      all = await read(0, size);
+      let full = all.length === size;
+      let moved = false;
+      while (full && !moved) {
+        this.stopping.signal.throwIfAborted();
+        const page = await read(all.length - 1, size);
+        moved = page[0]?.id !== all[all.length - 1]?.id;
+        if (!moved) all.push(...page.slice(1));
+        full = page.length === size;
+      }
+      if (!moved) return { items: all, complete: true };
+    }
+    return { items: all, complete: false };
+  }
+
+  private downloadWork(entity: "enquiry" | "booking" | "task"): Promise<Downloaded> {
     // Tasks come at most 200 a page; the others take a sort that keeps paging stable.
     const size = entity === "task" ? 200 : PAGE;
-    for (let offset = 0; ; offset += size) {
-      const query = entity === "task" ? { status: "all", offset, limit: size } : { offset, limit: size, sort: "created_at" };
-      const page = (await ok(api.GET(P(entity), { params: { query: query as never } }))) as unknown as {
+    return this.readAll(size, async (offset, limit) => {
+      const query = entity === "task" ? { status: "all", offset, limit } : { offset, limit, sort: "created_at" };
+      const page = (await ok(api.GET(P(entity), { ...this.req, params: { query: query as never } }))) as unknown as {
         items: RecordJson[];
       };
-      all.push(...page.items);
-      if (page.items.length < size) return all;
-    }
+      return page.items;
+    });
   }
 
   /** The talent's marked-off time in the window the device keeps. */
@@ -248,7 +307,7 @@ export class OfflineSync {
     const to = new Date(now + AVAILABILITY_AHEAD_DAYS * 86_400_000).toISOString();
     let items: RecordJson[] = [];
     try {
-      const cal = await ok(api.GET("/api/v1/calendar", { params: { query: { from, to } } }));
+      const cal = await ok(api.GET("/api/v1/calendar", { ...this.req, params: { query: { from, to } } }));
       items = cal.availability as unknown as RecordJson[];
     } catch (e) {
       if (!forbidden(e)) throw e;
@@ -259,7 +318,7 @@ export class OfflineSync {
 
   private async downloadStages() {
     try {
-      const list = await ok(api.GET("/api/v1/pipelines", { params: { query: { entity: "enquiry" } } }));
+      const list = await ok(api.GET("/api/v1/pipelines", { ...this.req, params: { query: { entity: "enquiry" } } }));
       const pipeline = list.find((p) => p.is_default) ?? list[0];
       const stages: Stage[] | null = pipeline ? pipeline.stages.filter((s) => !s.archived) : null;
       await setMeta(`${this.ws}:stages`, stages);
@@ -271,8 +330,8 @@ export class OfflineSync {
   /** The members (whom a task is for) and the workspace's settings. */
   private async downloadExtras() {
     for (const [key, get] of [
-      ["members", () => ok(api.GET("/api/v1/members"))],
-      ["workspace", () => ok(api.GET("/api/v1/workspace"))],
+      ["members", () => ok(api.GET("/api/v1/members", this.req))],
+      ["workspace", () => ok(api.GET("/api/v1/workspace", this.req))],
     ] as const) {
       try {
         await setMeta(`${this.ws}:${key}`, await get());
@@ -284,7 +343,7 @@ export class OfflineSync {
 
   private async downloadSchema(entity: StoredEntity) {
     try {
-      const schema = await ok(api.GET("/api/v1/schema/{entity}", { params: { path: { entity } } }));
+      const schema = await ok(api.GET("/api/v1/schema/{entity}", { ...this.req, params: { path: { entity } } }));
       await setMeta(`${this.ws}:schema:${entity}`, schema);
     } catch (e) {
       if (!forbidden(e)) throw e;
@@ -300,7 +359,7 @@ export class OfflineSync {
     for (;;) {
       let page;
       try {
-        page = await ok(api.GET("/api/v1/events", { params: { query: { after, topics: TOPICS, limit: PAGE } } }));
+        page = await ok(api.GET("/api/v1/events", { ...this.req, params: { query: { after, topics: TOPICS, limit: PAGE } } }));
       } catch (e) {
         if (e instanceof ApiFailure && e.status === 410) {
           await this.downloadAll();
@@ -340,7 +399,7 @@ export class OfflineSync {
 
   private async refetch(entity: StoredEntity, id: string) {
     try {
-      const r = (await ok(api.GET(PI(entity), { params: { path: { id } } }))) as unknown as RecordJson;
+      const r = (await ok(api.GET(PI(entity), { ...this.req, params: { path: { id } } }))) as unknown as RecordJson;
       await putRecords(this.ws, entity, [r]);
     } catch (e) {
       if (e instanceof ApiFailure && (e.status === 404 || e.status === 403)) await deleteRecord(this.ws, entity, id);
@@ -350,11 +409,14 @@ export class OfflineSync {
 
   // Changes made on this device -----------------------------------------------------------
 
-  private async saveQueue(before: OutboxItem[], after: OutboxItem[]) {
-    const kept = new Set(after.map((q) => q.seq).filter((s) => s !== undefined));
-    for (const q of before) if (q.seq !== undefined && !kept.has(q.seq)) await removeOutbox(q.seq);
-    for (const q of after) await putOutbox(q);
+  /**
+   * Changes the queue as it is now, in one transaction, so a change queued
+   * while another is being sent is never lost. Returns the new queue.
+   */
+  private async saveQueue(change: (queue: OutboxItem[]) => OutboxItem[]): Promise<OutboxItem[]> {
+    const queue = await changeOutbox(this.ws, change);
     await this.refreshCounts();
+    return queue;
   }
 
   /** Queues a change and applies it to the device's copy straight away. Returns the record as it now reads. */
@@ -366,9 +428,9 @@ export class OfflineSync {
     version?: number,
     key: string = crypto.randomUUID(),
   ): Promise<RecordJson | null> {
-    const recordId = id ?? newLocalId();
-    const before = await outbox(this.ws);
-    const current = id ? await getRecord(this.ws, entity, id) : undefined;
+    // A page may still be showing a record made offline that has just reached the server.
+    const recordId = id ? (this.renamed.get(id) ?? id) : newLocalId();
+    const current = id ? await getRecord(this.ws, entity, recordId) : undefined;
     const label = String(body.name ?? body.title ?? current?.name ?? current?.title ?? "") || undefined;
     const item: OutboxItem = {
       ws: this.ws,
@@ -382,7 +444,7 @@ export class OfflineSync {
       createdAt: new Date().toISOString(),
       state: "pending",
     };
-    await this.saveQueue(before, enqueue(before, item));
+    await this.saveQueue((queue) => enqueue(queue, item, this.sending));
 
     let result: RecordJson | null = null;
     if (op === "delete") {
@@ -446,64 +508,80 @@ export class OfflineSync {
   private async flush(): Promise<void> {
     const tried = new Set<number>();
     for (;;) {
+      this.stopping.signal.throwIfAborted();
       const queue = await outbox(this.ws);
-      // A record whose earlier change needs attention keeps its later ones
-      // waiting too, so they still apply in order.
-      const stuck = new Set(queue.filter((q) => q.state !== "pending").map((q) => q.id));
-      const next = queue.find(
-        (q) => q.state === "pending" && !stuck.has(q.id) && !tried.has(q.seq ?? -1) && !waitsForLocal(q),
-      );
+      const now = Date.now();
+      // A record whose earlier change needs attention, or is waiting to be
+      // tried again, keeps its later ones waiting too, so they still apply in order.
+      const held = (q: OutboxItem) => q.state !== "pending" || (q.retryAt !== undefined && Date.parse(q.retryAt) > now);
+      const stuck = new Set(queue.filter(held).map((q) => q.id));
+      const next = queue.find((q) => !stuck.has(q.id) && !tried.has(q.seq ?? -1) && !waitsForLocal(q));
       if (!next) return;
       tried.add(next.seq ?? -1);
-      await this.send(next, queue);
+      // From here a change to the same record queues behind this one instead of folding into it.
+      this.sending = next.seq;
+      try {
+        // Read again, with anything folded into it before that.
+        const item = (await outbox(this.ws)).find((q) => q.seq === next.seq);
+        if (item?.state === "pending") await this.send(item);
+      } finally {
+        this.sending = undefined;
+      }
     }
   }
 
-  private async send(item: OutboxItem, queue: OutboxItem[]) {
-    const headers: Record<string, string> = { "Idempotency-Key": item.key };
+  private async send(item: OutboxItem) {
+    const headers: Record<string, string> = { ...this.req.headers, "Idempotency-Key": item.key };
     if (item.version !== undefined && item.op !== "create") headers["If-Match"] = `"${item.version}"`;
+    const { signal } = this.req;
     try {
+      // What was queued meanwhile is in the queue as it is now, not as it was when this was sent.
       if (item.op === "create") {
         const created = (await ok(
-          api.POST(P(item.entity), { headers, body: item.body as never }),
+          api.POST(P(item.entity), { headers, signal, body: item.body as never }),
         )) as unknown as RecordJson;
         await deleteRecord(this.ws, item.entity, item.id);
         this.renamed.set(item.id, created.id);
         await setMeta(`${this.ws}:renamed:${item.id}`, created.id);
-        const rest = rebase(
-          rewriteIds(
-            queue.filter((q) => q.seq !== item.seq),
-            item.id,
+        const rest = await this.saveQueue((queue) =>
+          rebase(
+            rewriteIds(
+              queue.filter((q) => q.seq !== item.seq),
+              item.id,
+              created.id,
+            ),
+            item.entity,
             created.id,
+            undefined,
+            Number(created.version),
           ),
-          item.entity,
-          created.id,
-          undefined,
-          Number(created.version),
         );
-        await this.saveQueue(queue, rest);
         await this.rewriteLocalLinks(item.id, created.id);
         await this.keepLocal(item.entity, created, rest);
       } else if (item.op === "update" || item.op === "status") {
-        const path = { params: { path: { id: item.id } }, headers, body: item.body as never };
+        const path = { params: { path: { id: item.id } }, headers, signal, body: item.body as never };
         const updated = (
           item.op === "status"
             ? await ok(api.POST("/api/v1/bookings/{id}/status", path))
             : await ok(api.PATCH(PI(item.entity), path))
         ) as unknown as RecordJson;
-        const rest = rebase(
-          queue.filter((q) => q.seq !== item.seq),
-          item.entity,
-          item.id,
-          item.version,
-          Number(updated.version),
+        const rest = await this.saveQueue((queue) =>
+          rebase(
+            queue.filter((q) => q.seq !== item.seq),
+            item.entity,
+            item.id,
+            item.version,
+            Number(updated.version),
+          ),
         );
-        await this.saveQueue(queue, rest);
         await this.keepLocal(item.entity, updated, rest);
       } else {
-        const res = await api.DELETE(PI(item.entity), { params: { path: { id: item.id } }, headers });
-        // Already gone elsewhere is as good as deleted.
-        if (!res.response.ok && res.response.status !== 404) await ok(Promise.resolve(res));
+        // A record that never reached the server (its creation was discarded) has nothing to delete there.
+        if (!isLocalId(item.id)) {
+          const res = await api.DELETE(PI(item.entity), { params: { path: { id: item.id } }, headers, signal });
+          // Already gone elsewhere is as good as deleted.
+          if (!res.response.ok && res.response.status !== 404) await ok(Promise.resolve(res));
+        }
         await removeOutbox(item.seq as number);
       }
       this.notifyChanged();
@@ -513,11 +591,20 @@ export class OfflineSync {
       // Signed out, or the session's form token is stale: nothing wrong with
       // the change itself. It waits for the next sign-in.
       if (e.status === 401 || e.code === "csrf_failed") throw e;
-      if (e.status === 412) {
+      if (e.status === 408 || (e.status === 409 && e.code === "request_in_progress")) {
+        // The server gave up waiting, or is still working on it under this
+        // key: nothing wrong with the change. It is tried again later, less
+        // often each time, and the rest of the queue carries on meanwhile.
+        const tries = (item.tries ?? 0) + 1;
+        const wait = Math.min(RETRY_MS * 2 ** (tries - 1), RETRY_MAX_MS);
+        await putOutbox({ ...item, tries, retryAt: new Date(Date.now() + wait).toISOString(), error: e.message });
+      } else if (e.status === 412) {
         // Someone else changed it first: keep both versions and ask.
         let server: RecordJson | undefined;
         try {
-          server = (await ok(api.GET(PI(item.entity), { params: { path: { id: item.id } } }))) as unknown as RecordJson;
+          server = (await ok(
+            api.GET(PI(item.entity), { ...this.req, params: { path: { id: item.id } } }),
+          )) as unknown as RecordJson;
         } catch {
           server = undefined;
         }
@@ -558,7 +645,7 @@ export class OfflineSync {
     return outbox(this.ws);
   }
 
-  /** Settles a conflict or refusal: send mine over theirs, or drop mine. */
+  /** Settles a conflict or refusal: send mine over theirs, or drop mine (see also `retry`). */
   async resolve(seq: number, choice: "mine" | "theirs"): Promise<void> {
     const item = (await outbox(this.ws)).find((q) => q.seq === seq);
     if (!item) return;
@@ -579,5 +666,14 @@ export class OfflineSync {
     await this.refreshCounts();
     this.notifyChanged();
     void this.syncNow();
+  }
+
+  /** Sends a refused change again as it is, now. */
+  async retry(seq: number): Promise<void> {
+    const item = (await outbox(this.ws)).find((q) => q.seq === seq);
+    if (!item || item.state !== "failed") return;
+    await putOutbox({ ...item, state: "pending", error: undefined, retryAt: undefined });
+    await this.refreshCounts();
+    await this.syncNow();
   }
 }
