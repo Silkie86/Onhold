@@ -427,6 +427,8 @@ export class OfflineSync {
     body: Record<string, unknown>,
     version?: number,
     key: string = crypto.randomUUID(),
+    /** It was sent once already and may have arrived, so it must be sent again exactly as it is. */
+    sent = false,
   ): Promise<RecordJson | null> {
     // A page may still be showing a record made offline that has just reached the server.
     const recordId = id ? (this.renamed.get(id) ?? id) : newLocalId();
@@ -443,6 +445,7 @@ export class OfflineSync {
       key,
       createdAt: new Date().toISOString(),
       state: "pending",
+      ...(sent && { tries: 0 }),
     };
     await this.saveQueue((queue) => enqueue(queue, item, this.sending));
 
@@ -586,8 +589,16 @@ export class OfflineSync {
       }
       this.notifyChanged();
     } catch (e) {
-      if (isNetworkError(e)) throw e;
-      if (!(e instanceof ApiFailure) || e.status >= 500 || e.status === 429) throw e;
+      if (isNetworkError(e) || (e instanceof ApiFailure && e.status >= 500)) {
+        // It may have arrived (the connection dropped, or the engine stopped,
+        // after the server took it), so its key may now belong to this body:
+        // later changes queue behind it instead of folding into it.
+        await changeOutbox(this.ws, (queue) =>
+          queue.map((q) => (q.seq === item.seq ? { ...q, tries: q.tries ?? 0 } : q)),
+        );
+        throw e;
+      }
+      if (!(e instanceof ApiFailure) || e.status === 429) throw e;
       // Signed out, or the session's form token is stale: nothing wrong with
       // the change itself. It waits for the next sign-in.
       if (e.status === 401 || e.code === "csrf_failed") throw e;

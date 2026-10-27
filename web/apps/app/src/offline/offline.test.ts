@@ -146,6 +146,12 @@ describe("queuing changes", () => {
     ]);
   });
 
+  it("queues a change that may have reached the server as it is, after what waits", () => {
+    const waiting = { ...item("update", "a", { name: "x" }), seq: 7 };
+    const sent = { ...item("update", "a", { email: "a@x.example" }), tries: 0 };
+    expect(enqueue([waiting], sent)).toEqual([waiting, sent]);
+  });
+
   it("points queued changes at the server id once a create arrives", () => {
     const q = rewriteIds(
       [item("update", "local-1", { name: "x" }), item("create", "local-2", { organisation_id: "local-1" })],

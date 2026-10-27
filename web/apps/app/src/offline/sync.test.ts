@@ -67,8 +67,22 @@ function gate() {
 /** Contacts on the server, and what it answers. */
 let contacts: Map<string, RecordJson>;
 let made = 0;
+/** What each Idempotency-Key was first sent with, and the answer it got. */
+let keys: Map<string, { body: string; res: Response }>;
 
+/** Like the API: a key sent again gets the first answer, and only with the same body. */
 async function api(req: Request): Promise<Response> {
+  const key = req.headers.get("Idempotency-Key");
+  if (!key) return answer(req);
+  const body = await req.clone().text();
+  const first = keys.get(key);
+  if (first) return first.body === body ? first.res.clone() : refuse(422, "idempotency_key_reused");
+  const res = await answer(req);
+  if (res.ok) keys.set(key, { body, res: res.clone() });
+  return res;
+}
+
+async function answer(req: Request): Promise<Response> {
   const path = new URL(req.url).pathname;
   const query = new URL(req.url).searchParams;
   if (path === "/api/v1/events") return json(200, { events: [], next_after: 0, has_more: false, latest: 0 });
@@ -119,6 +133,7 @@ beforeEach(async () => {
   server.seen = [];
   server.handle = api;
   contacts = new Map();
+  keys = new Map();
   made = 0;
   // Downloaded already: a run sends the queue and reads the (empty) feed.
   for (const ws of ["w1", "w2"]) {
@@ -174,6 +189,65 @@ describe("changes made while one is on its way", () => {
     expect(contacts.get("srv-1")).toMatchObject({ name: "Grace", role: "Admiral", version: 2 });
     expect(await outbox("w1")).toEqual([]);
     expect(await allRecords("w1", "contact")).toEqual([expect.objectContaining({ id: "srv-1", role: "Admiral" })]);
+  });
+});
+
+describe("a change that may have reached the server", () => {
+  it.each([
+    ["the connection drops", false],
+    ["the engine stops", true],
+  ])("is sent again as it was when %s after it arrived, with later edits after it", async (_, stops) => {
+    contacts.set("c1", { id: "c1", name: "Ada", version: 1 } as RecordJson);
+    await putRecords("w1", "contact", [{ id: "c1", name: "Ada", version: 1 } as RecordJson]);
+    const slow = gate();
+    server.handle = async (req) => {
+      if (req.method !== "PATCH" || server.seen.filter((s) => s.method === "PATCH").length > 1) return api(req);
+      // The server takes it, but the answer never comes back.
+      await api(req);
+      if (!stops) throw new TypeError("network connection was lost");
+      await slow.wait(req);
+      return api(req);
+    };
+    let engine = new OfflineSync("w1");
+    await engine.queue("contact", "update", "c1", { phone: "0207" }, 1);
+    const run = engine.syncNow();
+    await vi.waitFor(() => expect(contacts.get("c1")?.version).toBe(2));
+    if (stops) {
+      // Say a workspace switch: this engine stops, and a new one carries on.
+      engine.stop();
+      engine = new OfflineSync("w1");
+    }
+    await run;
+    vi.stubGlobal("navigator", { onLine: false });
+    await engine.queue("contact", "update", "c1", { email: "ada@example.com" }, 1);
+    vi.stubGlobal("navigator", { onLine: true });
+    await engine.syncNow();
+
+    const patches = server.seen.filter((s) => s.method === "PATCH");
+    expect(patches.map((p) => [p.body, p.ifMatch])).toEqual([
+      [{ phone: "0207" }, '"1"'],
+      [{ phone: "0207" }, '"1"'],
+      [{ email: "ada@example.com" }, '"2"'],
+    ]);
+    expect(contacts.get("c1")).toMatchObject({ phone: "0207", email: "ada@example.com", version: 3 });
+    expect(await outbox("w1")).toEqual([]);
+  });
+
+  it("is not folded into when it was sent straight away and its answer was lost", async () => {
+    contacts.set("c1", { id: "c1", name: "Ada", phone: "0207", version: 2 } as RecordJson);
+    keys.set("k1", { body: JSON.stringify({ phone: "0207" }), res: json(200, contacts.get("c1")) });
+    const engine = new OfflineSync("w1");
+    vi.stubGlobal("navigator", { onLine: false });
+    // As the app does when its own attempt with key k1 got no answer.
+    await engine.queue("contact", "update", "c1", { phone: "0207" }, 1, "k1", true);
+    await engine.queue("contact", "update", "c1", { email: "ada@example.com" }, 1);
+    vi.stubGlobal("navigator", { onLine: true });
+    await engine.syncNow();
+
+    const patches = server.seen.filter((s) => s.method === "PATCH");
+    expect(patches.map((p) => p.body)).toEqual([{ phone: "0207" }, { email: "ada@example.com" }]);
+    expect(contacts.get("c1")).toMatchObject({ email: "ada@example.com", version: 3 });
+    expect(await outbox("w1")).toEqual([]);
   });
 });
 

@@ -48,8 +48,8 @@ export interface OutboxItem {
   server?: RecordJson;
   /**
    * How many times the server said it was still working on this change (or
-   * gave up waiting). Once set, nothing is folded into it again: its key now
-   * belongs to exactly this body.
+   * gave up waiting); 0 once it was sent and may have arrived. Once set,
+   * nothing is folded into it again: its key may belong to exactly this body.
    */
   tries?: number;
   /** Not sent again before this time. */
@@ -221,13 +221,16 @@ export function mergePatches(a: Record<string, unknown>, b: Record<string, unkno
  * creation, repeated edits become one, and deleting a record that never
  * reached the server simply forgets it. A booking's status move stays a step
  * of its own, in order, so edits after it are not folded into what came
- * before. The change being sent (`sending`, its seq) and any the server is
- * still holding under its key stay exactly as they are; what comes after
- * them is a step of its own. Returns the queue as it should be.
+ * before. The change being sent (`sending`, its seq) and any that may have
+ * reached the server under its key stay exactly as they are; what comes
+ * after them is a step of its own, and such a change is never folded into
+ * what waits either. Returns the queue as it should be.
  */
 export function enqueue(queue: OutboxItem[], next: OutboxItem, sending?: number): OutboxItem[] {
   const same = (q: OutboxItem) => q.entity === next.entity && q.id === next.id && q.ws === next.ws && q.state === "pending";
   const fixed = (q: OutboxItem) => (q.seq !== undefined && q.seq === sending) || q.tries !== undefined;
+  // A change that may already have reached the server goes as it is, after what waits.
+  if (fixed(next)) return [...queue, next];
   const settled = queue.filter((q) => same(q) && fixed(q));
   const waiting = queue.filter((q) => same(q) && !fixed(q));
   const last = waiting[waiting.length - 1];
