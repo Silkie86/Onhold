@@ -199,21 +199,36 @@ pub async fn record_run(conn: &mut PgConnection, run: RunRecord<'_>) -> Result<(
     Ok(())
 }
 
+/// The error recorded on a job whose worker stopped mid-run.
+pub const WORKER_STOPPED: &str = "the worker stopped while running this job";
+
+/// A job [`reclaim_expired`] returned to the queue, or buried (`dead`).
+#[derive(Debug, Clone)]
+pub struct Reclaimed {
+    pub workspace_id: Option<WorkspaceId>,
+    pub kind: String,
+    pub payload: Value,
+    pub dead: bool,
+}
+
 /// Returns jobs whose worker died mid-run (lease expired) to the queue, or
 /// buries them if that was their last attempt. Worker role.
-pub async fn reclaim_expired(conn: &mut PgConnection) -> Result<u64> {
-    let done = sqlx::query!(
+pub async fn reclaim_expired(conn: &mut PgConnection) -> Result<Vec<Reclaimed>> {
+    Ok(sqlx::query_as!(
+        Reclaimed,
         r#"UPDATE jobs SET
                status = CASE WHEN attempts >= max_attempts THEN 'dead'::job_status ELSE 'queued' END,
                finished_at = CASE WHEN attempts >= max_attempts THEN now() END,
                locked_until = NULL,
                run_at = now(),
-               last_error = 'the worker stopped while running this job'
-           WHERE status = 'running' AND locked_until < now()"#
+               last_error = $1
+           WHERE status = 'running' AND locked_until < now()
+           RETURNING workspace_id AS "workspace_id: WorkspaceId", kind, payload,
+                     status = 'dead' AS "dead!""#,
+        WORKER_STOPPED
     )
-    .execute(conn)
-    .await?;
-    Ok(done.rows_affected())
+    .fetch_all(conn)
+    .await?)
 }
 
 /// Deletes jobs that finished well, and their run logs, after a while. Worker role.

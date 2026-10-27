@@ -16,10 +16,10 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;
 
-use super::{SessionResponse, clear_session_cookie, session_cookie};
+use super::{SessionResponse, clear_session_cookie, session_cookie, session_cookie_until};
 use crate::AppState;
 use crate::error::{ApiError, ApiResult, ErrorBody};
-use crate::extract::{ClientMeta, CurrentSession, OptionalSession, PendingSession};
+use crate::extract::{ClientMeta, CurrentSession, OptionalSession, PendingSession, SESSION_COOKIE};
 use crate::oidc::{self, STATE_COOKIE};
 use crate::services::app_sign_in as app_svc;
 use crate::services::auth as svc;
@@ -210,16 +210,24 @@ pub struct MfaVerifyRequest {
 async fn verify_mfa(
     State(state): State<AppState>,
     PendingSession(session): PendingSession,
+    jar: CookieJar,
     Json(body): Json<MfaVerifyRequest>,
-) -> ApiResult<StatusCode> {
-    svc::verify_mfa(
+) -> ApiResult<(CookieJar, StatusCode)> {
+    let expires_at = svc::verify_mfa(
         &state,
         &session,
         body.code.as_deref(),
         body.recovery_code.as_deref(),
     )
     .await?;
-    Ok(StatusCode::NO_CONTENT)
+    // The cookie was set to last only as long as the pending session; give
+    // it the full session's lifetime now.
+    let token = jar.get(SESSION_COOKIE).map(|c| c.value().to_owned());
+    let jar = match token {
+        Some(token) if !session.is_app => jar.add(session_cookie_until(&state, token, expires_at)),
+        _ => jar,
+    };
+    Ok((jar, StatusCode::NO_CONTENT))
 }
 
 #[derive(Debug, Serialize, ToSchema)]

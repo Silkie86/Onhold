@@ -15,15 +15,28 @@ pub const APP_ORIGINS: &[&str] = &[
     "https://tauri.localhost",
 ];
 
+/// Which proxy header, if any, names the client's address.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ProxyHeaders {
+    /// None: the address is the connection's peer.
+    #[default]
+    Off,
+    /// The last `X-Forwarded-For` entry, the one our proxy appended. Entries
+    /// before it are whatever the client sent.
+    Forwarded,
+    /// `CF-Connecting-IP`, which Cloudflare overwrites. Any other proxy
+    /// passes on whatever the client sent in it.
+    Cloudflare,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Where the web app is served; links in emails and OIDC redirects are built from it.
     pub public_base_url: Url,
     /// Set the `Secure` flag on cookies. Only ever false for plain-HTTP local development.
     pub cookie_secure: bool,
-    /// Take the client IP from `X-Forwarded-For` / `CF-Connecting-IP`. Only
-    /// enable behind a proxy that sets them.
-    pub trust_proxy_headers: bool,
+    /// Where the client IP comes from behind a proxy.
+    pub trust_proxy_headers: ProxyHeaders,
     pub session_ttl: Duration,
     /// Sessions of the desktop and mobile apps, which may be offline for days.
     pub app_session_ttl: Duration,
@@ -58,7 +71,7 @@ impl Config {
         Self {
             public_base_url,
             cookie_secure: true,
-            trust_proxy_headers: false,
+            trust_proxy_headers: ProxyHeaders::Off,
             session_ttl: Duration::from_secs(30 * 24 * 3600),
             app_session_ttl: Duration::from_secs(90 * 24 * 3600),
             app_sign_in_ttl: Duration::from_secs(10 * 60),

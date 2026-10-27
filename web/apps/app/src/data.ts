@@ -235,8 +235,10 @@ async function sendOrQueue(
 ): Promise<Saved> {
   if (!sync) return { record: await send({}), queued: false };
   const key = crypto.randomUUID();
+  let sent = false;
   // A link to a record made offline is sent once that record has its real id.
   if (!(await willQueue(sync, id)) && !linksToLocal(body)) {
+    sent = true;
     try {
       const record = await withTimeout(send({ "Idempotency-Key": key }));
       if (record) await putRecords(sync.ws, entity, [record]);
@@ -244,10 +246,11 @@ async function sendOrQueue(
       return { record, queued: false };
     } catch (e) {
       if (!isNetworkError(e)) throw e;
-      // It may or may not have arrived: the same key makes sending it again safe.
+      // It may or may not have arrived: the same key makes sending it again
+      // safe, as long as nothing is folded into it meanwhile.
     }
   }
-  return { record: await sync.queue(entity, op, id, body, version, key), queued: true };
+  return { record: await sync.queue(entity, op, id, body, version, key, sent), queued: true };
 }
 
 export function createRecord(sync: OfflineSync | null, entity: StoredEntity, body: Record<string, unknown>): Promise<Saved> {

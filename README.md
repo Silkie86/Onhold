@@ -32,7 +32,7 @@ cargo run -p onhold -- api        # in another terminal: cargo run -p onhold -- 
 cargo test --workspace
 ```
 
-The worker publishes events, runs automation rules and sends email and webhooks. Without `SMTP_URL` it writes emails to its log instead of sending them.
+The worker publishes events, runs automation rules and sends email and webhooks. Without `SMTP_URL` it writes emails to its log instead of sending them, with links removed; it will not start that way when `PUBLIC_BASE_URL` is https.
 
 After adding or changing a `query!` macro, run `cargo sqlx prepare --workspace` and commit `.sqlx/`; CI fails otherwise.
 

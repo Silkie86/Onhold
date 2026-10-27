@@ -32,7 +32,7 @@
 ## Skipped, and why
 
 - **Sending email.** Invitation and magic-link emails are queued in the outbox with their links; the worker delivers them in M2. Until then the CLI and admin API return the owner's invitation link to pass on by hand.
-- **Breached-password check and per-IP rate limiting.** Need an external list and an edge proxy; M8 hardening. Account lockout and per-session 2FA attempt limits are in.
+- **Breached-password check and per-IP rate limiting.** Need an external list and an edge proxy; M8 hardening. Account lockout (which also counts wrong 2FA codes) and per-session 2FA attempt limits are in.
 - **Admin screens.** The admin API exists; the UI arrives with the frontend shell (M3) and the admin area (M8).
 - **Re-encrypting secrets after a key rotation.** Old keys keep decrypting; a re-encrypt command comes with M8's operator tooling.
 - **Talent memberships.** The role exists; assigning it waits for talent records (M7).

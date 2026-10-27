@@ -6,6 +6,7 @@
 use chrono::{DateTime, Duration, Utc};
 use core_db::calendar_feeds::Feed;
 use core_domain::crypto::{hash_token, new_token};
+use core_domain::workspace::WorkspaceStatus;
 use core_domain::{BookingStatus, Ctx, Permission};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -160,6 +161,14 @@ pub async fn render_public(state: &AppState, token: &str) -> ApiResult<Option<St
         return Ok(None);
     };
     core_db::set_context(&mut tx, Some(found.workspace_id), None).await?;
+    // A closed or suspended workspace's links stop working, as if revoked.
+    let Some(workspace) = core_db::workspaces::get(&mut tx, found.workspace_id)
+        .await?
+        .filter(|w| matches!(w.status, WorkspaceStatus::Trial | WorkspaceStatus::Active))
+    else {
+        tx.commit().await?;
+        return Ok(None);
+    };
     let now = Utc::now();
     let statuses = [
         BookingStatus::Hold,
@@ -193,7 +202,6 @@ pub async fn render_public(state: &AppState, token: &str) -> ApiResult<Option<St
     .await?;
     let ids: Vec<Uuid> = rows.iter().map(|b| b.id).collect();
     let talent = core_db::bookings::talent_of(&mut tx, &ids).await?;
-    let workspace = core_db::workspaces::get(&mut tx, found.workspace_id).await?;
     tx.commit().await?;
     let host = state
         .config
@@ -201,10 +209,7 @@ pub async fn render_public(state: &AppState, token: &str) -> ApiResult<Option<St
         .host_str()
         .unwrap_or("onhold.invalid")
         .to_owned();
-    let calendar_name = match workspace {
-        Some(w) => format!("{} · {}", w.name, found.name),
-        None => found.name.clone(),
-    };
+    let calendar_name = format!("{} · {}", workspace.name, found.name);
     let events: Vec<Event> = rows
         .into_iter()
         .map(|b| {

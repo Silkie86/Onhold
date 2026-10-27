@@ -2,21 +2,25 @@
 //! replaying, a retry after a dropped connection) can send the same request
 //! again and get the original response back instead of acting twice.
 //!
-//! Keys are scoped to the caller's credential and held for 24 hours. Reusing
-//! a key for a different request is rejected; a retry that arrives while the
-//! first attempt is still running gets 409. Only successful (2xx) outcomes
-//! are remembered: an error releases the key so a corrected retry runs for real.
+//! Keys are scoped to the caller (the person or API key, not the session, so
+//! a queued write replayed after signing in again is still recognised) and the
+//! workspace, and held for 24 hours. Reusing a key for a different request is
+//! rejected; a retry that arrives while the first attempt is still running gets
+//! 409. Only successful (2xx) outcomes are remembered: an error, or a request
+//! cut off by the timeout or a dropped connection, releases the key so a retry
+//! runs for real.
 
 use axum::body::{Body, Bytes, to_bytes};
 use axum::extract::{Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use core_domain::crypto::{constant_time_eq, hash_token};
 use sha2::{Digest, Sha256};
 
 use crate::AppState;
-use crate::error::ApiError;
-use crate::extract::{WORKSPACE_HEADER, read_credential};
+use crate::error::{ApiError, ApiResult};
+use crate::extract::{Credential, WORKSPACE_HEADER, read_credential};
 
 pub const HEADER: &str = "idempotency-key";
 pub const REPLAYED_HEADER: &str = "idempotent-replayed";
@@ -41,12 +45,24 @@ pub async fn layer(State(state): State<AppState>, req: Request, next: Next) -> R
         )
         .into_response();
     };
-    // Unauthenticated writes (sign-in) are not scoped to anyone; they run as normal.
-    let scope = match read_credential(req.headers()) {
-        Ok(Some(cred)) => Sha256::digest(cred.secret().as_bytes()).to_vec(),
+    // Unauthenticated writes (sign-in) are not scoped to anyone; they run as
+    // normal, and so does a write with a credential that does not check out,
+    // which the handler then refuses.
+    let caller = match caller(&state, req.headers()).await {
+        Ok(Some(caller)) => caller,
         Ok(None) => return next.run(req).await,
         Err(err) => return err.into_response(),
     };
+    let mut scope = Sha256::new();
+    scope.update(caller.as_bytes());
+    scope.update(b"\n");
+    scope.update(
+        req.headers()
+            .get(WORKSPACE_HEADER)
+            .map(HeaderValue::as_bytes)
+            .unwrap_or_default(),
+    );
+    let scope = scope.finalize().to_vec();
 
     let (parts, body) = req.into_parts();
     let Ok(bytes) = to_bytes(body, crate::MAX_UPLOAD_BODY_BYTES).await else {
@@ -79,30 +95,128 @@ pub async fn layer(State(state): State<AppState>, req: Request, next: Next) -> R
         Ok(Some(stored)) => return replay(stored, &request_hash),
         Ok(None) => {}
     }
+    let claim = Claim {
+        state: state.clone(),
+        scope,
+        key,
+        armed: true,
+    };
 
     let response = next
         .run(Request::from_parts(parts, Body::from(bytes)))
         .await;
     if !response.status().is_success() {
-        release(&state, &scope, &key).await;
+        claim.release().await;
         return response;
     }
+    // The write is done. Store its response in a task of its own, so that a
+    // request cut off now still records it rather than leaving the key claimed.
     let (parts, body) = response.into_parts();
-    let Ok(body) = to_bytes(body, MAX_BODY).await else {
-        release(&state, &scope, &key).await;
-        return ApiError::internal("response too large to store for idempotency").into_response();
-    };
     let content_type = parts
         .headers
         .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok());
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
     let status = i16::try_from(parts.status.as_u16()).unwrap_or(i16::MAX);
-    if let Err(err) =
-        core_db::idempotency::complete(&state.db, &scope, &key, status, content_type, &body).await
+    let stored = tokio::spawn(store(claim, status, content_type, body)).await;
+    match stored {
+        Ok(Some(body)) => Response::from_parts(parts, Body::from(body)),
+        Ok(None) => {
+            ApiError::internal("response too large to store for idempotency").into_response()
+        }
+        Err(err) => ApiError::internal(err).into_response(),
+    }
+}
+
+/// Who is calling, checked: a person (whichever session they use) or an API
+/// key. A session still waiting for its second factor is scoped on its own,
+/// so it is never handed a response a verified session stored. `None` for no
+/// credential, or one that is not valid.
+async fn caller(state: &AppState, headers: &axum::http::HeaderMap) -> ApiResult<Option<String>> {
+    let Some(cred) = read_credential(headers)? else {
+        return Ok(None);
+    };
+    let mut tx = core_db::begin(&state.db, None, None).await?;
+    let caller = match cred {
+        Credential::Session { token, bearer } => {
+            let expected_client = if bearer { "app" } else { "browser" };
+            core_db::auth::find_session(&mut tx, &hash_token(&token))
+                .await?
+                .filter(|f| f.client == expected_client)
+                .map(|f| {
+                    if f.mfa_verified {
+                        format!("user:{}", f.user_id)
+                    } else {
+                        format!("session:{}", f.session_id)
+                    }
+                })
+        }
+        Credential::ApiKey { key_id, secret } => core_db::auth::find_api_key(&mut tx, key_id)
+            .await?
+            .filter(|k| constant_time_eq(&hash_token(&secret), &k.secret_hash))
+            .map(|_| format!("api_key:{key_id}")),
+    };
+    tx.commit().await?;
+    Ok(caller)
+}
+
+/// A key this request has claimed. Dropped while still armed (the timeout
+/// fired or the client went away mid-request), it releases the key in the
+/// background, so the retry is not told "still running" for a day.
+struct Claim {
+    state: AppState,
+    scope: Vec<u8>,
+    key: String,
+    armed: bool,
+}
+
+impl Claim {
+    async fn release(mut self) {
+        release(&self.state, &self.scope, &self.key).await;
+        self.armed = false;
+    }
+}
+
+impl Drop for Claim {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let state = self.state.clone();
+        let scope = std::mem::take(&mut self.scope);
+        let key = std::mem::take(&mut self.key);
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move { release(&state, &scope, &key).await });
+        }
+    }
+}
+
+/// Stores a successful response against its key; `None` (and the key
+/// released) when the body is too large to keep.
+async fn store(
+    mut claim: Claim,
+    status: i16,
+    content_type: Option<String>,
+    body: Body,
+) -> Option<Bytes> {
+    let Ok(body) = to_bytes(body, MAX_BODY).await else {
+        claim.release().await;
+        return None;
+    };
+    claim.armed = false;
+    if let Err(err) = core_db::idempotency::complete(
+        &claim.state.db,
+        &claim.scope,
+        &claim.key,
+        status,
+        content_type.as_deref(),
+        &body,
+    )
+    .await
     {
         tracing::error!(error = %err, "could not store idempotent response");
     }
-    Response::from_parts(parts, Body::from(body))
+    Some(body)
 }
 
 async fn release(state: &AppState, scope: &[u8], key: &str) {

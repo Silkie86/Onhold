@@ -163,12 +163,15 @@ pub async fn create_workspace(
     })
 }
 
+/// The workspace as the audit log and webhooks see it. The billing contact is
+/// left out: audit readers need not hold `billing:read`, so an update records
+/// only that it changed.
 fn workspace_audit_view(w: &core_db::workspaces::Workspace) -> Value {
     json!({
         "slug": w.slug, "name": w.name, "plan": w.plan, "status": w.status, "perspective": w.perspective,
         "country": w.country, "default_currency": w.default_currency, "default_timezone": w.default_timezone,
         "locale": w.locale, "enabled_modules": w.enabled_modules, "branding": w.branding,
-        "billing_contact": w.billing_contact, "plugin_slug": w.plugin_slug,
+        "plugin_slug": w.plugin_slug,
         "require_staff_2fa": w.require_staff_2fa, "hold_days": w.hold_days,
     })
 }
@@ -316,7 +319,13 @@ pub async fn update_workspace(
             resource: "workspace",
             object_id: Some(ctx.workspace_id.0),
             before: Some(workspace_audit_view(&before)),
-            after: Some(workspace_audit_view(&after)),
+            after: Some({
+                let mut view = workspace_audit_view(&after);
+                if after.billing_contact != before.billing_contact {
+                    view["billing_contact_changed"] = json!(true);
+                }
+                view
+            }),
             event_extra: None,
         },
     )
@@ -714,6 +723,31 @@ pub async fn create_api_key(
     let id = core_domain::ids::new_id();
     let secret = new_token();
     let mut tx = begin(state, ctx).await?;
+    // A key made by a key belongs to the same person and expires no later.
+    let (created_by, expires_at) = match ctx.actor {
+        Actor::ApiKey { key_id, created_by } => {
+            let parent = core_db::api_keys::get(&mut tx, key_id)
+                .await?
+                .ok_or(ApiError::NotFound)?;
+            let expires_at = match (expires_at, parent.expires_at) {
+                (Some(e), Some(p)) => Some(e.min(p)),
+                (e, p) => e.or(p),
+            };
+            (created_by, expires_at)
+        }
+        Actor::User {
+            user_id,
+            impersonator: None,
+        } => (Some(user_id), expires_at),
+        // A key works only while its creator is a member, so one made by a
+        // visiting superadmin (or by no one) would never work.
+        _ => {
+            return Err(ApiError::forbidden(
+                "not_a_member",
+                "only a member of the workspace can create API keys, not a superadmin visiting it",
+            ));
+        }
+    };
     core_db::api_keys::insert(
         &mut tx,
         core_db::api_keys::NewApiKey {
@@ -722,7 +756,7 @@ pub async fn create_api_key(
             name,
             secret_hash: &hash_token(&secret),
             permissions: &perms,
-            created_by: ctx.user_id(),
+            created_by,
             expires_at,
         },
     )

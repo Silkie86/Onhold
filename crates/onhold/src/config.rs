@@ -6,6 +6,7 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::Args;
 use core_api::Config;
+use core_api::config::ProxyHeaders;
 use core_api::oidc::OidcProvider;
 use core_domain::crypto::Keyring;
 use core_integrations::mail::{LogMailer, Mailer, SmtpMailer};
@@ -26,9 +27,11 @@ pub struct ApiArgs {
     #[arg(long, env = "COOKIE_SECURE", default_value_t = true, action = clap::ArgAction::Set, global = true)]
     cookie_secure: bool,
 
-    /// Take the client IP from `X-Forwarded-For`. Only behind a proxy that sets it.
-    #[arg(long, env = "TRUST_PROXY_HEADERS", default_value_t = false, action = clap::ArgAction::Set, global = true)]
-    trust_proxy_headers: bool,
+    /// Where the client IP comes from: `false` (the connection), `true` (the
+    /// last `X-Forwarded-For` entry, behind a proxy that appends to it) or
+    /// `cloudflare` (`CF-Connecting-IP`, when every request comes through Cloudflare).
+    #[arg(long, env = "TRUST_PROXY_HEADERS", default_value = "false", value_parser = proxy_headers, global = true)]
+    trust_proxy_headers: ProxyHeaders,
 
     /// Encryption keys for secrets at rest, `id:base64key[,id:base64key…]`.
     /// The first encrypts; all decrypt, so rotate by prepending a new key.
@@ -93,11 +96,21 @@ pub struct ApiArgs {
     webhooks_allow_private: bool,
 }
 
+fn proxy_headers(value: &str) -> Result<ProxyHeaders, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "false" | "" => Ok(ProxyHeaders::Off),
+        "true" => Ok(ProxyHeaders::Forwarded),
+        "cloudflare" => Ok(ProxyHeaders::Cloudflare),
+        _ => Err("use false, true or cloudflare".to_owned()),
+    }
+}
+
 /// Worker settings.
 #[derive(Debug, Args)]
 pub struct WorkerArgs {
     /// Outgoing mail server, e.g. `smtp://user:pass@smtp.example.com:587?tls=required`
-    /// or `smtp://localhost:1025` for Mailpit. Unset: emails are only logged.
+    /// or `smtp://localhost:1025` for Mailpit. Unset: emails are only logged,
+    /// links removed, and only allowed while `PUBLIC_BASE_URL` is plain HTTP.
     #[arg(long, env = "SMTP_URL", hide_env_values = true)]
     smtp_url: Option<String>,
 
@@ -111,10 +124,15 @@ pub struct WorkerArgs {
 }
 
 impl WorkerArgs {
-    pub fn mailer(&self) -> anyhow::Result<Arc<dyn Mailer>> {
+    /// The mail server. A deployment on https must have one: without it,
+    /// sign-in and invitation emails would never arrive.
+    pub fn mailer(&self, public_base_url: &Url) -> anyhow::Result<Arc<dyn Mailer>> {
         Ok(match &self.smtp_url {
             Some(url) => Arc::new(
                 SmtpMailer::from_url(url, &self.mail_from).map_err(|e| anyhow::anyhow!("{e}"))?,
+            ),
+            None if public_base_url.scheme() == "https" => anyhow::bail!(
+                "SMTP_URL is not set while PUBLIC_BASE_URL is https; set the mail server to send sign-in and invitation emails"
             ),
             None => {
                 tracing::warn!("SMTP_URL is not set; emails will be written to the log, not sent");
@@ -239,6 +257,50 @@ mod tests {
         assert!(args(&[]).build(false).is_ok());
         assert!(args(&[KEY]).build(true).is_ok());
         assert!(args(&["--encryption-keys=k1:short"]).build(true).is_err());
+    }
+
+    #[test]
+    fn proxy_headers_are_trusted_only_when_named() {
+        let mode = |extra: &[&str]| {
+            let mut all = vec![KEY];
+            all.extend_from_slice(extra);
+            args(&all).build(true).expect("config").trust_proxy_headers
+        };
+        assert_eq!(mode(&[]), ProxyHeaders::Off);
+        assert_eq!(mode(&["--trust-proxy-headers=false"]), ProxyHeaders::Off);
+        assert_eq!(
+            mode(&["--trust-proxy-headers=true"]),
+            ProxyHeaders::Forwarded
+        );
+        assert_eq!(
+            mode(&["--trust-proxy-headers=cloudflare"]),
+            ProxyHeaders::Cloudflare
+        );
+        assert!(Cli::try_parse_from(["onhold", KEY, "--trust-proxy-headers=yes"]).is_err());
+    }
+
+    // The SMTP transport's connection pool needs a Tokio runtime, even to drop.
+    #[tokio::test]
+    async fn a_deployment_on_https_needs_a_mail_server() {
+        #[derive(Parser)]
+        struct WorkerCli {
+            #[command(flatten)]
+            worker: WorkerArgs,
+        }
+        let worker = |extra: &[&str]| {
+            let mut argv = vec!["onhold"];
+            argv.extend_from_slice(extra);
+            WorkerCli::try_parse_from(argv).expect("parses").worker
+        };
+        let https = Url::parse("https://app.example.com").expect("url");
+        let http = Url::parse("http://localhost:5173").expect("url");
+        assert!(worker(&[]).mailer(&https).is_err());
+        assert!(worker(&[]).mailer(&http).is_ok());
+        assert!(
+            worker(&["--smtp-url=smtp://localhost:1025"])
+                .mailer(&https)
+                .is_ok()
+        );
     }
 
     #[test]

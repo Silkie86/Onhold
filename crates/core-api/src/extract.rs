@@ -46,15 +46,25 @@ impl FromRequestParts<AppState> for ClientMeta {
     }
 }
 
-pub fn request_meta(parts: &Parts, trust_proxy_headers: bool) -> RequestMeta {
+pub fn request_meta(
+    parts: &Parts,
+    trust_proxy_headers: crate::config::ProxyHeaders,
+) -> RequestMeta {
+    use crate::config::ProxyHeaders;
     let header = |name: &str| parts.headers.get(name).and_then(|v| v.to_str().ok());
-    let forwarded = trust_proxy_headers
-        .then(|| {
-            header("cf-connecting-ip")
-                .or_else(|| header("x-forwarded-for").and_then(|v| v.split(',').next()))
-                .and_then(|v| v.trim().parse::<IpAddr>().ok())
-        })
-        .flatten();
+    // Only what our own proxy wrote: anything else the client could have sent.
+    let forwarded = match trust_proxy_headers {
+        ProxyHeaders::Off => None,
+        ProxyHeaders::Forwarded => parts
+            .headers
+            .get_all("x-forwarded-for")
+            .iter()
+            .next_back()
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.rsplit(',').next()),
+        ProxyHeaders::Cloudflare => header("cf-connecting-ip"),
+    }
+    .and_then(|v| v.trim().parse::<IpAddr>().ok());
     let peer = parts
         .extensions
         .get::<ConnectInfo<SocketAddr>>()
@@ -78,16 +88,6 @@ pub enum Credential {
         key_id: Uuid,
         secret: String,
     },
-}
-
-impl Credential {
-    /// The raw secret, used to scope idempotency keys to this caller.
-    pub fn secret(&self) -> &str {
-        match self {
-            Credential::Session { token, .. } => token,
-            Credential::ApiKey { secret, .. } => secret,
-        }
-    }
 }
 
 /// Reads the bearer token or session cookie. A malformed bearer is an error;
@@ -347,6 +347,19 @@ async fn api_key_ctx(
         .await?
         .ok_or_else(invalid)?;
     check_status(workspace.status, false)?;
+    // A key never does more than the person who made it can do today: it
+    // stops working when they leave and shrinks when their role does.
+    let creator_gone = || {
+        ApiError::unauthorized(
+            "invalid_api_key",
+            "the person who created this API key is no longer a member of the workspace",
+        )
+    };
+    let creator = key.created_by.ok_or_else(creator_gone)?;
+    let role = core_db::members::role_of(&mut tx, creator)
+        .await?
+        .ok_or_else(creator_gone)?;
+    let allowed = core_db::workspaces::role_permissions(&mut tx, role).await?;
     core_db::api_keys::touch(&mut tx, key_id).await?;
     tx.commit().await?;
 
@@ -361,6 +374,7 @@ async fn api_key_ctx(
             .permissions
             .iter()
             .filter_map(|p| p.parse::<Permission>().ok())
+            .filter(|p| allowed.contains(p))
             .collect(),
         meta: request_meta(parts, state.config.trust_proxy_headers),
     })
@@ -489,6 +503,43 @@ pub fn etag(version: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_client_ip_comes_only_from_what_our_proxy_wrote() {
+        use crate::config::ProxyHeaders;
+        let (mut parts, ()) = axum::http::Request::builder()
+            .header("cf-connecting-ip", "203.0.113.9")
+            .header("x-forwarded-for", "203.0.113.9, 198.51.100.1")
+            .header("x-forwarded-for", "192.0.2.7")
+            .body(())
+            .expect("request")
+            .into_parts();
+        let peer: SocketAddr = "10.0.0.2:4000".parse().expect("addr");
+        parts.extensions.insert(ConnectInfo(peer));
+        let ip = |parts: &Parts, mode| request_meta(parts, mode).ip.map(|ip| ip.to_string());
+
+        assert_eq!(ip(&parts, ProxyHeaders::Off).as_deref(), Some("10.0.0.2"));
+        // The proxy appends the address it saw; the client wrote the rest.
+        assert_eq!(
+            ip(&parts, ProxyHeaders::Forwarded).as_deref(),
+            Some("192.0.2.7")
+        );
+        assert_eq!(
+            ip(&parts, ProxyHeaders::Cloudflare).as_deref(),
+            Some("203.0.113.9")
+        );
+
+        parts.headers.remove("x-forwarded-for");
+        parts.headers.remove("cf-connecting-ip");
+        assert_eq!(
+            ip(&parts, ProxyHeaders::Forwarded).as_deref(),
+            Some("10.0.0.2")
+        );
+        assert_eq!(
+            ip(&parts, ProxyHeaders::Cloudflare).as_deref(),
+            Some("10.0.0.2")
+        );
+    }
 
     #[test]
     fn api_keys_round_trip() {
