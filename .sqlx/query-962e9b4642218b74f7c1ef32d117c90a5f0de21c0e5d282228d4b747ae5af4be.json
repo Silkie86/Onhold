@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT stripe_account_workspace($1) AS \"w: WorkspaceId\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "w: WorkspaceId",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "962e9b4642218b74f7c1ef32d117c90a5f0de21c0e5d282228d4b747ae5af4be"
+}

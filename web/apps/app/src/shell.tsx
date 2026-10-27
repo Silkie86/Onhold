@@ -24,6 +24,7 @@ import {
   CalendarCheck,
   CalendarDays,
   CalendarCog,
+  CreditCard,
   CheckSquare,
   ChevronsUpDown,
   Inbox,
@@ -101,6 +102,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
       { to: "/settings/pipelines", label: "Pipelines", icon: <Workflow /> },
       { to: "/settings/calendar", label: "Calendar settings", icon: <CalendarCog /> },
       { to: "/settings/finance", label: "Invoicing", icon: <Landmark /> },
+      { to: "/settings/payments", label: "Card payments", icon: <CreditCard /> },
     ],
   },
 ];

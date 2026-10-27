@@ -1,0 +1,29 @@
+{
+  "id": "evt_1QOwlsCompleted",
+  "object": "event",
+  "account": "acct_1QOwlsTestAccount",
+  "api_version": "2024-06-20",
+  "created": 1730050100,
+  "data": {
+    "object": {
+      "id": "cs_test_a1OwlsCheckoutSession",
+      "object": "checkout.session",
+      "amount_subtotal": 120000,
+      "amount_total": 120000,
+      "created": 1730050000,
+      "currency": "gbp",
+      "customer_details": { "email": "bea@grand.test", "name": "Bea Grand" },
+      "expires_at": 4102444800,
+      "livemode": false,
+      "metadata": {},
+      "mode": "payment",
+      "payment_intent": "pi_3QOwlsPaymentIntent",
+      "payment_status": "paid",
+      "status": "complete"
+    }
+  },
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": { "id": null, "idempotency_key": null },
+  "type": "checkout.session.completed"
+}

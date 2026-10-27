@@ -1,0 +1,117 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT account_id, livemode, charges_enabled, details_submitted,\n                  default_currency::text AS default_currency, display_name, connected_at,\n                  connected_by AS \"connected_by: UserId\", disconnected_at\n           FROM stripe_accounts WHERE workspace_id = app_workspace_id()\n           ORDER BY disconnected_at IS NULL DESC, connected_at DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "account_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "stripe_accounts",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "livemode",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "stripe_accounts",
+            "name": "livemode"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "charges_enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "stripe_accounts",
+            "name": "charges_enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "details_submitted",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "stripe_accounts",
+            "name": "details_submitted"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "default_currency",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "stripe_accounts",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "connected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "stripe_accounts",
+            "name": "connected_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "connected_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "stripe_accounts",
+            "name": "connected_by"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "disconnected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "stripe_accounts",
+            "name": "disconnected_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "167bc3cf0c8b6d7ef58a57a5eb806e7e624be223ba827d02004515b8296f2b4e"
+}

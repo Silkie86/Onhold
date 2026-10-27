@@ -10,6 +10,7 @@ pub mod documents;
 pub mod events;
 pub mod finance;
 pub mod jobs;
+pub mod stripe;
 pub mod things;
 pub mod webhooks;
 pub mod workspace;

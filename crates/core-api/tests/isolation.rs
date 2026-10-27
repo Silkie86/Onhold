@@ -26,6 +26,10 @@ const NOT_WORKSPACE_SCOPED: &[(&str, &str)] = &[
         "/api/v1/public/",
         "secret-link holders only; the token names one quote, feed, invoice or signature",
     ),
+    (
+        "/api/v1/webhooks/stripe",
+        "signed by Stripe; the event's connected account names the one workspace",
+    ),
 ];
 
 struct Operation {

@@ -6,7 +6,7 @@
 // out by the server).
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { Schemas } from "@onhold/api-client";
 import {
   Alert,
@@ -26,7 +26,7 @@ import {
   cn,
   formatMoney,
 } from "@onhold/ui";
-import { Ban, Download, FileMinus2, FileText, HandCoins, Plus, Receipt, Send, Stamp, Trash2, X } from "lucide-react";
+import { Ban, CreditCard, Download, FileMinus2, FileText, HandCoins, Plus, Receipt, Send, Stamp, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
 import { fetchSaved, useOffline, useSyncStatus } from "../data.ts";
@@ -1461,11 +1461,22 @@ export function FinanceSettingsPage() {
 
 export function PublicInvoicePage() {
   const { token } = useParams({ from: "/invoice/$token" });
+  const { paid } = useSearch({ from: "/invoice/$token" });
   const [error, setError] = useState<string | null>(null);
+  const [paying, setPaying] = useState(false);
+  // Back from paying by card: look again for two minutes while Stripe's
+  // confirmation lands, then offer the Pay button again.
+  const [waiting, setWaiting] = useState(Boolean(paid));
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setTimeout(() => setWaiting(false), 120_000);
+    return () => clearTimeout(t);
+  }, [waiting]);
   const invoice = useQuery({
     queryKey: ["public-invoice", token],
     queryFn: () => ok(api.GET("/api/v1/public/invoices/{token}", { params: { path: { token } } })),
     retry: false,
+    refetchInterval: (q) => (waiting && q.state.data && q.state.data.outstanding.minor > 0 ? 5000 : false),
   });
   useEffect(() => {
     const b = invoice.data?.branding as { colours?: Branding } | undefined;
@@ -1538,6 +1549,13 @@ export function PublicInvoicePage() {
             </tr>
           </tfoot>
         </table>
+        {paid && i.status !== "paid" && (
+          <Alert tone={waiting ? "success" : "info"}>
+            {waiting
+              ? "Thank you. Your card payment is being confirmed; this page will show it as paid shortly."
+              : "Your card payment has not shown here yet. It can take a few minutes; refresh this page later before paying again."}
+          </Alert>
+        )}
         {i.status === "paid" ? (
           <Alert tone="success">Paid in full. Thank you.</Alert>
         ) : (
@@ -1547,6 +1565,26 @@ export function PublicInvoicePage() {
               {formatMoney(i.outstanding)} to pay{i.due_date && ` by ${day(i.due_date)}`}.
             </p>
           )
+        )}
+        {i.card_payments && !waiting && (
+          <div>
+            <Button
+              disabled={paying}
+              onClick={async () => {
+                setError(null);
+                setPaying(true);
+                try {
+                  const { url } = await ok(api.POST("/api/v1/public/invoices/{token}/pay", { params: { path: { token } } }));
+                  window.location.assign(url);
+                } catch (e) {
+                  setError(failure(e));
+                  setPaying(false);
+                }
+              }}
+            >
+              <CreditCard /> Pay {formatMoney(i.outstanding)} by card
+            </Button>
+          </div>
         )}
         {bank?.details && i.outstanding.minor > 0 && (
           <div>

@@ -12,6 +12,7 @@ use core_api::oidc::OidcProvider;
 use core_domain::crypto::Keyring;
 use core_integrations::mail::{LogMailer, Mailer, SmtpMailer};
 use core_integrations::storage::S3Config;
+use core_integrations::stripe::{StripeClient, StripeConfig};
 use url::Url;
 
 #[derive(Debug, Args)]
@@ -136,6 +137,36 @@ pub struct ApiArgs {
     /// The largest file one upload may be, in megabytes.
     #[arg(long, env = "MAX_UPLOAD_MB", default_value_t = 25, global = true)]
     max_upload_mb: usize,
+
+    /// The platform's Stripe secret key, for card payments through Stripe
+    /// Connect. Set it with STRIPE_CLIENT_ID and STRIPE_WEBHOOK_SECRET, or none.
+    #[arg(long, env = "STRIPE_SECRET_KEY", hide_env_values = true, global = true)]
+    stripe_secret_key: Option<String>,
+    /// The platform's Connect client id (`ca_…`).
+    #[arg(long, env = "STRIPE_CLIENT_ID", global = true)]
+    stripe_client_id: Option<String>,
+    /// The signing secret of the Connect webhook endpoint
+    /// (`<api>/api/v1/webhooks/stripe`, listening to connected accounts).
+    #[arg(
+        long,
+        env = "STRIPE_WEBHOOK_SECRET",
+        hide_env_values = true,
+        global = true
+    )]
+    stripe_webhook_secret: Option<String>,
+    /// OnHold's fee on each card payment, in hundredths of a percent (150 = 1.5%).
+    #[arg(
+        long,
+        env = "STRIPE_APPLICATION_FEE_BPS",
+        default_value_t = 0,
+        global = true
+    )]
+    stripe_application_fee_bps: u32,
+    /// Stripe's API, for a mock in tests.
+    #[arg(long, env = "STRIPE_API_BASE", default_value = core_integrations::stripe::API_BASE, global = true, hide = true)]
+    stripe_api_base: Url,
+    #[arg(long, env = "STRIPE_CONNECT_BASE", default_value = core_integrations::stripe::CONNECT_BASE, global = true, hide = true)]
+    stripe_connect_base: Url,
 }
 
 fn proxy_headers(value: &str) -> Result<ProxyHeaders, String> {
@@ -300,6 +331,29 @@ impl ApiArgs {
             (1..=100).contains(&self.max_upload_mb),
             "MAX_UPLOAD_MB must be 1 to 100"
         );
+        let stripe = match (
+            self.stripe_secret_key,
+            self.stripe_client_id,
+            self.stripe_webhook_secret,
+        ) {
+            (Some(key), Some(client_id), Some(webhook_secret)) => {
+                anyhow::ensure!(
+                    self.stripe_application_fee_bps <= 2000,
+                    "STRIPE_APPLICATION_FEE_BPS must be 0 to 2000"
+                );
+                let config = StripeConfig {
+                    api_base: self.stripe_api_base,
+                    connect_base: self.stripe_connect_base,
+                    application_fee_bps: self.stripe_application_fee_bps,
+                    ..StripeConfig::new(key, client_id, webhook_secret)
+                };
+                Some(StripeClient::new(config).map_err(|e| anyhow::anyhow!("{e}"))?)
+            }
+            (None, None, None) => None,
+            _ => anyhow::bail!(
+                "set all of STRIPE_SECRET_KEY, STRIPE_CLIENT_ID and STRIPE_WEBHOOK_SECRET, or none"
+            ),
+        };
 
         Ok(Config {
             storage,
@@ -313,6 +367,7 @@ impl ApiArgs {
             cors_origins,
             oidc,
             webhooks_allow_private: self.webhooks_allow_private,
+            stripe,
             ..Config::new(self.public_base_url, keyring)
         })
     }

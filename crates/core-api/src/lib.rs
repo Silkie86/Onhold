@@ -245,6 +245,7 @@ fn api_router() -> OpenApiRouter<AppState> {
             .merge(routes::bookings::router())
             .merge(routes::documents::router())
             .merge(routes::finance::router())
+            .merge(routes::stripe::router())
             .merge(routes::events::router())
             .merge(routes::webhooks::router())
             .merge(routes::jobs::router())

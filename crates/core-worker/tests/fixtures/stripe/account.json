@@ -1,0 +1,24 @@
+{
+  "id": "acct_1QOwlsTestAccount",
+  "object": "account",
+  "business_profile": {
+    "mcc": "7929",
+    "name": "Midnight Owls Agency Ltd",
+    "support_email": null,
+    "url": null
+  },
+  "business_type": "company",
+  "capabilities": { "card_payments": "active", "transfers": "active" },
+  "charges_enabled": true,
+  "country": "GB",
+  "created": 1729980000,
+  "default_currency": "gbp",
+  "details_submitted": true,
+  "email": "accounts@owls.test",
+  "payouts_enabled": true,
+  "settings": {
+    "dashboard": { "display_name": "Midnight Owls", "timezone": "Europe/London" },
+    "payments": { "statement_descriptor": "MIDNIGHT OWLS" }
+  },
+  "type": "standard"
+}

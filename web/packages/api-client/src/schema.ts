@@ -1220,6 +1220,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/finance/stripe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The workspace's Stripe connection (needs `finance:config`). */
+        get: operations["stripe_status"];
+        put?: never;
+        post?: never;
+        /** Disconnect the Stripe account, here and in Stripe. */
+        delete: operations["stripe_disconnect"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/stripe/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start connecting a Stripe account: send the admin to the returned URL. */
+        post: operations["stripe_connect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/stripe/connect/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish connecting with the `code` and `state` Stripe sent back. */
+        post: operations["stripe_connect_finish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/fx-rates": {
         parameters: {
             query?: never;
@@ -2008,6 +2060,23 @@ export interface paths {
         get: operations["public_invoice"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/invoices/{token}/pay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The payer pays by card: a Stripe payment page for what the invoice owes. */
+        post: operations["public_invoice_pay"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2823,6 +2892,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/stripe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stripe's events for connected accounts, signed with `Stripe-Signature`. */
+        post: operations["stripe_webhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/{id}": {
         parameters: {
             query?: never;
@@ -3418,6 +3504,13 @@ export interface components {
             related_id?: string | null;
             tags?: string[];
             title?: string | null;
+        };
+        ConnectStart: {
+            /**
+             * @description Send the admin here; Stripe sends them back to Settings → Payments
+             *     with `code` and `state`, which the page passes to the finish call.
+             */
+            url: string;
         };
         ContactDuplicateQuery: {
             emails?: string[];
@@ -4118,6 +4211,12 @@ export interface components {
             payment_terms_days?: number | null;
             phone?: string | null;
             tax_number?: string | null;
+        };
+        FinishConnect: {
+            /** @description From Stripe's redirect. */
+            code: string;
+            /** @description From Stripe's redirect, as the start call made it. */
+            state: string;
         };
         FunnelReport: {
             /** Format: int64 */
@@ -5036,6 +5135,10 @@ export interface components {
             /** Format: uuid */
             talent_id?: string | null;
         };
+        PaymentLink: {
+            /** @description Stripe's payment page; send the payer there. */
+            url: string;
+        };
         PaymentPage: {
             items: components["schemas"]["PaymentView"][];
             /** Format: int64 */
@@ -5196,6 +5299,8 @@ export interface components {
             /** @description How to pay, from the issuer's bank details. */
             bank_account?: Record<string, never> | null;
             branding: Record<string, never>;
+            /** @description The payer can pay by card (`POST /public/invoices/{token}/pay`). */
+            card_payments: boolean;
             /** Format: date */
             due_date?: string | null;
             /** Format: date */
@@ -5715,6 +5820,23 @@ export interface components {
             /** @description Why it was cancelled. */
             reason?: string | null;
             status: components["schemas"]["BookingStatus"];
+        };
+        StripeStatus: {
+            account_id?: string | null;
+            /** @description Whether this OnHold server takes card payments at all. */
+            available: boolean;
+            /** @description Stripe lets the account take payments (it may want more details first). */
+            charges_enabled: boolean;
+            connected: boolean;
+            /** Format: date-time */
+            connected_at?: string | null;
+            default_currency?: string | null;
+            details_submitted: boolean;
+            /** Format: date-time */
+            disconnected_at?: string | null;
+            display_name?: string | null;
+            /** @description A live account rather than Stripe's test mode. */
+            livemode: boolean;
         };
         Suggestion: {
             confidence: components["schemas"]["Confidence"];
@@ -9649,6 +9771,137 @@ export interface operations {
             };
         };
     };
+    stripe_status: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StripeStatus"];
+                };
+            };
+        };
+    };
+    stripe_disconnect: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StripeStatus"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stripe_connect: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectStart"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stripe_connect_finish: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StripeStatus"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     fx_rate: {
         parameters: {
             query: {
@@ -11957,6 +12210,51 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_invoice_pay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentLink"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14808,6 +15106,35 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stripe_webhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

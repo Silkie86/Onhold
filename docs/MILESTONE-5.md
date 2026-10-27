@@ -9,7 +9,7 @@ It runs end to end in `crates/core-worker/tests/finance.rs` against the real API
 - Each deposit is paid. A rule on `booking.deposit_paid` confirms the booking and generates its confirmation document.
 - The balance invoices fall overdue. The worker marks them overdue, and a rule on "one day after the due date, while anything is outstanding" creates one chase task per invoice. It does not repeat on the next run. The ageing report shows both balances, and the cash report shows both deposits.
 
-Stripe Connect (payment links and webhooks) comes in a second PR straight after this one, so this one stays reviewable. Payments are recorded by hand until then.
+Card payments through Stripe Connect came in a second PR: the payer's invoice page offers "Pay by card", and Stripe's webhooks record the payment against the invoice. See [Card payments](#card-payments-stripe-connect) below.
 
 ## Built
 
@@ -120,10 +120,25 @@ An ultracode review (six reviewers, each finding checked by a skeptic) confirmed
   - The bank label shows on the payer's page.
   - App downloads keep their file names.
 
+## Card payments (Stripe Connect)
+
+Each workspace connects its own Stripe account (Standard accounts, through Stripe's OAuth), so money settles to the client directly and Stripe handles their payouts, disputes and tax forms. OnHold can take a cut of each payment (`STRIPE_APPLICATION_FEE_BPS`, default 0).
+
+- **Connecting.** Settings → Card payments sends an owner or admin to Stripe and back. The round trip carries a sealed, 30-minute state naming the workspace and the person, so a code can only be finished by whoever started it, in the same workspace. An account connected to one workspace is refused by another; once disconnected there, it can be connected elsewhere. Disconnecting here, or switching to another account, first closes that account's open payment links in Stripe and then disconnects it there too. Disconnecting from Stripe's side arrives as a webhook and does the same. Each workspace keeps the accounts it has had, so a payment or refund Stripe reports later on a disconnected account is still recorded.
+- **Paying.** The payer's invoice page shows "Pay … by card" while the invoice owes money, the account can take payments and the currency is one Stripe counts the same way (not HUF, ISK, TWD, UGX or the three-decimal currencies). It opens a card-only Stripe Checkout session on the client's account for what is still owed. Cards settle at once, so no slow bank payment can be pending while the link offers another. Pressing again reuses the open session while the amount is the same. A changed amount closes the old session first, and if the payer already paid it, no second link is made. Stripe is called outside any database transaction, so a slow Stripe holds no lock on the invoice. The currency check compares Stripe's decimal places with OnHold's, so a currency such as MGA (two decimals in ISO 4217, none at Stripe) is paid by bank transfer instead.
+- **Webhooks** (`POST /api/v1/webhooks/stripe`). The `Stripe-Signature` is checked against `STRIPE_WEBHOOK_SECRET` with Stripe's 5-minute tolerance. Each event is kept once (Stripe retries), and a `stripe.event` job processes it:
+  - `checkout.session.completed` and `checkout.session.async_payment_succeeded` record a card payment (method `stripe`, keyed by its PaymentIntent so it is recorded once), allocated to the invoice up to what it owes. Anything beyond that, if the invoice was paid another way meanwhile, stays unallocated for the client to refund.
+  - A payer who paid in their own currency (Adaptive Pricing) is recorded in the invoice's currency, from Stripe's conversion details.
+  - `charge.refunded` records what Stripe refunded beyond the Stripe refunds already recorded (refunds recorded by hand do not count), taking it off the invoice so it owes again. A refund processed before its payment waits and is retried.
+  - `account.updated` keeps whether the account can take payments, ignoring one older than the state kept. `account.application.deauthorized` disconnects, unless it predates the account being connected again.
+  - An event Stripe sends again while it still waits to be processed is queued again. Test-mode events for a live account (or the other way round) and events for accounts the workspace never had change nothing.
+- **Web.** Settings → Card payments (connect, state, disconnect), and the Pay button on the payer's page, which then checks until the payment shows.
+- **Verified** in `crates/core-worker/tests/stripe.rs` against a stand-in for Stripe answering with recorded responses (`tests/fixtures/stripe`): the connect round trip and its refusals, the session's account header, amount, fee and metadata, the session reused and replaced, refused signatures (none, wrong key, too old), retried and repeated events, the payment and a partial refund, account changes and both kinds of disconnect. Three more tests cover the review fixes below. The isolation suite covers the new routes.
+- **Reviewed.** An ultracode review (five reviewers, each finding checked by a skeptic) confirmed 28 findings, about a dozen distinct issues once duplicates were merged, all fixed here with tests. The issues were: payments lost after a disconnect or account switch; links left open at Stripe; a disconnected account locked to its old workspace; async payment methods allowing a second payment; MGA charged at 100 times the amount; refunds matched against manual ones; refunds arriving before their payment; late account events; dead jobs never retried; Pay holding the invoice lock during Stripe calls; a failed expiry allowing a double payment; and the payer page polling forever.
+
 ## Skipped, and why
 
-- **Stripe Connect payment links and webhooks.** These go in the next PR, built and tested against recorded Stripe responses, so they do not need a live account to review.
-- **A browser walk-through of the money flow.** The flow is proven through the API and worker above. A Playwright demo can follow with the Stripe PR, where the payer's page gains its "Pay" button.
+- **A browser walk-through of the money flow.** The flow is proven through the API and worker above. A Playwright run of the payer's page would need Stripe's hosted Checkout, which cannot run in CI without a live test account; it can come with the first real deployment.
 - **A screen for editing templates.** Workspaces override the built-in templates as HTML through the API (`/api/v1/templates`, which already has a preview). A visual editor can come with the white-label branding work.
 - **Credit control beyond the first chase.** Rules can chase on any offset, so more reminders are configuration. Automatic statements and late fees are not built.
 

@@ -6431,6 +6431,260 @@
         ]
       }
     },
+    "/api/v1/finance/stripe": {
+      "get": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "The workspace's Stripe connection (needs `finance:config`).",
+        "operationId": "stripe_status",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Disconnect the Stripe account, here and in Stripe.",
+        "operationId": "stripe_disconnect",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/finance/stripe/connect": {
+      "post": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Start connecting a Stripe account: send the admin to the returned URL.",
+        "operationId": "stripe_connect",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectStart"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/finance/stripe/connect/finish": {
+      "post": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Finish connecting with the `code` and `state` Stripe sent back.",
+        "operationId": "stripe_connect_finish",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinishConnect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/fx-rates": {
       "get": {
         "tags": [
@@ -11186,6 +11440,63 @@
             }
           },
           "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/invoices/{token}/pay": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "The payer pays by card: a Stripe payment page for what the invoice owes.",
+        "operationId": "public_invoice_pay",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentLink"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
             "content": {
               "application/json": {
                 "schema": {
@@ -16934,6 +17245,37 @@
         ]
       }
     },
+    "/api/v1/webhooks/stripe": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Stripe's events for connected accounts, signed with `Stripe-Signature`.",
+        "operationId": "stripe_webhook",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/webhooks/{id}": {
       "get": {
         "tags": [
@@ -19190,6 +19532,18 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "ConnectStart": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Send the admin here; Stripe sends them back to Settings → Payments\nwith `code` and `state`, which the page passes to the finish call."
           }
         }
       },
@@ -21600,6 +21954,23 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "FinishConnect": {
+        "type": "object",
+        "required": [
+          "code",
+          "state"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "From Stripe's redirect."
+          },
+          "state": {
+            "type": "string",
+            "description": "From Stripe's redirect, as the start call made it."
           }
         }
       },
@@ -24674,6 +25045,18 @@
           }
         }
       },
+      "PaymentLink": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Stripe's payment page; send the payer there."
+          }
+        }
+      },
       "PaymentPage": {
         "type": "object",
         "required": [
@@ -25186,7 +25569,8 @@
           "subtotal",
           "tax",
           "total",
-          "outstanding"
+          "outstanding",
+          "card_payments"
         ],
         "properties": {
           "bank_account": {
@@ -25198,6 +25582,10 @@
           },
           "branding": {
             "type": "object"
+          },
+          "card_payments": {
+            "type": "boolean",
+            "description": "The payer can pay by card (`POST /public/invoices/{token}/pay`)."
           },
           "due_date": {
             "type": [
@@ -26903,6 +27291,68 @@
           },
           "status": {
             "$ref": "#/components/schemas/BookingStatus"
+          }
+        }
+      },
+      "StripeStatus": {
+        "type": "object",
+        "required": [
+          "available",
+          "connected",
+          "livemode",
+          "charges_enabled",
+          "details_submitted"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "available": {
+            "type": "boolean",
+            "description": "Whether this OnHold server takes card payments at all."
+          },
+          "charges_enabled": {
+            "type": "boolean",
+            "description": "Stripe lets the account take payments (it may want more details first)."
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "connected_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "default_currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "details_submitted": {
+            "type": "boolean"
+          },
+          "disconnected_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "livemode": {
+            "type": "boolean",
+            "description": "A live account rather than Stripe's test mode."
           }
         }
       },
