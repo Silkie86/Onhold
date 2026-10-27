@@ -6,6 +6,7 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::Args;
 use core_api::Config;
+use core_api::config::ProxyHeaders;
 use core_api::oidc::OidcProvider;
 use core_domain::crypto::Keyring;
 use core_integrations::mail::{LogMailer, Mailer, SmtpMailer};
@@ -26,9 +27,11 @@ pub struct ApiArgs {
     #[arg(long, env = "COOKIE_SECURE", default_value_t = true, action = clap::ArgAction::Set, global = true)]
     cookie_secure: bool,
 
-    /// Take the client IP from `X-Forwarded-For`. Only behind a proxy that sets it.
-    #[arg(long, env = "TRUST_PROXY_HEADERS", default_value_t = false, action = clap::ArgAction::Set, global = true)]
-    trust_proxy_headers: bool,
+    /// Where the client IP comes from: `false` (the connection), `true` (the
+    /// last `X-Forwarded-For` entry, behind a proxy that appends to it) or
+    /// `cloudflare` (`CF-Connecting-IP`, when every request comes through Cloudflare).
+    #[arg(long, env = "TRUST_PROXY_HEADERS", default_value = "false", value_parser = proxy_headers, global = true)]
+    trust_proxy_headers: ProxyHeaders,
 
     /// Encryption keys for secrets at rest, `id:base64key[,id:base64key…]`.
     /// The first encrypts; all decrypt, so rotate by prepending a new key.
@@ -91,6 +94,15 @@ pub struct ApiArgs {
     /// Let webhooks reach private and internal addresses. Local development only.
     #[arg(long, env = "WEBHOOKS_ALLOW_PRIVATE", default_value_t = false, action = clap::ArgAction::Set, global = true)]
     webhooks_allow_private: bool,
+}
+
+fn proxy_headers(value: &str) -> Result<ProxyHeaders, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "false" | "" => Ok(ProxyHeaders::Off),
+        "true" => Ok(ProxyHeaders::Forwarded),
+        "cloudflare" => Ok(ProxyHeaders::Cloudflare),
+        _ => Err("use false, true or cloudflare".to_owned()),
+    }
 }
 
 /// Worker settings.
@@ -239,6 +251,26 @@ mod tests {
         assert!(args(&[]).build(false).is_ok());
         assert!(args(&[KEY]).build(true).is_ok());
         assert!(args(&["--encryption-keys=k1:short"]).build(true).is_err());
+    }
+
+    #[test]
+    fn proxy_headers_are_trusted_only_when_named() {
+        let mode = |extra: &[&str]| {
+            let mut all = vec![KEY];
+            all.extend_from_slice(extra);
+            args(&all).build(true).expect("config").trust_proxy_headers
+        };
+        assert_eq!(mode(&[]), ProxyHeaders::Off);
+        assert_eq!(mode(&["--trust-proxy-headers=false"]), ProxyHeaders::Off);
+        assert_eq!(
+            mode(&["--trust-proxy-headers=true"]),
+            ProxyHeaders::Forwarded
+        );
+        assert_eq!(
+            mode(&["--trust-proxy-headers=cloudflare"]),
+            ProxyHeaders::Cloudflare
+        );
+        assert!(Cli::try_parse_from(["onhold", KEY, "--trust-proxy-headers=yes"]).is_err());
     }
 
     #[test]
