@@ -34,7 +34,7 @@ jobs:
     env:
       DATABASE_URL: postgres://onhold:onhold@localhost:5432/onhold
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -59,7 +59,7 @@ jobs:
     name: cargo audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
@@ -69,9 +69,9 @@ jobs:
     name: Docker image builds
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: infra/Dockerfile
@@ -79,3 +79,50 @@ jobs:
           tags: onhold:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  cross-os:
+    name: Build and unit tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      SQLX_OFFLINE: "true"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --workspace --all-targets --locked
+      # Database-backed tests run on Linux, where CI has a Postgres service.
+      - name: Unit tests
+        run: cargo test --workspace --lib --bins --locked
+      - name: Binary starts
+        run: cargo run --locked -p onhold -- --help
+
+  api-client:
+    name: TypeScript API client is current
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # The Rust job checks openapi.json against the handlers; this checks the
+      # generated types against openapi.json.
+      - name: Generated types match openapi.json
+        run: |
+          pnpm generate
+          git diff --exit-code -- packages/api-client/src/schema.ts
+      - run: pnpm typecheck

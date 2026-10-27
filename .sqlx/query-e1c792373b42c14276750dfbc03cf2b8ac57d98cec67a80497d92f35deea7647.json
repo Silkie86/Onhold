@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO workspaces (id, slug, name, plan, perspective, country, default_currency,\n                                   default_timezone, locale, enabled_modules, plugin_slug, created_by, updated_by)\n           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        {
+          "Custom": {
+            "name": "workspace_perspective",
+            "kind": {
+              "Enum": [
+                "sells",
+                "buys",
+                "both"
+              ]
+            }
+          }
+        },
+        "Bpchar",
+        "Bpchar",
+        "Text",
+        "Text",
+        "TextArray",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e1c792373b42c14276750dfbc03cf2b8ac57d98cec67a80497d92f35deea7647"
+}

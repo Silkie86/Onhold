@@ -1,0 +1,82 @@
+//! API configuration, built by the binary from the environment.
+
+use std::time::Duration;
+
+use core_domain::crypto::Keyring;
+use url::Url;
+
+use crate::oidc::OidcProvider;
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// Where the web app is served; links in emails and OIDC redirects are built from it.
+    pub public_base_url: Url,
+    /// Set the `Secure` flag on cookies. Only ever false for plain-HTTP local development.
+    pub cookie_secure: bool,
+    /// Take the client IP from `X-Forwarded-For` / `CF-Connecting-IP`. Only
+    /// enable behind a proxy that sets them.
+    pub trust_proxy_headers: bool,
+    pub session_ttl: Duration,
+    /// How long a session may wait for its second factor before it is useless.
+    pub mfa_pending_ttl: Duration,
+    pub invitation_ttl: Duration,
+    pub magic_link_ttl: Duration,
+    pub impersonation_ttl: Duration,
+    /// Failed sign-ins before an account is locked, and for how long.
+    pub max_login_failures: i32,
+    pub lockout: Duration,
+    /// Wrong second-factor codes before a pending session is revoked.
+    pub max_mfa_failures: i32,
+    pub keyring: Keyring,
+    pub oidc: Vec<OidcProvider>,
+}
+
+impl Config {
+    /// Production defaults for everything but the base URL and keys.
+    pub fn new(public_base_url: Url, keyring: Keyring) -> Self {
+        Self {
+            public_base_url,
+            cookie_secure: true,
+            trust_proxy_headers: false,
+            session_ttl: Duration::from_secs(30 * 24 * 3600),
+            mfa_pending_ttl: Duration::from_secs(10 * 60),
+            invitation_ttl: Duration::from_secs(7 * 24 * 3600),
+            magic_link_ttl: Duration::from_secs(15 * 60),
+            impersonation_ttl: Duration::from_secs(60 * 60),
+            max_login_failures: 10,
+            lockout: Duration::from_secs(15 * 60),
+            max_mfa_failures: 5,
+            keyring,
+            oidc: Vec::new(),
+        }
+    }
+
+    /// Settings for tests and local development: localhost over plain HTTP,
+    /// an ephemeral key, no OIDC.
+    pub fn for_development() -> Self {
+        #[allow(clippy::expect_used)]
+        let url = Url::parse("http://localhost:5173").expect("static URL");
+        Self {
+            cookie_secure: false,
+            ..Self::new(url, Keyring::ephemeral())
+        }
+    }
+
+    /// An absolute link for a same-site `path_and_query` that was already
+    /// checked with [`crate::oidc::safe_redirect`].
+    pub fn app_link(&self, path_and_query: &str) -> String {
+        self.public_base_url
+            .join(path_and_query)
+            .map_or_else(|_| self.public_base_url.to_string(), |u| u.to_string())
+    }
+
+    /// An absolute link into the web app.
+    pub fn app_url(&self, path: &str, query: &[(&str, &str)]) -> String {
+        let mut url = self.public_base_url.clone();
+        url.set_path(path);
+        if !query.is_empty() {
+            url.query_pairs_mut().extend_pairs(query);
+        }
+        url.to_string()
+    }
+}

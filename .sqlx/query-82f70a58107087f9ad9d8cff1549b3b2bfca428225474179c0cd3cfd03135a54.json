@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT totp_secret_enc AS secret_enc, totp_pending_secret_enc AS pending_secret_enc,\n                  totp_enabled_at AS enabled_at, totp_last_step AS last_step\n           FROM users WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "secret_enc",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "totp_secret_enc"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "pending_secret_enc",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "totp_pending_secret_enc"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "enabled_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "totp_enabled_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "last_step",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "totp_last_step"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "82f70a58107087f9ad9d8cff1549b3b2bfca428225474179c0cd3cfd03135a54"
+}

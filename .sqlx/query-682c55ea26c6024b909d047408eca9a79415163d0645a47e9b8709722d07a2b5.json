@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE sessions\n           SET mfa_failed_attempts = mfa_failed_attempts + 1,\n               revoked_at = CASE WHEN mfa_failed_attempts + 1 >= $2 THEN now() ELSE revoked_at END\n           WHERE id = $1\n           RETURNING mfa_failed_attempts",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mfa_failed_attempts",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "sessions",
+            "name": "mfa_failed_attempts"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "682c55ea26c6024b909d047408eca9a79415163d0645a47e9b8709722d07a2b5"
+}

@@ -1,6 +1,11 @@
 # Development stack: Postgres, a one-shot migration, the API and the worker.
 #   docker compose -f infra/docker-compose.yml up --build
 # API probes: http://localhost:8080/healthz and /readyz; worker probes on :8081.
+# OpenAPI document: http://localhost:8080/api/openapi.json
+# First workspace:
+#   docker compose -f infra/docker-compose.yml run --rm api admin workspace create \
+#     --slug demo --name "Demo Agency" --country GB --currency GBP \
+#     --timezone Europe/London --owner-email you@example.com
 
 name: onhold
 
@@ -13,6 +18,10 @@ x-app: &app
     DATABASE_URL: postgres://onhold:onhold@postgres:5432/onhold
     LOG_FORMAT: pretty
     RUST_LOG: info,tower_http=debug
+    # Development only. Generate real keys with `onhold admin generate-key`.
+    ENCRYPTION_KEYS: dev:ZGV2LW9ubHktbm90LWEtc2VjcmV0LWtleS0zMmJ5dGU=
+    PUBLIC_BASE_URL: http://localhost:8080
+    COOKIE_SECURE: "false"
 
 services:
   postgres:

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE user_recovery_codes SET used_at = now() WHERE user_id = $1 AND used_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "033cc50cf48f42bbd71632a5451957f5ba2b4ddc8e7e5a4380372e2a97e61d7e"
+}

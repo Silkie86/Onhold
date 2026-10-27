@@ -13,13 +13,17 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+data-encoding.workspace = true
+dotenvy.workspace = true
 core-api.workspace = true
 core-db.workspace = true
+core-domain.workspace = true
 core-worker.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+url.workspace = true
 
 [lints]
 workspace = true

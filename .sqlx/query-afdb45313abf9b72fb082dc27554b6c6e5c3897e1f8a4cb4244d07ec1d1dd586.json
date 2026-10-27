@@ -1,0 +1,102 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT w.id AS \"id: WorkspaceId\", w.slug, w.name, w.status AS \"status: WorkspaceStatus\",\n                  m.role AS \"role: Role\"\n           FROM memberships m JOIN workspaces w ON w.id = m.workspace_id\n           WHERE m.user_id = $1 AND m.deleted_at IS NULL AND w.status <> 'closed'\n           ORDER BY w.name",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id: WorkspaceId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "slug"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status: WorkspaceStatus",
+        "type_info": {
+          "Custom": {
+            "name": "workspace_status",
+            "kind": {
+              "Enum": [
+                "trial",
+                "active",
+                "suspended",
+                "closed"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "role: Role",
+        "type_info": {
+          "Custom": {
+            "name": "member_role",
+            "kind": {
+              "Enum": [
+                "owner",
+                "admin",
+                "agent",
+                "finance",
+                "viewer",
+                "talent"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "memberships",
+            "name": "role"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "afdb45313abf9b72fb082dc27554b6c6e5c3897e1f8a4cb4244d07ec1d1dd586"
+}

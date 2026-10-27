@@ -34,7 +34,7 @@ axum = "0.8"
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "uuid", "chrono", "json"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "uuid", "chrono", "json", "ipnet"] }
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "time"] }
 tokio-util = "0.7"
@@ -44,6 +44,24 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v7", "serde"] }
 http-body-util = "0.1"
+aes-gcm = "0.11"
+argon2 = "0.6"
+axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+chrono-tz = "0.10"
+csv = "1"
+data-encoding = "2"
+dotenvy = "0.15"
+getrandom = "0.4"
+ipnet = "2"
+openidconnect = { version = "4", default-features = false, features = ["reqwest", "rustls-tls"] }
+sha2 = "0.11"
+subtle = "2"
+time = "0.3"
+totp-rs = { version = "6", features = ["otpauth"] }
+url = "2"
+utoipa = { version = "6", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-axum = "0.3"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -55,4 +73,15 @@ todo = "warn"
 unwrap_used = "warn"
 
 [profile.dev.package.sqlx-macros]
+opt-level = 3
+
+# Password hashing and test key generation are unbearably slow unoptimised;
+# optimise just those crates in dev and test builds.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.rsa]
+opt-level = 3
+[profile.dev.package.num-bigint-dig]
 opt-level = 3

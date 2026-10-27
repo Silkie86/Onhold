@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT magic_link_id AS \"magic_link_id!\", user_id AS \"user_id!: UserId\"\n           FROM auth_find_magic_link($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "magic_link_id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id!: UserId",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "72332056e89a9610c14e7572226dbc9b0498034f85d641b347207ea66e7ba507"
+}

@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE memberships SET role = $2, updated_by = $3\n           WHERE workspace_id = app_workspace_id() AND user_id = $1 AND deleted_at IS NULL AND version = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "member_role",
+            "kind": {
+              "Enum": [
+                "owner",
+                "admin",
+                "agent",
+                "finance",
+                "viewer",
+                "talent"
+              ]
+            }
+          }
+        },
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5f5381b6919556fd09bcaea658730df2616b8116e80c28a0f31cb47f460deab3"
+}

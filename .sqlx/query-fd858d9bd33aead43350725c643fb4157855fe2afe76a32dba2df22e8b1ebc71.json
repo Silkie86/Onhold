@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE sessions SET mfa_verified = true, mfa_failed_attempts = 0, expires_at = $2 WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fd858d9bd33aead43350725c643fb4157855fe2afe76a32dba2df22e8b1ebc71"
+}

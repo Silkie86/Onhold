@@ -1,3 +1,14 @@
-//! Entities and value types (Money, timezones, errors) shared by every crate.
+//! Entities and value types shared by every crate: ids, roles and
+//! permissions, the request context and its single `authorize` check,
+//! validated workspace settings, and the small amount of cryptography the
+//! core needs (token generation, hashing, encryption at rest).
 //!
-//! This crate does no I/O. It is populated from M1 onwards.
+//! This crate does no I/O.
+
+pub mod authz;
+pub mod crypto;
+pub mod ids;
+pub mod workspace;
+
+pub use authz::{Actor, AuthzError, Ctx, Permission, Role};
+pub use ids::{UserId, WorkspaceId};

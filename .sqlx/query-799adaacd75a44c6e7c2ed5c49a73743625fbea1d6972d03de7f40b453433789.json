@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO oidc_identities (id, user_id, provider, subject, email, last_used_at)\n           VALUES ($1, $2, $3, $4, $5::text::citext, now())",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "799adaacd75a44c6e7c2ed5c49a73743625fbea1d6972d03de7f40b453433789"
+}

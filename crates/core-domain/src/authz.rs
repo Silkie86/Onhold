@@ -1,0 +1,301 @@
+//! Roles, permissions, the request context and the one place a permission is
+//! checked.
+//!
+//! A permission is `resource:action`. Roles map to permission sets in the
+//! `role_permissions` table, seeded per workspace from [`Role::default_permissions`].
+//! Handlers never look at roles: services call [`Ctx::authorize`] once per
+//! operation. Row ownership (for example "only this talent's bookings") is a
+//! SQL filter, not a Rust check, so `authorize` takes no object.
+
+use std::collections::BTreeSet;
+use std::net::IpAddr;
+use std::str::FromStr;
+
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::ids::{UserId, WorkspaceId};
+
+/// A workspace membership role. A fixed set in v1.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    sqlx::Type,
+    utoipa::ToSchema,
+)]
+#[sqlx(type_name = "member_role", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    Owner,
+    Admin,
+    Agent,
+    Finance,
+    Viewer,
+    Talent,
+}
+
+impl Role {
+    pub const ALL: [Role; 6] = [
+        Role::Owner,
+        Role::Admin,
+        Role::Agent,
+        Role::Finance,
+        Role::Viewer,
+        Role::Talent,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Role::Owner => "owner",
+            Role::Admin => "admin",
+            Role::Agent => "agent",
+            Role::Finance => "finance",
+            Role::Viewer => "viewer",
+            Role::Talent => "talent",
+        }
+    }
+
+    /// Staff roles are everyone except talent; a workspace can require 2FA for them.
+    pub fn is_staff(self) -> bool {
+        !matches!(self, Role::Talent)
+    }
+
+    /// The permissions seeded for this role when a workspace is created.
+    pub fn default_permissions(self) -> BTreeSet<Permission> {
+        use Permission as P;
+        let all: BTreeSet<Permission> = Permission::ALL.iter().copied().collect();
+        match self {
+            Role::Owner => all,
+            // Everything except billing and closing the workspace.
+            Role::Admin => all
+                .into_iter()
+                .filter(|p| !matches!(p, P::BillingRead | P::BillingWrite | P::WorkspaceClose))
+                .collect(),
+            // Finance sees the workspace's billing details; the finance
+            // module's own permissions arrive with it.
+            Role::Finance => [P::WorkspaceRead, P::MemberRead, P::BillingRead].into(),
+            Role::Agent | Role::Viewer => [P::WorkspaceRead, P::MemberRead].into(),
+            Role::Talent => [P::WorkspaceRead].into(),
+        }
+    }
+}
+
+impl std::fmt::Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+macro_rules! permissions {
+    ($($variant:ident => $s:literal),+ $(,)?) => {
+        /// A `resource:action` permission.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, utoipa::ToSchema)]
+        pub enum Permission {
+            $(#[serde(rename = $s)] #[schema(rename = $s)] $variant,)+
+        }
+
+        impl Permission {
+            pub const ALL: &'static [Permission] = &[$(Permission::$variant,)+];
+
+            pub fn as_str(self) -> &'static str {
+                match self {
+                    $(Permission::$variant => $s,)+
+                }
+            }
+        }
+
+        impl FromStr for Permission {
+            type Err = UnknownPermission;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                match s {
+                    $($s => Ok(Permission::$variant),)+
+                    _ => Err(UnknownPermission(s.to_owned())),
+                }
+            }
+        }
+    };
+}
+
+permissions! {
+    WorkspaceRead => "workspace:read",
+    WorkspaceUpdate => "workspace:update",
+    WorkspaceClose => "workspace:close",
+    MemberRead => "member:read",
+    MemberInvite => "member:invite",
+    MemberUpdate => "member:update",
+    MemberRemove => "member:remove",
+    ApiKeyRead => "api_key:read",
+    ApiKeyWrite => "api_key:write",
+    AuditRead => "audit:read",
+    BillingRead => "billing:read",
+    BillingWrite => "billing:write",
+}
+
+impl std::fmt::Display for Permission {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("unknown permission `{0}`")]
+pub struct UnknownPermission(pub String);
+
+/// Who is acting.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Actor {
+    /// A signed-in person. `impersonator` is set when a superadmin acts in a
+    /// workspace they are not a member of, for support.
+    User {
+        user_id: UserId,
+        impersonator: Option<UserId>,
+    },
+    /// A workspace API key, acting with its own scoped permissions.
+    ApiKey {
+        key_id: Uuid,
+        created_by: Option<UserId>,
+    },
+    /// The operator CLI or another trusted system process.
+    System,
+}
+
+/// Where a request came from, recorded on every audit row.
+#[derive(Debug, Clone, Default)]
+pub struct RequestMeta {
+    pub ip: Option<IpAddr>,
+    pub user_agent: Option<String>,
+    pub request_id: Option<String>,
+}
+
+/// Everything a service needs to know about the caller of one operation: who,
+/// in which workspace, with which permissions.
+#[derive(Debug, Clone)]
+pub struct Ctx {
+    pub workspace_id: WorkspaceId,
+    pub actor: Actor,
+    /// The membership role, when the actor is a member. Impersonating
+    /// superadmins and API keys have none.
+    pub role: Option<Role>,
+    pub permissions: BTreeSet<Permission>,
+    pub meta: RequestMeta,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("missing permission `{0}`")]
+pub struct AuthzError(pub Permission);
+
+impl Ctx {
+    /// The single authorization check. Every service operation calls this
+    /// before touching data.
+    pub fn authorize(&self, permission: Permission) -> Result<(), AuthzError> {
+        if self.permissions.contains(&permission) {
+            Ok(())
+        } else {
+            Err(AuthzError(permission))
+        }
+    }
+
+    /// The signed-in user, if the actor is a person.
+    pub fn user_id(&self) -> Option<UserId> {
+        match self.actor {
+            Actor::User { user_id, .. } => Some(user_id),
+            Actor::ApiKey { .. } | Actor::System => None,
+        }
+    }
+
+    pub fn impersonator(&self) -> Option<UserId> {
+        match self.actor {
+            Actor::User { impersonator, .. } => impersonator,
+            Actor::ApiKey { .. } | Actor::System => None,
+        }
+    }
+
+    pub fn api_key_id(&self) -> Option<Uuid> {
+        match self.actor {
+            Actor::ApiKey { key_id, .. } => Some(key_id),
+            Actor::User { .. } | Actor::System => None,
+        }
+    }
+
+    /// A context for trusted system work (operator CLI, seeding) with every permission.
+    pub fn system(workspace_id: WorkspaceId) -> Self {
+        Self {
+            workspace_id,
+            actor: Actor::System,
+            role: None,
+            permissions: Permission::ALL.iter().copied().collect(),
+            meta: RequestMeta::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permission_strings_round_trip() {
+        for p in Permission::ALL {
+            assert_eq!(p.as_str().parse::<Permission>().expect("parses"), *p);
+            let json = serde_json::to_string(p).expect("serialises");
+            assert_eq!(json, format!("\"{}\"", p.as_str()));
+        }
+        assert!("workspace:explode".parse::<Permission>().is_err());
+    }
+
+    #[test]
+    fn role_defaults_follow_the_spec() {
+        let owner = Role::Owner.default_permissions();
+        let admin = Role::Admin.default_permissions();
+        assert_eq!(owner.len(), Permission::ALL.len());
+        assert!(admin.is_subset(&owner));
+        for p in [
+            Permission::BillingRead,
+            Permission::BillingWrite,
+            Permission::WorkspaceClose,
+        ] {
+            assert!(!admin.contains(&p), "admin must not have {p}");
+        }
+        for role in [Role::Agent, Role::Finance, Role::Viewer, Role::Talent] {
+            let perms = role.default_permissions();
+            assert!(
+                !perms.contains(&Permission::MemberInvite),
+                "{role} must not invite"
+            );
+            assert!(
+                !perms.contains(&Permission::AuditRead),
+                "{role} must not read the audit log"
+            );
+        }
+        assert!(
+            !Role::Talent
+                .default_permissions()
+                .contains(&Permission::MemberRead)
+        );
+        let finance = Role::Finance.default_permissions();
+        assert!(
+            finance.contains(&Permission::BillingRead)
+                && !finance.contains(&Permission::BillingWrite)
+        );
+    }
+
+    #[test]
+    fn authorize_checks_the_permission_set() {
+        let mut ctx = Ctx::system(WorkspaceId::new());
+        ctx.permissions = [Permission::MemberRead].into();
+        assert!(ctx.authorize(Permission::MemberRead).is_ok());
+        assert_eq!(
+            ctx.authorize(Permission::MemberInvite),
+            Err(AuthzError(Permission::MemberInvite))
+        );
+    }
+}
