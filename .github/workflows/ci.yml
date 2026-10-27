@@ -175,7 +175,7 @@ jobs:
         working-directory: web/apps/app
       - run: pnpm e2e
         working-directory: web/apps/app
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
@@ -233,7 +233,7 @@ jobs:
       - name: Build a branded app
         if: runner.os == 'Linux'
         run: node scripts/brand.mjs brands/example.json -- --bundles deb -- --locked
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ runner.os }}
           path: |
