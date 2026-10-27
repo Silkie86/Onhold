@@ -1,0 +1,25 @@
+[package]
+name = "core-pdf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono.workspace = true
+core-domain.workspace = true
+core-engines.workspace = true
+# Pure Rust, so it builds the same on Windows, macOS and Linux. It
+# re-exports the lopdf version it reads with, which we use for metadata
+# and images.
+pdf-extract = "0.12"
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+utoipa.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true
