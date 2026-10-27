@@ -1,0 +1,70 @@
+# Development stack: Postgres, a one-shot migration, the API and the worker.
+#   docker compose -f infra/docker-compose.yml up --build
+# API probes: http://localhost:8080/healthz and /readyz; worker probes on :8081.
+
+name: onhold
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: infra/Dockerfile
+  image: onhold:dev
+  environment:
+    DATABASE_URL: postgres://onhold:onhold@postgres:5432/onhold
+    LOG_FORMAT: pretty
+    RUST_LOG: info,tower_http=debug
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: onhold
+      POSTGRES_PASSWORD: onhold
+      POSTGRES_DB: onhold
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onhold -d onhold"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    <<: *app
+    command: ["migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    command: ["api"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  worker:
+    <<: *app
+    command: ["worker"]
+    ports:
+      - "8081:8081"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
