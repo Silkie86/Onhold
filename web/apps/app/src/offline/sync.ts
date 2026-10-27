@@ -350,6 +350,9 @@ export class OfflineSync {
     } catch (e) {
       if (isNetworkError(e)) throw e;
       if (!(e instanceof ApiFailure) || e.status >= 500 || e.status === 429) throw e;
+      // Signed out, or the session's form token is stale: nothing wrong with
+      // the change itself. It waits for the next sign-in.
+      if (e.status === 401 || e.code === "csrf_failed") throw e;
       if (e.status === 412) {
         // Someone else changed it first: keep both versions and ask.
         let server: RecordJson | undefined;

@@ -11,6 +11,9 @@ import { defineConfig, devices } from "@playwright/test";
 const bin = process.env.ONHOLD_BIN ?? "../../../target/debug/onhold";
 const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:5173";
 const appURL = "http://localhost:5174";
+// The website as installed ("Add to Home Screen"): a production build, so
+// its service worker exists.
+const installedURL = "http://localhost:5175";
 const apiURL = "http://localhost:8080";
 
 export default defineConfig({
@@ -23,14 +26,19 @@ export default defineConfig({
   projects: [
     {
       name: "desktop",
-      testIgnore: "app.spec.ts",
+      testIgnore: ["app.spec.ts", "installed.spec.ts"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
-    { name: "phone", testIgnore: "app.spec.ts", use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 } } },
+    { name: "phone", testIgnore: ["app.spec.ts", "installed.spec.ts"], use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 } } },
     {
       name: "app",
       testMatch: "app.spec.ts",
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 820 }, baseURL: appURL },
+    },
+    {
+      name: "installed",
+      testMatch: "installed.spec.ts",
+      use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 }, baseURL: installedURL },
     },
   ],
   webServer: [
@@ -48,6 +56,12 @@ export default defineConfig({
       url: appURL,
       reuseExistingServer: !process.env.CI,
       env: { VITE_APP_MODE: "app", VITE_API_URL: apiURL },
+      timeout: 180_000,
+    },
+    {
+      command: "pnpm exec vite build --outDir dist-web && pnpm exec vite preview --outDir dist-web --port 5175 --strictPort",
+      url: installedURL,
+      reuseExistingServer: !process.env.CI,
       timeout: 180_000,
     },
   ],
