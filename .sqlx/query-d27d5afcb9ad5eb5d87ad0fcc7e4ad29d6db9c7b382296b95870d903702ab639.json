@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE talent_members SET name = $2, role = $3, email = $4, phone = $5, notes = $6,\n                  position = $7, updated_by = $8\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d27d5afcb9ad5eb5d87ad0fcc7e4ad29d6db9c7b382296b95870d903702ab639"
+}

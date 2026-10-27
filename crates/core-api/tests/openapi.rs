@@ -22,6 +22,7 @@ fn the_committed_spec_is_current() {
 #[test]
 fn every_operation_is_documented() {
     let spec = serde_json::to_value(core_api::openapi()).unwrap();
+    let mut ids = std::collections::HashSet::new();
     for (path, item) in spec["paths"].as_object().unwrap() {
         for (method, op) in item.as_object().unwrap() {
             assert!(
@@ -35,6 +36,12 @@ fn every_operation_is_documented() {
             assert!(
                 op["operationId"].is_string(),
                 "{method} {path} has no operationId"
+            );
+            // The generated client names its functions after them.
+            assert!(
+                ids.insert(op["operationId"].to_string()),
+                "{method} {path}: operationId {} is used twice",
+                op["operationId"]
             );
         }
     }

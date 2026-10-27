@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO saved_views (id, workspace_id, entity, name, owner_id, config, created_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Uuid",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cf9607b232c2e7f025edc5c3ea8a334e21158fe2bdca496b481506ffbf8910be"
+}

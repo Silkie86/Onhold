@@ -1,0 +1,256 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, kind AS \"kind: TalentKind\", name, legal_name, talent_type, bio, base_location,\n                  default_fee_minor, default_fee_currency, commission_bps, status, portal_user_id, tags,\n                  custom, version, created_at, updated_at, created_by AS \"created_by: UserId\",\n                  updated_by AS \"updated_by: UserId\"\n           FROM talent WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL\n           FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "kind: TalentKind",
+        "type_info": {
+          "Custom": {
+            "name": "talent_kind",
+            "kind": {
+              "Enum": [
+                "person",
+                "act",
+                "space",
+                "equipment"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "legal_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "legal_name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "talent_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "talent_type"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "bio",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "bio"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "base_location",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "base_location"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "default_fee_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "default_fee_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "default_fee_currency",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "default_fee_currency"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "commission_bps",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "commission_bps"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "portal_user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "portal_user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "tags",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "tags"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "custom",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "custom"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "updated_by"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "e55506d850651405cddbfe15f8f6009f6815cfd8bc9f3da9c70d8439a15d02b8"
+}

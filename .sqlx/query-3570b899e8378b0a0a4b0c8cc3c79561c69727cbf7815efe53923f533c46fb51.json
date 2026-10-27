@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO contacts (id, workspace_id, organisation_id, name, emails, phones, phone_keys, role,\n                                 preferred_channel, email_opt_in, sms_opt_in, whatsapp_opt_in, notes, tags,\n                                 custom, created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "Text",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Text",
+        "TextArray",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3570b899e8378b0a0a4b0c8cc3c79561c69727cbf7815efe53923f533c46fb51"
+}

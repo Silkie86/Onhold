@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE contacts SET organisation_id = $2, name = $3, emails = $4, phones = $5, phone_keys = $6,\n                  role = $7, preferred_channel = $8, email_opt_in = $9, sms_opt_in = $10,\n                  whatsapp_opt_in = $11, notes = $12, tags = $13, custom = $14, updated_by = $15\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "Text",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Text",
+        "TextArray",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b853c0f3d72246d4a318cafc032fc3684504cc090cf4c80f55a7d62868b8b5b3"
+}

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO talent_members (id, workspace_id, talent_id, name, role, email, phone, notes,\n                                       position, created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $9)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2015b7aed8ec56d9b08966889ec742da9632501b2eebccb357e1d737b082aad3"
+}

@@ -87,6 +87,9 @@ impl Role {
                 P::BillingRead,
                 P::ThingRead,
                 P::EventRead,
+                P::TalentRead,
+                P::OrganisationRead,
+                P::ContactRead,
             ]
             .into(),
             Role::Agent => [
@@ -95,9 +98,24 @@ impl Role {
                 P::ThingRead,
                 P::ThingWrite,
                 P::EventRead,
+                P::TalentRead,
+                P::TalentWrite,
+                P::OrganisationRead,
+                P::OrganisationWrite,
+                P::ContactRead,
+                P::ContactWrite,
             ]
             .into(),
-            Role::Viewer => [P::WorkspaceRead, P::MemberRead, P::ThingRead, P::EventRead].into(),
+            Role::Viewer => [
+                P::WorkspaceRead,
+                P::MemberRead,
+                P::ThingRead,
+                P::EventRead,
+                P::TalentRead,
+                P::OrganisationRead,
+                P::ContactRead,
+            ]
+            .into(),
             Role::Talent => [P::WorkspaceRead].into(),
         }
     }
@@ -163,6 +181,12 @@ permissions! {
     WebhookWrite => "webhook:write",
     JobRead => "job:read",
     JobWrite => "job:write",
+    TalentRead => "talent:read",
+    TalentWrite => "talent:write",
+    OrganisationRead => "organisation:read",
+    OrganisationWrite => "organisation:write",
+    ContactRead => "contact:read",
+    ContactWrite => "contact:write",
 }
 
 impl std::fmt::Display for Permission {

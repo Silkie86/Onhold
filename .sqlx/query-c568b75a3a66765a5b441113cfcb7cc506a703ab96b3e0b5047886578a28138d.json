@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT default_currency, default_timezone, locale FROM workspaces WHERE id = app_workspace_id()",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "default_currency",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "default_currency"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "default_timezone",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "default_timezone"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "locale",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "locale"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c568b75a3a66765a5b441113cfcb7cc506a703ab96b3e0b5047886578a28138d"
+}

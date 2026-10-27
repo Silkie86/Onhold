@@ -423,6 +423,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Contacts, searched, filtered, sorted and paged. */
+        get: operations["list_contacts"];
+        put?: never;
+        post: operations["create_contact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contacts/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete, tag or untag up to 500 contacts at once. */
+        post: operations["contact_bulk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contacts/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Existing contacts that may be the one being entered: the same email or
+         *     phone number, or a similar name.
+         */
+        post: operations["contact_duplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contacts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_contact"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_contact"];
+        options?: never;
+        head?: never;
+        patch: operations["update_contact"];
+        trace?: never;
+    };
+    "/api/v1/contacts/{id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What happened to this contact, and the messages sent to them, newest first. */
+        get: operations["contact_timeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/custom-fields": {
         parameters: {
             query?: never;
@@ -503,6 +590,81 @@ export interface paths {
         get: operations["stream_events"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent imports the caller may run, newest first. */
+        get: operations["list_imports"];
+        put?: never;
+        /**
+         * Upload a spreadsheet (as CSV text, up to 10 MB). Answers with its
+         *     columns, the first rows and a suggested mapping of columns to fields.
+         */
+        post: operations["upload_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An import and, once run, its progress and results. */
+        get: operations["get_import"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{id}/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check every row against a mapping without importing anything. */
+        post: operations["dry_run_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/{id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import the rows with a mapping. Runs in the background: follow it at
+         *     `GET /imports/{id}`.
+         */
+        post: operations["run_import"];
         delete?: never;
         options?: never;
         head?: never;
@@ -684,6 +846,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Organisations, searched, filtered, sorted and paged. */
+        get: operations["list_organisations"];
+        put?: never;
+        post: operations["create_organisation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete, tag or untag up to 500 organisations at once. */
+        post: operations["organisation_bulk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Existing organisations that may be the one being entered (similar
+         *     names, the same tax id).
+         */
+        post: operations["organisation_duplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_organisation"];
+        put?: never;
+        post?: never;
+        /** Delete an organisation. Its contacts stay, still linked to it. */
+        delete: operations["delete_organisation"];
+        options?: never;
+        head?: never;
+        patch: operations["update_organisation"];
+        trace?: never;
+    };
+    "/api/v1/organisations/{id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What happened to this organisation and its contacts, and the messages
+         *     sent to them, newest first.
+         */
+        get: operations["organisation_timeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pipelines": {
         parameters: {
             query?: never;
@@ -777,6 +1030,177 @@ export interface paths {
         };
         /** What a rule did and why, newest first. */
         get: operations["rule_log"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/schema/{entity}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An entity's fields, core and custom, as forms and lists draw them. */
+        get: operations["schema"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search talent, organisations and contacts at once, best matches first. */
+        get: operations["search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tags in use on an entity's records, most used first. */
+        get: operations["tags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Talent, searched, filtered, sorted and paged. */
+        get: operations["list_talent"];
+        put?: never;
+        /** Add talent: a person, an act, a space or equipment. */
+        post: operations["create_talent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete, tag or untag up to 500 talent records at once. */
+        post: operations["talent_bulk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Existing talent that may be the one being entered (similar names). */
+        post: operations["talent_duplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_talent"];
+        put?: never;
+        post?: never;
+        /** Delete talent. Bookings and invoices that name it keep working. */
+        delete: operations["delete_talent"];
+        options?: never;
+        head?: never;
+        patch: operations["update_talent"];
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The people in an act or crew, in order. */
+        get: operations["list_talent_members"];
+        put?: never;
+        post: operations["add_talent_member"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/members/{member_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a member's details. */
+        put: operations["update_talent_member"];
+        post?: never;
+        delete: operations["remove_talent_member"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What happened to this talent and its members, newest first. */
+        get: operations["talent_timeline"];
         put?: never;
         post?: never;
         delete?: never;
@@ -902,6 +1326,40 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_thing"];
+        trace?: never;
+    };
+    "/api/v1/views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Saved views of an entity's list: shared ones and the caller's own. */
+        get: operations["list_views"];
+        put?: never;
+        post: operations["create_view"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/views/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a saved view. */
+        put: operations["update_view"];
+        post?: never;
+        delete: operations["delete_view"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/webhooks": {
@@ -1120,6 +1578,19 @@ export interface components {
             ok: boolean;
             type: string;
         };
+        /** @description A postal address. Every part is optional, but not all of them. */
+        Address: {
+            city?: string | null;
+            /** @description A country name or ISO code. */
+            country?: string | null;
+            /** @description What the address is for: "Main office", "Stage door". */
+            label?: string | null;
+            line1?: string | null;
+            line2?: string | null;
+            postcode?: string | null;
+            /** @description State, county or province. */
+            region?: string | null;
+        };
         AdminWorkspaceView: {
             /** Format: date-time */
             created_at: string;
@@ -1182,6 +1653,28 @@ export interface components {
             /** @description While paused no rule runs; events are still recorded and webhooks still sent. */
             paused: boolean;
         };
+        /** @enum {string} */
+        BulkAction: "delete" | "add_tags" | "remove_tags";
+        BulkFailure: {
+            /** Format: uuid */
+            id: string;
+            message: string;
+        };
+        BulkRequest: {
+            action: components["schemas"]["BulkAction"];
+            /** @description Up to 500 records. */
+            ids: string[];
+            /** @description For `add_tags` and `remove_tags`. */
+            tags?: string[];
+        };
+        BulkResult: {
+            /** @description Records changed. */
+            done: number;
+            /** @description Records left unchanged, and why. */
+            failed: components["schemas"]["BulkFailure"][];
+        };
+        /** @enum {string} */
+        Channel: "email" | "phone" | "sms" | "whatsapp";
         /** @description One comparison as evaluated, for the dry-run explanation. */
         Check: {
             /** @description What the field held (absent if it did not exist). */
@@ -1194,6 +1687,81 @@ export interface components {
         CloseWorkspaceRequest: {
             /** @description The workspace's slug, typed again to confirm. */
             confirm_slug: string;
+        };
+        ContactDuplicateQuery: {
+            emails?: string[];
+            /**
+             * Format: uuid
+             * @description The record being edited, which is not its own duplicate.
+             */
+            except?: string | null;
+            name?: string;
+            phones?: string[];
+        };
+        ContactPage: {
+            items: components["schemas"]["ContactView"][];
+            /**
+             * Format: int64
+             * @description How many records match, across all pages.
+             */
+            total: number;
+        };
+        ContactPatch: {
+            /** @description Only the keys sent change; `null` clears a value. */
+            custom?: Record<string, never> | null;
+            email_opt_in?: boolean | null;
+            /** @description Replaces the addresses. */
+            emails?: string[] | null;
+            name?: string | null;
+            notes?: string | null;
+            /**
+             * Format: uuid
+             * @description `null` clears it; likewise for the other optional fields.
+             */
+            organisation_id?: string | null;
+            /** @description Replaces the numbers. */
+            phones?: string[] | null;
+            preferred_channel?: components["schemas"]["Channel"] | null;
+            role?: string | null;
+            sms_opt_in?: boolean | null;
+            /** @description Replaces the tags. */
+            tags?: string[] | null;
+            whatsapp_opt_in?: boolean | null;
+        };
+        ContactView: {
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** @description Custom field values by key. */
+            custom: Record<string, never>;
+            /** @description The primary email, if any. */
+            email?: string | null;
+            /** @description Consent to marketing by email, SMS and WhatsApp. */
+            email_opt_in: boolean;
+            /** @description Lower-cased; the first is the primary address. */
+            emails: string[];
+            /** Format: uuid */
+            id: string;
+            name: string;
+            notes?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            organisation_name?: string | null;
+            /** @description The primary phone number, if any. */
+            phone?: string | null;
+            /** @description As entered; the first is the primary number. */
+            phones: string[];
+            preferred_channel?: components["schemas"]["Channel"] | null;
+            /** @description Job title or role at the organisation. */
+            role?: string | null;
+            sms_opt_in: boolean;
+            tags: string[];
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+            whatsapp_opt_in: boolean;
         };
         CreateApiKeyRequest: {
             /** Format: date-time */
@@ -1330,6 +1898,11 @@ export interface components {
             id: string;
             mfa_verified: boolean;
         };
+        /**
+         * @description How to read day/month order in dates like `07/03/2027`.
+         * @enum {string}
+         */
+        DateOrder: "dmy" | "mdy" | "ymd";
         DeliveryPage: {
             deliveries: components["schemas"]["DeliveryView"][];
             /** Format: uuid */
@@ -1361,10 +1934,17 @@ export interface components {
         };
         DraftPreviewRequest: {
             body: string;
+            /** @description What the template is about; default `thing`. */
+            entity?: string | null;
             kind: components["schemas"]["Kind"];
             overrides?: Record<string, never> | null;
-            subject?: string | null;
             /** Format: uuid */
+            record_id?: string | null;
+            subject?: string | null;
+            /**
+             * Format: uuid
+             * @description The same as `record_id` with `entity` `thing`.
+             */
             thing_id?: string | null;
         };
         /** @description The answer to "what would this rule do for this record?". */
@@ -1380,9 +1960,47 @@ export interface components {
         DryRunRequest: {
             /**
              * Format: uuid
-             * @description Test against this record; otherwise against sample data.
+             * @description Test against this record (of the kind the rule is about); otherwise
+             *     against sample data.
+             */
+            record_id?: string | null;
+            /**
+             * Format: uuid
+             * @description The same as `record_id`, for rules about things.
              */
             thing_id?: string | null;
+        };
+        DryRunResult: {
+            create: number;
+            fail: number;
+            /** @description The first problems (up to 200). */
+            issues: components["schemas"]["ImportIssue"][];
+            /** @description Organisations a contact import would create. */
+            new_organisations: string[];
+            /** @description The first records as they would be saved. */
+            sample: Record<string, never>[];
+            skip: number;
+            update: number;
+        };
+        /** @description A record that may be the one being entered. */
+        Duplicate: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /**
+             * @description Why it matched, for people: "same email jo@example.com",
+             *     "similar name (82%)".
+             */
+            reasons: string[];
+        };
+        EntitySchema: {
+            /** @description The caller may create and change these records. */
+            can_write: boolean;
+            entity: string;
+            /** @description Core fields first, then custom fields in their order. */
+            fields: components["schemas"]["SchemaField"][];
+            label: string;
+            label_plural: string;
         };
         ErrorBody: {
             error: components["schemas"]["ErrorDetail"];
@@ -1428,6 +2046,12 @@ export interface components {
              */
             seq: number;
             topic: string;
+        };
+        FieldChange: {
+            after: Record<string, never>;
+            before: Record<string, never>;
+            /** @description `name`, `emails`, `custom.genre`… */
+            field: string;
         };
         FieldPatchRequest: {
             /** @description `null` removes the default. */
@@ -1478,6 +2102,89 @@ export interface components {
             /** Format: date-time */
             expires_at: string;
             workspace_id: components["schemas"]["WorkspaceId"];
+        };
+        ImportIssue: {
+            /** @description The field at fault, when there is one. */
+            field?: string | null;
+            message: string;
+            /** @description The spreadsheet row (the header is row 1). */
+            row: number;
+        };
+        ImportOptions: {
+            /**
+             * @description Contacts: create organisations the sheet names that do not exist yet
+             *     (default true). Otherwise such rows are refused.
+             */
+            create_organisations?: boolean;
+            date_order?: components["schemas"]["DateOrder"] | null;
+            /** @description For amounts with no currency; default the workspace's. */
+            default_currency?: string | null;
+            /** @description What to do with a row that matches an existing record. */
+            on_match?: components["schemas"]["OnMatch"];
+            /** @description Let automation rules react to the imported records (default false). */
+            run_rules?: boolean;
+            /** @description Tags added to every imported record. */
+            tags?: string[];
+        };
+        ImportPlan: {
+            /**
+             * @description The field each column feeds, in column order (`null` to ignore a
+             *     column): a key from the upload's `targets`. Several columns may feed
+             *     `name` (joined with spaces) or a list field.
+             */
+            columns: (string | null)[];
+            options?: components["schemas"]["ImportOptions"];
+        };
+        ImportPreview: {
+            import: components["schemas"]["ImportView"];
+            /** @description The first rows, as text. */
+            sample: string[][];
+            /** @description The field each column most likely feeds (`null` when unsure). */
+            suggested: (string | null)[];
+            /** @description The fields columns can feed. */
+            targets: components["schemas"]["ImportTarget"][];
+        };
+        ImportTarget: {
+            key: string;
+            label: string;
+            /** @description Several columns may feed it. */
+            many: boolean;
+            required: boolean;
+        };
+        ImportView: {
+            /** Format: int32 */
+            created: number;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            entity: string;
+            error?: string | null;
+            /** Format: int32 */
+            failed: number;
+            filename?: string | null;
+            /** Format: date-time */
+            finished_at?: string | null;
+            headers: string[];
+            /** Format: uuid */
+            id: string;
+            /** @description The first problems found (up to 1,000). */
+            issues: components["schemas"]["ImportIssue"][];
+            plan?: components["schemas"]["ImportPlan"] | null;
+            /**
+             * Format: int32
+             * @description Rows dealt with so far.
+             */
+            processed: number;
+            /** Format: int32 */
+            row_count: number;
+            /** Format: int32 */
+            skipped: number;
+            /** Format: date-time */
+            started_at?: string | null;
+            /** @description `uploaded`, `queued`, `running`, `done` or `failed`. */
+            status: string;
+            /** Format: int32 */
+            updated: number;
         };
         InvitationPreviewView: {
             email: string;
@@ -1584,6 +2291,18 @@ export interface components {
             /** @description Workspaces this user belongs to (empty while a second factor is pending). */
             workspaces: components["schemas"]["MyWorkspaceView"][];
         };
+        MemberInput: {
+            email?: string | null;
+            name: string;
+            notes?: string | null;
+            phone?: string | null;
+            /**
+             * Format: int32
+             * @description Order in the list; default last.
+             */
+            position?: number | null;
+            role?: string | null;
+        };
         MemberView: {
             email: string;
             has_2fa: boolean;
@@ -1628,6 +2347,16 @@ export interface components {
             /** @description Or one of the single-use recovery codes. */
             recovery_code?: string | null;
         };
+        /** @description `{ "minor": 125000, "currency": "GBP" }` is £1,250.00. */
+        Money: {
+            /** @description ISO 4217 code. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Amount in the currency's smallest unit (pence, cents, yen).
+             */
+            minor: number;
+        };
         MyWorkspaceView: {
             id: components["schemas"]["WorkspaceId"];
             name: string;
@@ -1635,12 +2364,133 @@ export interface components {
             slug: string;
             status: components["schemas"]["WorkspaceStatus"];
         };
+        NewContact: {
+            /** @description Custom field values by key. Missing fields take their defaults. */
+            custom?: Record<string, never>;
+            email_opt_in?: boolean;
+            emails?: string[];
+            name: string;
+            notes?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            phones?: string[];
+            preferred_channel?: components["schemas"]["Channel"] | null;
+            role?: string | null;
+            sms_opt_in?: boolean;
+            tags?: string[];
+            whatsapp_opt_in?: boolean;
+        };
+        NewImport: {
+            /**
+             * @description The file's text: CSV with a header row, separated by commas,
+             *     semicolons or tabs. Save spreadsheets as CSV (UTF-8).
+             */
+            csv: string;
+            /** @description `talent`, `organisation` or `contact`. */
+            entity: string;
+            filename?: string | null;
+        };
+        NewOrganisation: {
+            addresses?: components["schemas"]["Address"][];
+            /** @description Custom field values by key. Missing fields take their defaults. */
+            custom?: Record<string, never>;
+            default_currency?: string | null;
+            name: string;
+            notes?: string | null;
+            org_type?: string | null;
+            /** Format: int32 */
+            payment_terms_days?: number | null;
+            tags?: string[];
+            tax_id?: string | null;
+        };
+        NewTalent: {
+            base_location?: string | null;
+            bio?: string | null;
+            /** Format: double */
+            commission_percent?: number | null;
+            /** @description Custom field values by key. Missing fields take their defaults. */
+            custom?: Record<string, never>;
+            default_fee?: components["schemas"]["Money"] | null;
+            kind?: components["schemas"]["TalentKind"] | null;
+            legal_name?: string | null;
+            name: string;
+            /** Format: uuid */
+            portal_user_id?: string | null;
+            status?: components["schemas"]["TalentStatus"] | null;
+            tags?: string[];
+            talent_type?: string | null;
+        };
         OidcProviderView: {
             display_name: string;
             name: string;
         };
         /** @enum {string} */
+        OnMatch: "skip" | "update" | "create";
+        /** @enum {string} */
         Op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "contains" | "not_contains" | "in" | "not_in" | "is_empty" | "is_not_empty" | "changed";
+        OrganisationDuplicateQuery: {
+            /**
+             * Format: uuid
+             * @description The record being edited, which is not its own duplicate.
+             */
+            except?: string | null;
+            name: string;
+            tax_id?: string | null;
+        };
+        OrganisationPage: {
+            items: components["schemas"]["OrganisationView"][];
+            /**
+             * Format: int64
+             * @description How many records match, across all pages.
+             */
+            total: number;
+        };
+        OrganisationPatch: {
+            /** @description Replaces the addresses. */
+            addresses?: components["schemas"]["Address"][] | null;
+            /** @description Only the keys sent change; `null` clears a value. */
+            custom?: Record<string, never> | null;
+            default_currency?: string | null;
+            name?: string | null;
+            notes?: string | null;
+            /** @description `null` clears it; likewise for the other optional fields. */
+            org_type?: string | null;
+            /** Format: int32 */
+            payment_terms_days?: number | null;
+            /** @description Replaces the tags. */
+            tags?: string[] | null;
+            tax_id?: string | null;
+        };
+        OrganisationView: {
+            addresses: components["schemas"]["Address"][];
+            /**
+             * Format: int64
+             * @description Contacts at the organisation.
+             */
+            contact_count: number;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** @description Custom field values by key. */
+            custom: Record<string, never>;
+            default_currency?: string | null;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            notes?: string | null;
+            /** @description Free text: venue, promoter, brand, festival, agency… */
+            org_type?: string | null;
+            /** Format: int32 */
+            payment_terms_days?: number | null;
+            tags: string[];
+            /** @description VAT or other tax registration number. */
+            tax_id?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+        };
         /** @enum {string} */
         Outcome: "open" | "won" | "lost";
         PasswordChangeRequest: {
@@ -1652,7 +2502,7 @@ export interface components {
          * @description A `resource:action` permission.
          * @enum {string}
          */
-        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write";
+        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write";
         /**
          * @description Whether the workspace represents talent (`sells`), books talent for its
          *     own events (`buys`), or both. Changes vocabulary and defaults, never the
@@ -1694,11 +2544,21 @@ export interface components {
             warnings: string[];
         };
         PreviewRequest: {
+            /**
+             * @description What the template is about: `contact`, `organisation`, `talent` or
+             *     `thing` (the default).
+             */
+            entity?: string | null;
             /** @description Values merged over the context, e.g. `{"thing": {"name": "Test"}}`. */
             overrides?: Record<string, never> | null;
             /**
              * Format: uuid
-             * @description Render against this record; otherwise sample data is used.
+             * @description Render against this record of `entity`; otherwise sample data is used.
+             */
+            record_id?: string | null;
+            /**
+             * Format: uuid
+             * @description The same as `record_id` with `entity` `thing`.
              */
             thing_id?: string | null;
         };
@@ -1789,6 +2649,77 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        SavedView: {
+            /** @description Columns, sort, filters: whatever the list needs to restore itself. */
+            config: Record<string, never>;
+            /** Format: date-time */
+            created_at: string;
+            entity: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Shared with everyone in the workspace, rather than the caller's own. */
+            shared: boolean;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            version: number;
+        };
+        SavedViewInput: {
+            config: Record<string, never>;
+            entity: string;
+            name: string;
+            /** @description Share with the whole workspace (needs `config:write`). */
+            shared?: boolean;
+        };
+        SchemaField: {
+            /** @description Built in, rather than a custom field. */
+            core: boolean;
+            /** @description The fixed currency of a money field. */
+            currency?: string | null;
+            /** @description For custom fields: the default for new records. */
+            default_value?: Record<string, never> | null;
+            /**
+             * Format: uuid
+             * @description For custom fields: the definition, as `GET /custom-fields/{id}` gives it.
+             */
+            field_id?: string | null;
+            field_type: components["schemas"]["SchemaFieldType"];
+            /** @description The form section it belongs in. */
+            group?: string | null;
+            help_text?: string | null;
+            /** @description Shown as a list column unless a view says otherwise. */
+            in_list: boolean;
+            /** @description The key in the record: `name`, `emails`, or `custom.<key>`. */
+            key: string;
+            label: string;
+            /** @description Choices for selects. */
+            options: components["schemas"]["SelectOption"][];
+            /** @description Shown but not edited (counts, links kept elsewhere). */
+            read_only: boolean;
+            /** @description The record type a relation points at. */
+            relation_entity?: string | null;
+            required: boolean;
+            /** @description What to pass as a list's `sort` to sort by it; absent if it cannot be. */
+            sort?: string | null;
+            /** @description For custom fields: limits the server checks (regex, min, max, lengths). */
+            validation?: Record<string, never> | null;
+        };
+        /**
+         * @description A field's kind, as forms and lists draw it: the custom field types plus
+         *     the core fields' own shapes.
+         * @enum {string}
+         */
+        SchemaFieldType: "text" | "long_text" | "number" | "money" | "date" | "datetime" | "boolean" | "select" | "multi_select" | "url" | "email" | "phone" | "file" | "relation" | "percent" | "tags" | "email_list" | "phone_list" | "address_list" | "currency";
+        SearchHit: {
+            /** @description A second line to tell similar names apart. */
+            detail?: string | null;
+            /** @description `talent`, `organisation` or `contact`. */
+            entity: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
         SecretResponse: {
             /** @description Shown only now. The old secret stops working immediately. */
             secret: string;
@@ -1854,6 +2785,92 @@ export interface components {
             /** @description Recorded in the customer's audit log. */
             reason: string;
             workspace_id: components["schemas"]["WorkspaceId"];
+        };
+        TagCount: {
+            /**
+             * Format: int64
+             * @description Records carrying it.
+             */
+            count: number;
+            tag: string;
+        };
+        TalentDuplicateQuery: {
+            /**
+             * Format: uuid
+             * @description The record being edited, which is not its own duplicate.
+             */
+            except?: string | null;
+            name: string;
+        };
+        /**
+         * @description What a talent record books: a person, a group (act or crew), a space
+         *     (room, studio, stage) or equipment.
+         * @enum {string}
+         */
+        TalentKind: "person" | "act" | "space" | "equipment";
+        TalentPage: {
+            items: components["schemas"]["TalentView"][];
+            /**
+             * Format: int64
+             * @description How many records match, across all pages.
+             */
+            total: number;
+        };
+        TalentPatch: {
+            base_location?: string | null;
+            bio?: string | null;
+            /** Format: double */
+            commission_percent?: number | null;
+            /** @description Only the keys sent change; `null` clears a value. */
+            custom?: Record<string, never> | null;
+            default_fee?: components["schemas"]["Money"] | null;
+            kind?: components["schemas"]["TalentKind"] | null;
+            /** @description `null` clears it; likewise for the other optional fields. */
+            legal_name?: string | null;
+            name?: string | null;
+            /** Format: uuid */
+            portal_user_id?: string | null;
+            status?: components["schemas"]["TalentStatus"] | null;
+            /** @description Replaces the tags. */
+            tags?: string[] | null;
+            talent_type?: string | null;
+        };
+        /** @enum {string} */
+        TalentStatus: "active" | "inactive";
+        TalentView: {
+            base_location?: string | null;
+            bio?: string | null;
+            /**
+             * Format: double
+             * @description 0 to 100, up to two decimal places.
+             */
+            commission_percent?: number | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** @description Custom field values by key. */
+            custom: Record<string, never>;
+            default_fee?: components["schemas"]["Money"] | null;
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["TalentKind"];
+            legal_name?: string | null;
+            /** @description The stage or display name. */
+            name: string;
+            /**
+             * Format: uuid
+             * @description The member who signs in to the talent portal as this talent.
+             */
+            portal_user_id?: string | null;
+            status: components["schemas"]["TalentStatus"];
+            tags: string[];
+            /** @description Free text: solo, band, DJ, speaker, studio… */
+            talent_type?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
         };
         TemplatePatchRequest: {
             body?: string | null;
@@ -1924,6 +2941,60 @@ export interface components {
             updated_by?: components["schemas"]["UserId"] | null;
             /** Format: int64 */
             version: number;
+        };
+        TimelineActor: {
+            /** Format: uuid */
+            id?: string | null;
+            /**
+             * Format: uuid
+             * @description Set when an operator acted on the workspace's behalf.
+             */
+            impersonator_id?: string | null;
+            /** @description `user`, `api_key`, `rule` or `system`. */
+            kind: string;
+            /** @description The member's name, when the actor is a current member. */
+            name?: string | null;
+        };
+        TimelineEntry: {
+            /**
+             * @description The audit action (`contact.updated`, `talent_member.created`), or
+             *     `message.sent` for a message.
+             */
+            action: string;
+            actor?: components["schemas"]["TimelineActor"] | null;
+            /** Format: date-time */
+            at: string;
+            /** @description For updates: what changed. */
+            changes: components["schemas"]["FieldChange"][];
+            /** Format: uuid */
+            id: string;
+            message?: components["schemas"]["TimelineMessage"] | null;
+            /** Format: uuid */
+            object_id?: string | null;
+            /**
+             * @description The name of what the entry is about, when it is not the record
+             *     itself (a member of the act, a contact at the organisation).
+             */
+            object_name?: string | null;
+            /** @description What the entry is about: `contact`, `talent_member`… */
+            resource: string;
+        };
+        TimelineMessage: {
+            channel: string;
+            /** Format: uuid */
+            id: string;
+            /** @description `sent` or `failed`. */
+            status: string;
+            subject?: string | null;
+            to: string;
+        };
+        TimelinePage: {
+            entries: components["schemas"]["TimelineEntry"][];
+            /**
+             * Format: uuid
+             * @description Pass as `before` for older entries; absent at the end.
+             */
+            next_before?: string | null;
         };
         TokenRequest: {
             token: string;
@@ -2884,6 +3955,335 @@ export interface operations {
             };
         };
     };
+    list_contacts: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Search text: matches anywhere in the name and other short fields,
+                 *     searchable custom fields, and close misspellings.
+                 */
+                q?: string | null;
+                /** @description Only records with this tag. */
+                tag?: string | null;
+                /**
+                 * @description Only records whose custom values include these, as a JSON object,
+                 *     e.g. `{"genre":"jazz"}`.
+                 */
+                custom?: string | null;
+                /**
+                 * @description A column to sort by, `-` first for descending: `name`, `-created_at`,
+                 *     `custom.genre`, or `relevance` (best search matches first). Default
+                 *     `relevance` when searching, otherwise `name`.
+                 */
+                sort?: string | null;
+                /** @description Rows to skip, default 0. */
+                offset?: number | null;
+                /** @description 1 to 500, default 50. */
+                limit?: number | null;
+                /** @description Only the contacts at this organisation. */
+                organisation_id?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_contact: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewContact"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    contact_bulk: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    contact_duplicates: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactDuplicateQuery"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Duplicate"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_contact: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_contact: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_contact: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    contact_timeline: {
+        parameters: {
+            query?: {
+                /** @description Return items older than this id (the previous page's `next_before`). */
+                before?: string | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelinePage"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_fields: {
         parameters: {
             query?: {
@@ -3186,6 +4586,208 @@ export interface operations {
                 };
             };
             410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_imports: {
+        parameters: {
+            query?: {
+                /** @description Return items older than this id (the previous page's `next_before`). */
+                before?: string | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportView"][];
+                };
+            };
+        };
+    };
+    upload_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewImport"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreview"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    dry_run_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportPlan"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DryRunResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    run_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportPlan"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3687,6 +5289,333 @@ export interface operations {
             };
         };
     };
+    list_organisations: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Search text: matches anywhere in the name and other short fields,
+                 *     searchable custom fields, and close misspellings.
+                 */
+                q?: string | null;
+                /** @description Only records with this tag. */
+                tag?: string | null;
+                /**
+                 * @description Only records whose custom values include these, as a JSON object,
+                 *     e.g. `{"genre":"jazz"}`.
+                 */
+                custom?: string | null;
+                /**
+                 * @description A column to sort by, `-` first for descending: `name`, `-created_at`,
+                 *     `custom.genre`, or `relevance` (best search matches first). Default
+                 *     `relevance` when searching, otherwise `name`.
+                 */
+                sort?: string | null;
+                /** @description Rows to skip, default 0. */
+                offset?: number | null;
+                /** @description 1 to 500, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganisationPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_organisation: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewOrganisation"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganisationView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    organisation_bulk: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    organisation_duplicates: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganisationDuplicateQuery"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Duplicate"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_organisation: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganisationView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_organisation: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_organisation: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganisationPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganisationView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    organisation_timeline: {
+        parameters: {
+            query?: {
+                /** @description Return items older than this id (the previous page's `next_before`). */
+                before?: string | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelinePage"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_pipelines: {
         parameters: {
             query?: {
@@ -4131,6 +6060,601 @@ export interface operations {
             };
         };
     };
+    schema: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                entity: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntitySchema"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    search: {
+        parameters: {
+            query: {
+                q: string;
+                /** @description Comma-separated entities to search; default all the caller may read. */
+                entities?: string | null;
+                /** @description 1 to 50, default 20. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchHit"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    tags: {
+        parameters: {
+            query: {
+                /** @description `talent`, `organisation` or `contact`. */
+                entity: string;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagCount"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_talent: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Search text: matches anywhere in the name and other short fields,
+                 *     searchable custom fields, and close misspellings.
+                 */
+                q?: string | null;
+                /** @description Only records with this tag. */
+                tag?: string | null;
+                /**
+                 * @description Only records whose custom values include these, as a JSON object,
+                 *     e.g. `{"genre":"jazz"}`.
+                 */
+                custom?: string | null;
+                /**
+                 * @description A column to sort by, `-` first for descending: `name`, `-created_at`,
+                 *     `custom.genre`, or `relevance` (best search matches first). Default
+                 *     `relevance` when searching, otherwise `name`.
+                 */
+                sort?: string | null;
+                /** @description Rows to skip, default 0. */
+                offset?: number | null;
+                /** @description 1 to 500, default 50. */
+                limit?: number | null;
+                kind?: components["schemas"]["TalentKind"] | null;
+                status?: components["schemas"]["TalentStatus"] | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalentPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_talent: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewTalent"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalentView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    talent_bulk: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    talent_duplicates: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TalentDuplicateQuery"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Duplicate"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_talent: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalentView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_talent: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_talent: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TalentPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalentView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_talent_members: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberView"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_talent_member: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_talent_member: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_talent_member: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    talent_timeline: {
+        parameters: {
+            query?: {
+                /** @description Return items older than this id (the previous page's `next_before`). */
+                before?: string | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelinePage"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_templates: {
         parameters: {
             query?: {
@@ -4232,7 +6756,7 @@ export interface operations {
     template_variables: {
         parameters: {
             query?: {
-                /** @description Defaults to `thing`. */
+                /** @description `contact`, `organisation`, `talent` or `thing` (the default). */
                 entity?: string | null;
             };
             header?: {
@@ -4635,6 +7159,163 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_views: {
+        parameters: {
+            query: {
+                /** @description `talent`, `organisation` or `contact`. */
+                entity: string;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedView"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_view: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedViewInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_view: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedViewInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_view: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

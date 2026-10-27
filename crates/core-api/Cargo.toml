@@ -19,6 +19,7 @@ chrono-tz.workspace = true
 futures-util.workspace = true
 csv.workspace = true
 data-encoding.workspace = true
+http-body-util.workspace = true
 openidconnect.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -38,7 +39,6 @@ utoipa-axum.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-http-body-util.workspace = true
 # A throwaway signing key for the mock identity provider in tests/oidc.rs.
 rsa = { version = "0.9", features = ["getrandom", "pem"] }
 

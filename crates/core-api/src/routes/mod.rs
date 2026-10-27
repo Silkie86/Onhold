@@ -4,6 +4,7 @@
 pub mod admin;
 pub mod auth;
 pub mod config;
+pub mod crm;
 pub mod events;
 pub mod jobs;
 pub mod things;
@@ -35,7 +36,7 @@ pub(crate) fn with_etag<T: Serialize>(version: i64, body: T) -> Response {
 
 /// For PATCH fields that can be cleared: absent is `None`, `null` is
 /// `Some(None)`, a value is `Some(Some(v))`.
-pub(crate) fn nullable<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
+pub fn nullable<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,

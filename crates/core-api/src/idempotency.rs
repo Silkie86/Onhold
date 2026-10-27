@@ -49,7 +49,7 @@ pub async fn layer(State(state): State<AppState>, req: Request, next: Next) -> R
     };
 
     let (parts, body) = req.into_parts();
-    let Ok(bytes) = to_bytes(body, MAX_BODY).await else {
+    let Ok(bytes) = to_bytes(body, crate::MAX_UPLOAD_BODY_BYTES).await else {
         return (StatusCode::PAYLOAD_TOO_LARGE, "request body too large").into_response();
     };
     let mut hasher = Sha256::new();

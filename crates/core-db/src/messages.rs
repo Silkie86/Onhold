@@ -87,3 +87,27 @@ pub async fn list(
     .fetch_all(conn)
     .await?)
 }
+
+/// Messages sent to any of these addresses (lower-cased), newest first.
+pub async fn to_addresses(
+    conn: &mut PgConnection,
+    addresses: &[String],
+    before: Option<Uuid>,
+    limit: i64,
+) -> Result<Vec<Message>> {
+    Ok(sqlx::query_as!(
+        Message,
+        r#"SELECT id, channel, to_address, subject, body_html, body_text, template_key, rule_id, job_id,
+                  status, provider_message_id, error, created_at
+           FROM outbound_messages
+           WHERE workspace_id = app_workspace_id() AND lower(to_address) = ANY($1)
+             AND ($2::uuid IS NULL OR id < $2)
+           ORDER BY id DESC
+           LIMIT $3"#,
+        addresses,
+        before,
+        limit
+    )
+    .fetch_all(conn)
+    .await?)
+}

@@ -6,7 +6,7 @@ use core_api::error::ApiError;
 use core_api::services::automation::{
     self, JOB_DISPATCH, JOB_MAIL, JOB_SCAN, JOB_SCHEDULED, JOB_SYSTEM_MAIL, JOB_WEBHOOK,
 };
-use core_api::services::{mail, webhooks};
+use core_api::services::{imports, mail, webhooks};
 use core_db::jobs::{Claimed, LogLine};
 use core_domain::WorkspaceId;
 use core_integrations::http::DeliveryError;
@@ -120,10 +120,29 @@ impl Worker {
                 self.send_mail(job, out, log).await
             }
             JOB_WEBHOOK => self.deliver_webhook(job, log).await,
+            imports::JOB_IMPORT => self.run_import(job, log).await,
             other => Err(JobError::permanent(format!(
                 "no handler for job kind `{other}`"
             ))),
         }
+    }
+
+    async fn run_import(&self, job: &Claimed, log: &mut Vec<LogLine>) -> Result<(), JobError> {
+        let workspace = workspace(job)?;
+        let id = uuid_field(&job.payload, "import_id")?;
+        let result = imports::execute(&self.app, workspace, id, self.settings.import_slice).await;
+        let Err(err) = result else {
+            return Ok(());
+        };
+        let err = JobError::from(err);
+        if err.permanent || job.attempt >= job.max_attempts {
+            note(log, "giving up; marking the import failed");
+            let message = format!("the import stopped: {}", err.message);
+            if let Err(e) = imports::abandon(&self.app, workspace, id, &message).await {
+                tracing::error!(job_id = %job.id, error = %e, "could not mark an import failed");
+            }
+        }
+        Err(err)
     }
 
     async fn send_mail(

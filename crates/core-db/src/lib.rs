@@ -12,19 +12,26 @@
 pub mod api_keys;
 pub mod audit;
 pub mod auth;
+pub mod contacts;
+pub mod crm;
 pub mod fields;
 pub mod idempotency;
+pub mod imports;
 pub mod invitations;
 pub mod jobs;
 pub mod members;
 pub mod messages;
+pub mod organisations;
 pub mod outbox;
 pub mod pipelines;
 pub mod rules;
+pub mod search;
 pub mod sessions;
+pub mod talent;
 pub mod templates;
 pub mod things;
 pub mod users;
+pub mod views;
 pub mod webhooks;
 pub mod workspaces;
 

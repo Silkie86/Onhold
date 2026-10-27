@@ -63,6 +63,8 @@ fn dedupe_key(parts: &[&str]) -> String {
 /// What started a rule run.
 struct Input {
     event: Option<Event>,
+    /// What the object is (`contact`, `thing`…): the key it has in the context.
+    entity: String,
     /// The record the rule is about, as JSON (with its link).
     object: Option<Value>,
     object_id: Option<Uuid>,
@@ -265,56 +267,98 @@ async fn act(
             let Some(object_id) = input.object_id else {
                 return Ok(failed(planned, "there is no record to change".into()));
             };
-            let patch = match action {
-                Action::MoveStage { stage } => things::Patch {
-                    stage: Some(stage.clone()),
-                    ..Default::default()
-                },
-                Action::SetField { field, value } => match field.as_str() {
-                    "name" => match value.as_str() {
-                        Some(name) => things::Patch {
-                            name: Some(name.to_owned()),
-                            ..Default::default()
-                        },
-                        None => return Ok(failed(planned, "name must be text".into())),
-                    },
-                    "due_at" => match value {
-                        Value::Null => things::Patch {
-                            due_at: Some(None),
-                            ..Default::default()
-                        },
-                        Value::String(s) => match DateTime::parse_from_rfc3339(s) {
-                            Ok(at) => things::Patch {
-                                due_at: Some(Some(at.with_timezone(&Utc))),
-                                ..Default::default()
-                            },
-                            Err(_) => {
-                                return Ok(failed(planned, "due_at must be a date-time".into()));
-                            }
-                        },
-                        _ => return Ok(failed(planned, "due_at must be a date-time".into())),
-                    },
-                    custom => {
-                        let key = custom.strip_prefix("custom.").unwrap_or(custom);
-                        let mut changes = serde_json::Map::new();
-                        changes.insert(key.to_owned(), value.clone());
-                        things::Patch {
-                            custom: Some(changes),
-                            ..Default::default()
-                        }
-                    }
-                },
-                _ => unreachable!("matched above"),
-            };
             // The change is made by the rule, one level deeper in any chain.
             let ctx = rule_ctx(workspace, rule.id, input.depth.saturating_add(1));
-            match things::update_in_tx(tx, &ctx, object_id, patch, None).await {
-                Ok(_) => Ok(planned),
+            let result = if super::records::is_crm(&input.entity) {
+                let edit = match action {
+                    Action::SetField { field, value } => match field.as_str() {
+                        "name" => match value.as_str() {
+                            Some(name) => super::records::Edit {
+                                name: Some(name.to_owned()),
+                                ..Default::default()
+                            },
+                            None => return Ok(failed(planned, "name must be text".into())),
+                        },
+                        other => match other.strip_prefix("custom.") {
+                            Some(key) => {
+                                let mut changes = serde_json::Map::new();
+                                changes.insert(key.to_owned(), value.clone());
+                                super::records::Edit {
+                                    custom: Some(changes),
+                                    ..Default::default()
+                                }
+                            }
+                            None => {
+                                let msg = format!("{} records have no `{other}`", input.entity);
+                                return Ok(failed(planned, msg));
+                            }
+                        },
+                    },
+                    _ => {
+                        let msg = format!("{} records are not in a pipeline", input.entity);
+                        return Ok(failed(planned, msg));
+                    }
+                };
+                super::records::edit(tx, &ctx, &input.entity, object_id, edit, None).await
+            } else {
+                let patch = match thing_patch(action) {
+                    Ok(p) => p,
+                    Err(msg) => return Ok(failed(planned, msg)),
+                };
+                things::update_in_tx(tx, &ctx, object_id, patch, None)
+                    .await
+                    .map(|_| ())
+            };
+            match result {
+                Ok(()) => Ok(planned),
                 Err(err @ ApiError::Internal(_)) => Err(err),
                 Err(err) => Ok(failed(planned, err.to_string())),
             }
         }
     }
+}
+
+/// A set-field or move-stage action as a change to a thing.
+fn thing_patch(action: &Action) -> Result<things::Patch, String> {
+    Ok(match action {
+        Action::MoveStage { stage } => things::Patch {
+            stage: Some(stage.clone()),
+            ..Default::default()
+        },
+        Action::SetField { field, value } => match field.as_str() {
+            "name" => match value.as_str() {
+                Some(name) => things::Patch {
+                    name: Some(name.to_owned()),
+                    ..Default::default()
+                },
+                None => return Err("name must be text".into()),
+            },
+            "due_at" => match value {
+                Value::Null => things::Patch {
+                    due_at: Some(None),
+                    ..Default::default()
+                },
+                Value::String(s) => match DateTime::parse_from_rfc3339(s) {
+                    Ok(at) => things::Patch {
+                        due_at: Some(Some(at.with_timezone(&Utc))),
+                        ..Default::default()
+                    },
+                    Err(_) => return Err("due_at must be a date-time".into()),
+                },
+                _ => return Err("due_at must be a date-time".into()),
+            },
+            custom => {
+                let key = custom.strip_prefix("custom.").unwrap_or(custom);
+                let mut changes = serde_json::Map::new();
+                changes.insert(key.to_owned(), value.clone());
+                things::Patch {
+                    custom: Some(changes),
+                    ..Default::default()
+                }
+            }
+        },
+        _ => return Err("not a change to the record".into()),
+    })
 }
 
 /// Runs one rule for one trigger occurrence, logging the outcome.
@@ -339,6 +383,7 @@ async fn run_rule(
     }
     let ctx_json = context::build(
         workspace_json.clone(),
+        &input.entity,
         input.object.clone(),
         input.before.clone(),
         input.event.as_ref().map(event_json),
@@ -391,26 +436,29 @@ async fn run_rule(
 }
 
 /// The record an event is about, as rules and templates see it: its current
-/// state if it still exists, else the event's last snapshot.
+/// state if it still exists, else the event's last snapshot. Also says what
+/// kind of record it is.
 async fn event_object(
     tx: &mut Tx,
     state: &AppState,
     event: &Event,
-) -> ApiResult<(Option<Uuid>, Option<Value>)> {
+) -> ApiResult<(Option<Uuid>, Option<Value>, String)> {
     let object_id = event
         .payload
         .get("object_id")
         .and_then(Value::as_str)
         .and_then(|s| s.parse::<Uuid>().ok());
-    let resource = event.payload.get("resource").and_then(Value::as_str);
-    if resource == Some(things::ENTITY)
+    let resource = event
+        .payload
+        .get("resource")
+        .and_then(Value::as_str)
+        .unwrap_or(things::ENTITY)
+        .to_owned();
+    if context::is_entity(&resource)
         && let Some(id) = object_id
-        && let Some(view) = things::load(tx, id).await?
+        && let Some(object) = context::load_object(tx, state, &resource, id).await?
     {
-        return Ok((
-            object_id,
-            Some(context::with_url(state, things::to_json(&view))),
-        ));
+        return Ok((object_id, Some(object), resource));
     }
     let snapshot = event
         .payload
@@ -418,7 +466,16 @@ async fn event_object(
         .filter(|v| !v.is_null())
         .or_else(|| event.payload.get("before"))
         .cloned();
-    Ok((object_id, snapshot))
+    Ok((object_id, snapshot, resource))
+}
+
+/// Records made by an import trigger rules only when the import asked.
+fn rules_wanted(event: &Event) -> bool {
+    event
+        .payload
+        .pointer("/import/run_rules")
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
 }
 
 fn depth_of(event: &Event) -> u8 {
@@ -471,12 +528,16 @@ pub async fn dispatch_event(
         }
     }
 
-    let rules = core_db::rules::for_event(&mut tx, &event.topic).await?;
+    let rules = if rules_wanted(&event) {
+        core_db::rules::for_event(&mut tx, &event.topic).await?
+    } else {
+        Vec::new()
+    };
     if !rules.is_empty() {
         let paused = core_db::workspaces::automations_paused(&mut tx).await?;
         let catalog = super::rules::catalog(&mut tx).await?;
         let (workspace_json, _) = context::workspace(&mut tx, state).await?;
-        let (object_id, object) = event_object(&mut tx, state, &event).await?;
+        let (object_id, object, entity) = event_object(&mut tx, state, &event).await?;
         let before = event
             .payload
             .get("before")
@@ -485,6 +546,7 @@ pub async fn dispatch_event(
         for rule in &rules {
             let input = Input {
                 event: Some(event.clone()),
+                entity: entity.clone(),
                 object: object.clone(),
                 object_id,
                 before: before.clone(),
@@ -587,6 +649,7 @@ pub async fn scan_rule(
         Err(reason) => {
             let input = Input {
                 event: None,
+                entity: things::ENTITY.into(),
                 object: None,
                 object_id: None,
                 before: None,
@@ -648,7 +711,12 @@ pub async fn scan_rule(
             };
             let input = Input {
                 event: None,
-                object: Some(context::with_url(state, things::to_json(&view))),
+                entity: things::ENTITY.into(),
+                object: Some(context::with_url(
+                    state,
+                    things::ENTITY,
+                    things::to_json(&view),
+                )),
                 object_id: Some(r.id),
                 before: None,
                 depth: 0,
@@ -678,6 +746,7 @@ pub async fn run_scheduled(
     };
     let input = Input {
         event: None,
+        entity: things::ENTITY.into(),
         object: None,
         object_id: None,
         before: None,
@@ -734,7 +803,7 @@ pub async fn dry_run(
     state: &AppState,
     ctx: &Ctx,
     rule_id: Uuid,
-    thing_id: Option<Uuid>,
+    record_id: Option<Uuid>,
 ) -> ApiResult<DryRun> {
     ctx.authorize(Permission::WorkspaceRead)?;
     let mut tx = super::begin(state, ctx).await?;
@@ -745,13 +814,15 @@ pub async fn dry_run(
     let def = super::rules::parse_stored(&rule, &catalog)
         .map_err(|r| ApiError::unprocessable("rule_invalid", r))?;
     let (workspace_json, _) = context::workspace(&mut tx, state).await?;
-    let object = match thing_id {
+    let entity = super::rules::entity_of(&def.trigger);
+    let object = match record_id {
         Some(id) => {
-            ctx.authorize(Permission::ThingRead)?;
-            let view = things::load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
-            context::with_url(state, things::to_json(&view))
+            ctx.authorize(context::read_permission(&entity))?;
+            context::load_object(&mut tx, state, &entity, id)
+                .await?
+                .ok_or(ApiError::NotFound)?
         }
-        None => context::sample_thing(&mut tx, state).await?,
+        None => context::sample(&mut tx, state, &entity).await?,
     };
     let topic = match &def.trigger {
         Trigger::Event { topic } => topic.clone(),
@@ -760,6 +831,7 @@ pub async fn dry_run(
     let event = json!({ "id": core_domain::ids::new_id(), "topic": topic, "at": Utc::now() });
     let ctx_json = context::build(
         workspace_json,
+        &entity,
         Some(object.clone()),
         Some(object),
         Some(event),

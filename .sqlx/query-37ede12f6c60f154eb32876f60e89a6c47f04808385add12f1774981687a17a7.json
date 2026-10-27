@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO talent (id, workspace_id, kind, name, legal_name, talent_type, bio, base_location,\n                               default_fee_minor, default_fee_currency, commission_bps, status,\n                               portal_user_id, tags, custom, created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "talent_kind",
+            "kind": {
+              "Enum": [
+                "person",
+                "act",
+                "space",
+                "equipment"
+              ]
+            }
+          }
+        },
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int8",
+        "Bpchar",
+        "Int4",
+        "Text",
+        "Uuid",
+        "TextArray",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "37ede12f6c60f154eb32876f60e89a6c47f04808385add12f1774981687a17a7"
+}

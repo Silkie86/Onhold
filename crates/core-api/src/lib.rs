@@ -24,7 +24,6 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceBuilder;
 use tower_http::LatencyUnit;
-use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
@@ -36,9 +35,45 @@ pub use config::Config;
 
 const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
-/// Largest request body the API accepts. Uploads get their own, larger limit
-/// on their own routes when documents arrive in M5.
+/// Largest request body the API accepts, except on upload routes.
 const MAX_BODY_BYTES: usize = 1024 * 1024;
+
+/// Largest body an upload route accepts: a CSV file plus its JSON wrapping.
+pub(crate) const MAX_UPLOAD_BODY_BYTES: usize = services::imports::MAX_CSV_BYTES + 64 * 1024;
+
+/// The body limit for a request: uploads get more room than everything else.
+fn body_limit(method: &axum::http::Method, path: &str) -> usize {
+    if method == axum::http::Method::POST && path == "/api/v1/imports" {
+        MAX_UPLOAD_BODY_BYTES
+    } else {
+        MAX_BODY_BYTES
+    }
+}
+
+/// Refuses bodies over the route's limit: early from Content-Length, and
+/// while reading for bodies that do not declare one.
+async fn limit_body(
+    req: Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let limit = body_limit(req.method(), req.uri().path());
+    let declared = req
+        .headers()
+        .get(axum::http::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<usize>().ok());
+    if declared.is_some_and(|len| len > limit) {
+        return (
+            axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+            "request body too large",
+        )
+            .into_response();
+    }
+    let (parts, body) = req.into_parts();
+    let body = axum::body::Body::new(http_body_util::Limited::new(body, limit));
+    next.run(Request::from_parts(parts, body)).await
+}
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -88,6 +123,12 @@ impl AppState {
         (name = "templates", description = "Message templates and previews"),
         (name = "rules", description = "Automation rules"),
         (name = "things", description = "The test entity the engines are built against"),
+        (name = "talent", description = "Artists, acts, rooms and kit you represent or book"),
+        (name = "organisations", description = "Venues, promoters, brands and other companies"),
+        (name = "contacts", description = "People you deal with"),
+        (name = "search", description = "Finding records across the CRM"),
+        (name = "views", description = "Saved table views"),
+        (name = "imports", description = "Bringing records in from spreadsheets"),
         (name = "events", description = "What changed, in order: the sync feed"),
         (name = "webhooks", description = "Events pushed to your URLs"),
         (name = "jobs", description = "Background work"),
@@ -127,6 +168,7 @@ fn api_router() -> OpenApiRouter<AppState> {
             .merge(routes::workspace::router())
             .merge(routes::config::router())
             .merge(routes::things::router())
+            .merge(routes::crm::router())
             .merge(routes::events::router())
             .merge(routes::webhooks::router())
             .merge(routes::jobs::router())
@@ -188,7 +230,7 @@ pub fn router(state: AppState) -> Router {
                     axum::http::StatusCode::REQUEST_TIMEOUT,
                     REQUEST_TIMEOUT,
                 ))
-                .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES)),
+                .layer(axum::middleware::from_fn(limit_body)),
         )
 }
 

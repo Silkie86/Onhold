@@ -588,7 +588,12 @@ async fn archive_template(
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct PreviewRequest {
-    /// Render against this record; otherwise sample data is used.
+    /// What the template is about: `contact`, `organisation`, `talent` or
+    /// `thing` (the default).
+    pub entity: Option<String>,
+    /// Render against this record of `entity`; otherwise sample data is used.
+    pub record_id: Option<Uuid>,
+    /// The same as `record_id` with `entity` `thing`.
     pub thing_id: Option<Uuid>,
     /// Values merged over the context, e.g. `{"thing": {"name": "Test"}}`.
     #[schema(value_type = Option<Object>)]
@@ -607,7 +612,8 @@ async fn preview_template(
     Json(b): Json<PreviewRequest>,
 ) -> ApiResult<Json<Preview>> {
     let with = PreviewWith {
-        thing_id: b.thing_id,
+        entity: b.entity,
+        record_id: b.record_id.or(b.thing_id),
         overrides: b.overrides,
     };
     Ok(Json(
@@ -620,6 +626,10 @@ pub struct DraftPreviewRequest {
     pub kind: Kind,
     pub subject: Option<String>,
     pub body: String,
+    /// What the template is about; default `thing`.
+    pub entity: Option<String>,
+    pub record_id: Option<Uuid>,
+    /// The same as `record_id` with `entity` `thing`.
     pub thing_id: Option<Uuid>,
     #[schema(value_type = Option<Object>)]
     pub overrides: Option<Value>,
@@ -636,7 +646,8 @@ async fn preview_draft(
     Json(b): Json<DraftPreviewRequest>,
 ) -> ApiResult<Json<Preview>> {
     let with = PreviewWith {
-        thing_id: b.thing_id,
+        entity: b.entity,
+        record_id: b.record_id.or(b.thing_id),
         overrides: b.overrides,
     };
     Ok(Json(
@@ -646,7 +657,7 @@ async fn preview_draft(
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct VariablesQuery {
-    /// Defaults to `thing`.
+    /// `contact`, `organisation`, `talent` or `thing` (the default).
     pub entity: Option<String>,
 }
 
@@ -841,7 +852,10 @@ async fn delete_rule(
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct DryRunRequest {
-    /// Test against this record; otherwise against sample data.
+    /// Test against this record (of the kind the rule is about); otherwise
+    /// against sample data.
+    pub record_id: Option<Uuid>,
+    /// The same as `record_id`, for rules about things.
     pub thing_id: Option<Uuid>,
 }
 
@@ -857,7 +871,7 @@ async fn dry_run_rule(
     Json(b): Json<DryRunRequest>,
 ) -> ApiResult<Json<DryRun>> {
     Ok(Json(
-        automation::dry_run(&state, &ctx, id, b.thing_id).await?,
+        automation::dry_run(&state, &ctx, id, b.record_id.or(b.thing_id)).await?,
     ))
 }
 

@@ -57,6 +57,9 @@ pub struct Settings {
     pub lease: Duration,
     /// A job running longer than this fails (and is retried).
     pub job_timeout: Duration,
+    /// How long one import job works before handing the rest of the file
+    /// to a fresh job. Well under `job_timeout`.
+    pub import_slice: Duration,
     /// How often to look for work when no notification arrives.
     pub poll: Duration,
     /// How often to queue due rules and reclaim expired leases.
@@ -67,6 +70,8 @@ pub struct Settings {
     pub event_retention: chrono::Duration,
     /// Finished jobs and their run logs are kept this long.
     pub job_retention: chrono::Duration,
+    /// Uploaded spreadsheets never run are kept this long.
+    pub upload_retention: chrono::Duration,
     /// Delay before retry number `attempt` (from 1).
     pub backoff: fn(i32) -> Duration,
 }
@@ -77,11 +82,13 @@ impl Default for Settings {
             concurrency: 8,
             lease: Duration::from_secs(5 * 60),
             job_timeout: Duration::from_secs(2 * 60),
+            import_slice: Duration::from_secs(60),
             poll: Duration::from_secs(2),
             schedule_every: Duration::from_secs(15),
             cleanup_every: Duration::from_secs(60 * 60),
             event_retention: chrono::Duration::days(30),
             job_retention: chrono::Duration::days(7),
+            upload_retention: chrono::Duration::days(7),
             backoff: core_engines::schedule::retry_delay,
         }
     }
@@ -259,7 +266,8 @@ impl Worker {
         Ok(Some(due.len()))
     }
 
-    /// Deletes old events, finished jobs and stored idempotent responses.
+    /// Deletes old events, finished jobs, stored idempotent responses and
+    /// uploads never run.
     pub async fn cleanup_once(&self) -> Result<(), DbError> {
         let now = Utc::now();
         let mut tx = self.queue.begin().await?;
@@ -271,8 +279,17 @@ impl Worker {
                 .await?;
         let keys =
             core_db::idempotency::delete_before(&mut tx, now - chrono::Duration::hours(24)).await?;
+        let uploads =
+            core_db::imports::delete_stale_uploads(&mut tx, now - self.settings.upload_retention)
+                .await?;
         tx.commit().await?;
-        tracing::info!(events, jobs, idempotency_keys = keys, "deleted old data");
+        tracing::info!(
+            events,
+            jobs,
+            idempotency_keys = keys,
+            uploads,
+            "deleted old data"
+        );
         Ok(())
     }
 }

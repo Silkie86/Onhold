@@ -1257,6 +1257,688 @@
         ]
       }
     },
+    "/api/v1/contacts": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Contacts, searched, filtered, sorted and paged.",
+        "operationId": "list_contacts",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search text: matches anywhere in the name and other short fields,\nsearchable custom fields, and close misspellings.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "description": "Only records with this tag.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "custom",
+            "in": "query",
+            "description": "Only records whose custom values include these, as a JSON object,\ne.g. `{\"genre\":\"jazz\"}`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "A column to sort by, `-` first for descending: `name`, `-created_at`,\n`custom.genre`, or `relevance` (best search matches first). Default\n`relevance` when searching, otherwise `name`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Rows to skip, default 0.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 500, default 50.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "description": "Only the contacts at this organisation.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "operationId": "create_contact",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewContact"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/contacts/bulk": {
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Delete, tag or untag up to 500 contacts at once.",
+        "operationId": "contact_bulk",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/contacts/duplicates": {
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Existing contacts that may be the one being entered: the same email or\nphone number, or a similar name.",
+        "operationId": "contact_duplicates",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactDuplicateQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Duplicate"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/contacts/{id}": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "operationId": "get_contact",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactView"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "contacts"
+        ],
+        "operationId": "delete_contact",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "contacts"
+        ],
+        "operationId": "update_contact",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/contacts/{id}/timeline": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "What happened to this contact, and the messages sent to them, newest first.",
+        "operationId": "contact_timeline",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Return items older than this id (the previous page's `next_before`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, default 50.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelinePage"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/custom-fields": {
       "get": {
         "tags": [
@@ -1839,6 +2521,403 @@
             }
           },
           "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/imports": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Recent imports the caller may run, newest first.",
+        "operationId": "list_imports",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Return items older than this id (the previous page's `next_before`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, default 50.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ImportView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Upload a spreadsheet (as CSV text, up to 10 MB). Answers with its\ncolumns, the first rows and a suggested mapping of columns to fields.",
+        "operationId": "upload_import",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/imports/{id}": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "An import and, once run, its progress and results.",
+        "operationId": "get_import",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportView"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/imports/{id}/dry-run": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Check every row against a mapping without importing anything.",
+        "operationId": "dry_run_import",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportPlan"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/imports/{id}/run": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Import the rows with a mapping. Runs in the background: follow it at\n`GET /imports/{id}`.",
+        "operationId": "run_import",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportPlan"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2787,6 +3866,676 @@
         ]
       }
     },
+    "/api/v1/organisations": {
+      "get": {
+        "tags": [
+          "organisations"
+        ],
+        "summary": "Organisations, searched, filtered, sorted and paged.",
+        "operationId": "list_organisations",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search text: matches anywhere in the name and other short fields,\nsearchable custom fields, and close misspellings.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "description": "Only records with this tag.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "custom",
+            "in": "query",
+            "description": "Only records whose custom values include these, as a JSON object,\ne.g. `{\"genre\":\"jazz\"}`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "A column to sort by, `-` first for descending: `name`, `-created_at`,\n`custom.genre`, or `relevance` (best search matches first). Default\n`relevance` when searching, otherwise `name`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Rows to skip, default 0.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 500, default 50.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganisationPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "organisations"
+        ],
+        "operationId": "create_organisation",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewOrganisation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganisationView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/organisations/bulk": {
+      "post": {
+        "tags": [
+          "organisations"
+        ],
+        "summary": "Delete, tag or untag up to 500 organisations at once.",
+        "operationId": "organisation_bulk",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/organisations/duplicates": {
+      "post": {
+        "tags": [
+          "organisations"
+        ],
+        "summary": "Existing organisations that may be the one being entered (similar\nnames, the same tax id).",
+        "operationId": "organisation_duplicates",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganisationDuplicateQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Duplicate"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/organisations/{id}": {
+      "get": {
+        "tags": [
+          "organisations"
+        ],
+        "operationId": "get_organisation",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganisationView"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "organisations"
+        ],
+        "summary": "Delete an organisation. Its contacts stay, still linked to it.",
+        "operationId": "delete_organisation",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "organisations"
+        ],
+        "operationId": "update_organisation",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganisationPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganisationView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/organisations/{id}/timeline": {
+      "get": {
+        "tags": [
+          "organisations"
+        ],
+        "summary": "What happened to this organisation and its contacts, and the messages\nsent to them, newest first.",
+        "operationId": "organisation_timeline",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Return items older than this id (the previous page's `next_before`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, default 50.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelinePage"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/pipelines": {
       "get": {
         "tags": [
@@ -3672,6 +5421,1263 @@
         ]
       }
     },
+    "/api/v1/schema/{entity}": {
+      "get": {
+        "tags": [
+          "views"
+        ],
+        "summary": "An entity's fields, core and custom, as forms and lists draw them.",
+        "operationId": "schema",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "entity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitySchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Search talent, organisations and contacts at once, best matches first.",
+        "operationId": "search",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entities",
+            "in": "query",
+            "description": "Comma-separated entities to search; default all the caller may read.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 50, default 20.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchHit"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tags": {
+      "get": {
+        "tags": [
+          "search"
+        ],
+        "summary": "The tags in use on an entity's records, most used first.",
+        "operationId": "tags",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "entity",
+            "in": "query",
+            "description": "`talent`, `organisation` or `contact`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TagCount"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent": {
+      "get": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "Talent, searched, filtered, sorted and paged.",
+        "operationId": "list_talent",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search text: matches anywhere in the name and other short fields,\nsearchable custom fields, and close misspellings.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "description": "Only records with this tag.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "custom",
+            "in": "query",
+            "description": "Only records whose custom values include these, as a JSON object,\ne.g. `{\"genre\":\"jazz\"}`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "A column to sort by, `-` first for descending: `name`, `-created_at`,\n`custom.genre`, or `relevance` (best search matches first). Default\n`relevance` when searching, otherwise `name`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Rows to skip, default 0.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 500, default 50.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/TalentKind"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/TalentStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TalentPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "Add talent: a person, an act, a space or equipment.",
+        "operationId": "create_talent",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewTalent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TalentView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent/bulk": {
+      "post": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "Delete, tag or untag up to 500 talent records at once.",
+        "operationId": "talent_bulk",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent/duplicates": {
+      "post": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "Existing talent that may be the one being entered (similar names).",
+        "operationId": "talent_duplicates",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TalentDuplicateQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Duplicate"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent/{id}": {
+      "get": {
+        "tags": [
+          "talent"
+        ],
+        "operationId": "get_talent",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TalentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "Delete talent. Bookings and invoices that name it keep working.",
+        "operationId": "delete_talent",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "talent"
+        ],
+        "operationId": "update_talent",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TalentPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TalentView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent/{id}/members": {
+      "get": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "The people in an act or crew, in order.",
+        "operationId": "list_talent_members",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberView"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "talent"
+        ],
+        "operationId": "add_talent_member",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent/{id}/members/{member_id}": {
+      "put": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "Replace a member's details.",
+        "operationId": "update_talent_member",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "talent"
+        ],
+        "operationId": "remove_talent_member",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent/{id}/timeline": {
+      "get": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "What happened to this talent and its members, newest first.",
+        "operationId": "talent_timeline",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Return items older than this id (the previous page's `next_before`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, default 50.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelinePage"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/templates": {
       "get": {
         "tags": [
@@ -3894,7 +6900,7 @@
           {
             "name": "entity",
             "in": "query",
-            "description": "Defaults to `thing`.",
+            "description": "`contact`, `organisation`, `talent` or `thing` (the default).",
             "required": false,
             "schema": {
               "type": [
@@ -4677,6 +7683,317 @@
             }
           },
           "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/views": {
+      "get": {
+        "tags": [
+          "views"
+        ],
+        "summary": "Saved views of an entity's list: shared ones and the caller's own.",
+        "operationId": "list_views",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "entity",
+            "in": "query",
+            "description": "`talent`, `organisation` or `contact`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SavedView"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "views"
+        ],
+        "operationId": "create_view",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedViewInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/views/{id}": {
+      "put": {
+        "tags": [
+          "views"
+        ],
+        "summary": "Replace a saved view.",
+        "operationId": "update_view",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedViewInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "views"
+        ],
+        "operationId": "delete_view",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -5743,6 +9060,57 @@
           }
         }
       },
+      "Address": {
+        "type": "object",
+        "description": "A postal address. Every part is optional, but not all of them.",
+        "properties": {
+          "city": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A country name or ISO code."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the address is for: \"Main office\", \"Stage door\"."
+          },
+          "line1": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "line2": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "postcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "State, county or province."
+          }
+        }
+      },
       "AdminWorkspaceView": {
         "type": "object",
         "required": [
@@ -5971,6 +9339,87 @@
           }
         }
       },
+      "BulkAction": {
+        "type": "string",
+        "enum": [
+          "delete",
+          "add_tags",
+          "remove_tags"
+        ]
+      },
+      "BulkFailure": {
+        "type": "object",
+        "required": [
+          "id",
+          "message"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "BulkRequest": {
+        "type": "object",
+        "required": [
+          "action",
+          "ids"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/BulkAction"
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Up to 500 records."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "For `add_tags` and `remove_tags`."
+          }
+        }
+      },
+      "BulkResult": {
+        "type": "object",
+        "required": [
+          "done",
+          "failed"
+        ],
+        "properties": {
+          "done": {
+            "type": "integer",
+            "description": "Records changed.",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkFailure"
+            },
+            "description": "Records left unchanged, and why."
+          }
+        }
+      },
+      "Channel": {
+        "type": "string",
+        "enum": [
+          "email",
+          "phone",
+          "sms",
+          "whatsapp"
+        ]
+      },
       "Check": {
         "type": "object",
         "description": "One comparison as evaluated, for the dry-run explanation.",
@@ -6013,6 +9462,292 @@
           "confirm_slug": {
             "type": "string",
             "description": "The workspace's slug, typed again to confirm."
+          }
+        }
+      },
+      "ContactDuplicateQuery": {
+        "type": "object",
+        "properties": {
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "except": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The record being edited, which is not its own duplicate."
+          },
+          "name": {
+            "type": "string"
+          },
+          "phones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ContactPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactView"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many records match, across all pages."
+          }
+        }
+      },
+      "ContactPatch": {
+        "type": "object",
+        "properties": {
+          "custom": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Only the keys sent change; `null` clears a value."
+          },
+          "email_opt_in": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "emails": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Replaces the addresses."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "organisation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "`null` clears it; likewise for the other optional fields."
+          },
+          "phones": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Replaces the numbers."
+          },
+          "preferred_channel": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sms_opt_in": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Replaces the tags."
+          },
+          "whatsapp_opt_in": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "ContactView": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "emails",
+          "phones",
+          "email_opt_in",
+          "sms_opt_in",
+          "whatsapp_opt_in",
+          "tags",
+          "custom",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "custom": {
+            "type": "object",
+            "description": "Custom field values by key."
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The primary email, if any."
+          },
+          "email_opt_in": {
+            "type": "boolean",
+            "description": "Consent to marketing by email, SMS and WhatsApp."
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Lower-cased; the first is the primary address."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "organisation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "organisation_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The primary phone number, if any."
+          },
+          "phones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "As entered; the first is the primary number."
+          },
+          "preferred_channel": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Job title or role at the organisation."
+          },
+          "sms_opt_in": {
+            "type": "boolean"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "whatsapp_opt_in": {
+            "type": "boolean"
           }
         }
       },
@@ -6425,6 +10160,15 @@
           }
         }
       },
+      "DateOrder": {
+        "type": "string",
+        "description": "How to read day/month order in dates like `07/03/2027`.",
+        "enum": [
+          "dmy",
+          "mdy",
+          "ymd"
+        ]
+      },
       "DeliveryPage": {
         "type": "object",
         "required": [
@@ -6526,6 +10270,13 @@
           "body": {
             "type": "string"
           },
+          "entity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the template is about; default `thing`."
+          },
           "kind": {
             "$ref": "#/components/schemas/Kind"
           },
@@ -6534,6 +10285,13 @@
               "object",
               "null"
             ]
+          },
+          "record_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "subject": {
             "type": [
@@ -6546,7 +10304,8 @@
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "The same as `record_id` with `entity` `thing`."
           }
         }
       },
@@ -6588,13 +10347,129 @@
       "DryRunRequest": {
         "type": "object",
         "properties": {
+          "record_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Test against this record (of the kind the rule is about); otherwise\nagainst sample data."
+          },
           "thing_id": {
             "type": [
               "string",
               "null"
             ],
             "format": "uuid",
-            "description": "Test against this record; otherwise against sample data."
+            "description": "The same as `record_id`, for rules about things."
+          }
+        }
+      },
+      "DryRunResult": {
+        "type": "object",
+        "required": [
+          "create",
+          "update",
+          "skip",
+          "fail",
+          "new_organisations",
+          "issues",
+          "sample"
+        ],
+        "properties": {
+          "create": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "fail": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportIssue"
+            },
+            "description": "The first problems (up to 200)."
+          },
+          "new_organisations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Organisations a contact import would create."
+          },
+          "sample": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "The first records as they would be saved."
+          },
+          "skip": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "update": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "Duplicate": {
+        "type": "object",
+        "description": "A record that may be the one being entered.",
+        "required": [
+          "id",
+          "name",
+          "reasons"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Why it matched, for people: \"same email jo@example.com\",\n\"similar name (82%)\"."
+          }
+        }
+      },
+      "EntitySchema": {
+        "type": "object",
+        "required": [
+          "entity",
+          "label",
+          "label_plural",
+          "can_write",
+          "fields"
+        ],
+        "properties": {
+          "can_write": {
+            "type": "boolean",
+            "description": "The caller may create and change these records."
+          },
+          "entity": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SchemaField"
+            },
+            "description": "Core fields first, then custom fields in their order."
+          },
+          "label": {
+            "type": "string"
+          },
+          "label_plural": {
+            "type": "string"
           }
         }
       },
@@ -6716,6 +10591,26 @@
           },
           "topic": {
             "type": "string"
+          }
+        }
+      },
+      "FieldChange": {
+        "type": "object",
+        "required": [
+          "field",
+          "before",
+          "after"
+        ],
+        "properties": {
+          "after": {
+            "type": "object"
+          },
+          "before": {
+            "type": "object"
+          },
+          "field": {
+            "type": "string",
+            "description": "`name`, `emails`, `custom.genre`…"
           }
         }
       },
@@ -6916,6 +10811,276 @@
           },
           "workspace_id": {
             "$ref": "#/components/schemas/WorkspaceId"
+          }
+        }
+      },
+      "ImportIssue": {
+        "type": "object",
+        "required": [
+          "row",
+          "message"
+        ],
+        "properties": {
+          "field": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The field at fault, when there is one."
+          },
+          "message": {
+            "type": "string"
+          },
+          "row": {
+            "type": "integer",
+            "description": "The spreadsheet row (the header is row 1).",
+            "minimum": 0
+          }
+        }
+      },
+      "ImportOptions": {
+        "type": "object",
+        "properties": {
+          "create_organisations": {
+            "type": "boolean",
+            "description": "Contacts: create organisations the sheet names that do not exist yet\n(default true). Otherwise such rows are refused."
+          },
+          "date_order": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DateOrder",
+                "description": "How to read dates like 07/03/2027; default from the workspace's locale."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "default_currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For amounts with no currency; default the workspace's."
+          },
+          "on_match": {
+            "$ref": "#/components/schemas/OnMatch",
+            "description": "What to do with a row that matches an existing record."
+          },
+          "run_rules": {
+            "type": "boolean",
+            "description": "Let automation rules react to the imported records (default false)."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags added to every imported record."
+          }
+        }
+      },
+      "ImportPlan": {
+        "type": "object",
+        "required": [
+          "columns"
+        ],
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The field each column feeds, in column order (`null` to ignore a\ncolumn): a key from the upload's `targets`. Several columns may feed\n`name` (joined with spaces) or a list field."
+          },
+          "options": {
+            "$ref": "#/components/schemas/ImportOptions"
+          }
+        }
+      },
+      "ImportPreview": {
+        "type": "object",
+        "required": [
+          "import",
+          "sample",
+          "suggested",
+          "targets"
+        ],
+        "properties": {
+          "import": {
+            "$ref": "#/components/schemas/ImportView"
+          },
+          "sample": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "The first rows, as text."
+          },
+          "suggested": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The field each column most likely feeds (`null` when unsure)."
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportTarget"
+            },
+            "description": "The fields columns can feed."
+          }
+        }
+      },
+      "ImportTarget": {
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "many",
+          "required"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "many": {
+            "type": "boolean",
+            "description": "Several columns may feed it."
+          },
+          "required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ImportView": {
+        "type": "object",
+        "required": [
+          "id",
+          "entity",
+          "status",
+          "headers",
+          "row_count",
+          "created",
+          "updated",
+          "skipped",
+          "failed",
+          "processed",
+          "issues",
+          "created_at"
+        ],
+        "properties": {
+          "created": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entity": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "headers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportIssue"
+            },
+            "description": "The first problems found (up to 1,000)."
+          },
+          "plan": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ImportPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "processed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Rows dealt with so far."
+          },
+          "row_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "description": "`uploaded`, `queued`, `running`, `done` or `failed`."
+          },
+          "updated": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -7277,6 +11442,49 @@
           }
         }
       },
+      "MemberInput": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Order in the list; default last."
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "MemberView": {
         "type": "object",
         "required": [
@@ -7434,6 +11642,26 @@
           }
         }
       },
+      "Money": {
+        "type": "object",
+        "description": "`{ \"minor\": 125000, \"currency\": \"GBP\" }` is £1,250.00.",
+        "required": [
+          "minor",
+          "currency"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 code."
+          },
+          "minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Amount in the currency's smallest unit (pence, cents, yen)."
+          }
+        },
+        "additionalProperties": false
+      },
       "MyWorkspaceView": {
         "type": "object",
         "required": [
@@ -7461,6 +11689,249 @@
           }
         }
       },
+      "NewContact": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "custom": {
+            "type": "object",
+            "description": "Custom field values by key. Missing fields take their defaults."
+          },
+          "email_opt_in": {
+            "type": "boolean"
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "organisation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "phones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "preferred_channel": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sms_opt_in": {
+            "type": "boolean"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "whatsapp_opt_in": {
+            "type": "boolean"
+          }
+        }
+      },
+      "NewImport": {
+        "type": "object",
+        "required": [
+          "entity",
+          "csv"
+        ],
+        "properties": {
+          "csv": {
+            "type": "string",
+            "description": "The file's text: CSV with a header row, separated by commas,\nsemicolons or tabs. Save spreadsheets as CSV (UTF-8)."
+          },
+          "entity": {
+            "type": "string",
+            "description": "`talent`, `organisation` or `contact`."
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "NewOrganisation": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "addresses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Address"
+            }
+          },
+          "custom": {
+            "type": "object",
+            "description": "Custom field values by key. Missing fields take their defaults."
+          },
+          "default_currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "org_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "payment_terms_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tax_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "NewTalent": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "base_location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commission_percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "custom": {
+            "type": "object",
+            "description": "Custom field values by key. Missing fields take their defaults."
+          },
+          "default_fee": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TalentKind",
+                "description": "Default `person`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "legal_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "portal_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TalentStatus",
+                "description": "Default `active`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "talent_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "OidcProviderView": {
         "type": "object",
         "required": [
@@ -7475,6 +11946,14 @@
             "type": "string"
           }
         }
+      },
+      "OnMatch": {
+        "type": "string",
+        "enum": [
+          "skip",
+          "update",
+          "create"
+        ]
       },
       "Op": {
         "type": "string",
@@ -7493,6 +11972,230 @@
           "is_not_empty",
           "changed"
         ]
+      },
+      "OrganisationDuplicateQuery": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "except": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The record being edited, which is not its own duplicate."
+          },
+          "name": {
+            "type": "string"
+          },
+          "tax_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "OrganisationPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganisationView"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many records match, across all pages."
+          }
+        }
+      },
+      "OrganisationPatch": {
+        "type": "object",
+        "properties": {
+          "addresses": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Address"
+            },
+            "description": "Replaces the addresses."
+          },
+          "custom": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Only the keys sent change; `null` clears a value."
+          },
+          "default_currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "org_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`null` clears it; likewise for the other optional fields."
+          },
+          "payment_terms_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Replaces the tags."
+          },
+          "tax_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "OrganisationView": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "addresses",
+          "tags",
+          "custom",
+          "contact_count",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "addresses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Address"
+            }
+          },
+          "contact_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Contacts at the organisation."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "custom": {
+            "type": "object",
+            "description": "Custom field values by key."
+          },
+          "default_currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "org_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free text: venue, promoter, brand, festival, agency…"
+          },
+          "payment_terms_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tax_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "VAT or other tax registration number."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       },
       "Outcome": {
         "type": "string",
@@ -7543,7 +12246,13 @@
           "webhook:read",
           "webhook:write",
           "job:read",
-          "job:write"
+          "job:write",
+          "talent:read",
+          "talent:write",
+          "organisation:read",
+          "organisation:write",
+          "contact:read",
+          "contact:write"
         ]
       },
       "Perspective": {
@@ -7660,6 +12369,13 @@
       "PreviewRequest": {
         "type": "object",
         "properties": {
+          "entity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the template is about: `contact`, `organisation`, `talent` or\n`thing` (the default)."
+          },
           "overrides": {
             "type": [
               "object",
@@ -7667,13 +12383,21 @@
             ],
             "description": "Values merged over the context, e.g. `{\"thing\": {\"name\": \"Test\"}}`."
           },
+          "record_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Render against this record of `entity`; otherwise sample data is used."
+          },
           "thing_id": {
             "type": [
               "string",
               "null"
             ],
             "format": "uuid",
-            "description": "Render against this record; otherwise sample data is used."
+            "description": "The same as `record_id` with `entity` `thing`."
           }
         }
       },
@@ -7957,6 +12681,231 @@
           }
         }
       },
+      "SavedView": {
+        "type": "object",
+        "required": [
+          "id",
+          "entity",
+          "name",
+          "shared",
+          "config",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "config": {
+            "type": "object",
+            "description": "Columns, sort, filters: whatever the list needs to restore itself."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "shared": {
+            "type": "boolean",
+            "description": "Shared with everyone in the workspace, rather than the caller's own."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SavedViewInput": {
+        "type": "object",
+        "required": [
+          "entity",
+          "name",
+          "config"
+        ],
+        "properties": {
+          "config": {
+            "type": "object"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "shared": {
+            "type": "boolean",
+            "description": "Share with the whole workspace (needs `config:write`)."
+          }
+        }
+      },
+      "SchemaField": {
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "field_type",
+          "core",
+          "required",
+          "read_only",
+          "in_list",
+          "options"
+        ],
+        "properties": {
+          "core": {
+            "type": "boolean",
+            "description": "Built in, rather than a custom field."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The fixed currency of a money field."
+          },
+          "default_value": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "For custom fields: the default for new records."
+          },
+          "field_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "For custom fields: the definition, as `GET /custom-fields/{id}` gives it."
+          },
+          "field_type": {
+            "$ref": "#/components/schemas/SchemaFieldType"
+          },
+          "group": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The form section it belongs in."
+          },
+          "help_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "in_list": {
+            "type": "boolean",
+            "description": "Shown as a list column unless a view says otherwise."
+          },
+          "key": {
+            "type": "string",
+            "description": "The key in the record: `name`, `emails`, or `custom.<key>`."
+          },
+          "label": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SelectOption"
+            },
+            "description": "Choices for selects."
+          },
+          "read_only": {
+            "type": "boolean",
+            "description": "Shown but not edited (counts, links kept elsewhere)."
+          },
+          "relation_entity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The record type a relation points at."
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "sort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What to pass as a list's `sort` to sort by it; absent if it cannot be."
+          },
+          "validation": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "For custom fields: limits the server checks (regex, min, max, lengths)."
+          }
+        }
+      },
+      "SchemaFieldType": {
+        "type": "string",
+        "description": "A field's kind, as forms and lists draw it: the custom field types plus\nthe core fields' own shapes.",
+        "enum": [
+          "text",
+          "long_text",
+          "number",
+          "money",
+          "date",
+          "datetime",
+          "boolean",
+          "select",
+          "multi_select",
+          "url",
+          "email",
+          "phone",
+          "file",
+          "relation",
+          "percent",
+          "tags",
+          "email_list",
+          "phone_list",
+          "address_list",
+          "currency"
+        ]
+      },
+      "SearchHit": {
+        "type": "object",
+        "required": [
+          "entity",
+          "id",
+          "name"
+        ],
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A second line to tell similar names apart."
+          },
+          "entity": {
+            "type": "string",
+            "description": "`talent`, `organisation` or `contact`."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "SecretResponse": {
         "type": "object",
         "required": [
@@ -8187,6 +13136,299 @@
           }
         }
       },
+      "TagCount": {
+        "type": "object",
+        "required": [
+          "tag",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Records carrying it."
+          },
+          "tag": {
+            "type": "string"
+          }
+        }
+      },
+      "TalentDuplicateQuery": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "except": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The record being edited, which is not its own duplicate."
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "TalentKind": {
+        "type": "string",
+        "description": "What a talent record books: a person, a group (act or crew), a space\n(room, studio, stage) or equipment.",
+        "enum": [
+          "person",
+          "act",
+          "space",
+          "equipment"
+        ]
+      },
+      "TalentPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TalentView"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many records match, across all pages."
+          }
+        }
+      },
+      "TalentPatch": {
+        "type": "object",
+        "properties": {
+          "base_location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commission_percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "custom": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Only the keys sent change; `null` clears a value."
+          },
+          "default_fee": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TalentKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "legal_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`null` clears it; likewise for the other optional fields."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "portal_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TalentStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Replaces the tags."
+          },
+          "talent_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TalentStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "inactive"
+        ]
+      },
+      "TalentView": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "status",
+          "tags",
+          "custom",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "base_location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commission_percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "0 to 100, up to two decimal places."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "custom": {
+            "type": "object",
+            "description": "Custom field values by key."
+          },
+          "default_fee": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TalentKind"
+          },
+          "legal_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "The stage or display name."
+          },
+          "portal_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The member who signs in to the talent portal as this talent."
+          },
+          "status": {
+            "$ref": "#/components/schemas/TalentStatus"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "talent_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free text: solo, band, DJ, speaker, studio…"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "TemplatePatchRequest": {
         "type": "object",
         "properties": {
@@ -8412,6 +13654,162 @@
           "version": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "TimelineActor": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "impersonator_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Set when an operator acted on the workspace's behalf."
+          },
+          "kind": {
+            "type": "string",
+            "description": "`user`, `api_key`, `rule` or `system`."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The member's name, when the actor is a current member."
+          }
+        }
+      },
+      "TimelineEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "at",
+          "action",
+          "resource",
+          "changes"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "The audit action (`contact.updated`, `talent_member.created`), or\n`message.sent` for a message."
+          },
+          "actor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TimelineActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "description": "For updates: what changed."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "message": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TimelineMessage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "object_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "object_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of what the entry is about, when it is not the record\nitself (a member of the act, a contact at the organisation)."
+          },
+          "resource": {
+            "type": "string",
+            "description": "What the entry is about: `contact`, `talent_member`…"
+          }
+        }
+      },
+      "TimelineMessage": {
+        "type": "object",
+        "required": [
+          "id",
+          "channel",
+          "to",
+          "status"
+        ],
+        "properties": {
+          "channel": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "description": "`sent` or `failed`."
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": "string"
+          }
+        }
+      },
+      "TimelinePage": {
+        "type": "object",
+        "required": [
+          "entries"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineEntry"
+            }
+          },
+          "next_before": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Pass as `before` for older entries; absent at the end."
           }
         }
       },
@@ -8927,6 +14325,30 @@
     {
       "name": "things",
       "description": "The test entity the engines are built against"
+    },
+    {
+      "name": "talent",
+      "description": "Artists, acts, rooms and kit you represent or book"
+    },
+    {
+      "name": "organisations",
+      "description": "Venues, promoters, brands and other companies"
+    },
+    {
+      "name": "contacts",
+      "description": "People you deal with"
+    },
+    {
+      "name": "search",
+      "description": "Finding records across the CRM"
+    },
+    {
+      "name": "views",
+      "description": "Saved table views"
+    },
+    {
+      "name": "imports",
+      "description": "Bringing records in from spreadsheets"
     },
     {
       "name": "events",
