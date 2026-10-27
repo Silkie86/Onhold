@@ -1029,16 +1029,32 @@ fn record_json(record: &Record) -> Value {
     }
 }
 
+/// What running an import takes: writing its records, and for contacts
+/// that may create the organisations they name, writing organisations.
+fn permissions_needed(
+    entity: &str,
+    options: &ImportOptions,
+) -> ApiResult<std::collections::BTreeSet<Permission>> {
+    let mut needed = std::collections::BTreeSet::from([write_permission(entity)?]);
+    if entity == contacts::ENTITY && options.create_organisations {
+        needed.insert(Permission::OrganisationWrite);
+    }
+    Ok(needed)
+}
+
 async fn load_for_plan(
     state: &AppState,
     ctx: &Ctx,
     id: Uuid,
+    plan: &ImportPlan,
 ) -> ApiResult<(Tx, core_db::imports::Import, String)> {
     let mut tx = begin(state, ctx).await?;
     let import = core_db::imports::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    ctx.authorize(write_permission(&import.entity)?)?;
+    for p in permissions_needed(&import.entity, &plan.options)? {
+        ctx.authorize(p)?;
+    }
     if import.status != "uploaded" {
         return Err(ApiError::conflict(
             "import_started",
@@ -1058,7 +1074,7 @@ pub async fn dry_run(
     id: Uuid,
     plan: ImportPlan,
 ) -> ApiResult<DryRunResult> {
-    let (mut tx, import, csv) = load_for_plan(state, ctx, id).await?;
+    let (mut tx, import, csv) = load_for_plan(state, ctx, id, &plan).await?;
     let setup = setup(&mut tx, &import, plan).await?;
     let mut index = Index::load(&mut tx, &import.entity).await?;
     tx.commit().await?;
@@ -1119,7 +1135,7 @@ fn count(out: &mut DryRunResult, index: &mut Index, setup: &Setup, record: &Reco
 
 /// Queues the import for the worker.
 pub async fn run(state: &AppState, ctx: &Ctx, id: Uuid, plan: ImportPlan) -> ApiResult<ImportView> {
-    let (mut tx, import, _) = load_for_plan(state, ctx, id).await?;
+    let (mut tx, import, _) = load_for_plan(state, ctx, id, &plan).await?;
     // Checked now, so a bad mapping fails here rather than in the worker.
     let setup = setup(&mut tx, &import, plan).await?;
     let columns = serde_json::to_value(&setup.columns).map_err(ApiError::internal)?;
@@ -1146,17 +1162,29 @@ pub async fn run(state: &AppState, ctx: &Ctx, id: Uuid, plan: ImportPlan) -> Api
 
 // The worker's part --------------------------------------------------------------------
 
-/// Who an import acts as: the member who started it, with just the
-/// permissions importing needs.
-fn import_ctx(workspace: WorkspaceId, by: Option<UserId>, entity: &str) -> Ctx {
-    let mut permissions = std::collections::BTreeSet::new();
-    if let Some(p) = super::records::write_permission(entity) {
-        permissions.insert(p);
+/// Who an import acts as: the member who started it, with what they may
+/// still do of what importing needs (an API key's permissions were checked
+/// when it queued the run). `None` once that member may no longer write
+/// the records at all, or has left.
+async fn import_ctx(
+    tx: &mut Tx,
+    workspace: WorkspaceId,
+    by: Option<UserId>,
+    entity: &str,
+    options: &ImportOptions,
+) -> ApiResult<Option<Ctx>> {
+    let mut permissions = permissions_needed(entity, options)?;
+    if let Some(user) = by {
+        let Some(role) = core_db::members::role_of(tx, user).await? else {
+            return Ok(None);
+        };
+        let current = core_db::workspaces::role_permissions(tx, role).await?;
+        permissions.retain(|p| current.contains(p));
+        if !permissions.contains(&write_permission(entity)?) {
+            return Ok(None);
+        }
     }
-    if entity == contacts::ENTITY {
-        permissions.insert(Permission::OrganisationWrite);
-    }
-    Ctx {
+    Ok(Some(Ctx {
         workspace_id: workspace,
         actor: match by {
             Some(user_id) => Actor::User {
@@ -1168,7 +1196,7 @@ fn import_ctx(workspace: WorkspaceId, by: Option<UserId>, entity: &str) -> Ctx {
         role: None,
         permissions,
         meta: core_domain::authz::RequestMeta::default(),
-    }
+    }))
 }
 
 /// Lists in the row are added to the record's own.
@@ -1229,6 +1257,7 @@ async fn organisation_for(
     if let Some(id) = index.organisations.get(&key) {
         return Ok(Some(*id));
     }
+    ctx.authorize(Permission::OrganisationWrite)?;
     let org = organisations::create_in_tx(
         tx,
         ctx,
@@ -1406,10 +1435,24 @@ pub async fn execute(
         }
         Err(err) => return Err(err),
     };
+    // Checked again by every job of a long import.
+    let Some(ctx) = import_ctx(
+        &mut tx,
+        workspace,
+        import.created_by,
+        &import.entity,
+        &setup.options,
+    )
+    .await?
+    else {
+        let error = "the member who started this import may no longer import these records";
+        core_db::imports::finish(&mut tx, id, "failed", Some(error)).await?;
+        tx.commit().await?;
+        return Ok(());
+    };
     core_db::imports::start(&mut tx, id).await?;
     tx.commit().await?;
 
-    let ctx = import_ctx(workspace, import.created_by, &import.entity);
     let extra = json!({ "import": { "id": id, "run_rules": setup.options.run_rules } });
     let reader = setup.reader();
     let mut stored = i32::try_from(import.issues.as_array().map_or(0, Vec::len)).unwrap_or(0);

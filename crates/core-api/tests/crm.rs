@@ -958,6 +958,51 @@ async fn imports_refuse_files_they_cannot_read(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn contact_imports_create_organisations_only_for_those_who_may(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let key = post(
+        &app,
+        &owner,
+        "/api/v1/api-keys",
+        json!({ "name": "contacts", "permissions": ["contact:write"] }),
+    )
+    .await
+    .ok();
+    let secret = key.body["secret"].as_str().unwrap();
+    let upload = app
+        .post("/api/v1/imports")
+        .bearer(secret)
+        .workspace(ws)
+        .json(json!({ "entity": "contact", "csv": "Name,Company\nJo Smith,Blue Room\n" }))
+        .send()
+        .await;
+    assert_eq!(upload.status, StatusCode::CREATED, "{}", upload.body);
+    let import = upload.id("/import/id");
+    let columns = upload.body["suggested"].clone();
+
+    // Creating organisations (the default) needs organisation:write.
+    for step in ["dry-run", "run"] {
+        app.post(&format!("/api/v1/imports/{import}/{step}"))
+            .bearer(secret)
+            .workspace(ws)
+            .json(json!({ "columns": columns }))
+            .send()
+            .await
+            .expect(StatusCode::FORBIDDEN, "permission_denied");
+    }
+    let queued = app
+        .post(&format!("/api/v1/imports/{import}/run"))
+        .bearer(secret)
+        .workspace(ws)
+        .json(json!({ "columns": columns, "options": { "create_organisations": false } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(queued.body["status"], "queued");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn rules_and_templates_work_on_crm_records(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let (_, owner) = app.workspace_with_owner("acme").await;

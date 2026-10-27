@@ -79,9 +79,9 @@ impl Harness {
         self.app.get(path).signed_in(who).send().await.ok().body
     }
 
-    /// Uploads `csv`, runs it with the suggested mapping and `options`, and
-    /// waits for the worker to finish it.
-    async fn import(&self, who: &Client, entity: &str, csv: &str, options: Value) -> Value {
+    /// Uploads `csv` and queues it with the suggested mapping and `options`.
+    /// Returns the import's path.
+    async fn queue_import(&self, who: &Client, entity: &str, csv: &str, options: Value) -> String {
         let upload = self
             .post(
                 who,
@@ -93,8 +93,15 @@ impl Harness {
         let plan = json!({ "columns": upload.body["suggested"], "options": options });
         self.post(who, &format!("/api/v1/imports/{id}/run"), plan)
             .await;
+        format!("/api/v1/imports/{id}")
+    }
+
+    /// Uploads `csv`, runs it with the suggested mapping and `options`, and
+    /// waits for the worker to finish it.
+    async fn import(&self, who: &Client, entity: &str, csv: &str, options: Value) -> Value {
+        let path = self.queue_import(who, entity, csv, options).await;
         self.drain().await;
-        self.get(who, &format!("/api/v1/imports/{id}")).await
+        self.get(who, &path).await
     }
 }
 
@@ -271,6 +278,105 @@ async fn long_imports_carry_on_in_fresh_jobs_and_skip_rules_unless_asked(pool: P
     assert_eq!(import["created"], 1);
     let opted = h.get(&owner, "/api/v1/talent?q=opted%20in").await;
     assert_eq!(opted["items"][0]["custom"]["seen"], true);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_import_runs_with_what_its_member_may_still_do(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let agent = h.app.add_member(&owner, "agent@acme.test", "agent").await;
+    let csv = "Name,Company\nJo Smith,Blue Room\n";
+
+    // Agents lose organisation:write after queuing: the contact naming a
+    // new organisation is refused instead of creating it.
+    let path = h.queue_import(&agent, "contact", csv, json!({})).await;
+    sqlx::query(
+        "DELETE FROM role_permissions WHERE role = 'agent' AND permission = 'organisation:write'",
+    )
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    h.drain().await;
+    let import = h.get(&owner, &path).await;
+    assert_eq!(import["status"], "done", "{import}");
+    assert_eq!(import["failed"], 1, "{import}");
+    assert_eq!(h.get(&owner, "/api/v1/organisations").await["total"], 0);
+
+    // Demoted to viewer after queuing: the import does not run at all.
+    let path = h
+        .queue_import(
+            &agent,
+            "contact",
+            csv,
+            json!({ "create_organisations": false }),
+        )
+        .await;
+    let agent_id: String =
+        sqlx::query_scalar("SELECT id::text FROM users WHERE email = 'agent@acme.test'")
+            .fetch_one(&h.app.owner)
+            .await
+            .unwrap();
+    h.app
+        .patch(&format!("/api/v1/members/{agent_id}"))
+        .signed_in(&owner)
+        .json(json!({ "role": "viewer" }))
+        .send()
+        .await
+        .ok();
+    h.drain().await;
+    let import = h.get(&owner, &path).await;
+    assert_eq!(import["status"], "failed", "{import}");
+    assert_eq!(h.get(&owner, "/api/v1/contacts").await["total"], 0);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_import_whose_job_gives_up_is_marked_failed(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    h.drain().await;
+    let last_attempt = "UPDATE jobs SET attempts = max_attempts - 1 \
+                        WHERE kind = 'crm.import' AND status = 'queued'";
+
+    // Its last attempt times out.
+    let path = h
+        .queue_import(&owner, "talent", "Name\nAct One\n", json!({}))
+        .await;
+    sqlx::query(last_attempt)
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    let mut impatient = h.worker.clone();
+    impatient.settings.job_timeout = Duration::ZERO;
+    assert_eq!(impatient.run_jobs_once().await.unwrap(), 1);
+    let import = h.get(&owner, &path).await;
+    assert_eq!(import["status"], "failed", "{import}");
+    assert!(
+        import["error"].as_str().unwrap().contains("timed out"),
+        "{import}"
+    );
+
+    // Its worker stops during the last attempt.
+    let path = h
+        .queue_import(&owner, "talent", "Name\nAct Two\n", json!({}))
+        .await;
+    sqlx::query(last_attempt)
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    assert_eq!(h.worker.claim(10).await.unwrap().len(), 1);
+    sqlx::query(
+        "UPDATE jobs SET locked_until = now() - interval '1 second' WHERE status = 'running'",
+    )
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    h.worker.schedule_once().await.unwrap();
+    let import = h.get(&owner, &path).await;
+    assert_eq!(import["status"], "failed", "{import}");
+    assert!(
+        import["error"].as_str().unwrap().contains("worker stopped"),
+        "{import}"
+    );
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]

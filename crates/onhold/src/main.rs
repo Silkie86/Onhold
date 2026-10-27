@@ -184,6 +184,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::Serve { bind, worker } => {
             let config = cli.api.build(true)?;
+            let mailer = worker.mailer(&config.public_base_url)?;
             let webhooks =
                 core_integrations::http::WebhookClient::new(config.webhooks_allow_private)
                     .map_err(|e| anyhow::anyhow!("webhook client: {e}"))?;
@@ -191,7 +192,7 @@ async fn main() -> anyhow::Result<()> {
             let worker = core_worker::Worker {
                 app: state.clone(),
                 queue: core_db::connect_worker(&pool_config)?,
-                mailer: worker.mailer()?,
+                mailer,
                 webhooks,
                 settings: worker.settings()?,
             };
@@ -204,6 +205,7 @@ async fn main() -> anyhow::Result<()> {
             worker,
         } => {
             let config = cli.api.build(true)?;
+            let mailer = worker.mailer(&config.public_base_url)?;
             let webhooks =
                 core_integrations::http::WebhookClient::new(config.webhooks_allow_private)
                     .map_err(|e| anyhow::anyhow!("webhook client: {e}"))?;
@@ -211,7 +213,7 @@ async fn main() -> anyhow::Result<()> {
             let worker = core_worker::Worker {
                 app: core_api::AppState::new(db.clone(), config)?,
                 queue: core_db::connect_worker(&pool_config)?,
-                mailer: worker.mailer()?,
+                mailer,
                 webhooks,
                 settings: worker.settings()?,
             };

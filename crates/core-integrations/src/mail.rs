@@ -121,17 +121,40 @@ impl Mailer for SmtpMailer {
 }
 
 /// Logs each message instead of sending it: local development without a
-/// mail server. Never configure in production.
+/// mail server. Never configure in production. Links are cut to their
+/// origin, since sign-in, invitation and quote links are bearer secrets.
 pub struct LogMailer;
 
 #[async_trait]
 impl Mailer for LogMailer {
     async fn send(&self, email: &Email) -> Result<Sent, MailError> {
-        tracing::info!(to = %email.to, subject = %email.subject, "email not sent (no SMTP_URL); text follows\n{}", email.text);
+        tracing::info!(to = %email.to, subject = %email.subject, "email not sent (no SMTP_URL); text follows, links removed\n{}", without_links(&email.text));
         Ok(Sent {
             provider_message_id: None,
         })
     }
+}
+
+/// `text` with everything from `http://` or `https://` to the next space
+/// replaced, keeping only the link's origin.
+fn without_links(text: &str) -> String {
+    text.split_inclusive(char::is_whitespace)
+        .map(|word| {
+            let start = [word.find("http://"), word.find("https://")];
+            let Some(start) = start.into_iter().flatten().min() else {
+                return word.to_owned();
+            };
+            let link = word.trim_end();
+            let origin = url::Url::parse(&link[start..])
+                .map(|u| u.origin().ascii_serialization())
+                .unwrap_or_default();
+            format!(
+                "{}{origin}/[link removed]{}",
+                &word[..start],
+                &word[link.len()..]
+            )
+        })
+        .collect()
 }
 
 /// Keeps messages in memory, and can be told to fail, for tests.
@@ -222,6 +245,19 @@ mod tests {
     async fn bad_configuration_is_reported() {
         assert!(SmtpMailer::from_url("ftp://x", "a@b.c").is_err());
         assert!(SmtpMailer::from_url("smtp://localhost", "nobody").is_err());
+    }
+
+    #[test]
+    fn logged_emails_keep_no_links() {
+        let text = "Sign in: https://app.example.com/auth/magic?token=s3cret\n\
+                    Quote (http://app.example.com/quote/tok3n) ends.\n";
+        let logged = without_links(text);
+        assert_eq!(
+            logged,
+            "Sign in: https://app.example.com/[link removed]\n\
+             Quote (http://app.example.com/[link removed] ends.\n"
+        );
+        assert!(!logged.contains("s3cret") && !logged.contains("tok3n"));
     }
 
     #[tokio::test]

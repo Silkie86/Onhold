@@ -41,6 +41,8 @@ uuid.workspace = true
 [dev-dependencies]
 # A throwaway signing key for the mock identity provider in tests/oidc.rs.
 rsa = { version = "0.9", features = ["getrandom", "pem"] }
+# Captures log output in tests/logs.rs.
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true
