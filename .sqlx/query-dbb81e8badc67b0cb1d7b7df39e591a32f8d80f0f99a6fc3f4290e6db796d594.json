@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE enquiries SET title = $2, organisation_id = $3, contact_id = $4, venue_id = $5,\n                  venue_text = $6, starts_on = $7, ends_on = $8, budget_minor = $9, budget_currency = $10,\n                  pipeline_id = $11, stage_id = $12, stage_entered_at = $13, owner_id = $14,\n                  lost_reason = $15, notes = $16, tags = $17, custom = $18, updated_by = $19\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Date",
+        "Date",
+        "Int8",
+        "Bpchar",
+        "Uuid",
+        "Uuid",
+        "Timestamptz",
+        "Uuid",
+        "Text",
+        "Text",
+        "TextArray",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dbb81e8badc67b0cb1d7b7df39e591a32f8d80f0f99a6fc3f4290e6db796d594"
+}

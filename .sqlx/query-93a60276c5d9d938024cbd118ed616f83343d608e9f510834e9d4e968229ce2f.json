@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT bt.booking_id, bt.talent_id, t.name\n           FROM booking_talent bt JOIN talent t ON t.id = bt.talent_id\n           WHERE bt.workspace_id = app_workspace_id() AND bt.booking_id = ANY($1)\n           ORDER BY bt.booking_id, bt.position, t.name",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "booking_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "booking_talent",
+            "name": "booking_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "booking_talent",
+            "name": "talent_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "93a60276c5d9d938024cbd118ed616f83343d608e9f510834e9d4e968229ce2f"
+}

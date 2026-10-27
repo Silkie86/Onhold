@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE quotes SET deleted_at = now(), updated_by = $2\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "15c3ad532fb4fd055f954f8c3d4da551e678f3f8804ea9f2b91395012bd2ab1d"
+}

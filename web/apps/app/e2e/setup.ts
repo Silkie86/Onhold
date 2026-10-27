@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 /** Creates a fresh workspace for each run and hands its owner's invitation to the tests. */
 export default function setup() {
   const bin = process.env.ONHOLD_BIN ?? "../../../target/debug/onhold";
-  const runs = ["desktop", "phone", "app", "installed"];
+  const runs = ["desktop", "phone", "app", "installed", "bookings-desktop", "bookings-phone"];
   for (const project of runs) {
     const slug = `e2e-${project}-${Date.now().toString(36)}`;
     const out = execFileSync(
@@ -21,6 +21,6 @@ export default function setup() {
     );
     const link = out.match(/owner invitation: (\S+)/)?.[1];
     if (!link) throw new Error(`no invitation link in:\n${out}`);
-    process.env[`E2E_INVITE_${project.toUpperCase()}`] = new URL(link).pathname + new URL(link).search;
+    process.env[`E2E_INVITE_${project.toUpperCase().replace("-", "_")}`] = new URL(link).pathname + new URL(link).search;
   }
 }

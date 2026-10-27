@@ -58,6 +58,13 @@ async fn the_app_role_cannot_bypass_policies(pool: PgPool) {
     .fetch_all(&pool)
     .await
     .unwrap();
+    // Link rows (which talent an enquiry or booking is for) are replaced
+    // when the list changes; the parent's audit entry keeps the history.
+    let links = ["enquiry_talent", "booking_talent"];
+    let deletable: Vec<&String> = deletable
+        .iter()
+        .filter(|t| !links.contains(&t.as_str()))
+        .collect();
     assert!(
         deletable.is_empty(),
         "nothing is hard-deleted by the app: {deletable:?}"
@@ -249,8 +256,11 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         .unwrap();
     assert_eq!(user, "onhold_worker");
 
-    // The queue tables, plus the few columns scheduling and cleanup need.
+    // The queue tables, plus the few columns scheduling, cleanup and the
+    // bookings sweep (holds lapsing, bookings ending, quotes expiring) need.
     let queue = [
+        "bookings",
+        "quotes",
         "jobs",
         "job_runs",
         "outbox",
@@ -279,6 +289,10 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "SELECT body FROM idempotency_keys",
         "SELECT csv FROM imports",
         "UPDATE imports SET status = 'queued'",
+        "SELECT title FROM bookings",
+        "SELECT fee_minor FROM bookings",
+        "UPDATE bookings SET status = 'expired'",
+        "SELECT line_items FROM quotes",
     ] {
         let err = sqlx::query(query).fetch_all(&worker).await.unwrap_err();
         assert!(

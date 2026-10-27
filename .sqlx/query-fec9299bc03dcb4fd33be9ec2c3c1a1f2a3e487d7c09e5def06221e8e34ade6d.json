@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE calendar_feeds SET revoked_at = now()\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND revoked_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fec9299bc03dcb4fd33be9ec2c3c1a1f2a3e487d7c09e5def06221e8e34ade6d"
+}

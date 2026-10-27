@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE quotes SET status = $2, updated_by = $3\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "quote_status",
+            "kind": {
+              "Enum": [
+                "draft",
+                "sent",
+                "viewed",
+                "accepted",
+                "declined",
+                "expired",
+                "withdrawn"
+              ]
+            }
+          }
+        },
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6531620a0a8f4a210bccd635c660cad0969733a66da932f0c2d222ab254543c2"
+}

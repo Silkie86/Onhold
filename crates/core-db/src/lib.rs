@@ -13,8 +13,13 @@ pub mod api_keys;
 pub mod app_sign_ins;
 pub mod audit;
 pub mod auth;
+pub mod availability;
+pub mod bookings;
+pub mod calendar_feeds;
 pub mod contacts;
+pub mod counters;
 pub mod crm;
+pub mod enquiries;
 pub mod fields;
 pub mod idempotency;
 pub mod imports;
@@ -25,10 +30,12 @@ pub mod messages;
 pub mod organisations;
 pub mod outbox;
 pub mod pipelines;
+pub mod quotes;
 pub mod rules;
 pub mod search;
 pub mod sessions;
 pub mod talent;
+pub mod tasks;
 pub mod templates;
 pub mod things;
 pub mod users;
@@ -64,6 +71,28 @@ pub enum DbError {
 }
 
 impl DbError {
+    /// True when the error is an exclusion-constraint violation (two rows
+    /// overlapping where they may not), optionally on a named constraint.
+    pub fn is_exclusion_violation(&self, constraint: Option<&str>) -> bool {
+        match self {
+            DbError::Sqlx(sqlx::Error::Database(db)) => {
+                db.code().as_deref() == Some("23P01")
+                    && constraint.is_none_or(|c| db.constraint() == Some(c))
+            }
+            _ => false,
+        }
+    }
+
+    /// True when the error is a check-constraint violation on a named constraint.
+    pub fn is_check_violation(&self, constraint: &str) -> bool {
+        match self {
+            DbError::Sqlx(sqlx::Error::Database(db)) => {
+                db.code().as_deref() == Some("23514") && db.constraint() == Some(constraint)
+            }
+            _ => false,
+        }
+    }
+
     /// True when the error is a unique-constraint violation, optionally on a named constraint.
     pub fn is_unique_violation(&self, constraint: Option<&str>) -> bool {
         match self {

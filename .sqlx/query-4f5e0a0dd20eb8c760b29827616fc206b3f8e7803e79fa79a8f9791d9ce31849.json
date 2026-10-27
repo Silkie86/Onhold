@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE bookings SET deleted_at = now(), updated_by = $2\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4f5e0a0dd20eb8c760b29827616fc206b3f8e7803e79fa79a8f9791d9ce31849"
+}

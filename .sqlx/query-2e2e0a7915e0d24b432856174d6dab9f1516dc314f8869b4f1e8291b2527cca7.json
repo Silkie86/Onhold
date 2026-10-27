@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id AS \"id: WorkspaceId\", slug, name, plan, status AS \"status: WorkspaceStatus\",\n                  perspective AS \"perspective: Perspective\", country, default_currency, default_timezone,\n                  locale, enabled_modules, branding, billing_contact, plugin_slug, require_staff_2fa,\n                  version, created_at, updated_at\n           FROM workspaces WHERE id = $1",
+  "query": "SELECT id AS \"id: WorkspaceId\", slug, name, plan, status AS \"status: WorkspaceStatus\",\n                  perspective AS \"perspective: Perspective\", country, default_currency, default_timezone,\n                  locale, enabled_modules, branding, billing_contact, plugin_slug, require_staff_2fa,\n                  hold_days, version, created_at, updated_at\n           FROM workspaces WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -193,6 +193,17 @@
       },
       {
         "ordinal": 15,
+        "name": "hold_days",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "hold_days"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
         "name": "version",
         "type_info": "Int8",
         "origin": {
@@ -203,7 +214,7 @@
         }
       },
       {
-        "ordinal": 16,
+        "ordinal": 17,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -214,7 +225,7 @@
         }
       },
       {
-        "ordinal": 17,
+        "ordinal": 18,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -248,8 +259,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "42e295776446dc4815f18d354d6b576e434f1964714dd2868881c54d1ddf9033"
+  "hash": "2e2e0a7915e0d24b432856174d6dab9f1516dc314f8869b4f1e8291b2527cca7"
 }

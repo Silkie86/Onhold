@@ -44,13 +44,21 @@ fn app_path(entity: &str, id: &str) -> String {
         "talent" => format!("/crm/talent/{id}"),
         "organisation" => format!("/crm/organisations/{id}"),
         "contact" => format!("/crm/contacts/{id}"),
+        "enquiry" => format!("/enquiries/{id}"),
+        "booking" => format!("/bookings/{id}"),
+        "task" => "/tasks".to_owned(),
         _ => format!("/things/{id}"),
     }
 }
 
 /// Adds the object's link in the web app.
 pub(crate) fn with_url(state: &AppState, entity: &str, mut object: Value) -> Value {
-    if let Some(id) = object.get("id").and_then(Value::as_str) {
+    // A quote is shown on its booking's page.
+    let (entity, key) = match entity {
+        "quote" => ("booking", "booking_id"),
+        e => (e, "id"),
+    };
+    if let Some(id) = object.get(key).and_then(Value::as_str) {
         let url = state.config.app_url(&app_path(entity, id), &[]);
         if let Some(obj) = object.as_object_mut() {
             obj.insert("url".into(), Value::String(url));
@@ -61,8 +69,11 @@ pub(crate) fn with_url(state: &AppState, entity: &str, mut object: Value) -> Val
 
 /// The entities rules and templates can be about.
 pub(crate) fn is_entity(entity: &str) -> bool {
-    entity == super::things::ENTITY || super::records::is_crm(entity)
+    entity == super::things::ENTITY || super::records::is_crm(entity) || WORK.contains(&entity)
 }
+
+/// The M4 records rules and templates can be about.
+pub(crate) const WORK: &[&str] = &["enquiry", "booking", "quote"];
 
 /// A record as rules and templates see it, with its link.
 pub(crate) async fn load_object(
@@ -75,6 +86,18 @@ pub(crate) async fn load_object(
         super::things::load(tx, id)
             .await?
             .map(|v| super::things::to_json(&v))
+    } else if entity == super::enquiries::ENTITY {
+        super::enquiries::load(tx, id)
+            .await?
+            .map(|v| super::enquiries::to_json(&v))
+    } else if entity == super::bookings::ENTITY {
+        super::bookings::load(tx, id)
+            .await?
+            .map(|v| super::bookings::to_json(&v))
+    } else if entity == super::quotes::ENTITY {
+        super::quotes::load(tx, id)
+            .await?
+            .map(|v| super::quotes::to_json(&v))
     } else {
         super::records::load_json(tx, entity, id).await?
     };
@@ -88,6 +111,9 @@ pub(crate) fn read_permission(entity: &str) -> core_domain::Permission {
         "talent" => P::TalentRead,
         "organisation" => P::OrganisationRead,
         "contact" => P::ContactRead,
+        "enquiry" => P::EnquiryRead,
+        "booking" => P::BookingRead,
+        "quote" => P::QuoteRead,
         _ => P::ThingRead,
     }
 }
@@ -173,6 +199,32 @@ pub(crate) async fn sample(tx: &mut Tx, state: &AppState, entity: &str) -> ApiRe
             "preferred_channel": "email", "email_opt_in": true, "sms_opt_in": false,
             "whatsapp_opt_in": false, "tags": ["sample"], "custom": custom, "version": 1,
             "created_at": now, "updated_at": now,
+        }),
+        "enquiry" => json!({
+            "id": id, "title": "Summer party", "source": "manual",
+            "talent": [{ "id": core_domain::ids::new_id(), "name": "Sample Artist" }],
+            "organisation_name": "Sample Venue", "contact_name": "Sam Sample",
+            "starts_on": "2027-07-03", "budget": { "minor": 250_000, "currency": "GBP" },
+            "stage": "new", "stage_name": "New", "stage_outcome": "open", "stage_entered_at": now,
+            "tags": ["sample"], "custom": custom, "version": 1, "created_at": now, "updated_at": now,
+        }),
+        "booking" => json!({
+            "id": id, "title": "Summer party", "status": "hold", "status_changed_at": now,
+            "talent": [{ "id": core_domain::ids::new_id(), "name": "Sample Artist" }],
+            "organisation_name": "Sample Venue", "contact_name": "Sam Sample", "venue_name": "Sample Venue",
+            "timezone": "Europe/London", "starts_at": "2027-07-03T19:00:00Z", "ends_at": "2027-07-03T23:00:00Z",
+            "all_day": false, "schedule": [{ "label": "Soundcheck", "at": "2027-07-03T17:00:00Z" }],
+            "hold_expires_at": now + chrono::Duration::days(7),
+            "fee": { "minor": 250_000, "currency": "GBP" }, "deposit_percent": 50.0,
+            "tags": ["sample"], "custom": custom, "version": 1, "created_at": now, "updated_at": now,
+        }),
+        "quote" => json!({
+            "id": id, "booking_id": core_domain::ids::new_id(), "booking_title": "Summer party",
+            "number": 7, "revision": 1, "reference": "Q-0007", "status": "sent", "currency": "GBP",
+            "line_items": [{ "description": "Fee: Sample Artist", "quantity": 1.0, "unit_minor": 250_000,
+                             "amount_minor": 250_000 }],
+            "total": { "minor": 250_000, "currency": "GBP" }, "valid_until": "2027-06-01",
+            "sent_at": now, "sent_to": "sam@example.com", "version": 1, "created_at": now, "updated_at": now,
         }),
         _ => json!({
             "id": id, "name": "Sample record", "pipeline_id": null, "stage": "new",
@@ -262,6 +314,53 @@ pub(crate) async fn variables(tx: &mut Tx, entity: &str) -> ApiResult<Vec<Variab
             ("preferred_channel", "email, phone, sms or whatsapp"),
             ("tags", "Tags"),
         ],
+        "enquiry" => &[
+            ("id", "The record's id"),
+            ("title", "What is asked for"),
+            ("source", "manual, email, form or portal"),
+            ("talent", "The talent asked for (a list; each has a name)"),
+            ("organisation_name", "The organisation"),
+            ("contact_name", "The contact"),
+            ("starts_on", "First date (use the date filter)"),
+            ("budget", "Budget (use the money filter)"),
+            ("stage", "Current stage key"),
+            ("stage_name", "Current stage"),
+            ("tags", "Tags"),
+        ],
+        "booking" => &[
+            ("id", "The record's id"),
+            ("title", "Event name"),
+            (
+                "status",
+                "hold, pending, confirmed, cancelled, completed or expired",
+            ),
+            ("talent", "The talent booked (a list; each has a name)"),
+            ("organisation_name", "The organisation"),
+            ("contact_name", "The contact"),
+            ("venue_name", "The venue"),
+            (
+                "starts_at",
+                "Start (use the datetime filter with booking.timezone)",
+            ),
+            ("ends_at", "End"),
+            ("timezone", "The venue's timezone"),
+            ("hold_expires_at", "When the hold lapses"),
+            ("fee", "Fee (use the money filter)"),
+            ("deposit_percent", "Deposit percentage"),
+            ("tags", "Tags"),
+        ],
+        "quote" => &[
+            ("id", "The record's id"),
+            ("reference", "Q-0007"),
+            ("booking_title", "The booking it prices"),
+            (
+                "status",
+                "draft, sent, viewed, accepted, declined, expired or withdrawn",
+            ),
+            ("total", "Total (use the money filter)"),
+            ("valid_until", "Last day it can be accepted"),
+            ("sent_to", "Who it was sent to"),
+        ],
         _ => &[],
     };
     if !core.is_empty() {
@@ -277,7 +376,7 @@ pub(crate) async fn variables(tx: &mut Tx, entity: &str) -> ApiResult<Vec<Variab
             "before.name",
             "Name before the change (update rules only)",
         ));
-        if entity == super::things::ENTITY {
+        if entity == super::things::ENTITY || entity == super::enquiries::ENTITY {
             out.push(var(
                 "before.stage",
                 "Stage before the change (update rules only)",

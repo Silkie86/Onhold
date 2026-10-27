@@ -165,6 +165,33 @@ async fn recipients(tx: &mut Tx, to: &Recipient, ctx_json: &Value) -> ApiResult<
     Ok(out)
 }
 
+/// A task title with its template variables filled in. A title that does
+/// not render is used as written.
+fn task_title(title: &str, ctx_json: &Value) -> String {
+    let options = core_engines::templates::Options {
+        locale: ctx_json
+            .pointer("/workspace/locale")
+            .and_then(Value::as_str)
+            .unwrap_or("en-GB")
+            .to_owned(),
+        timezone: ctx_json
+            .pointer("/workspace/timezone")
+            .and_then(Value::as_str)
+            .and_then(|t| t.parse().ok())
+            .unwrap_or(chrono_tz::UTC),
+    };
+    core_engines::templates::render(
+        core_engines::templates::Kind::Notification,
+        None,
+        title,
+        Default::default(),
+        ctx_json,
+        &options,
+    )
+    .map(|r| r.body.trim().chars().take(300).collect())
+    .unwrap_or_else(|_| title.trim().to_owned())
+}
+
 /// Works out what an action would do, without doing it.
 async fn plan(tx: &mut Tx, action: &Action, ctx_json: &Value) -> ApiResult<ActionResult> {
     let (kind, detail) = match action {
@@ -177,6 +204,18 @@ async fn plan(tx: &mut Tx, action: &Action, ctx_json: &Value) -> ApiResult<Actio
         }
         Action::MoveStage { stage } => ("move_stage", json!({ "stage": stage })),
         Action::CallWebhook { webhook_id } => ("call_webhook", json!({ "webhook_id": webhook_id })),
+        Action::CreateTask {
+            title,
+            due_in_minutes,
+            assignee_id,
+        } => (
+            "create_task",
+            json!({
+                "title": task_title(title, ctx_json),
+                "due_at": due_in_minutes.map(|m| Utc::now() + chrono::Duration::minutes(m)),
+                "assignee_id": assignee_id,
+            }),
+        ),
     };
     Ok(ActionResult {
         kind: kind.into(),
@@ -263,13 +302,60 @@ async fn act(
                 None => Ok(failed(planned, "the webhook no longer exists".into())),
             }
         }
+        Action::CreateTask { assignee_id, .. } => {
+            let ctx = rule_ctx(workspace, rule.id, input.depth.saturating_add(1));
+            let related = input
+                .object_id
+                .filter(|_| super::tasks::RELATED.contains(&input.entity.as_str()));
+            let new = super::tasks::NewTask {
+                title: planned
+                    .detail
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Task")
+                    .to_owned(),
+                notes: None,
+                due_at: planned
+                    .detail
+                    .get("due_at")
+                    .and_then(Value::as_str)
+                    .and_then(|s| s.parse().ok()),
+                assignee_id: *assignee_id,
+                related_entity: related.map(|_| input.entity.clone()),
+                related_id: related,
+            };
+            match super::tasks::create_in_tx(tx, &ctx, new, Some(rule.id)).await {
+                Ok(task) => Ok(ActionResult {
+                    detail: json!({ "task_id": task.id, "title": task.title, "due_at": task.due_at }),
+                    ..planned
+                }),
+                Err(err @ ApiError::Internal(_)) => Err(err),
+                Err(err) => Ok(failed(planned, err.to_string())),
+            }
+        }
         Action::SetField { .. } | Action::MoveStage { .. } => {
             let Some(object_id) = input.object_id else {
                 return Ok(failed(planned, "there is no record to change".into()));
             };
             // The change is made by the rule, one level deeper in any chain.
             let ctx = rule_ctx(workspace, rule.id, input.depth.saturating_add(1));
-            let result = if super::records::is_crm(&input.entity) {
+            let result = if input.entity == super::enquiries::ENTITY {
+                let patch = match enquiry_patch(action) {
+                    Ok(p) => p,
+                    Err(msg) => return Ok(failed(planned, msg)),
+                };
+                super::enquiries::update_in_tx(tx, &ctx, object_id, patch, None)
+                    .await
+                    .map(|_| ())
+            } else if input.entity == super::bookings::ENTITY {
+                let patch = match booking_patch(action) {
+                    Ok(p) => p,
+                    Err(msg) => return Ok(failed(planned, msg)),
+                };
+                super::bookings::update_in_tx(tx, &ctx, object_id, patch, None)
+                    .await
+                    .map(|_| ())
+            } else if super::records::is_crm(&input.entity) {
                 let edit = match action {
                     Action::SetField { field, value } => match field.as_str() {
                         "name" => match value.as_str() {
@@ -316,6 +402,59 @@ async fn act(
             }
         }
     }
+}
+
+fn custom_change(field: &str, value: &Value) -> Option<serde_json::Map<String, Value>> {
+    let key = field.strip_prefix("custom.")?;
+    let mut changes = serde_json::Map::new();
+    changes.insert(key.to_owned(), value.clone());
+    Some(changes)
+}
+
+/// A set-field or move-stage action as a change to an enquiry.
+fn enquiry_patch(action: &Action) -> Result<super::enquiries::EnquiryPatch, String> {
+    use super::enquiries::EnquiryPatch;
+    Ok(match action {
+        Action::MoveStage { stage } => EnquiryPatch {
+            stage: Some(stage.clone()),
+            ..Default::default()
+        },
+        Action::SetField { field, value } => match (field.as_str(), value) {
+            ("title", Value::String(t)) => EnquiryPatch {
+                title: Some(t.clone()),
+                ..Default::default()
+            },
+            (f, v) => match custom_change(f, v) {
+                Some(custom) => EnquiryPatch {
+                    custom: Some(custom),
+                    ..Default::default()
+                },
+                None => return Err(format!("enquiries have no `{f}` a rule can set")),
+            },
+        },
+        _ => return Err("not a change to the record".into()),
+    })
+}
+
+/// A set-field action as a change to a booking (bookings have statuses, not stages).
+fn booking_patch(action: &Action) -> Result<super::bookings::BookingPatch, String> {
+    use super::bookings::BookingPatch;
+    Ok(match action {
+        Action::SetField { field, value } => match (field.as_str(), value) {
+            ("title", Value::String(t)) => BookingPatch {
+                title: Some(t.clone()),
+                ..Default::default()
+            },
+            (f, v) => match custom_change(f, v) {
+                Some(custom) => BookingPatch {
+                    custom: Some(custom),
+                    ..Default::default()
+                },
+                None => return Err(format!("bookings have no `{f}` a rule can set")),
+            },
+        },
+        _ => return Err("bookings are not in a pipeline".into()),
+    })
 }
 
 /// A set-field or move-stage action as a change to a thing.
@@ -670,9 +809,9 @@ pub async fn scan_rule(
         }
     };
     let Trigger::DateOffset {
+        entity,
         field,
         offset_minutes,
-        ..
     } = &def.trigger
     else {
         return Ok(());
@@ -682,45 +821,71 @@ pub async fn scan_rule(
         return Ok(());
     }
     let (workspace_json, options) = context::workspace(&mut tx, state).await?;
-    let reached = match field.strip_prefix("custom.") {
-        None => {
-            core_db::things::due_between(&mut tx, *offset_minutes, from, until, SCAN_BATCH).await?
+    let is_booking = entity == super::bookings::ENTITY;
+    let reached: Vec<(Uuid, DateTime<Utc>)> = match (is_booking, field.strip_prefix("custom.")) {
+        (false, None) => {
+            core_db::things::due_between(&mut tx, *offset_minutes, from, until, SCAN_BATCH)
+                .await?
+                .into_iter()
+                .map(|r| (r.id, r.at))
+                .collect()
         }
-        Some(key) => {
-            core_db::things::custom_date_between(
-                &mut tx,
-                key,
-                options.timezone.name(),
-                *offset_minutes,
-                from,
-                until,
-                SCAN_BATCH,
-            )
-            .await?
-        }
+        (false, Some(key)) => core_db::things::custom_date_between(
+            &mut tx,
+            key,
+            options.timezone.name(),
+            *offset_minutes,
+            from,
+            until,
+            SCAN_BATCH,
+        )
+        .await?
+        .into_iter()
+        .map(|r| (r.id, r.at))
+        .collect(),
+        (true, None) => core_db::bookings::date_between(
+            &mut tx,
+            field,
+            *offset_minutes,
+            from,
+            until,
+            SCAN_BATCH,
+        )
+        .await?
+        .into_iter()
+        .map(|r| (r.id, r.at))
+        .collect(),
+        (true, Some(key)) => core_db::bookings::custom_date_between(
+            &mut tx,
+            key,
+            *offset_minutes,
+            from,
+            until,
+            SCAN_BATCH,
+        )
+        .await?
+        .into_iter()
+        .map(|r| (r.id, r.at))
+        .collect(),
     };
     let scanned_until = match reached.last() {
-        Some(last) if reached.len() as i64 == SCAN_BATCH => last.at,
+        Some((_, at)) if reached.len() as i64 == SCAN_BATCH => *at,
         _ => until,
     };
     let paused = core_db::workspaces::automations_paused(&mut tx).await?;
     if !paused {
-        for r in &reached {
-            let Some(view) = things::load(&mut tx, r.id).await? else {
+        for (id, at) in &reached {
+            let Some(object) = context::load_object(&mut tx, state, entity, *id).await? else {
                 continue;
             };
             let input = Input {
                 event: None,
-                entity: things::ENTITY.into(),
-                object: Some(context::with_url(
-                    state,
-                    things::ENTITY,
-                    things::to_json(&view),
-                )),
-                object_id: Some(r.id),
+                entity: entity.clone(),
+                object: Some(object),
+                object_id: Some(*id),
                 before: None,
                 depth: 0,
-                occurrence: format!("{}@{}", r.id, r.at.to_rfc3339()),
+                occurrence: format!("{id}@{}", at.to_rfc3339()),
             };
             run_rule(&mut tx, workspace, &rule, &def, input, &workspace_json).await?;
         }

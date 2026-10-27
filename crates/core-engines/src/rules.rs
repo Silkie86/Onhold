@@ -68,7 +68,7 @@ pub enum Recipient {
 pub enum Action {
     /// Send an email from a template, through the queue.
     SendEmail { template: String, to: Recipient },
-    /// Set a field on the object: `name`, `due_at` or `custom.<key>`.
+    /// Set a field on the object: `name` (or `title`), `due_at` or `custom.<key>`.
     SetField {
         field: String,
         #[schema(value_type = Object)]
@@ -78,6 +78,17 @@ pub enum Action {
     MoveStage { stage: String },
     /// Deliver the triggering event to one webhook endpoint.
     CallWebhook { webhook_id: Uuid },
+    /// Make a task about the object (if it is one tasks can be about). The
+    /// title may use template variables: `Chase deposit for {{ booking.title }}`.
+    CreateTask {
+        title: String,
+        /// Due this long after the rule runs; none when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        due_in_minutes: Option<i64>,
+        /// Who it is for; nobody in particular when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assignee_id: Option<Uuid>,
+    },
 }
 
 impl Action {
@@ -85,7 +96,7 @@ impl Action {
         match self {
             Action::SetField { .. } | Action::MoveStage { .. } => true,
             Action::SendEmail { to, .. } => matches!(to, Recipient::Field { .. }),
-            Action::CallWebhook { .. } => false,
+            Action::CallWebhook { .. } | Action::CreateTask { .. } => false,
         }
     }
 }
@@ -180,7 +191,7 @@ pub fn parse(
         Issue::new(
             "actions",
             format!(
-                "must be a list of send_email, set_field, move_stage or call_webhook actions ({e})"
+                "must be a list of send_email, set_field, move_stage, call_webhook or create_task actions ({e})"
             ),
         )
     })?;
@@ -228,6 +239,7 @@ pub fn parse(
             }
             Action::SetField { field, .. } => {
                 let ok = field == "name"
+                    || field == "title"
                     || field == "due_at"
                     || field
                         .strip_prefix("custom.")
@@ -235,7 +247,7 @@ pub fn parse(
                 if !ok {
                     return Err(Issue::new(
                         at("field"),
-                        "use `name`, `due_at` or `custom.<field key>`",
+                        "use `name`, `title`, `due_at` or `custom.<field key>`",
                     ));
                 }
             }
@@ -245,6 +257,19 @@ pub fn parse(
                 }
             }
             Action::CallWebhook { .. } => {}
+            Action::CreateTask {
+                title,
+                due_in_minutes,
+                ..
+            } => {
+                let len = title.trim().chars().count();
+                if len == 0 || len > 300 {
+                    return Err(Issue::new(at("title"), "must be 1 to 300 characters"));
+                }
+                if due_in_minutes.is_some_and(|m| !(0..=366 * 24 * 60).contains(&m)) {
+                    return Err(Issue::new(at("due_in_minutes"), "must be from 0 to a year"));
+                }
+            }
         }
     }
 
@@ -305,6 +330,18 @@ mod tests {
             json!([{ "type": "send_email", "template": "welcome", "to": { "role": "admin" } }]),
         )
         .expect("valid");
+        let r = parse_rule(
+            json!({"kind": "schedule", "cron": "0 9 * * MON"}),
+            json!([{ "type": "create_task", "title": "Weekly review", "due_in_minutes": 480 }]),
+        )
+        .expect("a task needs no object");
+        assert!(matches!(
+            &r.actions[0],
+            Action::CreateTask {
+                due_in_minutes: Some(480),
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -367,6 +404,16 @@ mod tests {
                 json!({"kind": "schedule", "cron": "0 9 * * *"}),
                 json!([{ "type": "move_stage", "stage": "x" }]),
                 "actions[0]",
+            ),
+            (
+                json!({"kind": "event", "topic": "booking.confirmed"}),
+                json!([{ "type": "create_task", "title": "  " }]),
+                "actions[0].title",
+            ),
+            (
+                json!({"kind": "event", "topic": "booking.confirmed"}),
+                json!([{ "type": "create_task", "title": "Chase", "due_in_minutes": -5 }]),
+                "actions[0].due_in_minutes",
             ),
             (
                 json!({"kind": "date_offset", "entity": "thing", "field": "due_at", "offset_minutes": 0}),

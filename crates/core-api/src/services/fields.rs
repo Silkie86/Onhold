@@ -13,7 +13,14 @@ use crate::AppState;
 use crate::error::{ApiError, ApiResult};
 
 /// Entities that take custom fields. Each module adds its own as it lands.
-pub const ENTITIES: &[&str] = &["talent", "organisation", "contact", "thing"];
+pub const ENTITIES: &[&str] = &[
+    "talent",
+    "organisation",
+    "contact",
+    "enquiry",
+    "booking",
+    "thing",
+];
 
 pub fn check_entity(entity: &str) -> ApiResult<()> {
     if ENTITIES.contains(&entity) {

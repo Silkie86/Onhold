@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id FROM quotes\n           WHERE workspace_id = app_workspace_id() AND booking_id = $1 AND deleted_at IS NULL\n             AND status IN ('sent', 'viewed')\n           ORDER BY number, revision",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "quotes",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a4c34522d7ad73de0a6da5e1d424e400d0956100355a9dc2eec560e74325e754"
+}

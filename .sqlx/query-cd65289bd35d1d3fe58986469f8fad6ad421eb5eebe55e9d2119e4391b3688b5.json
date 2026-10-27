@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO availability (id, workspace_id, talent_id, kind, starts_at, ends_at, all_day, source,\n                                     note, created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $9)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        {
+          "Custom": {
+            "name": "availability_kind",
+            "kind": {
+              "Enum": [
+                "unavailable",
+                "tentative",
+                "available_only"
+              ]
+            }
+          }
+        },
+        "Timestamptz",
+        "Timestamptz",
+        "Bool",
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cd65289bd35d1d3fe58986469f8fad6ad421eb5eebe55e9d2119e4391b3688b5"
+}

@@ -42,6 +42,7 @@ import {
 import { isNetworkError } from "../offline/sync.ts";
 import { isLocalId } from "../offline/store.ts";
 import { useSession } from "../session.tsx";
+import { AvailabilityEditor } from "./availability.tsx";
 import { TalentMembers } from "./members.tsx";
 
 type Entity = (typeof ENTITIES)[keyof typeof ENTITIES];
@@ -545,7 +546,10 @@ export function EntityRecordPage() {
             (offline || isLocalId(id) ? (
               <p className="text-sm text-muted-foreground">Members can be seen and changed when you are online.</p>
             ) : (
-              <TalentMembers talentId={id} canWrite={schema.data.can_write} />
+              <>
+                <TalentMembers talentId={id} canWrite={schema.data.can_write} />
+                <AvailabilityEditor talentId={id} canWrite={schema.data.can_write} />
+              </>
             ))}
           {entity.entity === "organisation" && <OrganisationContacts organisation={r} />}
         </section>

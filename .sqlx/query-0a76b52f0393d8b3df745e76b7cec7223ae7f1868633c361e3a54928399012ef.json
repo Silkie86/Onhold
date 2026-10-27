@@ -1,0 +1,346 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT e.id, e.title, e.source, e.organisation_id,\n                  (SELECT name FROM organisations o WHERE o.id = e.organisation_id) AS organisation_name,\n                  e.contact_id, (SELECT name FROM contacts c WHERE c.id = e.contact_id) AS contact_name,\n                  e.venue_id, (SELECT name FROM organisations o WHERE o.id = e.venue_id) AS venue_name,\n                  e.venue_text, e.starts_on, e.ends_on, e.budget_minor, e.budget_currency, e.pipeline_id,\n                  e.stage_id, e.stage_entered_at, e.owner_id, e.lost_reason, e.notes, e.tags, e.custom,\n                  e.version, e.created_at, e.updated_at, e.created_by AS \"created_by: UserId\",\n                  e.updated_by AS \"updated_by: UserId\", count(*) OVER () AS \"total!\"\n           FROM enquiries e\n           WHERE e.workspace_id = app_workspace_id() AND e.deleted_at IS NULL\n             AND ($1::text IS NULL OR e.search_text LIKE $2 OR $1 <% e.search_text\n                  OR EXISTS (SELECT 1 FROM jsonb_each_text(e.custom) x\n                             WHERE x.key = ANY($3) AND lower(x.value) LIKE $2))\n             AND ($4::text IS NULL OR $4 = ANY(e.tags))\n             AND ($5::jsonb IS NULL OR e.custom @> $5)\n             AND ($11::uuid IS NULL OR e.stage_id = $11)\n             AND ($12::uuid IS NULL OR EXISTS (SELECT 1 FROM enquiry_talent t\n                                               WHERE t.enquiry_id = e.id AND t.talent_id = $12))\n             AND ($13::uuid IS NULL OR e.owner_id = $13)\n             AND ($14::uuid IS NULL OR e.organisation_id = $14 OR e.venue_id = $14)\n             AND ($15::uuid IS NULL OR e.contact_id = $15)\n           ORDER BY\n             CASE WHEN $6 = 'relevance' THEN e.search_text NOT LIKE $2 END ASC,\n             CASE WHEN $6 = 'relevance' THEN word_similarity($1, e.search_text) END DESC NULLS LAST,\n             CASE WHEN NOT $7 AND $6 IN ('title', 'name') THEN lower(e.title) END ASC,\n             CASE WHEN $7 AND $6 IN ('title', 'name') THEN lower(e.title) END DESC NULLS LAST,\n             CASE WHEN NOT $7 AND $6 = 'starts_on' THEN e.starts_on END ASC NULLS LAST,\n             CASE WHEN $7 AND $6 = 'starts_on' THEN e.starts_on END DESC NULLS LAST,\n             CASE WHEN NOT $7 AND $6 = 'budget' THEN e.budget_minor END ASC NULLS LAST,\n             CASE WHEN $7 AND $6 = 'budget' THEN e.budget_minor END DESC NULLS LAST,\n             CASE WHEN NOT $7 THEN CASE $6 WHEN 'created_at' THEN e.created_at WHEN 'updated_at' THEN e.updated_at\n                 WHEN 'stage_entered_at' THEN e.stage_entered_at END END ASC,\n             CASE WHEN $7 THEN CASE $6 WHEN 'created_at' THEN e.created_at WHEN 'updated_at' THEN e.updated_at\n                 WHEN 'stage_entered_at' THEN e.stage_entered_at END END DESC NULLS LAST,\n             CASE WHEN $6 = 'custom' AND NOT $7 THEN e.custom -> $8 END ASC,\n             CASE WHEN $6 = 'custom' AND $7 THEN e.custom -> $8 END DESC NULLS LAST,\n             e.created_at DESC, e.id\n           OFFSET $9 LIMIT $10",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "source",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "organisation_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "organisation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "organisation_name",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "contact_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "contact_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "contact_name",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 7,
+        "name": "venue_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "venue_id"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "venue_name",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 9,
+        "name": "venue_text",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "venue_text"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "starts_on",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "starts_on"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "ends_on",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "ends_on"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "budget_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "budget_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "budget_currency",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "budget_currency"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "pipeline_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "pipeline_id"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "stage_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "stage_id"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "stage_entered_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "stage_entered_at"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "owner_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "owner_id"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "lost_reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "lost_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "tags",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "tags"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "custom",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "custom"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 26,
+        "name": "updated_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "updated_by"
+          }
+        }
+      },
+      {
+        "ordinal": 27,
+        "name": "total!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "TextArray",
+        "Text",
+        "Jsonb",
+        "Text",
+        "Bool",
+        "Text",
+        "Int8",
+        "Int8",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      null,
+      true,
+      null,
+      true,
+      null,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "0a76b52f0393d8b3df745e76b7cec7223ae7f1868633c361e3a54928399012ef"
+}

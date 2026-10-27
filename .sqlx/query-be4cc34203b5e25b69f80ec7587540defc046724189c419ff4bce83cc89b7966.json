@@ -1,0 +1,171 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT a.id, a.talent_id, t.name AS talent_name, a.kind AS \"kind: AvailabilityKind\",\n                  a.starts_at, a.ends_at, a.all_day, a.source, a.note, a.version, a.created_at, a.updated_at\n           FROM availability a JOIN talent t ON t.id = a.talent_id\n           WHERE a.workspace_id = app_workspace_id() AND a.id = $1 AND a.deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "availability",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "availability",
+            "name": "talent_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "talent_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "kind: AvailabilityKind",
+        "type_info": {
+          "Custom": {
+            "name": "availability_kind",
+            "kind": {
+              "Enum": [
+                "unavailable",
+                "tentative",
+                "available_only"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "availability",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "starts_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "availability",
+            "name": "starts_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "ends_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "availability",
+            "name": "ends_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "all_day",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "availability",
+            "name": "all_day"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "source",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "availability",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "note",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "availability",
+            "name": "note"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "availability",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "availability",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "availability",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "be4cc34203b5e25b69f80ec7587540defc046724189c419ff4bce83cc89b7966"
+}

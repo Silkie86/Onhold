@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT coalesce(max(revision), 0) AS \"n!\" FROM quotes\n           WHERE workspace_id = app_workspace_id() AND number = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "n!",
+        "type_info": "Int4",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "8b9c93d98ed6dd2786518233c33f6ca0a75b758aee43e3c82ce0b8a131505129"
+}

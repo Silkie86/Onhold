@@ -6,6 +6,7 @@
 //! This crate does no I/O.
 
 pub mod authz;
+pub mod bookings;
 pub mod crm;
 pub mod crypto;
 pub mod ids;
@@ -13,6 +14,7 @@ pub mod money;
 pub mod workspace;
 
 pub use authz::{Actor, AuthzError, Ctx, Permission, Role};
+pub use bookings::{AvailabilityKind, BookingStatus, QuoteStatus};
 pub use crm::TalentKind;
 pub use ids::{UserId, WorkspaceId};
 pub use money::Money;

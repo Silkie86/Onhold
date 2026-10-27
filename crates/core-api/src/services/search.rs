@@ -1,4 +1,4 @@
-//! Global search across the CRM (bookings and messages join as they land),
+//! Global search across the CRM, enquiries and bookings (messages join in M6),
 //! the workspace's tags, and the activity timeline of a record.
 
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ use crate::error::{ApiError, ApiResult};
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SearchHit {
-    /// `talent`, `organisation` or `contact`.
+    /// `talent`, `organisation`, `contact`, `enquiry` or `booking`.
     pub entity: String,
     pub id: Uuid,
     pub name: String,
@@ -29,6 +29,8 @@ fn read_permission(entity: &str) -> Option<Permission> {
         "talent" => Some(Permission::TalentRead),
         "organisation" => Some(Permission::OrganisationRead),
         "contact" => Some(Permission::ContactRead),
+        "enquiry" => Some(Permission::EnquiryRead),
+        "booking" => Some(Permission::BookingRead),
         _ => None,
     }
 }
@@ -37,7 +39,10 @@ pub(crate) fn authorize_read(ctx: &Ctx, entity: &str) -> ApiResult<()> {
     let p = read_permission(entity).ok_or_else(|| {
         ApiError::invalid(
             "entity",
-            format!("use one of: {}", super::crm::ENTITIES.join(", ")),
+            format!(
+                "use one of: {}, enquiry, booking",
+                super::crm::ENTITIES.join(", ")
+            ),
         )
     })?;
     ctx.authorize(p)?;
@@ -60,7 +65,8 @@ pub async fn search(
         entities.is_none_or(|list| list.iter().any(|x| x == e))
             && read_permission(e).is_some_and(|p| ctx.permissions.contains(&p))
     };
-    if q.is_empty() || !super::crm::ENTITIES.iter().any(|e| wanted(e)) {
+    let work = (wanted("enquiry"), wanted("booking"));
+    if q.is_empty() || !(super::crm::ENTITIES.iter().any(|e| wanted(e)) || work.0 || work.1) {
         return Ok(Vec::new());
     }
     let mut tx = begin(state, ctx).await?;
@@ -70,7 +76,8 @@ pub async fn search(
             keys.insert(*e, super::crm::searchable(&mut tx, e).await?);
         }
     }
-    let hits = core_db::search::search(
+    let limit = limit.clamp(1, 50);
+    let mut hits = core_db::search::search(
         &mut tx,
         &q,
         core_db::search::Scope {
@@ -78,9 +85,18 @@ pub async fn search(
             organisations: keys.get("organisation").map(Vec::as_slice),
             contacts: keys.get("contact").map(Vec::as_slice),
         },
-        limit.clamp(1, 50),
+        limit,
     )
     .await?;
+    if work.0 || work.1 {
+        hits.extend(core_db::search::search_work(&mut tx, &q, work.0, work.1, limit).await?);
+        hits.sort_by(|a, b| {
+            b.score
+                .total_cmp(&a.score)
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        hits.truncate(limit as usize);
+    }
     tx.commit().await?;
     Ok(hits
         .into_iter()
@@ -304,6 +320,37 @@ pub async fn timeline(
                 objects.extend(contacts);
             }
         }
+        "enquiry" => {
+            core_db::enquiries::get(&mut tx, id)
+                .await?
+                .ok_or(ApiError::NotFound)?;
+            if ctx.permissions.contains(&Permission::BookingRead) {
+                let (bookings, _) = core_db::bookings::list(
+                    &mut tx,
+                    core_db::bookings::Filter {
+                        list: no_search(),
+                        from: None,
+                        to: None,
+                        statuses: &[],
+                        talent_id: None,
+                        organisation_id: None,
+                        contact_id: None,
+                        enquiry_id: Some(id),
+                    },
+                )
+                .await?;
+                objects.extend(bookings.into_iter().map(|b| b.id));
+            }
+        }
+        "booking" => {
+            core_db::bookings::get(&mut tx, id)
+                .await?
+                .ok_or(ApiError::NotFound)?;
+            if ctx.permissions.contains(&Permission::QuoteRead) {
+                let (quotes, _) = core_db::quotes::list(&mut tx, Some(id), &[], 0, 200).await?;
+                objects.extend(quotes.into_iter().map(|q| q.id));
+            }
+        }
         _ => {
             let c = super::contacts::load(&mut tx, id)
                 .await?
@@ -373,6 +420,21 @@ pub async fn timeline(
         entries,
         next_before,
     })
+}
+
+/// A whole list in one page, unsearched.
+fn no_search() -> core_db::crm::ListParams<'static> {
+    core_db::crm::ListParams {
+        q: None,
+        searchable: &[],
+        tag: None,
+        custom: None,
+        sort: "created_at",
+        sort_custom: None,
+        desc: false,
+        offset: 0,
+        limit: 200,
+    }
 }
 
 #[cfg(test)]

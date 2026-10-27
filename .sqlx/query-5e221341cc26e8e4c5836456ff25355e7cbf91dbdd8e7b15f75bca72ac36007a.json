@@ -1,0 +1,48 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO bookings (id, workspace_id, enquiry_id, title, status, hold_expires_at, organisation_id,\n                                 contact_id, venue_id, venue_text, timezone, starts_at, ends_at, all_day,\n                                 schedule, fee_minor, fee_currency, deposit_bps, notes, tags, custom,\n                                 created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,\n                   $17, $18, $19, $20, $21, $21)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        {
+          "Custom": {
+            "name": "booking_status",
+            "kind": {
+              "Enum": [
+                "hold",
+                "pending",
+                "confirmed",
+                "cancelled",
+                "completed",
+                "expired"
+              ]
+            }
+          }
+        },
+        "Timestamptz",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Bool",
+        "Jsonb",
+        "Int8",
+        "Bpchar",
+        "Int4",
+        "Text",
+        "TextArray",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5e221341cc26e8e4c5836456ff25355e7cbf91dbdd8e7b15f75bca72ac36007a"
+}

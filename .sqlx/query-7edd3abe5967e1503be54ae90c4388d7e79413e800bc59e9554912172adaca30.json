@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT entity AS \"entity!\", id AS \"id!\", name AS \"name!\", detail, score AS \"score!\" FROM (\n               SELECT 'enquiry' AS entity, e.id, e.title AS name, e.starts_on::text AS detail,\n                      (CASE WHEN lower(e.title) = $1 THEN 3 WHEN lower(e.title) LIKE $3 THEN 2\n                            WHEN e.search_text LIKE $2 THEN 1 ELSE 0 END\n                       + word_similarity($1, e.search_text))::real AS score\n               FROM enquiries e\n               WHERE $4 AND e.workspace_id = app_workspace_id() AND e.deleted_at IS NULL\n                 AND (e.search_text LIKE $2 OR $1 <% e.search_text)\n               UNION ALL\n               SELECT 'booking', b.id, b.title,\n                      to_char(b.starts_at AT TIME ZONE b.timezone, 'YYYY-MM-DD') || ' · ' || b.status::text,\n                      (CASE WHEN lower(b.title) = $1 THEN 3 WHEN lower(b.title) LIKE $3 THEN 2\n                            WHEN b.search_text LIKE $2 THEN 1 ELSE 0 END\n                       + word_similarity($1, b.search_text))::real\n               FROM bookings b\n               WHERE $5 AND b.workspace_id = app_workspace_id() AND b.deleted_at IS NULL\n                 AND (b.search_text LIKE $2 OR $1 <% b.search_text)\n           ) hits\n           ORDER BY score DESC, name, id\n           LIMIT $6",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entity!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "name!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "detail",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "score!",
+        "type_info": "Float4",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Bool",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "7edd3abe5967e1503be54ae90c4388d7e79413e800bc59e9554912172adaca30"
+}

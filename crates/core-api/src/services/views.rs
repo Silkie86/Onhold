@@ -3,7 +3,7 @@
 
 use chrono::{DateTime, Utc};
 use core_db::views::View;
-use core_domain::{Ctx, Permission, TalentKind};
+use core_domain::{BookingStatus, Ctx, Permission, TalentKind};
 use core_engines::fields::{FieldType, SelectOption};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -292,6 +292,13 @@ impl Core<'_> {
     }
 }
 
+fn capitalise(s: &str) -> String {
+    let mut c = s.chars();
+    c.next()
+        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+        .unwrap_or_default()
+}
+
 fn option(value: &str, label: &str) -> SelectOption {
     SelectOption {
         value: value.into(),
@@ -399,6 +406,76 @@ fn core_fields(entity: &str) -> Vec<(Core<'static>, Vec<SelectOption>, Option<&'
             (core("tags", "Tags", T::Tags).listed(), vec![], None),
             (core("notes", "Notes", T::LongText), vec![], None),
         ],
+        "enquiry" => vec![
+            (
+                core("title", "Title", T::Text).required().listed().sorted(),
+                vec![],
+                None,
+            ),
+            (
+                core("starts_on", "Date", T::Date).listed().sorted(),
+                vec![],
+                None,
+            ),
+            (
+                core("budget", "Budget", T::Money).listed().sorted(),
+                vec![],
+                None,
+            ),
+            (
+                core("organisation_id", "Organisation", T::Relation).listed(),
+                vec![],
+                Some("organisation"),
+            ),
+            (
+                core("contact_id", "Contact", T::Relation),
+                vec![],
+                Some("contact"),
+            ),
+            (core("tags", "Tags", T::Tags).listed(), vec![], None),
+            (core("notes", "Notes", T::LongText), vec![], None),
+        ],
+        "booking" => vec![
+            (
+                core("title", "Title", T::Text).required().listed().sorted(),
+                vec![],
+                None,
+            ),
+            (
+                core("starts_at", "Starts", T::Datetime)
+                    .required()
+                    .listed()
+                    .sorted(),
+                vec![],
+                None,
+            ),
+            (
+                core("ends_at", "Ends", T::Datetime).required(),
+                vec![],
+                None,
+            ),
+            (
+                core("status", "Status", T::Select).listed().sorted(),
+                BookingStatus::ALL
+                    .iter()
+                    .map(|s| option(s.as_str(), &capitalise(s.as_str())))
+                    .collect(),
+                None,
+            ),
+            (core("fee", "Fee", T::Money).listed().sorted(), vec![], None),
+            (
+                core("organisation_id", "Organisation", T::Relation).listed(),
+                vec![],
+                Some("organisation"),
+            ),
+            (
+                core("contact_id", "Contact", T::Relation),
+                vec![],
+                Some("contact"),
+            ),
+            (core("tags", "Tags", T::Tags).listed(), vec![], None),
+            (core("notes", "Notes", T::LongText), vec![], None),
+        ],
         _ => vec![
             (
                 core("name", "Name", T::Text).required().listed().sorted(),
@@ -462,6 +539,8 @@ fn write_permission(entity: &str) -> Permission {
     match entity {
         "talent" => Permission::TalentWrite,
         "organisation" => Permission::OrganisationWrite,
+        "enquiry" => Permission::EnquiryWrite,
+        "booking" => Permission::BookingWrite,
         _ => Permission::ContactWrite,
     }
 }
@@ -472,6 +551,8 @@ pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<Enti
     let (label, plural) = match entity {
         "talent" => ("Talent", "Talent"),
         "organisation" => ("Organisation", "Organisations"),
+        "enquiry" => ("Enquiry", "Enquiries"),
+        "booking" => ("Booking", "Bookings"),
         _ => ("Contact", "Contacts"),
     };
     let mut fields: Vec<SchemaField> = core_fields(entity)
@@ -482,7 +563,8 @@ pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<Enti
             field_type: c.t,
             core: true,
             required: c.required,
-            read_only: c.key == "contact_count",
+            // A booking's status moves through its own actions, not the form.
+            read_only: c.key == "contact_count" || (entity == "booking" && c.key == "status"),
             in_list: c.in_list,
             sort: if c.sortable {
                 sort_key(entity, c.key)
@@ -551,6 +633,8 @@ fn sort_key(entity: &str, key: &str) -> Option<String> {
     let sorts = match entity {
         "talent" => core_db::talent::SORTS,
         "organisation" => core_db::organisations::SORTS,
+        "enquiry" => core_db::enquiries::SORTS,
+        "booking" => core_db::bookings::SORTS,
         _ => core_db::contacts::SORTS,
     };
     sorts.contains(&mapped).then(|| mapped.to_owned())

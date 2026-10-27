@@ -22,6 +22,10 @@ const NOT_WORKSPACE_SCOPED: &[(&str, &str)] = &[
     ("/api/v1/invitations/lookup", "token holders only"),
     ("/api/v1/invitations/accept", "token holders only"),
     ("/api/v1/admin/", "superadmins only"),
+    (
+        "/api/v1/public/",
+        "secret-link holders only; the token names one quote or feed",
+    ),
 ];
 
 struct Operation {
@@ -96,6 +100,7 @@ struct World {
     b_event: uuid::Uuid,
     b_job: uuid::Uuid,
     b_crm: Crm,
+    b_work: Work,
     b_markers: Vec<String>,
 }
 
@@ -166,6 +171,71 @@ async fn crm(app: &TestApp, owner: &Client, slug: &str) -> Crm {
         contact,
         view,
         import,
+    }
+}
+
+/// One of everything M4 adds, in `owner`'s workspace, named after `slug`.
+struct Work {
+    enquiry: uuid::Uuid,
+    booking: uuid::Uuid,
+    availability: uuid::Uuid,
+    quote: uuid::Uuid,
+    task: uuid::Uuid,
+    feed: uuid::Uuid,
+}
+
+async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
+    let post = |path: &str, body: Value| {
+        let req = app.post(path).signed_in(owner).json(body);
+        async move { req.send().await.ok() }
+    };
+    let enquiry = post(
+        "/api/v1/enquiries",
+        json!({ "title": format!("{slug} secret enquiry"), "talent_ids": [crm.talent],
+                "contact_id": crm.contact, "organisation_id": crm.organisation }),
+    )
+    .await
+    .id("/id");
+    let booking = post(
+        "/api/v1/bookings",
+        json!({ "title": format!("{slug} secret booking"), "enquiry_id": enquiry, "status": "confirmed",
+                "starts_at": "2031-06-01T19:00:00Z", "ends_at": "2031-06-01T23:00:00Z",
+                "fee": { "minor": 150000, "currency": "GBP" } }),
+    )
+    .await
+    .id("/id");
+    let availability = post(
+        &format!("/api/v1/talent/{}/availability", crm.talent),
+        json!({ "starts_at": "2031-07-01T00:00:00Z", "ends_at": "2031-07-08T00:00:00Z",
+                "note": format!("{slug} secret holiday") }),
+    )
+    .await
+    .id("/id");
+    let quote = post(
+        &format!("/api/v1/bookings/{booking}/quotes"),
+        json!({ "line_items": [{ "description": format!("{slug} secret line"), "unit_minor": 150000 }] }),
+    )
+    .await
+    .id("/id");
+    let task = post(
+        "/api/v1/tasks",
+        json!({ "title": format!("{slug} secret task"), "related_entity": "booking", "related_id": booking }),
+    )
+    .await
+    .id("/id");
+    let feed = post(
+        "/api/v1/calendar/feeds",
+        json!({ "name": format!("{slug} secret feed") }),
+    )
+    .await
+    .id("/feed/id");
+    Work {
+        enquiry,
+        booking,
+        availability,
+        quote,
+        task,
+        feed,
     }
 }
 
@@ -255,13 +325,23 @@ async fn world(app: &TestApp) -> World {
         "organisation:read",
         "organisation:write",
         "contact:read",
-        "contact:write"
+        "contact:write",
+        "enquiry:read",
+        "enquiry:write",
+        "booking:read",
+        "booking:write",
+        "booking:override",
+        "quote:read",
+        "quote:write",
+        "task:read",
+        "task:write"
     ]);
     let mut keys = Vec::new();
     let mut invitations = Vec::new();
     let mut clients = Vec::new();
     let mut configs = Vec::new();
     let mut crms = Vec::new();
+    let mut works = Vec::new();
     for slug in ["alpha", "bravo"] {
         let (_, owner) = app.workspace_with_owner(slug).await;
         app.add_member(&owner, &format!("agent@{slug}.test"), "agent")
@@ -286,13 +366,16 @@ async fn world(app: &TestApp) -> World {
             key.body["secret"].as_str().unwrap().to_owned(),
         ));
         configs.push(configure(app, &owner, slug).await);
-        crms.push(crm(app, &owner, slug).await);
+        let c = crm(app, &owner, slug).await;
+        works.push(work(app, &owner, slug, &c).await);
+        crms.push(c);
         clients.push(owner);
     }
     let b = clients.pop().unwrap();
     let a = clients.pop().unwrap();
     let bc = configs.pop().unwrap();
     let b_crm = crms.pop().unwrap();
+    let b_work = works.pop().unwrap();
     app.publish_all().await;
     let b_event: uuid::Uuid = sqlx::query_scalar(
         "SELECT id FROM outbox WHERE workspace_id = $1 AND topic = 'thing.created'",
@@ -328,8 +411,15 @@ async fn world(app: &TestApp) -> World {
             b_crm.contact.to_string(),
             b_crm.view.to_string(),
             b_crm.import.to_string(),
+            b_work.enquiry.to_string(),
+            b_work.booking.to_string(),
+            b_work.availability.to_string(),
+            b_work.quote.to_string(),
+            b_work.task.to_string(),
+            b_work.feed.to_string(),
         ],
         b_crm,
+        b_work,
         b_field: bc.field,
         b_pipeline: bc.pipeline,
         b_template: bc.template,
@@ -398,12 +488,40 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
             json!({ "entity": "contact", "csv": "Name\nIntruder\n" })
         }
         ("POST", p) if p.starts_with("/api/v1/imports/") => json!({ "columns": ["name", null] }),
+        ("POST", "/api/v1/enquiries" | "/api/v1/tasks") => json!({ "title": "Intruder" }),
+        ("POST", "/api/v1/bookings") => json!({
+            "title": "Intruder", "talent_ids": [w.b_crm.talent], "status": "confirmed",
+            "starts_at": "2031-06-01T20:00:00Z", "ends_at": "2031-06-01T22:00:00Z"
+        }),
+        ("POST", "/api/v1/bookings/clash-check") => json!({
+            "talent_ids": [w.b_crm.talent], "starts_at": "2031-06-01T20:00:00Z", "ends_at": "2031-06-01T22:00:00Z"
+        }),
+        ("POST", "/api/v1/bookings/{id}/status") => json!({ "status": "cancelled", "reason": "x" }),
+        ("POST", "/api/v1/talent/{id}/availability") => {
+            json!({ "starts_at": "2031-08-01T00:00:00Z", "ends_at": "2031-08-02T00:00:00Z" })
+        }
+        ("POST", "/api/v1/calendar/feeds") => json!({ "name": "Intruder" }),
+        ("POST", "/api/v1/quotes/{id}/send") => json!({ "to": "intruder@alpha.test" }),
         _ => json!({}),
     }
 }
 
 fn fill_path(path: &str, w: &World) -> String {
     let object = if path.contains("/talent/") {
+        w.b_crm.talent
+    } else if path.contains("/enquiries/") {
+        w.b_work.enquiry
+    } else if path.contains("/bookings/") {
+        w.b_work.booking
+    } else if path.contains("/availability/") {
+        w.b_work.availability
+    } else if path.contains("/quotes/") {
+        w.b_work.quote
+    } else if path.contains("/tasks/") {
+        w.b_work.task
+    } else if path.contains("/calendar/feeds/") {
+        w.b_work.feed
+    } else if path.contains("/talent/") {
         w.b_crm.talent
     } else if path.contains("/organisations/") {
         w.b_crm.organisation
@@ -550,7 +668,7 @@ async fn nothing_from_another_workspace_appears_in_this_ones_reads(pool: PgPool)
             assert_nothing_leaks(&app, &w, &format!("{}{query}", op.path)).await;
         }
     }
-    for entity in ["talent", "organisation", "contact"] {
+    for entity in ["talent", "organisation", "contact", "enquiry", "booking"] {
         assert_nothing_leaks(&app, &w, &format!("/api/v1/schema/{entity}")).await;
     }
 }
@@ -560,10 +678,21 @@ fn read_queries(path: &str) -> Vec<&'static str> {
     match path {
         "/api/v1/search" => vec!["?q=bravo", "?q=secret", "?q=hidden%20value"],
         "/api/v1/tags" | "/api/v1/views" => {
-            vec!["?entity=talent", "?entity=organisation", "?entity=contact"]
+            vec![
+                "?entity=talent",
+                "?entity=organisation",
+                "?entity=contact",
+                "?entity=enquiry",
+                "?entity=booking",
+            ]
         }
         "/api/v1/talent" | "/api/v1/organisations" | "/api/v1/contacts" => {
             vec!["", "?q=bravo", "?tag=bravo-secret-tag"]
+        }
+        "/api/v1/enquiries" | "/api/v1/bookings" => vec!["", "?q=bravo"],
+        "/api/v1/tasks" => vec!["?status=all"],
+        "/api/v1/calendar" => {
+            vec!["?from=2031-01-01T00:00:00Z&to=2031-12-31T00:00:00Z"]
         }
         _ => vec![""],
     }
@@ -735,6 +864,29 @@ async fn assert_untouched(app: &TestApp, w: &World) {
         .await
         .ok();
     assert_eq!(import.body["status"], "uploaded");
+    for path in [
+        format!("/api/v1/enquiries/{}", w.b_work.enquiry),
+        format!("/api/v1/bookings/{}", w.b_work.booking),
+        format!("/api/v1/quotes/{}", w.b_work.quote),
+        format!("/api/v1/tasks/{}", w.b_work.task),
+    ] {
+        let record = app.get(&path).signed_in(&w.b).send().await.ok();
+        assert_eq!(record.body["version"], 1, "{path}");
+    }
+    let booking = app
+        .get(&format!("/api/v1/bookings/{}", w.b_work.booking))
+        .signed_in(&w.b)
+        .send()
+        .await
+        .ok();
+    assert_eq!(booking.body["status"], "confirmed");
+    let feeds = app
+        .get("/api/v1/calendar/feeds")
+        .signed_in(&w.b)
+        .send()
+        .await
+        .ok();
+    assert_eq!(feeds.body.as_array().unwrap().len(), 1);
     let views = app
         .get("/api/v1/views?entity=contact")
         .signed_in(&w.b)

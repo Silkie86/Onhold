@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE bookings SET status = $2, status_changed_at = now(), hold_expires_at = $3,\n                  cancel_reason = $4, clash_override = $5, override_reason = $6, override_by = $7,\n                  updated_by = $8\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "booking_status",
+            "kind": {
+              "Enum": [
+                "hold",
+                "pending",
+                "confirmed",
+                "cancelled",
+                "completed",
+                "expired"
+              ]
+            }
+          }
+        },
+        "Timestamptz",
+        "Text",
+        "Bool",
+        "Text",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f27d02518a7e0117344d8f7f2de3261fc40e51e896478805fc275de05a561926"
+}
