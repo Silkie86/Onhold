@@ -32,4 +32,15 @@ This runs the app's own code in Chromium, built with `VITE_APP_MODE=app` on its 
 - **Signing and auto-update.** Unsigned installers warn when installed. Signing needs an Apple Developer account ($99 a year) and a Windows code-signing certificate, and updates need a place to publish them. All are worth setting up once there is a client to ship to.
 - **Offline for everything else.** Settings, imports, saved views, timelines and talent members need a connection, and the app says so. Bookings, documents and money will join the offline copy as those milestones land.
 - **Branding inside the website** (logo, colours, the website's own name). The spec puts branding on the workspace record. The branded apps cover name and icon now, and in-app theming arrives with the workspace branding settings.
-- **Installable website (next).** Solomon would rather start with a website people can "save" to their home screen or desktop (a progressive web app) than ship store apps. It works on every system with no store and no cost. It reuses this offline layer and shows the client's name and icon on their own address. The native apps stay here, built by CI but unpublished, until they make financial sense.
+
+## Installable website
+
+Solomon's preferred first step. People "save" the website to their home screen or desktop (Add to Home Screen in Safari, Install in Chrome and Edge) instead of getting a store app. It costs nothing, needs no store, and works on iPhone, Android, Windows, macOS and Linux.
+
+- **Installable:** the build writes a web app manifest (name, icons, full-screen display) and adds the icons Apple and Android use. "Install the app" in the account menu uses the browser's own install prompt; on iPhone and iPad it explains where Add to Home Screen is.
+- **Opens with no connection:** a service worker, generated at build time, keeps exactly this version's files. Pages come from the server when it answers and from the saved copy when it doesn't. A new version replaces the old one on the next visit. It never caches the API.
+- **Works offline once installed:** the same offline copy and change queue as the apps, using the website's normal sign-in (cookie and form token). A website open in an ordinary browser tab keeps nothing on the device, since that may be a shared or borrowed computer.
+- **A client's own name:** `VITE_APP_NAME` names the installed app, for a build served on a client's own address. Their logo as the icon arrives with the workspace branding settings.
+- **Fixed on the way:** offline changes that hit an expired session or a stale form token now wait for the next sign-in instead of being marked as failed, and a website opened offline restores its form token.
+
+**Verified** by `e2e/installed.spec.ts` (Playwright project `installed`, phone size, against a production build). It signs up, checks the manifest and the service worker, creates a contact, goes offline and reloads. The page still opens and shows the contact from the device. It then edits the contact offline, reconnects, and sees the change on the server.

@@ -5,6 +5,7 @@ import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Button,
   CommandPalette,
+  Dialog,
   Menu,
   MenuContent,
   MenuItem,
@@ -22,6 +23,7 @@ import {
   Building2,
   ChevronsUpDown,
   CloudOff,
+  Download,
   Contact,
   FileUp,
   RefreshCw,
@@ -42,8 +44,9 @@ import { ENTITIES, entityByPath } from "./api.ts";
 import { OfflineContext, searchEverything, useSyncStatus } from "./data.ts";
 import { claimFor } from "./offline/store.ts";
 import { OfflineSync } from "./offline/sync.ts";
-import { IS_APP, serverUrl } from "./platform.ts";
+import { IS_APP, KEEPS_OFFLINE_COPY, serverUrl } from "./platform.ts";
 import { GoTo } from "./go-to.tsx";
+import { useInstallOffer } from "./install.ts";
 import { type Session, SessionContext, useMe, useSessionActions } from "./session.tsx";
 
 const NAV: { group: string; items: { to: string; label: string; icon: ReactNode }[] }[] = [
@@ -73,7 +76,7 @@ function useOfflineSync(workspaceId: string | undefined, userId: string): Offlin
   const qc = useQueryClient();
   const [sync, setSync] = useState<OfflineSync | null>(null);
   useEffect(() => {
-    if (!IS_APP || !workspaceId) return;
+    if (!KEEPS_OFFLINE_COPY || !workspaceId) return;
     const engine = new OfflineSync(workspaceId);
     let stopped = false;
     const off = engine.onRecordsChanged(() => {
@@ -147,10 +150,13 @@ export function AppShell() {
 function SignedIn({ me }: { me: Session["me"] }) {
   const { workspace, switchWorkspace, signOut } = useSessionActions(me);
   const current = workspace ?? me.workspaces[0];
-  const sync = useOfflineSync(current?.apps_allowed ? current.id : undefined, me.user.id);
+  // The plan switch is for the apps; the installed website is the website.
+  const sync = useOfflineSync(current && (!IS_APP || current.apps_allowed) ? current.id : undefined, me.user.id);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(storedTheme);
+  const installOffer = useInstallOffer();
+  const [installHelp, setInstallHelp] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -276,6 +282,18 @@ function SignedIn({ me }: { me: Session["me"] }) {
                 <MenuItem onSelect={() => setTheme("system")}>
                   <Monitor className="size-4" /> Device setting {theme === "system" && "✓"}
                 </MenuItem>
+                {installOffer && (
+                  <>
+                    <MenuSeparator />
+                    <MenuItem
+                      onSelect={() =>
+                        installOffer.kind === "prompt" ? void installOffer.install() : setInstallHelp(true)
+                      }
+                    >
+                      <Download className="size-4" /> Install the app
+                    </MenuItem>
+                  </>
+                )}
                 <MenuSeparator />
                 <MenuItem onSelect={() => void signOut()}>
                   <LogOut className="size-4" /> Sign out
@@ -295,6 +313,12 @@ function SignedIn({ me }: { me: Session["me"] }) {
           </main>
         </div>
       </div>
+      <Dialog open={installHelp} onOpenChange={setInstallHelp} title="Install the app">
+        <p className="text-sm">
+          In Safari, tap the Share button, then <strong>Add to Home Screen</strong>. The app then opens from its own icon,
+          full screen, and keeps working without a connection.
+        </p>
+      </Dialog>
       <CommandPalette
         open={paletteOpen}
         onOpenChange={setPaletteOpen}

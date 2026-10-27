@@ -5,9 +5,9 @@ import { createContext, useContext } from "react";
 import { ApiFailure, type Me, api, currentWorkspace, ok, setCsrfToken, setWorkspace } from "./api.ts";
 import { outbox, wipe, wipeAllButQueue } from "./offline/store.ts";
 import { isNetworkError } from "./offline/sync.ts";
-import { IS_APP, appToken, saveAppToken } from "./platform.ts";
+import { IS_APP, KEEPS_OFFLINE_COPY, appToken, saveAppToken } from "./platform.ts";
 
-// The apps remember who was signed in, so they can open offline.
+// The apps and the installed website remember who was signed in, so they can open offline.
 const ME_KEY = "onhold.me";
 
 function rememberedMe(): Me | null {
@@ -38,23 +38,27 @@ export const meQuery = {
       const ids = me.workspaces.map((w) => w.id);
       const stored = currentWorkspace();
       if (!stored || !ids.includes(stored)) setWorkspace(ids[0]);
-      if (IS_APP) remember(me);
+      if (KEEPS_OFFLINE_COPY) remember(me);
       return me;
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 401) {
         setCsrfToken(undefined);
-        if (IS_APP) {
+        if (IS_APP) await saveAppToken(null);
+        if (KEEPS_OFFLINE_COPY) {
           // Expired, or signed out from another device: the workspace's data
           // leaves this one. Unsent changes wait for the same person's next sign-in.
-          await saveAppToken(null);
           remember(null);
           await wipeAllButQueue().catch(() => undefined);
         }
         return null;
       }
-      if (IS_APP && isNetworkError(e)) {
+      if (KEEPS_OFFLINE_COPY && isNetworkError(e)) {
         const known = rememberedMe();
-        if (known) return known;
+        if (known) {
+          // The website's changes carry the session's form token; it is still good.
+          setCsrfToken(known.session.csrf_token);
+          return known;
+        }
       }
       throw e;
     }
@@ -94,15 +98,15 @@ export function useSessionActions(me: Me) {
       void qc.invalidateQueries({ queryKey: ["me"] });
     },
     signOut: async () => {
-      if (IS_APP) {
+      if (KEEPS_OFFLINE_COPY) {
         const waiting = (await Promise.all(me.workspaces.map((w) => outbox(w.id)))).flat().length;
         const unsent = `${waiting} ${waiting === 1 ? "change has" : "changes have"} not been sent yet and will be lost.`;
         if (waiting > 0 && !window.confirm(`${unsent} Sign out anyway?`)) return;
       }
       await api.POST("/api/v1/auth/logout").catch(() => undefined);
       setCsrfToken(undefined);
-      if (IS_APP) {
-        await saveAppToken(null);
+      if (IS_APP) await saveAppToken(null);
+      if (KEEPS_OFFLINE_COPY) {
         remember(null);
         // Nothing of the workspace stays on the device.
         await wipe();

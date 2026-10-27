@@ -35,6 +35,20 @@ function writeLocal(key: string, value: string | null) {
   }
 }
 
+/** True when the website runs installed (added to the home screen or desktop). */
+export function isInstalled(): boolean {
+  if (typeof window === "undefined") return false;
+  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  return standalone || window.matchMedia?.("(display-mode: standalone)").matches === true;
+}
+
+/**
+ * Whether this copy keeps the CRM on the device for offline use: the apps,
+ * and the website once installed. A website open in an ordinary tab keeps
+ * nothing, since that may be a shared or borrowed computer.
+ */
+export const KEEPS_OFFLINE_COPY: boolean = IS_APP || isInstalled();
+
 /** The server the app talks to: chosen on the sign-in screen, or built in. Empty means this origin. */
 export function serverUrl(): string {
   if (!IS_APP) return import.meta.env.VITE_API_URL ?? "";
