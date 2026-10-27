@@ -76,6 +76,8 @@ async fn limit_body(
     next.run(Request::from_parts(parts, body)).await
 }
 
+/// Keep well under a minute: `idem_claim` treats an idempotency claim older
+/// than that as abandoned by a request that was cut off.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Shared state handed to every handler.

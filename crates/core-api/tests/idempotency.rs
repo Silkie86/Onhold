@@ -146,3 +146,97 @@ async fn stored_responses_are_invisible_to_the_app(pool: PgPool) {
         .await;
     assert!(read.unwrap_err().to_string().contains("permission denied"));
 }
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_write_replayed_after_signing_in_again_still_acts_once(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let before = invitation_count(&app).await;
+    let send = |who: &common::Client| {
+        app.post("/api/v1/invitations")
+            .signed_in(who)
+            .header("idempotency-key", "queued-op")
+            .json(json!({ "email": "a@acme.test", "role": "agent" }))
+            .send()
+    };
+    let first = send(&owner).await;
+    assert_eq!(first.status, StatusCode::CREATED, "{}", first.body);
+
+    // The session ends and the person signs in again: a new token, same person.
+    let again = app.login("owner@acme.test", common::PASSWORD).await;
+    let again = common::Client::from_login(&again).in_workspace(ws);
+    assert_ne!(again.cookie, owner.cookie);
+    let second = send(&again).await;
+    assert_eq!(second.status, StatusCode::CREATED);
+    assert_eq!(second.headers.get("idempotent-replayed").unwrap(), "true");
+    assert_eq!(invitation_count(&app).await, before + 1);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_request_cut_off_midway_releases_its_key(pool: PgPool) {
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    // A handler that never finishes, behind the real idempotency layer.
+    let router = axum::Router::new()
+        .route(
+            "/hang",
+            axum::routing::post(std::future::pending::<StatusCode>),
+        )
+        .layer(axum::middleware::from_fn_with_state(
+            app.state.clone(),
+            core_api::idempotency::layer,
+        ))
+        .with_state(app.state.clone());
+    let request = Request::post("/hang")
+        .header("cookie", &owner.cookie)
+        .header("x-workspace-id", ws.to_string())
+        .header("idempotency-key", "cut-off")
+        .body(Body::empty())
+        .unwrap();
+    let keys = || async {
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM idempotency_keys WHERE key = 'cut-off'")
+            .fetch_one(&app.owner)
+            .await
+            .unwrap()
+    };
+
+    let running = tokio::spawn(router.oneshot(request));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while keys().await == 0 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the key was never claimed"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    // The timeout fires, or the client goes away: the request is dropped.
+    running.abort();
+    while keys().await != 0 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the key stayed claimed after the request was dropped"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_abandoned_claim_can_be_claimed_again(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (scope, key, hash) = (b"scope".as_slice(), "k", b"request".as_slice());
+    let claim = || core_db::idempotency::claim(&app.state.db, scope, key, hash);
+    assert!(claim().await.unwrap().is_none(), "the first claim is ours");
+    let running = claim().await.unwrap().expect("still running");
+    assert!(running.status.is_none());
+
+    // Its request was cut off without releasing it, long enough ago.
+    sqlx::query("UPDATE idempotency_keys SET created_at = now() - interval '5 minutes'")
+        .execute(&app.owner)
+        .await
+        .unwrap();
+    assert!(claim().await.unwrap().is_none(), "the retry runs");
+}
