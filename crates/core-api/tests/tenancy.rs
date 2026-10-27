@@ -586,6 +586,27 @@ async fn billing_details_need_billing_permissions(pool: PgPool) {
         seen_by_finance.body["billing_contact"]["email"],
         "accounts@acme.test"
     );
+
+    // Nor do the audit log, its export or webhooks give it away; they only
+    // say that it changed.
+    let audit = app.get("/api/v1/audit").signed_in(&admin).send().await.ok();
+    let text = audit.body.to_string();
+    assert!(!text.contains("accounts@acme.test"), "{text}");
+    assert!(text.contains("billing_contact_changed"), "{text}");
+    let csv = app
+        .get("/api/v1/audit/export")
+        .signed_in(&admin)
+        .send()
+        .await
+        .ok();
+    assert!(!csv.body.to_string().contains("accounts@acme.test"));
+    let leaked: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM outbox WHERE payload::text LIKE '%accounts@acme.test%'",
+    )
+    .fetch_one(&app.owner)
+    .await
+    .unwrap();
+    assert_eq!(leaked, 0);
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
