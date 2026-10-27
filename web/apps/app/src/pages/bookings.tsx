@@ -28,6 +28,20 @@ import {
 import { AlertTriangle, ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
+import {
+  changeStatus,
+  checkClashes,
+  createBooking,
+  deleteRecord,
+  fetchBookings,
+  fetchRecord,
+  updateBooking,
+  useOffline,
+  useSyncStatus,
+} from "../data.ts";
+import { isLocalId } from "../offline/store.ts";
+import type { OfflineSync } from "../offline/sync.ts";
+import { isNetworkError } from "../offline/sync.ts";
 import { useSession } from "../session.tsx";
 import {
   type Booking,
@@ -42,7 +56,7 @@ import {
   nextStatuses,
   toLocalInput,
 } from "../work.ts";
-import { Loading, PageError, failureIssues, useSchema, useWorkspaceCurrency } from "./crm.tsx";
+import { Loading, OfflineNote, PageError, failureIssues, useSchema, useWorkspaceCurrency } from "./crm.tsx";
 import { RelationPicker, TalentPicker } from "./pickers.tsx";
 import { QuotesPanel } from "./quotes.tsx";
 import { RelatedTasks } from "./tasks.tsx";
@@ -72,7 +86,17 @@ export function BookingCard({ booking: b }: { booking: Booking }) {
 }
 
 /** A record's history, newest first, a page at a time. */
-export function RecordTimeline({ path, id, schema }: { path: "enquiries" | "bookings"; id: string; schema?: EntitySchema }) {
+export function RecordTimeline({
+  path,
+  id,
+  schema,
+  offline,
+}: {
+  path: "enquiries" | "bookings";
+  id: string;
+  schema?: EntitySchema;
+  offline?: boolean;
+}) {
   const [before, setBefore] = useState<string | null>(null);
   const [older, setOlder] = useState<TimelineEntry[]>([]);
   const timeline = useQuery({
@@ -83,11 +107,17 @@ export function RecordTimeline({ path, id, schema }: { path: "enquiries" | "book
           params: { path: { id }, query: { before: before ?? undefined, limit: 50 } },
         }),
       ),
+    enabled: !offline && !isLocalId(id),
+    retry: (count, e) => !isNetworkError(e) && count < 2,
   });
   const entries = before ? [...older, ...(timeline.data?.entries ?? [])] : (timeline.data?.entries ?? []);
+  const unreachable = offline || isLocalId(id) || (timeline.isError && isNetworkError(timeline.error));
   return (
     <section className="flex flex-col gap-3" aria-label="Activity">
       <h2 className="font-semibold">Activity</h2>
+      {unreachable ? (
+        <p className="text-sm text-muted-foreground">Activity shows when you are online.</p>
+      ) : (
       <Timeline
         entries={entries}
         schema={schema}
@@ -98,6 +128,7 @@ export function RecordTimeline({ path, id, schema }: { path: "enquiries" | "book
           setBefore(timeline.data?.next_before ?? null);
         }}
       />
+      )}
     </section>
   );
 }
@@ -125,28 +156,25 @@ export function validateBookingsSearch(s: Record<string, unknown>): BookingsSear
 export function BookingsPage() {
   const search = useSearch({ from: "/app/bookings" });
   const navigate = useNavigate({ from: "/bookings" });
+  const sync = useOffline();
+  const syncStatus = useSyncStatus();
   const [creating, setCreating] = useState(false);
   const status = search.status ?? FILTERS[0]!.value;
   const upcoming = status === FILTERS[0]!.value;
   const list = useQuery({
     queryKey: ["bookings", "list", status, search.q],
     queryFn: () =>
-      ok(
-        api.GET("/api/v1/bookings", {
-          params: {
-            query: {
-              status: status || undefined,
-              q: search.q,
-              // What is coming up, soonest first; anything else newest first.
-              from: upcoming ? new Date(Date.now() - 86_400_000).toISOString() : undefined,
-              sort: upcoming ? "starts_at" : "-starts_at",
-              limit: 200,
-            },
-          },
-        }),
-      ),
+      fetchBookings(sync, {
+        status,
+        q: search.q,
+        // What is coming up, soonest first; anything else newest first.
+        from: upcoming ? new Date(Date.now() - 86_400_000).toISOString() : undefined,
+        sort: upcoming ? "starts_at" : "-starts_at",
+        limit: 200,
+      }),
     placeholderData: (prev) => prev,
   });
+  const items = (list.data?.data.items ?? []) as Booking[];
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-2">
@@ -174,14 +202,15 @@ export function BookingsPage() {
           <Plus /> Place a hold
         </Button>
       </div>
+      {(list.data?.offline || syncStatus?.online === false) && <OfflineNote />}
       {list.isError && <Alert>{list.error.message}</Alert>}
       {list.isPending ? (
         <Loading />
-      ) : list.data?.items.length === 0 ? (
+      ) : items.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted-foreground">No bookings here.</p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {list.data?.items.map((b) => (
+          {items.map((b) => (
             <li key={b.id}>
               <BookingCard booking={b} />
             </li>
@@ -195,6 +224,7 @@ export function BookingsPage() {
 
 /** The clashes a booking of these talent at this time would have, checked as the form changes. */
 function useClashes(talentIds: string[], startsAt: string | null, endsAt: string | null, exceptId?: string) {
+  const sync = useOffline();
   const [debounced, setDebounced] = useState({ talentIds, startsAt, endsAt });
   useEffect(() => {
     const t = setTimeout(() => setDebounced({ talentIds, startsAt, endsAt }), 300);
@@ -205,17 +235,15 @@ function useClashes(talentIds: string[], startsAt: string | null, endsAt: string
     debounced.talentIds.length > 0 && !!debounced.startsAt && !!debounced.endsAt && debounced.endsAt > debounced.startsAt;
   return useQuery({
     queryKey: ["clashes", debounced, exceptId],
-    queryFn: () =>
-      ok(
-        api.POST("/api/v1/bookings/clash-check", {
-          body: {
-            talent_ids: debounced.talentIds,
-            starts_at: debounced.startsAt!,
-            ends_at: debounced.endsAt!,
-            except_id: exceptId ?? null,
-          },
-        }),
-      ),
+    queryFn: async () =>
+      (
+        await checkClashes(sync, {
+          talent_ids: debounced.talentIds,
+          starts_at: debounced.startsAt!,
+          ends_at: debounced.endsAt!,
+          except_id: exceptId ?? null,
+        })
+      ).data,
     enabled: ready,
   });
 }
@@ -319,6 +347,7 @@ export function NewBookingDialog({
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const sync = useOffline();
   const { workspace } = useSession();
   const currency = useWorkspaceCurrency();
   const day = initial?.day ?? toLocalInput(new Date(Date.now() + 7 * 86_400_000).toISOString()).slice(0, 10);
@@ -342,23 +371,20 @@ export function NewBookingDialog({
   );
 
   const create = async (overrideReason?: string) => {
-    const b = await ok(
-      api.POST("/api/v1/bookings", {
-        body: {
-          title,
-          enquiry_id: initial?.enquiry_id ?? null,
-          status,
-          talent_ids: talent.map((t) => t.id),
-          starts_at: startsAt ?? "",
-          // An all-day booking runs to the start of the day after its last.
-          ends_at: allDay && endsAt ? new Date(new Date(endsAt).getTime() + 86_400_000).toISOString() : (endsAt ?? ""),
-          all_day: allDay,
-          fee,
-          venue_text: venue || null,
-          override_reason: overrideReason ?? null,
-        },
-      }),
-    );
+    const { record } = await createBooking(sync, {
+      title,
+      enquiry_id: initial?.enquiry_id ?? null,
+      status,
+      talent_ids: talent.map((t) => t.id),
+      starts_at: startsAt ?? "",
+      // An all-day booking runs to the start of the day after its last.
+      ends_at: allDay && endsAt ? new Date(new Date(endsAt).getTime() + 86_400_000).toISOString() : (endsAt ?? ""),
+      all_day: allDay,
+      fee,
+      venue_text: venue || null,
+      override_reason: overrideReason ?? null,
+    });
+    const b = record as unknown as Booking;
     await qc.invalidateQueries({ queryKey: ["bookings"] });
     await qc.invalidateQueries({ queryKey: ["calendar"] });
     onClose();
@@ -457,21 +483,16 @@ export function NewBookingDialog({
 }
 
 /** The status buttons for a booking, with the reason and override questions they need. */
-function StatusActions({ booking: b, onChanged }: { booking: Booking; onChanged: (b: Booking) => void }) {
+function StatusActions({ booking: b, onChanged }: { booking: Booking; onChanged: (b: Booking, queued: boolean) => void }) {
+  const sync = useOffline();
   const { workspace } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [override, setOverride] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const send = async (status: BookingStatus, reason?: string, overrideReason?: string) =>
-    onChanged(
-      await ok(
-        api.POST("/api/v1/bookings/{id}/status", {
-          params: { path: { id: b.id } },
-          headers: { "If-Match": `"${b.version}"` },
-          body: { status, reason: reason ?? null, override_reason: overrideReason ?? null },
-        }),
-      ),
-    );
+  const send = async (status: BookingStatus, reason?: string, overrideReason?: string) => {
+    const result = await changeStatus(sync, b, { status, reason, override_reason: overrideReason });
+    onChanged(result.record as unknown as Booking, result.queued);
+  };
   const choose = async (status: BookingStatus) => {
     setError(null);
     let reason: string | undefined;
@@ -519,18 +540,25 @@ export function BookingPage() {
   const { id } = useParams({ from: "/app/bookings/$id" });
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const sync = useOffline();
+  const syncStatus = useSyncStatus();
   const { workspace } = useSession();
   const schema = useSchema("booking");
   const currency = useWorkspaceCurrency();
   const [issues, setIssues] = useState<FieldIssue[]>([]);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<"sent" | "queued" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [override, setOverride] = useState<{ message: string; body: Record<string, unknown> } | null>(null);
   const booking = useQuery({
     queryKey: ["booking", id],
-    queryFn: () => ok(api.GET("/api/v1/bookings/{id}", { params: { path: { id } } })),
+    queryFn: () => fetchRecord(sync, "booking", id),
   });
-  const b = booking.data;
+  // A booking made offline gets its real id once it reaches the server.
+  const renamed = isLocalId(id) ? sync?.renamed.get(id) : undefined;
+  useEffect(() => {
+    if (renamed) void navigate({ to: "/bookings/$id", params: { id: renamed }, replace: true });
+  }, [renamed, navigate]);
+  const b = booking.data?.data as unknown as Booking | undefined;
   const live = !!b && ["hold", "pending", "confirmed"].includes(b.status);
   const clashes = useClashes(
     live ? b.talent.map((t) => t.id) : [],
@@ -543,24 +571,20 @@ export function BookingPage() {
   if (schema.isError) return <PageError error={schema.error} />;
   if (booking.isError || !b) return <PageError error={booking.error ?? new Error("not found")} />;
 
-  const changed = (next: Booking) => {
-    qc.setQueryData(["booking", id], next);
+  const offline = booking.data?.offline || syncStatus?.online === false;
+  const changed = (next: Booking | null, queued = false) => {
+    if (next) qc.setQueryData(["booking", id], { data: next, offline: queued && !navigator.onLine });
     void qc.invalidateQueries({ queryKey: ["bookings"] });
     void qc.invalidateQueries({ queryKey: ["calendar"] });
     void qc.invalidateQueries({ queryKey: ["timeline", "bookings", id] });
     void qc.invalidateQueries({ queryKey: ["clashes"] });
     void qc.invalidateQueries({ queryKey: ["quotes", id] });
   };
-  const patch = async (body: Record<string, unknown>) =>
-    changed(
-      await ok(
-        api.PATCH("/api/v1/bookings/{id}", {
-          params: { path: { id } },
-          headers: { "If-Match": `"${b.version}"` },
-          body: body as never,
-        }),
-      ),
-    );
+  const patch = async (body: Record<string, unknown>) => {
+    const result = await updateBooking(sync, b, body);
+    changed(result.record as unknown as Booking | null, result.queued);
+    return result;
+  };
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 p-4 sm:p-6">
@@ -580,8 +604,9 @@ export function BookingPage() {
           variant="outline"
           onClick={async () => {
             if (!window.confirm(`Delete ${b.title}? Its open quotes are withdrawn.`)) return;
-            await ok(api.DELETE("/api/v1/bookings/{id}", { params: { path: { id } } }));
+            await deleteRecord(sync, "booking", id, b.version);
             await qc.invalidateQueries({ queryKey: ["bookings"] });
+            void qc.invalidateQueries({ queryKey: ["calendar"] });
             void navigate({ to: "/bookings" });
           }}
         >
@@ -629,6 +654,7 @@ export function BookingPage() {
           </>
         )}
       </dl>
+      {offline && <OfflineNote />}
       {live && <ClashList report={clashes.data} />}
       {error && <Alert>{error}</Alert>}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -643,7 +669,8 @@ export function BookingPage() {
               }
             />
           </div>
-          {saved && <Alert tone="success">Saved.</Alert>}
+          {saved === "sent" && <Alert tone="success">Saved.</Alert>}
+          {saved === "queued" && <Alert tone="info">Saved on this device. It will be sent when you are back online.</Alert>}
           <EntityForm
             key={String(b.version)}
             schema={schema.data}
@@ -653,12 +680,12 @@ export function BookingPage() {
             renderRelation={RelationPicker}
             onSubmit={async (body) => {
               setIssues([]);
-              setSaved(false);
+              setSaved(null);
               setError(null);
               if (Object.keys(body).length === 0) return;
               try {
-                await patch(body);
-                setSaved(true);
+                const result = await patch(body);
+                setSaved(result.queued ? "queued" : "sent");
               } catch (err) {
                 if (err instanceof ApiFailure && err.status === 412) {
                   throw new Error("Someone else changed this booking while you were editing. Reload to see their changes.");
@@ -674,13 +701,15 @@ export function BookingPage() {
         </section>
         <section aria-label="Tasks and activity" className="flex flex-col gap-6">
           <RelatedTasks entity="booking" id={id} />
-          <RecordTimeline path="bookings" id={id} schema={schema.data} />
+          <RecordTimeline path="bookings" id={id} schema={schema.data} offline={offline} />
         </section>
       </div>
       {override && (
         <OverrideDialog
           message={override.message}
-          onConfirm={(reason) => patch({ ...override.body, override_reason: reason })}
+          onConfirm={async (reason) => {
+            await patch({ ...override.body, override_reason: reason });
+          }}
           onClose={() => setOverride(null)}
         />
       )}
@@ -690,18 +719,14 @@ export function BookingPage() {
 
 /** Moves a booking to new times, asking for an override reason if it now clashes and the person may give one. */
 export async function reschedule(
+  sync: OfflineSync | null,
   b: Booking,
   times: { starts_at: string; ends_at: string },
   role: string,
 ): Promise<Booking | null> {
-  const send = (overrideReason?: string) =>
-    ok(
-      api.PATCH("/api/v1/bookings/{id}", {
-        params: { path: { id: b.id } },
-        headers: { "If-Match": `"${b.version}"` },
-        body: { ...times, ...(overrideReason && { override_reason: overrideReason }) } as never,
-      }),
-    );
+  const send = async (overrideReason?: string) =>
+    (await updateBooking(sync, b, { ...times, ...(overrideReason && { override_reason: overrideReason }) }))
+      .record as unknown as Booking;
   try {
     return await send();
   } catch (err) {

@@ -1,4 +1,4 @@
-// The device's copy of the CRM and the queue of changes made offline, in
+// The device's copy of the CRM and bookings, and the queue of changes made offline, in
 // IndexedDB (which every Tauri web view has). One database per device,
 // partitioned by workspace; signing out deletes it.
 
@@ -8,20 +8,27 @@ import { type DBSchema, type IDBPDatabase, deleteDB, openDB } from "idb";
 export type EntityName = "contact" | "organisation" | "talent";
 export const OFFLINE_ENTITIES: EntityName[] = ["contact", "organisation", "talent"];
 
+/** The bookings side: kept on the device too, but not CRM records with names and fields. */
+export type WorkEntity = "enquiry" | "booking" | "task" | "availability";
+export const WORK_ENTITIES: WorkEntity[] = ["enquiry", "booking", "task", "availability"];
+
+export type StoredEntity = EntityName | WorkEntity;
+
 export interface StoredRecord {
   ws: string;
-  entity: EntityName;
+  entity: StoredEntity;
   id: string;
   data: RecordJson;
 }
 
-export type OutboxOp = "create" | "update" | "delete";
+/** `status` is a booking's move to another status, which has its own endpoint. */
+export type OutboxOp = "create" | "update" | "delete" | "status";
 export type OutboxState = "pending" | "conflict" | "failed";
 
 export interface OutboxItem {
   seq?: number;
   ws: string;
-  entity: EntityName;
+  entity: StoredEntity;
   op: OutboxOp;
   /** The record's id; `local-…` until a create reaches the server. */
   id: string;
@@ -29,6 +36,8 @@ export interface OutboxItem {
   body: Record<string, unknown>;
   /** The version the change was made against, sent as `If-Match`. */
   version?: number;
+  /** The record's name or title when the change was made, to show in the queue. */
+  label?: string;
   /** Sent as `Idempotency-Key`, the same on every attempt. */
   key: string;
   createdAt: string;
@@ -65,26 +74,26 @@ export const LOCAL_PREFIX = "local-";
 export const isLocalId = (id: string) => id.startsWith(LOCAL_PREFIX);
 export const newLocalId = () => `${LOCAL_PREFIX}${crypto.randomUUID()}`;
 
-export async function allRecords(ws: string, entity: EntityName): Promise<RecordJson[]> {
+export async function allRecords(ws: string, entity: StoredEntity): Promise<RecordJson[]> {
   const rows = await (await db()).getAllFromIndex("records", "by_list", [ws, entity]);
   return rows.map((r) => r.data);
 }
 
-export async function getRecord(ws: string, entity: EntityName, id: string): Promise<RecordJson | undefined> {
+export async function getRecord(ws: string, entity: StoredEntity, id: string): Promise<RecordJson | undefined> {
   return (await (await db()).get("records", [ws, entity, id]))?.data;
 }
 
-export async function putRecords(ws: string, entity: EntityName, records: RecordJson[]): Promise<void> {
+export async function putRecords(ws: string, entity: StoredEntity, records: RecordJson[]): Promise<void> {
   const tx = (await db()).transaction("records", "readwrite");
   await Promise.all([...records.map((data) => tx.store.put({ ws, entity, id: data.id, data })), tx.done]);
 }
 
-export async function deleteRecord(ws: string, entity: EntityName, id: string): Promise<void> {
+export async function deleteRecord(ws: string, entity: StoredEntity, id: string): Promise<void> {
   await (await db()).delete("records", [ws, entity, id]);
 }
 
 /** Replaces a list's records with `records`, keeping any listed in `keep`. */
-export async function replaceAll(ws: string, entity: EntityName, records: RecordJson[], keep: Set<string>): Promise<void> {
+export async function replaceAll(ws: string, entity: StoredEntity, records: RecordJson[], keep: Set<string>): Promise<void> {
   const d = await db();
   const tx = d.transaction("records", "readwrite");
   const existing = await tx.store.index("by_list").getAllKeys([ws, entity]);
@@ -160,6 +169,20 @@ export function applyPatch(record: RecordJson, patch: Record<string, unknown>): 
   };
 }
 
+/** Applies a queued change to a record: changed fields, or a booking's new status. */
+export function applyChange(record: RecordJson, op: OutboxOp, body: Record<string, unknown>, now = new Date().toISOString()): RecordJson {
+  if (op !== "status") return applyPatch(record, body);
+  const status = body.status as string;
+  return {
+    ...record,
+    status,
+    status_changed_at: now,
+    ...(status === "cancelled" && { cancel_reason: (body.reason as string | null | undefined) ?? null }),
+    ...(typeof body.override_reason === "string" &&
+      body.override_reason.trim() && { clash_override: true, override_reason: body.override_reason }),
+  };
+}
+
 export function mergePatches(a: Record<string, unknown>, b: Record<string, unknown>): Record<string, unknown> {
   const merged = { ...a, ...b };
   if (a.custom || b.custom) {
@@ -172,31 +195,67 @@ export function mergePatches(a: Record<string, unknown>, b: Record<string, unkno
  * Adds a change to the queue, folding it into what is already waiting for
  * the same record: edits to a record created offline become part of its
  * creation, repeated edits become one, and deleting a record that never
- * reached the server simply forgets it. Returns the queue as it should be.
+ * reached the server simply forgets it. A booking's status move stays a step
+ * of its own, in order, so edits after it are not folded into what came
+ * before. Returns the queue as it should be.
  */
 export function enqueue(queue: OutboxItem[], next: OutboxItem): OutboxItem[] {
-  const i = queue.findIndex(
-    (q) => q.entity === next.entity && q.id === next.id && q.ws === next.ws && q.state === "pending",
-  );
-  if (i === -1) return [...queue, next];
-  const prev = queue[i] as OutboxItem;
-  const rest = queue.filter((_, j) => j !== i);
+  const same = (q: OutboxItem) => q.entity === next.entity && q.id === next.id && q.ws === next.ws && q.state === "pending";
+  const waiting = queue.filter(same);
+  const last = waiting[waiting.length - 1];
   if (next.op === "update") {
-    if (prev.op === "delete") return queue;
-    return [...rest.slice(0, i), { ...prev, body: mergePatches(prev.body, next.body) }, ...rest.slice(i)];
+    if (!last) return [...queue, next];
+    if (last.op === "delete") return queue;
+    if (last.op === "status") return [...queue, next];
+    return queue.map((q) => (q === last ? { ...q, body: mergePatches(q.body, next.body) } : q));
   }
   if (next.op === "delete") {
-    if (prev.op === "create") return rest;
-    return [...rest.slice(0, i), { ...prev, op: "delete", body: {} }, ...rest.slice(i)];
+    if (waiting.some((q) => q.op === "create")) return queue.filter((q) => !same(q));
+    const first = waiting[0];
+    if (!first) return [...queue, next];
+    // In the first waiting change's place, against the version it was made on.
+    return queue.flatMap((q) => (q === first ? [{ ...q, op: "delete" as const, body: {} }] : same(q) ? [] : [q]));
   }
   return [...queue, next];
 }
 
+/** `value` with every string that is exactly `from` changed to `to`, however deep. */
+export function replaceId<T>(value: T, from: string, to: string): T {
+  if (value === from) return to as T;
+  if (Array.isArray(value)) return value.map((v) => replaceId(v, from, to)) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, replaceId(v, from, to)])) as T;
+  }
+  return value;
+}
+
 /** After a create reaches the server, points everything still queued at its real id. */
 export function rewriteIds(queue: OutboxItem[], from: string, to: string): OutboxItem[] {
-  return queue.map((q) => ({
-    ...q,
-    id: q.id === from ? to : q.id,
-    body: q.body.organisation_id === from ? { ...q.body, organisation_id: to } : q.body,
-  }));
+  return queue.map((q) => ({ ...q, id: q.id === from ? to : q.id, body: replaceId(q.body, from, to) }));
+}
+
+const LOCAL_LINK = /"local-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/;
+
+/** True when fields link to a record created offline that has not reached the server yet. */
+export function linksToLocal(body: Record<string, unknown>): boolean {
+  return LOCAL_LINK.test(JSON.stringify(body));
+}
+
+/** True when a queued change must wait for a record it links to to reach the server. */
+export function waitsForLocal(item: OutboxItem): boolean {
+  return linksToLocal(item.body);
+}
+
+/**
+ * After a change to a record is accepted, the changes queued after it for
+ * the same record were made on top of it, not on top of anyone else's: they
+ * move to the record's new version, so they are not mistaken for conflicts.
+ * After a create (`from` undefined), everything queued for the record moves.
+ */
+export function rebase(queue: OutboxItem[], entity: StoredEntity, id: string, from: number | undefined, to: number): OutboxItem[] {
+  return queue.map((q) =>
+    q.entity === entity && q.id === id && q.state === "pending" && (from === undefined || q.version === from)
+      ? { ...q, version: to }
+      : q,
+  );
 }

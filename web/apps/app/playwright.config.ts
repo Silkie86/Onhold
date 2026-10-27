@@ -26,10 +26,10 @@ export default defineConfig({
   projects: [
     {
       name: "desktop",
-      testIgnore: ["app.spec.ts", "installed.spec.ts"],
+      testIgnore: ["app.spec.ts", "installed*.spec.ts"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
-    { name: "phone", testIgnore: ["app.spec.ts", "installed.spec.ts"], use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 } } },
+    { name: "phone", testIgnore: ["app.spec.ts", "installed*.spec.ts"], use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 } } },
     {
       name: "app",
       testMatch: "app.spec.ts",
@@ -37,7 +37,7 @@ export default defineConfig({
     },
     {
       name: "installed",
-      testMatch: "installed.spec.ts",
+      testMatch: "installed*.spec.ts",
       use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 }, baseURL: installedURL },
     },
   ],

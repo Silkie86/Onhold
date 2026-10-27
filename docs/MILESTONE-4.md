@@ -33,7 +33,7 @@ It does, twice:
 
 ## Skipped, and why
 
-- **Offline copies of bookings in the apps and installed website.** The offline copy still covers contacts, organisations and talent; the bookings screens need a connection. Bringing them into the device copy uses the same machinery and is the next step for "works offline" (Solomon asked for it), but it is a change to the sync engine that deserves its own PR.
+- **Offline copies of bookings in the apps and installed website.** Done straight after, in its own PR: see "Bookings offline" in `MILESTONE-APPS.md`.
 - **Two-way calendar sync** (Google, Microsoft). That is M6; the iCal links give a read-only view now.
 - **Drag between talent lanes, and resizing.** Dragging moves a booking to another day; changing who is booked or how long is done on the booking.
 - **Deposits and invoices from accepted quotes.** M5. The accepted snapshot is what the invoice will be built from.

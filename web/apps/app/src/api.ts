@@ -81,6 +81,17 @@ export const ENTITIES = {
   talent: { entity: "talent", path: "talent", label: "Talent" },
 } as const;
 
+/** Where each kind of record kept on the device lives in the API. */
+export const RECORD_PATHS = {
+  contact: "contacts",
+  organisation: "organisations",
+  talent: "talent",
+  enquiry: "enquiries",
+  booking: "bookings",
+  task: "tasks",
+  availability: "availability",
+} as const;
+
 export type EntityKey = keyof typeof ENTITIES;
 export type EntityPath = (typeof ENTITIES)[EntityKey]["path"];
 

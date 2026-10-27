@@ -17,11 +17,24 @@ import {
   formatMoney,
 } from "@onhold/ui";
 import { ArrowLeft, CalendarPlus, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { ApiFailure, api, ok } from "../api.ts";
+import { useEffect, useState } from "react";
+import { ApiFailure } from "../api.ts";
+import {
+  createRecord,
+  deleteRecord,
+  fetchBookings,
+  fetchEnquiries,
+  fetchRecord,
+  fetchStages,
+  updateRecord,
+  useOffline,
+  useSyncStatus,
+} from "../data.ts";
+import type { OfflineSync } from "../offline/sync.ts";
+import { isLocalId } from "../offline/store.ts";
 import type { Enquiry, Named } from "../work.ts";
 import { BookingCard, NewBookingDialog, RecordTimeline } from "./bookings.tsx";
-import { Loading, PageError, failureIssues, useSchema, useWorkspaceCurrency } from "./crm.tsx";
+import { Loading, OfflineNote, PageError, failureIssues, useSchema, useWorkspaceCurrency } from "./crm.tsx";
 import { RelationPicker, TalentPicker } from "./pickers.tsx";
 import { RelatedTasks } from "./tasks.tsx";
 
@@ -35,28 +48,22 @@ const DEFAULT_STAGES = [
 ];
 
 function useStages() {
+  const sync = useOffline();
   return useQuery({
     queryKey: ["enquiry-stages"],
-    queryFn: async () => {
-      const list = await ok(api.GET("/api/v1/pipelines", { params: { query: { entity: "enquiry" } } }));
-      const pipeline = list.find((p) => p.is_default) ?? list[0];
-      return pipeline ? pipeline.stages.filter((s) => !s.archived) : DEFAULT_STAGES;
-    },
+    queryFn: async () => (await fetchStages(sync)).data ?? DEFAULT_STAGES,
   });
 }
 
-async function moveStage(enquiry: Enquiry, stage: string, lostReason?: string): Promise<Enquiry> {
-  return ok(
-    api.PATCH("/api/v1/enquiries/{id}", {
-      params: { path: { id: enquiry.id } },
-      headers: { "If-Match": `"${enquiry.version}"` },
-      body: { stage, ...(lostReason !== undefined && { lost_reason: lostReason || null }) },
-    }),
-  );
+async function moveStage(sync: OfflineSync | null, enquiry: Enquiry, stage: string, lostReason?: string) {
+  const body = { stage, ...(lostReason !== undefined && { lost_reason: lostReason || null }) };
+  return (await updateRecord(sync, "enquiry", enquiry.id, body, enquiry.version)).record as unknown as Enquiry;
 }
 
 export function EnquiriesPage() {
   const qc = useQueryClient();
+  const sync = useOffline();
+  const status = useSyncStatus();
   const stages = useStages();
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
@@ -64,7 +71,7 @@ export function EnquiriesPage() {
   const [error, setError] = useState<string | null>(null);
   const list = useQuery({
     queryKey: ["enquiries", q],
-    queryFn: () => ok(api.GET("/api/v1/enquiries", { params: { query: { q: q || undefined, limit: 200 } } })),
+    queryFn: () => fetchEnquiries(sync, { q, limit: 200 }),
     placeholderData: (prev) => prev,
   });
 
@@ -72,7 +79,7 @@ export function EnquiriesPage() {
     if (e.stage === stage) return;
     setError(null);
     try {
-      await moveStage(e, stage);
+      await moveStage(sync, e, stage);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -81,7 +88,7 @@ export function EnquiriesPage() {
 
   if (stages.isPending) return <Loading />;
   if (stages.isError) return <PageError error={stages.error} />;
-  const items = list.data?.items ?? [];
+  const items = list.data?.data.items ?? [];
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-6">
@@ -98,6 +105,7 @@ export function EnquiriesPage() {
           <Plus /> New enquiry
         </Button>
       </div>
+      {(list.data?.offline || status?.online === false) && <OfflineNote />}
       {error && <Alert>{error}</Alert>}
       {list.isError && <Alert>{list.error.message}</Alert>}
       <div className="flex gap-3 overflow-x-auto pb-2" role="list" aria-label="Pipeline">
@@ -197,6 +205,7 @@ function NewEnquiryDialog({ onClose }: { onClose: () => void }) {
   const currency = useWorkspaceCurrency();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const sync = useOffline();
   const [talent, setTalent] = useState<Named[]>([]);
   const [issues, setIssues] = useState<FieldIssue[]>([]);
   return (
@@ -220,12 +229,10 @@ function NewEnquiryDialog({ onClose }: { onClose: () => void }) {
             onSubmit={async (body) => {
               setIssues([]);
               try {
-                const e = await ok(
-                  api.POST("/api/v1/enquiries", { body: { ...body, talent_ids: talent.map((t) => t.id) } as never }),
-                );
+                const { record } = await createRecord(sync, "enquiry", { ...body, talent_ids: talent.map((t) => t.id) });
                 await qc.invalidateQueries({ queryKey: ["enquiries"] });
                 onClose();
-                void navigate({ to: "/enquiries/$id", params: { id: e.id } });
+                if (record) void navigate({ to: "/enquiries/$id", params: { id: record.id } });
               } catch (err) {
                 const found = failureIssues(err);
                 if (found) setIssues(found);
@@ -243,44 +250,49 @@ export function EnquiryPage() {
   const { id } = useParams({ from: "/app/enquiries/$id" });
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const sync = useOffline();
+  const status = useSyncStatus();
   const schema = useSchema("enquiry");
   const stages = useStages();
   const currency = useWorkspaceCurrency();
   const [issues, setIssues] = useState<FieldIssue[]>([]);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<"sent" | "queued" | null>(null);
   const [holding, setHolding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const enquiry = useQuery({
     queryKey: ["enquiry", id],
-    queryFn: () => ok(api.GET("/api/v1/enquiries/{id}", { params: { path: { id } } })),
+    queryFn: () => fetchRecord(sync, "enquiry", id),
   });
   const bookings = useQuery({
     queryKey: ["bookings", "enquiry", id],
-    queryFn: () => ok(api.GET("/api/v1/bookings", { params: { query: { enquiry_id: id, limit: 100 } } })),
+    queryFn: async () => (await fetchBookings(sync, { enquiry_id: id, limit: 100 })).data,
   });
+  // An enquiry made offline gets its real id once it reaches the server.
+  const renamed = isLocalId(id) ? sync?.renamed.get(id) : undefined;
+  useEffect(() => {
+    if (renamed) void navigate({ to: "/enquiries/$id", params: { id: renamed }, replace: true });
+  }, [renamed, navigate]);
 
   if (schema.isPending || enquiry.isPending || stages.isPending) return <Loading />;
   if (schema.isError) return <PageError error={schema.error} />;
   if (enquiry.isError) return <PageError error={enquiry.error} />;
-  const e = enquiry.data;
+  const e = enquiry.data.data as unknown as Enquiry;
+  const offline = enquiry.data.offline || status?.online === false;
 
-  const refresh = (next: Enquiry) => {
-    qc.setQueryData(["enquiry", id], next);
+  const refresh = (next: Enquiry | null, queued = false) => {
+    if (next) qc.setQueryData(["enquiry", id], { data: next, offline: queued && !navigator.onLine });
     void qc.invalidateQueries({ queryKey: ["enquiries"] });
     void qc.invalidateQueries({ queryKey: ["timeline", "enquiries", id] });
+  };
+  const save = async (body: Record<string, unknown>) => {
+    const result = await updateRecord(sync, "enquiry", id, body, e.version);
+    refresh(result.record as unknown as Enquiry | null, result.queued);
+    return result;
   };
   const patch = async (body: Record<string, unknown>) => {
     setError(null);
     try {
-      refresh(
-        await ok(
-          api.PATCH("/api/v1/enquiries/{id}", {
-            params: { path: { id } },
-            headers: { "If-Match": `"${e.version}"` },
-            body: body as never,
-          }),
-        ),
-      );
+      await save(body);
     } catch (err) {
       if (err instanceof ApiFailure && err.status === 412) {
         setError("Someone else changed this enquiry while you were looking at it. Reload to see their changes.");
@@ -308,7 +320,10 @@ export function EnquiryPage() {
             const lost = stages.data?.find((s) => s.key === stage)?.outcome === "lost";
             const reason = lost ? window.prompt("Why was it lost? (optional)") : undefined;
             if (reason === null) return;
-            void moveStage(e, stage, reason).then(refresh, (err: Error) => setError(err.message));
+            void moveStage(sync, e, stage, reason).then(
+              (next) => refresh(next),
+              (err: Error) => setError(err.message),
+            );
           }}
         >
           {(stages.data ?? []).map((s) => (
@@ -321,7 +336,7 @@ export function EnquiryPage() {
           variant="outline"
           onClick={async () => {
             if (!window.confirm(`Delete ${e.title}?`)) return;
-            await ok(api.DELETE("/api/v1/enquiries/{id}", { params: { path: { id } } }));
+            await deleteRecord(sync, "enquiry", id, e.version);
             await qc.invalidateQueries({ queryKey: ["enquiries"] });
             void navigate({ to: "/enquiries" });
           }}
@@ -329,6 +344,7 @@ export function EnquiryPage() {
           <Trash2 /> Delete
         </Button>
       </div>
+      {offline && <OfflineNote />}
       {error && <Alert>{error}</Alert>}
       {e.lost_reason && <Alert tone="info">Lost: {e.lost_reason}</Alert>}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -341,7 +357,8 @@ export function EnquiryPage() {
               onChange={(talent) => void patch({ talent_ids: talent.map((t) => t.id) })}
             />
           </div>
-          {saved && <Alert tone="success">Saved.</Alert>}
+          {saved === "sent" && <Alert tone="success">Saved.</Alert>}
+          {saved === "queued" && <Alert tone="info">Saved on this device. It will be sent when you are back online.</Alert>}
           <EntityForm
             key={String(e.version)}
             schema={schema.data}
@@ -351,19 +368,11 @@ export function EnquiryPage() {
             renderRelation={RelationPicker}
             onSubmit={async (body) => {
               setIssues([]);
-              setSaved(false);
+              setSaved(null);
               if (Object.keys(body).length === 0) return;
               try {
-                refresh(
-                  await ok(
-                    api.PATCH("/api/v1/enquiries/{id}", {
-                      params: { path: { id } },
-                      headers: { "If-Match": `"${e.version}"` },
-                      body: body as never,
-                    }),
-                  ),
-                );
-                setSaved(true);
+                const result = await save(body);
+                setSaved(result.queued ? "queued" : "sent");
               } catch (err) {
                 const found = failureIssues(err);
                 if (found) setIssues(found);
@@ -395,7 +404,7 @@ export function EnquiryPage() {
         </section>
         <section aria-label="Tasks and activity" className="flex flex-col gap-6">
           <RelatedTasks entity="enquiry" id={id} />
-          <RecordTimeline path="enquiries" id={id} schema={schema.data} />
+          <RecordTimeline path="enquiries" id={id} schema={schema.data} offline={offline} />
         </section>
       </div>
       {holding && (

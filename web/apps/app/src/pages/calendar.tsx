@@ -7,8 +7,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Alert, Button, NativeSelect, Spinner, cn } from "@onhold/ui";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { api, ok } from "../api.ts";
-import { fetchList, useOffline } from "../data.ts";
+import { fetchCalendar, fetchList, useOffline, useSyncStatus } from "../data.ts";
 import { useSession } from "../session.tsx";
 import {
   type Availability,
@@ -26,6 +25,7 @@ import {
   startOfWeek,
 } from "../work.ts";
 import { NewBookingDialog, reschedule } from "./bookings.tsx";
+import { OfflineNote } from "./crm.tsx";
 
 type View = "month" | "week" | "agenda";
 
@@ -84,14 +84,10 @@ export function CalendarPage() {
   const [creatingOn, setCreatingOn] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const status = useSyncStatus();
   const calendar = useQuery({
     queryKey: ["calendar", from.toISOString(), to.toISOString(), search.talent],
-    queryFn: () =>
-      ok(
-        api.GET("/api/v1/calendar", {
-          params: { query: { from: from.toISOString(), to: to.toISOString(), talent_id: search.talent } },
-        }),
-      ),
+    queryFn: () => fetchCalendar(sync, { from: from.toISOString(), to: to.toISOString(), talent_id: search.talent }),
     placeholderData: (prev) => prev,
   });
   const talent = useQuery({
@@ -101,13 +97,13 @@ export function CalendarPage() {
 
   const go = (next: Partial<CalendarSearch>) => void navigate({ search: { ...search, ...next }, replace: true });
   const move = async (bookingId: string, toDay: Date) => {
-    const b = calendar.data?.bookings.find((x) => x.id === bookingId);
+    const b = calendar.data?.data.bookings.find((x) => x.id === bookingId);
     if (!b) return;
     const by = daysBetween(new Date(b.starts_at), toDay);
     if (by === 0) return;
     setError(null);
     try {
-      await reschedule(b, shiftByDays(b.starts_at, b.ends_at, by), workspace.role);
+      await reschedule(sync, b, shiftByDays(b.starts_at, b.ends_at, by), workspace.role);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -115,8 +111,8 @@ export function CalendarPage() {
     void qc.invalidateQueries({ queryKey: ["booking", bookingId] });
   };
 
-  const bookings = calendar.data?.bookings ?? [];
-  const availability = calendar.data?.availability ?? [];
+  const bookings = calendar.data?.data.bookings ?? [];
+  const availability = calendar.data?.data.availability ?? [];
 
   return (
     <div className="flex flex-col gap-3 p-4 sm:p-6">
@@ -164,6 +160,7 @@ export function CalendarPage() {
         </Button>
       </div>
       <Legend />
+      {(calendar.data?.offline || status?.online === false) && <OfflineNote />}
       {error && <Alert>{error}</Alert>}
       {calendar.isError && <Alert>{calendar.error.message}</Alert>}
       {view === "month" && (
