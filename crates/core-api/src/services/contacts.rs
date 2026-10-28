@@ -329,6 +329,11 @@ pub(crate) fn check_phones(check: &mut Check, phones: &[String]) -> Vec<String> 
 /// Full web addresses without repeats: `instagram.com/x` becomes
 /// `https://instagram.com/x`; anything that is not a web page is refused.
 pub(crate) fn check_links(check: &mut Check, links: &[String]) -> Vec<String> {
+    // Far too many is refused before anything is parsed or compared.
+    if links.len() > 2 * MAX_LINKS {
+        check.issue("links", format!("give at most {MAX_LINKS} links"));
+        return Vec::new();
+    }
     let mut out: Vec<String> = Vec::new();
     for l in links {
         let l = l.trim();

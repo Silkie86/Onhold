@@ -30,12 +30,41 @@ CREATE INDEX organisations_country ON organisations (workspace_id, country_code)
 CREATE INDEX organisations_follow_up ON organisations (workspace_id, follow_up_on)
     WHERE follow_up_on IS NOT NULL AND deleted_at IS NULL;
 
--- Addresses saved before this whose country is already a two-letter code.
--- Others get their country the next time they are saved or imported.
-UPDATE organisations
-SET country_code = upper(btrim(addresses -> 0 ->> 'country')),
-    city = nullif(btrim(addresses -> 0 ->> 'city'), '')
-WHERE btrim(addresses -> 0 ->> 'country') ~* '^[a-z]{2}$';
+-- Addresses saved before this whose country is already a country code (or
+-- "UK"), read from the first address with a country, as the app does.
+-- Others get their country the next time they are saved or imported. Not
+-- a change anyone made, so versions and update times are left alone.
+ALTER TABLE organisations DISABLE TRIGGER organisations_updated_at, DISABLE TRIGGER organisations_version;
+WITH first AS (
+    SELECT DISTINCT ON (o.id) o.id,
+           upper(btrim(a.value ->> 'country')) AS country,
+           nullif(btrim(a.value ->> 'city'), '') AS city
+    FROM organisations o, jsonb_array_elements(o.addresses) WITH ORDINALITY AS a (value, n)
+    WHERE jsonb_typeof(o.addresses) = 'array'
+      AND (nullif(btrim(a.value ->> 'country'), '') IS NOT NULL OR nullif(btrim(a.value ->> 'city'), '') IS NOT NULL)
+    ORDER BY o.id, a.n
+)
+UPDATE organisations o
+SET country_code = CASE first.country WHEN 'UK' THEN 'GB' ELSE first.country END,
+    city = first.city
+FROM first
+WHERE o.id = first.id
+  AND CASE first.country WHEN 'UK' THEN 'GB' ELSE first.country END = ANY (
+        ARRAY[
+          'AD','AE','AF','AG','AI','AL','AM','AO','AQ','AR','AS','AT','AU','AW','AX','AZ','BA','BB','BD','BE',
+          'BF','BG','BH','BI','BJ','BL','BM','BN','BO','BQ','BR','BS','BT','BV','BW','BY','BZ','CA','CC','CD',
+          'CF','CG','CH','CI','CK','CL','CM','CN','CO','CR','CU','CV','CW','CX','CY','CZ','DE','DJ','DK','DM',
+          'DO','DZ','EC','EE','EG','EH','ER','ES','ET','FI','FJ','FK','FM','FO','FR','GA','GB','GD','GE','GF',
+          'GG','GH','GI','GL','GM','GN','GP','GQ','GR','GS','GT','GU','GW','GY','HK','HM','HN','HR','HT','HU',
+          'ID','IE','IL','IM','IN','IO','IQ','IR','IS','IT','JE','JM','JO','JP','KE','KG','KH','KI','KM','KN',
+          'KP','KR','KW','KY','KZ','LA','LB','LC','LI','LK','LR','LS','LT','LU','LV','LY','MA','MC','MD','ME',
+          'MF','MG','MH','MK','ML','MM','MN','MO','MP','MQ','MR','MS','MT','MU','MV','MW','MX','MY','MZ','NA',
+          'NC','NE','NF','NG','NI','NL','NO','NP','NR','NU','NZ','OM','PA','PE','PF','PG','PH','PK','PL','PM',
+          'PN','PR','PS','PT','PW','PY','QA','RE','RO','RS','RU','RW','SA','SB','SC','SD','SE','SG','SH','SI',
+          'SJ','SK','SL','SM','SN','SO','SR','SS','ST','SV','SX','SY','SZ','TC','TD','TF','TG','TH','TJ','TK',
+          'TL','TM','TN','TO','TR','TT','TV','TW','TZ','UA','UG','UM','US','UY','UZ','VA','VC','VE','VG','VI',
+          'VN','VU','WF','WS','XK','YE','YT','ZA','ZM','ZW']);
+ALTER TABLE organisations ENABLE TRIGGER organisations_updated_at, ENABLE TRIGGER organisations_version;
 
 -- Web pages and social profiles: a website, Instagram, LinkedIn…
 ALTER TABLE contacts

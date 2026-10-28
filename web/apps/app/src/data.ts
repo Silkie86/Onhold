@@ -58,6 +58,8 @@ export function useSyncStatus(): SyncStatus | null {
 export interface Fetched<T> {
   data: T;
   offline: boolean;
+  /** The device's copy, shown because changes to it are still waiting to be sent. */
+  queued?: boolean;
 }
 
 /** Thrown when the app is offline and the device has no copy to show. */
@@ -149,7 +151,7 @@ export async function fetchRecord(sync: OfflineSync | null, entity: StoredEntity
   if (sync && (isLocalId(id) || (await sync.hasQueued(id)))) {
     // Changes are still waiting to be sent: the device's copy is the one to show.
     const local = await getRecord(sync.ws, entity, id);
-    if (local) return { data: local, offline: !navigator.onLine };
+    if (local) return { data: local, offline: !navigator.onLine, queued: true };
   }
   return serverOrDevice(
     sync,

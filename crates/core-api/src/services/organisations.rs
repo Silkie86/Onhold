@@ -442,7 +442,14 @@ pub(crate) fn place(addresses: &Value) -> (Option<String>, Option<String>) {
         .country
         .as_deref()
         .and_then(core_engines::countries::find)
-        .or_else(|| a.city.as_deref().and_then(core_engines::countries::find));
+        // A city is only trusted when it names one place outright, not as
+        // a near miss of a country's name.
+        .or_else(|| {
+            a.city
+                .as_deref()
+                .and_then(core_engines::countries::find)
+                .filter(|f| f.how != core_engines::countries::How::Typo && f.others.is_empty())
+        });
     let city = a
         .city
         .as_deref()
@@ -477,6 +484,11 @@ fn check_status(check: &mut Check, s: &PitchingSettings, key: Option<&str>) -> O
 /// Names of acts or things bought from others: trimmed, without repeats
 /// (whatever their case), each at most 100 characters.
 fn check_bought(check: &mut Check, names: &[String]) -> Vec<String> {
+    // Far too many is refused before anything is compared.
+    if names.len() > 2 * MAX_BOUGHT {
+        check.issue("buys_from_others", format!("name at most {MAX_BOUGHT}"));
+        return Vec::new();
+    }
     let mut out: Vec<String> = Vec::new();
     for n in names {
         let n = n.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -506,6 +518,10 @@ async fn check_items(
     field: &str,
     items: &[ItemInput],
 ) -> ApiResult<Vec<(Option<Uuid>, Option<Uuid>)>> {
+    if items.len() > 2 * MAX_ITEMS {
+        check.issue(field, format!("name at most {MAX_ITEMS}"));
+        return Ok(Vec::new());
+    }
     let mut out: Vec<ItemInput> = Vec::new();
     for i in items {
         if !out.contains(i) {
@@ -893,12 +909,14 @@ pub(crate) async fn advance_in_tx(tx: &mut Tx, ctx: &Ctx, id: Uuid, deal: Deal) 
                 .collect(),
         ),
     };
+    let listed: Vec<String> = settings.statuses.iter().map(|s| s.key.clone()).collect();
     let changed = core_db::organisations::advance(
         tx,
         id,
         relationship,
         status.map(|s| s.key.as_str()),
         &replaces,
+        &listed,
         ctx.user_id(),
     )
     .await?;

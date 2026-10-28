@@ -457,7 +457,14 @@ export function EntityRecordPage() {
   const record = useQuery({
     queryKey: ["record", entity.entity, id],
     queryFn: () => fetchRecord(sync, entity.entity, id),
+    // Enquiries and bookings move organisations along on the server, so a
+    // copy from a moment ago may be a version behind.
+    refetchOnMount: "always",
   });
+  // The details form starts again when the record changes, except after a
+  // change to the pitching lists, which would throw away what is typed.
+  const [formKey, setFormKey] = useState<string | null>(null);
+  useEffect(() => setFormKey(null), [id]);
   // A record created offline gets its real id once it reaches the server.
   const renamed = isLocalId(id) ? sync?.renamed.get(id) : undefined;
   useEffect(() => {
@@ -526,7 +533,7 @@ export function EntityRecordPage() {
           )}
           {entity.entity === "contact" && <QuickCopy contact={r} />}
           <EntityForm
-            key={String(r.version)}
+            key={`${id}:${formKey ?? String(r.version)}`}
             schema={schema.data}
             record={r}
             issues={issues}
@@ -540,6 +547,7 @@ export function EntityRecordPage() {
                 const result = await updateRecord(sync, entity.entity, id, body, Number(r.version ?? 0));
                 qc.setQueryData(["record", entity.entity, id], { data: result.record, offline: result.queued && !navigator.onLine });
                 setSaved(result.queued ? "queued" : "sent");
+                setFormKey(null);
                 void qc.invalidateQueries({ queryKey: ["timeline", entity.entity, id] });
                 void qc.invalidateQueries({ queryKey: ["list", entity.entity] });
               } catch (e) {
@@ -566,13 +574,16 @@ export function EntityRecordPage() {
           {entity.entity === "organisation" && <OrganisationContacts organisation={r} />}
           {entity.entity === "organisation" &&
             setup.has("pitching") &&
-            (offline || isLocalId(id) ? (
-              <p className="text-sm text-muted-foreground">Pitching shows when you are online.</p>
+            (offline || isLocalId(id) || record.data.queued ? (
+              <p className="text-sm text-muted-foreground">
+                {record.data.queued ? "Pitching shows once your changes here are sent." : "Pitching shows when you are online."}
+              </p>
             ) : (
               <OrganisationPitching
                 organisation={r}
                 canWrite={schema.data.can_write}
                 onSaved={(after) => {
+                  setFormKey((k) => k ?? String(r.version));
                   qc.setQueryData(["record", entity.entity, id], { data: after, offline: false });
                   void qc.invalidateQueries({ queryKey: ["timeline", entity.entity, id] });
                 }}
@@ -670,15 +681,29 @@ function OrganisationContacts({ organisation }: { organisation: RecordJson }) {
 
 /** A contact's first number, with its country code when it can be told. */
 function firstPhone(c: RecordJson): string | null {
+  return phonesOf(c)[0] ?? null;
+}
+
+/**
+ * A contact's numbers, with their country code when the server worked them
+ * out from these numbers (a change still on this device has none yet).
+ */
+function phonesOf(c: RecordJson): string[] {
+  const phones = (c.phones as string[] | undefined) ?? [];
   const intl = c.phones_international as string[] | undefined;
-  const phones = c.phones as string[] | undefined;
-  return intl?.[0] ?? phones?.[0] ?? null;
+  return intl && intl.length === phones.length ? intl : phones;
+}
+
+/** What to dial: the number up to anything that is not part of it ("ext 12", "/ 0770…"). */
+export function dialable(phone: string): string {
+  const number = phone.split(/[^\d+\s().-]/)[0] ?? "";
+  return number.replace(/[^\d+]/g, "");
 }
 
 /** A contact's emails, numbers and links, each a tap away from the clipboard. */
 function QuickCopy({ contact }: { contact: RecordJson }) {
   const emails = (contact.emails as string[] | undefined) ?? [];
-  const phones = (contact.phones_international as string[] | undefined) ?? (contact.phones as string[] | undefined) ?? [];
+  const phones = phonesOf(contact);
   const links = (contact.links as string[] | undefined) ?? [];
   if (emails.length + phones.length + links.length === 0) return null;
   const row = (kind: string, value: string, href: string) => (
@@ -693,7 +718,7 @@ function QuickCopy({ contact }: { contact: RecordJson }) {
     <section aria-label="Quick copy" className="flex flex-col gap-1 rounded-md border p-3 text-sm">
       <ul className="flex flex-col gap-0.5">
         {emails.map((e) => row("email", e, `mailto:${e}`))}
-        {phones.map((p) => row("phone", p, `tel:${p.replace(/[^\d+]/g, "")}`))}
+        {phones.map((p) => row("phone", p, `tel:${dialable(p)}`))}
         {links.map((l) => row("link", l, l))}
       </ul>
     </section>

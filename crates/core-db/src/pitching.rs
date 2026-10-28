@@ -25,6 +25,18 @@ pub async fn settings(conn: &mut PgConnection) -> Result<Option<Row>> {
     .await?)
 }
 
+/// Holds the workspace's settings until the transaction ends, so a version
+/// read after this is still current when the settings are saved, even
+/// before their first save made a row to lock.
+pub async fn lock(conn: &mut PgConnection) -> Result<()> {
+    sqlx::query!(
+        "SELECT pg_advisory_xact_lock(hashtextextended('pitching_settings:' || app_workspace_id()::text, 0))"
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 pub async fn save(conn: &mut PgConnection, settings: &Value, by: Option<UserId>) -> Result<()> {
     sqlx::query!(
         r#"INSERT INTO pitching_settings (workspace_id, settings, updated_by)

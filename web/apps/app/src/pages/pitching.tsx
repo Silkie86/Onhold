@@ -34,6 +34,14 @@ function failure(e: unknown): string {
   return e instanceof ApiFailure || e instanceof Error ? e.message : "Something went wrong.";
 }
 
+/**
+ * A key for a new status or region. It carries the time, so it never
+ * matches one removed earlier, which organisations may still hold.
+ */
+export function newKey(prefix: string, taken: string[], now = Date.now()): string {
+  return keyFor(`${prefix}_${now.toString(36)}`, taken);
+}
+
 /** A key from a name, unlike any already taken: "North America" → `north_america`. */
 export function keyFor(name: string, taken: string[]): string {
   const base = keyFrom(name).slice(0, 34) || "item";
@@ -54,6 +62,8 @@ export function usePitchingSettings(enabled = true) {
 
 export function PitchingSettingsPage() {
   const settings = usePitchingSettings();
+  // Kept here: the form starts again from what was saved.
+  const [saved, setSaved] = useState(false);
   if (settings.isPending) {
     return (
       <div className="flex justify-center p-10">
@@ -62,10 +72,28 @@ export function PitchingSettingsPage() {
     );
   }
   if (settings.isError) return <Alert className="m-4">{settings.error.message}</Alert>;
-  return <SettingsForm key={settings.data.version} saved={settings.data} />;
+  return (
+    <SettingsForm
+      key={settings.data.version}
+      saved={settings.data}
+      justSaved={saved}
+      onSaved={() => setSaved(true)}
+      onChange={() => setSaved(false)}
+    />
+  );
 }
 
-function SettingsForm({ saved }: { saved: View }) {
+function SettingsForm({
+  saved,
+  justSaved,
+  onSaved,
+  onChange,
+}: {
+  saved: View;
+  justSaved: boolean;
+  onSaved: () => void;
+  onChange: () => void;
+}) {
   const { workspace } = useSession();
   const admin = workspace.role === "owner" || workspace.role === "admin";
   const setup = useSetup();
@@ -76,7 +104,6 @@ function SettingsForm({ saved }: { saved: View }) {
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
 
   const regionOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -87,7 +114,9 @@ function SettingsForm({ saved }: { saved: View }) {
   const shown = q ? saved.countries.filter((c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase() === q) : saved.countries;
   const unplaced = saved.countries.filter((c) => !regionOf.has(c.code)).length;
 
-  const changed = () => setDone(false);
+  const changed = () => {
+    if (justSaved) onChange();
+  };
   const moveCountry = (code: string, to: string) => {
     changed();
     setRegions((rs) =>
@@ -127,10 +156,10 @@ function SettingsForm({ saved }: { saved: View }) {
           body: { regions, statuses, items },
         }),
       );
+      onSaved();
       qc.setQueryData(["pitching-settings"], after);
       // Region and status choices on organisations come from these.
       void qc.invalidateQueries({ queryKey: ["schema"] });
-      setDone(true);
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 412) setError("Someone else changed these while you were editing. Reload to see their changes.");
       else setError(failure(e));
@@ -258,7 +287,7 @@ function SettingsForm({ saved }: { saved: View }) {
                 changed();
                 setStatuses((xs) => [
                   ...xs,
-                  { key: keyFor("status", xs.map((x) => x.key)), label: "", colour: "blue", meaning: "other" },
+                  { key: newKey("status", xs.map((x) => x.key)), label: "", colour: "blue", meaning: "other" },
                 ]);
               }}
             >
@@ -319,7 +348,7 @@ function SettingsForm({ saved }: { saved: View }) {
               size="sm"
               onClick={() => {
                 changed();
-                setRegions((xs) => [...xs, { key: keyFor(`region ${xs.length + 1}`, xs.map((x) => x.key)), name: "", countries: [] }]);
+                setRegions((xs) => [...xs, { key: newKey("region", xs.map((x) => x.key)), name: "", countries: [] }]);
               }}
             >
               <Plus /> Add a region
@@ -360,7 +389,7 @@ function SettingsForm({ saved }: { saved: View }) {
       </Card>
 
       {error && <Alert>{error}</Alert>}
-      {done && <Alert tone="success">Saved.</Alert>}
+      {justSaved && <Alert tone="success">Saved.</Alert>}
       {admin && (
         <div>
           <Button onClick={() => void save()} disabled={busy}>

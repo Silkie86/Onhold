@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { contactSchema } from "../fixtures.ts";
-import { EntityForm, formBody } from "./entity-form.tsx";
+import { EntityForm, formBody, parseList } from "./entity-form.tsx";
 
 test("a new record sends what was filled in, custom fields under custom", async () => {
   const sent: Record<string, unknown>[] = [];
@@ -56,4 +56,9 @@ test("someone who cannot write sees the values but no buttons", () => {
   );
   expect((screen.getByLabelText(/^Name/) as HTMLInputElement).disabled).toBe(true);
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+});
+
+test("web addresses are split on spaces, so commas in them survive", () => {
+  expect(parseList("a, b\nc")).toEqual(["a", "b", "c"]);
+  expect(parseList("example.com/a,b  instagram.com/x", true)).toEqual(["example.com/a,b", "instagram.com/x"]);
 });

@@ -232,18 +232,36 @@ pub fn find(text: &str) -> Option<Found> {
         .to_lowercase()
         .replace(" and ", "/")
         .replace(" or ", "/");
-    let parts: Vec<(usize, How)> = lowered
+    let parts: Vec<(usize, How, bool)> = lowered
         .split(['/', ',', ';', '&', '+', '|', '(', ')', '\\'])
-        .filter_map(find_one)
+        .filter_map(|part| {
+            let (i, how) = find_one(part)?;
+            Some((i, how, key(part).chars().count() <= 2))
+        })
         .collect();
-    let rank = |h: How| match h {
+    // Next to a city, a bare two-letter code is more likely a state or
+    // province ("Los Angeles, CA") than a country.
+    let with_city = parts.iter().any(|(_, how, _)| *how == How::City);
+    let rank = |how: How, short: bool| match how {
+        How::Name if short && with_city => 2,
         How::Name => 0,
         How::City => 1,
-        How::Typo => 2,
+        How::Typo => 3,
     };
-    let &(first, how) = parts.iter().min_by_key(|(_, h)| rank(*h))?;
+    // Commas run from the most to the least particular ("Tbilisi, Georgia,
+    // USA" is in the USA), so the last of equals wins there; otherwise the
+    // first ("UK & Ireland").
+    let last_wins = lowered.contains([',', '(']);
+    let &(first, how, _) = parts
+        .iter()
+        .enumerate()
+        .min_by_key(|(at, (_, how, short))| {
+            let order = if last_wins { parts.len() - at } else { *at };
+            (rank(*how, *short), order)
+        })
+        .map(|(_, p)| p)?;
     let mut others = Vec::new();
-    for (i, _) in &parts {
+    for (i, _, _) in &parts {
         let c = &t.countries[*i];
         if *i != first && !others.contains(&c) {
             others.push(c);
@@ -257,21 +275,45 @@ pub fn find(text: &str) -> Option<Found> {
 }
 
 /// A phone number in international form ("+44 7700 900123"), when it can be
-/// told for sure: it already starts with + or 00, or it is a national number
-/// of `country` that starts with the country's trunk prefix (0), or a
-/// ten-digit North American number. Spacing after the code is kept.
+/// told for sure: it already starts with + or the country's prefix for
+/// calling abroad (00 in most places), or it is a national number of
+/// `country` that starts with the country's trunk prefix (0), or a
+/// ten-digit North American number. Spacing after the code is kept; a
+/// number with anything else in it (an extension, a second number) is left
+/// as it is.
 pub fn international_phone(phone: &str, country: Option<&str>) -> Option<String> {
     let p = phone.trim();
-    if p.starts_with('+') {
-        return Some(p.to_owned());
+    if !p
+        .chars()
+        .all(|c| c.is_ascii_digit() || " -.()+".contains(c))
+    {
+        return None;
     }
-    if let Some(rest) = p.strip_prefix("00") {
+    if let Some(rest) = p.strip_prefix('+') {
+        // "+44 (0)20…": the 0 is not dialled from abroad.
+        let code_len = rest.chars().take_while(char::is_ascii_digit).count();
+        let (code, after) = rest.split_at(code_len);
+        return Some(match after.trim_start().strip_prefix("(0)") {
+            Some(national) if (1..=3).contains(&code_len) => {
+                format!("+{code} {}", national.trim_start())
+            }
+            _ => p.to_owned(),
+        });
+    }
+    let c = country.and_then(by_code);
+    let abroad = match c {
+        Some(c) if c.calling_code == "1" => "011",
+        Some(c) if c.code == "AU" => "0011",
+        Some(c) if c.code == "JP" => "010",
+        _ => "00",
+    };
+    if let Some(rest) = p.strip_prefix(abroad) {
         let rest = rest.trim_start();
         return rest
             .starts_with(|c: char| c.is_ascii_digit() && c != '0')
             .then(|| format!("+{rest}"));
     }
-    let c = by_code(country?)?;
+    let c = c?;
     let digits: String = p.chars().filter(char::is_ascii_digit).collect();
     if c.calling_code == "1" {
         return (digits.len() == 10 && !digits.starts_with(['0', '1'])).then(|| format!("+1 {p}"));
@@ -365,15 +407,25 @@ mod tests {
         let f = find("NZ/Aus").expect("known");
         assert_eq!(f.country.code, "NZ");
         assert_eq!(f.others.iter().map(|c| c.code).collect::<Vec<_>>(), ["AU"]);
-        let f = find("London, UK").expect("known");
+        let f = find("London, England").expect("known");
         // The country part wins over the city part, and both are the same.
         assert_eq!((f.country.code, f.how), ("GB", How::Name));
         assert!(f.others.is_empty());
+        assert_eq!(code("London, UK"), Some("GB"));
         let f = find("Melbourne (Aus)").expect("known");
         assert_eq!(f.country.code, "AU");
         let f = find("UK & Ireland").expect("known");
         assert_eq!(f.country.code, "GB");
         assert_eq!(f.others[0].code, "IE");
+        // A state next to a city is not taken for a country.
+        assert_eq!(code("Los Angeles, CA"), Some("US"));
+        assert_eq!(code("Vancouver, CA"), Some("CA"));
+        // Commas end with the country.
+        assert_eq!(code("Georgia, USA"), Some("US"));
+        // Reference-book names with the qualifier after a comma.
+        assert_eq!(code("Congo, Dem. Rep."), Some("CD"));
+        assert_eq!(code("Korea, North"), Some("KP"));
+        assert_eq!(code("Hong Kong SAR, China"), Some("HK"));
     }
 
     #[test]
@@ -423,5 +475,28 @@ mod tests {
         assert_eq!(international_phone("7700 900123", Some("GB")), None);
         assert_eq!(international_phone("555 0199", Some("US")), None);
         assert_eq!(international_phone("000 123", None), None);
+        // The trunk 0 in brackets is not dialled from abroad.
+        assert_eq!(
+            international_phone("+44 (0)20 7946 0000", None).as_deref(),
+            Some("+44 20 7946 0000")
+        );
+        // Each country's own prefix for calling abroad.
+        assert_eq!(
+            international_phone("0011 44 20 7946 0000", Some("AU")).as_deref(),
+            Some("+44 20 7946 0000")
+        );
+        assert_eq!(
+            international_phone("011 44 20 7946 0000", Some("US")).as_deref(),
+            Some("+44 20 7946 0000")
+        );
+        // Extensions and second numbers are left as typed.
+        assert_eq!(
+            international_phone("020 7946 0000 ext 12", Some("GB")),
+            None
+        );
+        assert_eq!(
+            international_phone("020 7946 0000 / 07700 900123", Some("GB")),
+            None
+        );
     }
 }

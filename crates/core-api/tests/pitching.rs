@@ -317,6 +317,37 @@ async fn deals_move_organisations_along_by_themselves(pool: PgPool) {
     assert_eq!(c["relationship"], "client");
     assert_eq!(c["status"], "booked");
 
+    // A status the workspace no longer lists counts as none, so it gives way.
+    let bar = organisation(
+        &app,
+        &owner,
+        json!({ "name": "Owl Bar", "status": "talking" }),
+    )
+    .await;
+    let bar_id = bar["id"].as_str().unwrap().to_owned();
+    app.put("/api/v1/pitching/settings")
+        .signed_in(&owner)
+        .header("If-Match", "\"0\"")
+        .json(json!({
+            "statuses": [
+                { "key": "booked", "label": "Booked", "colour": "green", "meaning": "booked" },
+                { "key": "in_talks", "label": "In talks", "colour": "amber", "meaning": "talking" }
+            ]
+        }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(read(bar_id.clone()).await["status"], Value::Null);
+    post(
+        &app,
+        &owner,
+        "/api/v1/enquiries",
+        json!({ "title": "Quiz night", "organisation_id": bar_id }),
+    )
+    .await
+    .ok();
+    assert_eq!(read(bar_id).await["status"], "in_talks");
+
     // Each move is an ordinary, audited change.
     let actions = app.audit_actions(ws).await;
     assert!(

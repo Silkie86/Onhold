@@ -364,6 +364,7 @@ pub async fn update(
     ctx.authorize(Permission::ConfigWrite)?;
     let checked = check_settings(input)?;
     let mut tx = begin(state, ctx).await?;
+    core_db::pitching::lock(&mut tx).await?;
     let (before, version) = settings_in(&mut tx).await?;
     check_version(version, if_match)?;
     let value = serde_json::to_value(&checked).map_err(crate::error::ApiError::internal)?;

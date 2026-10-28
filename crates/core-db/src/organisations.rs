@@ -431,23 +431,27 @@ pub async fn advance(
     relationship: &str,
     status_key: Option<&str>,
     replace_statuses: &[String],
+    listed_statuses: &[String],
     by: Option<UserId>,
 ) -> Result<bool> {
+    // A status no longer listed reads as none, so it gives way too.
     let done = sqlx::query!(
         r#"UPDATE organisations
            SET relationship = CASE WHEN relationship = 'client' THEN relationship ELSE $2 END,
                status_key = CASE WHEN $3::text IS NOT NULL
-                                  AND (status_key IS NULL OR status_key = ANY($4)) THEN $3 ELSE status_key END,
+                                  AND (status_key IS NULL OR status_key = ANY($4) OR NOT (status_key = ANY($6)))
+                                 THEN $3 ELSE status_key END,
                updated_by = $5
            WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL
              AND (relationship IS DISTINCT FROM (CASE WHEN relationship = 'client' THEN relationship ELSE $2 END)
                   OR ($3::text IS NOT NULL AND status_key IS DISTINCT FROM $3
-                      AND (status_key IS NULL OR status_key = ANY($4))))"#,
+                      AND (status_key IS NULL OR status_key = ANY($4) OR NOT (status_key = ANY($6)))))"#,
         id,
         relationship,
         status_key,
         replace_statuses,
-        by.map(|u| u.0)
+        by.map(|u| u.0),
+        listed_statuses
     )
     .execute(conn)
     .await?;
