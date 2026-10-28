@@ -5,7 +5,7 @@ use chrono::{Duration as ChronoDuration, Utc};
 use core_db::Tx;
 use core_domain::authz::RequestMeta;
 use core_domain::crypto::{hash_token, new_token};
-use core_domain::{Actor, Ctx, Role, UserId, WorkspaceId};
+use core_domain::{Actor, Ctx, Permission, Role, UserId, WorkspaceId};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -594,7 +594,21 @@ pub async fn join_from_invitation(
         permissions: Default::default(),
         meta: meta.clone(),
     };
-    if core_db::members::role_of(tx, user).await?.is_none() {
+    let existing = core_db::members::role_of(tx, user).await?;
+    let talent_id = core_db::portal::invitation_talent(tx, inv.invitation_id).await?;
+    // Someone already here in a role with no portal would gain a link that
+    // leads nowhere.
+    if let (Some(role), Some(_)) = (existing, talent_id)
+        && !core_db::workspaces::role_permissions(tx, role)
+            .await?
+            .contains(&Permission::PortalUse)
+    {
+        return Err(ApiError::conflict(
+            "already_member",
+            "you are already in this workspace in a role without the talent portal; ask them to change your role",
+        ));
+    }
+    if existing.is_none() {
         let membership =
             core_db::members::insert(tx, inv.workspace_id, user, inv.role, Some(user)).await?;
         record(
@@ -606,6 +620,28 @@ pub async fn join_from_invitation(
                 object_id: Some(user.0),
                 before: None,
                 after: Some(json!({ "user_id": user, "role": inv.role, "membership_id": membership, "via": "invitation", "invitation_id": inv.invitation_id })),
+                event_extra: None,
+            },
+        )
+        .await?;
+    }
+    // A portal invitation opens its talent record for this person.
+    if let Some(talent_id) = talent_id {
+        if !core_db::portal::link_talent(tx, talent_id, user).await? {
+            return Err(ApiError::conflict(
+                "talent_taken",
+                "this talent's portal is already open for someone else; ask for a new invitation",
+            ));
+        }
+        record(
+            tx,
+            &ctx,
+            Change {
+                topic: "talent.portal_linked",
+                resource: "talent",
+                object_id: Some(talent_id),
+                before: None,
+                after: Some(json!({ "portal_user_id": user })),
                 event_extra: None,
             },
         )

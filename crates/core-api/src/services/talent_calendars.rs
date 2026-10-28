@@ -219,6 +219,19 @@ pub async fn create_link(
     ctx.authorize(Permission::TalentWrite)?;
     let mut tx = begin(state, ctx).await?;
     talent_exists(&mut tx, talent_id).await?;
+    let link = make_link(state, &mut tx, ctx, talent_id).await?;
+    tx.commit().await?;
+    Ok(link)
+}
+
+/// Makes a connect link for a talent already checked to exist and to be
+/// the caller's to link (staff, or the talent in the portal).
+pub(crate) async fn make_link(
+    state: &AppState,
+    tx: &mut Tx,
+    ctx: &Ctx,
+    talent_id: Uuid,
+) -> ApiResult<CreatedConnectLink> {
     let user = ctx.user_id().ok_or_else(|| {
         ApiError::forbidden(
             "person_required",
@@ -229,7 +242,7 @@ pub async fn create_link(
     let id = core_domain::ids::new_id();
     let expires_at = Utc::now() + Duration::days(LINK_DAYS);
     core_db::talent_calendars::insert_link(
-        &mut tx,
+        tx,
         id,
         talent_id,
         &hash_token(&token),
@@ -237,13 +250,13 @@ pub async fn create_link(
         expires_at,
     )
     .await?;
-    let link = core_db::talent_calendars::links(&mut tx, talent_id)
+    let link = core_db::talent_calendars::links(tx, talent_id)
         .await?
         .into_iter()
         .find(|l| l.id == id)
         .ok_or(ApiError::NotFound)?;
     record(
-        &mut tx,
+        tx,
         ctx,
         Change {
             topic: "calendar_connect_link.created",
@@ -255,7 +268,6 @@ pub async fn create_link(
         },
     )
     .await?;
-    tx.commit().await?;
     Ok(CreatedConnectLink {
         link: link.into(),
         url: state

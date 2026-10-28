@@ -15358,6 +15358,720 @@
         ]
       }
     },
+    "/api/v1/portal": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "What the portal opens with: whose dates these are and what the agency shares.",
+        "operationId": "portal_home",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalHome"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/availability": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "The talent's availability, busy times from their calendars, and the calendars themselves.",
+        "operationId": "portal_availability",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalAvailability"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Mark a time unavailable or tentative.",
+        "operationId": "add_portal_availability",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalNewAvailability"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/availability/{id}": {
+      "delete": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Remove a time the talent marked themselves.",
+        "operationId": "remove_portal_availability",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/calendar-link": {
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "A link to connect the talent's own Google, Microsoft or iCal calendar.",
+        "operationId": "portal_calendar_link",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalCalendarLink"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedConnectLink"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/dates": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "The talent's upcoming dates (soonest first) or past ones (latest first).",
+        "operationId": "portal_dates",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "when",
+            "in": "query",
+            "description": "`upcoming` (default) or `past`.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "upcoming",
+                    "past"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PortalDate"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/dates/{id}": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "A date with its times, travel and documents.",
+        "operationId": "portal_date",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalDateDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/dates/{id}/answer": {
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Confirm or decline a date. The agent gets a task saying so; the booking\nitself stays the agency's to move.",
+        "operationId": "answer_portal_date",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalDateDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/documents": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Documents on the talent's dates (from three months back) and on their record.",
+        "operationId": "portal_documents",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PortalDocument"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/documents/{id}/download": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "A document's current file.",
+        "operationId": "download_portal_document",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/money": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "The talent's statements: what each date paid them, and what was paid out.",
+        "operationId": "portal_money",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PortalStatement"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/project-crew/{id}": {
       "put": {
         "tags": [
@@ -20973,6 +21687,251 @@
         ]
       }
     },
+    "/api/v1/talent/{id}/portal": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Who a talent's portal opens for, and any invitation still waiting.",
+        "operationId": "get_portal_access",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalAccess"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Invite the talent to their portal by email. A waiting invitation is replaced.",
+        "operationId": "invite_to_portal",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalInviteBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalAccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "End the talent's portal access and cancel waiting invitations.",
+        "operationId": "remove_portal_access",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/talent/{id}/timeline": {
       "get": {
         "tags": [
@@ -24123,6 +25082,127 @@
         ]
       }
     },
+    "/api/v1/workspace/portal": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "What the workspace lets its talent see and do in the portal.",
+        "operationId": "get_portal_settings",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalSettings"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Change the portal's switches; every switch is replaced.",
+        "operationId": "update_portal_settings",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalSettings"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/workspace/roles": {
       "get": {
         "tags": [
@@ -25248,6 +26328,30 @@
           "payment_id": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "AnswerInput": {
+        "type": "object",
+        "properties": {
+          "answer": {
+            "type": "string",
+            "description": "`confirmed` or `declined`."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A few words for the agent, e.g. why they cannot do it."
+          },
+          "talent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Which of their talent records answers; needed only when several of\ntheirs are on the date."
           }
         }
       },
@@ -33789,6 +34893,22 @@
           }
         }
       },
+      "PendingInvitation": {
+        "type": "object",
+        "required": [
+          "email",
+          "expires_at"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "Permission": {
         "type": "string",
         "description": "A `resource:action` permission.",
@@ -33839,7 +34959,8 @@
           "finance:config",
           "inbox:read",
           "inbox:write",
-          "integration:manage"
+          "integration:manage",
+          "portal:use"
         ]
       },
       "Perspective": {
@@ -33964,6 +35085,582 @@
           },
           "vocabulary": {
             "type": "object"
+          }
+        }
+      },
+      "PortalAccess": {
+        "type": "object",
+        "description": "Who a talent record's portal opens for, and any invitation still waiting.",
+        "properties": {
+          "invitation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PendingInvitation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PortalUser"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "PortalAvailability": {
+        "type": "object",
+        "description": "The talent's availability and busy times from their own calendars.",
+        "required": [
+          "entries",
+          "calendars",
+          "can_edit"
+        ],
+        "properties": {
+          "calendars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TalentCalendarView"
+            },
+            "description": "Their connected calendars."
+          },
+          "can_edit": {
+            "type": "boolean",
+            "description": "Whether they may change it here."
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailabilityView"
+            },
+            "description": "From a month ago to three years ahead."
+          }
+        }
+      },
+      "PortalCalendarLink": {
+        "type": "object",
+        "properties": {
+          "talent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Which of their talent records; needed only when they have several."
+          }
+        }
+      },
+      "PortalDate": {
+        "type": "object",
+        "description": "One of the talent's dates.",
+        "required": [
+          "id",
+          "talent_id",
+          "talent_name",
+          "title",
+          "status",
+          "timezone",
+          "starts_at",
+          "ends_at",
+          "all_day",
+          "schedule",
+          "can_answer"
+        ],
+        "properties": {
+          "all_day": {
+            "type": "boolean"
+          },
+          "answer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`confirmed` or `declined`, once they answered."
+          },
+          "answer_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answered_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "can_answer": {
+            "type": "boolean",
+            "description": "Whether they may answer (or change their answer) now."
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fee": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "Only when the workspace shows fees."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hold_expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a hold lapses by itself."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organisation_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who booked them (the promoter, brand or venue)."
+          },
+          "schedule": {
+            "description": "Load-in, soundcheck, set times: `[{label, at}]`."
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "talent_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Which of their talent records it is for."
+          },
+          "talent_name": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The IANA zone the date's times are shown in."
+          },
+          "title": {
+            "type": "string"
+          },
+          "venue": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PortalDateDetail": {
+        "type": "object",
+        "description": "A date with everything the talent needs for it.",
+        "required": [
+          "entries",
+          "travel",
+          "documents"
+        ],
+        "properties": {
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortalDocument"
+            }
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortalDate"
+            },
+            "description": "The date, once for each of their talent records on it."
+          },
+          "travel": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortalTravel"
+            }
+          }
+        }
+      },
+      "PortalDocument": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "related_entity",
+          "related_id",
+          "signature_status",
+          "updated_at"
+        ],
+        "properties": {
+          "expires_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "related_entity": {
+            "type": "string",
+            "description": "`booking` or `talent`."
+          },
+          "related_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "signature_status": {
+            "type": "string",
+            "description": "`none`, `awaiting`, `signed` or `declined`."
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PortalHome": {
+        "type": "object",
+        "description": "What the portal opens with.",
+        "required": [
+          "workspace_name",
+          "branding",
+          "settings",
+          "talent",
+          "awaiting_answer"
+        ],
+        "properties": {
+          "awaiting_answer": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Dates waiting for their answer."
+          },
+          "branding": {
+            "type": "object",
+            "description": "The workspace's logo and colours, for the portal's look."
+          },
+          "settings": {
+            "$ref": "#/components/schemas/PortalSettings"
+          },
+          "talent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortalTalent"
+            },
+            "description": "The talent records opened for this person here (usually one; none\nonce the agency ends their access)."
+          },
+          "workspace_name": {
+            "type": "string"
+          }
+        }
+      },
+      "PortalInviteBody": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        }
+      },
+      "PortalNewAvailability": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NewAvailability"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "talent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Which of their talent records; needed only when they have several."
+              }
+            }
+          }
+        ]
+      },
+      "PortalSettings": {
+        "type": "object",
+        "description": "What a workspace lets its talent see and do in the portal. Everything\nis a switch the owner or an admin sets; a cautious agency can start with\nread-only dates.",
+        "properties": {
+          "answer_dates": {
+            "type": "boolean",
+            "description": "Confirm or decline a date; the agent is told either way.",
+            "default": true
+          },
+          "edit_availability": {
+            "type": "boolean",
+            "description": "Add and remove their own unavailable or tentative times, and connect\ntheir own calendar.",
+            "default": true
+          },
+          "hide_locked": {
+            "type": "boolean",
+            "description": "Hide the paid features shown locked in the free viewer.",
+            "default": false
+          },
+          "show_documents": {
+            "type": "boolean",
+            "description": "Contracts, advance sheets, riders and the like on their dates and record.",
+            "default": true
+          },
+          "show_fees": {
+            "type": "boolean",
+            "description": "Fees on their dates. Off until the agency turns it on.",
+            "default": false
+          },
+          "show_holds": {
+            "type": "boolean",
+            "description": "Holds (pencilled dates) as well as pending and confirmed ones.",
+            "default": true
+          },
+          "show_money": {
+            "type": "boolean",
+            "description": "Their statements: what each date paid them, and what was paid out.",
+            "default": false
+          },
+          "show_travel": {
+            "type": "boolean",
+            "description": "Flights, trains, rides and hotels on their dates (never what they cost).",
+            "default": true
+          }
+        }
+      },
+      "PortalStatement": {
+        "type": "object",
+        "description": "What a date paid the talent.",
+        "required": [
+          "id",
+          "booking_id",
+          "booking_title",
+          "starts_at",
+          "talent_id",
+          "talent_name",
+          "gross",
+          "commission",
+          "expenses",
+          "net",
+          "paid"
+        ],
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "booking_title": {
+            "type": "string"
+          },
+          "commission": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "document_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The statement's PDF, opened through the portal's documents."
+          },
+          "expenses": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "finalised_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "gross": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "net": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "paid": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Paid out to them so far."
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "talent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "talent_name": {
+            "type": "string"
+          }
+        }
+      },
+      "PortalTalent": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "PortalTravel": {
+        "type": "object",
+        "description": "Travel as the talent sees it: where and when, never what it cost.",
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "starts_at",
+          "start_tz",
+          "travellers"
+        ],
+        "properties": {
+          "carrier": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "end_tz": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ends_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "from_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from_place": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`flight`, `train`, `bus`, `car`, `ferry`, `taxi`, `hotel` or `other`."
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "number": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "start_tz": {
+            "type": "string"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "description": "`planned`, `booked` or `cancelled`."
+          },
+          "to_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to_place": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "travellers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PortalUser": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -39568,6 +41265,10 @@
     {
       "name": "reports",
       "description": "Revenue, what is owed, cash and the funnel"
+    },
+    {
+      "name": "portal",
+      "description": "The talent portal: a talent's own dates, availability, documents and money, and who has access"
     },
     {
       "name": "public",

@@ -177,6 +177,7 @@ pub async fn create_workspace(
         &ctx,
         &owner_email,
         Role::Owner,
+        None,
         &workspace.name,
     )
     .await?;
@@ -601,13 +602,14 @@ pub async fn get_member(
     Ok(member)
 }
 
-/// Roles that can be given through invitations or role changes in M1.
-/// Talent memberships arrive with the talent portal (M7), tied to a talent record.
+/// Roles that can be given through invitations or role changes. Talent
+/// memberships are made only from a talent record (see `portal::invite`),
+/// so each opens exactly the records it was given.
 fn assignable(role: Role) -> ApiResult<()> {
     if role == Role::Talent {
         return Err(ApiError::BadRequest {
             code: "role_not_assignable",
-            message: "talent access is granted from a talent record, which arrives with the talent portal".into(),
+            message: "talent access is given from the talent's record: open it and invite them to the portal".into(),
             field: Some("role"),
         });
     }
@@ -697,6 +699,8 @@ pub async fn remove_member(state: &AppState, ctx: &Ctx, user: UserId) -> ApiResu
         }
     }
     core_db::members::soft_delete(&mut tx, user, ctx.user_id()).await?;
+    // Talent records stop opening for them in the portal.
+    core_db::portal::unlink_user(&mut tx, user, ctx.user_id()).await?;
     // Their mailboxes stop being read; the threads stay with the workspace.
     super::integrations::disconnect_owned(&mut tx, ctx, user).await?;
     super::calendar_push::disconnect_all(&mut tx, ctx, Some(user), "member_removed").await?;
@@ -719,7 +723,7 @@ pub async fn remove_member(state: &AppState, ctx: &Ctx, user: UserId) -> ApiResu
 
 // Invitations --------------------------------------------------------------------------
 
-fn validate_email(email: &str) -> ApiResult<String> {
+pub(crate) fn validate_email(email: &str) -> ApiResult<String> {
     let email = email.trim();
     let valid = (3..=320).contains(&email.len())
         && email.split_once('@').is_some_and(|(local, domain)| {
@@ -740,12 +744,15 @@ fn validate_email(email: &str) -> ApiResult<String> {
     }
 }
 
-async fn invite_in_tx(
+/// Makes an invitation and queues its email. `talent_id` makes it a talent
+/// portal invitation for that record.
+pub(crate) async fn invite_in_tx(
     state: &AppState,
     tx: &mut Tx,
     ctx: &Ctx,
     email: &str,
     role: Role,
+    talent_id: Option<Uuid>,
     workspace_name: &str,
 ) -> ApiResult<(Uuid, String)> {
     let token = new_token();
@@ -761,6 +768,7 @@ async fn invite_in_tx(
             token_hash: &hash_token(&token),
             expires_at,
             invited_by: ctx.user_id(),
+            talent_id,
         },
     )
     .await?;
@@ -775,7 +783,7 @@ async fn invite_in_tx(
             resource: "invitation",
             object_id: Some(id),
             before: None,
-            after: Some(json!({ "email": email, "role": role, "expires_at": expires_at })),
+            after: Some(json!({ "email": email, "role": role, "expires_at": expires_at, "talent_id": talent_id })),
             event_extra: Some(json!({ "workspace_name": workspace_name })),
         },
         &state.config.keyring,
@@ -815,7 +823,7 @@ pub async fn invite(
     let workspace = core_db::workspaces::get(&mut tx, ctx.workspace_id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    let (id, _url) = invite_in_tx(state, &mut tx, ctx, &email, role, &workspace.name).await?;
+    let (id, _url) = invite_in_tx(state, &mut tx, ctx, &email, role, None, &workspace.name).await?;
     let invitation = core_db::invitations::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;

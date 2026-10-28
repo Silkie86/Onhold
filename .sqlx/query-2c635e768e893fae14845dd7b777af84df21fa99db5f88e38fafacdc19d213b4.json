@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT portal FROM workspaces WHERE id = app_workspace_id()",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "portal",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "portal"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2c635e768e893fae14845dd7b777af84df21fa99db5f88e38fafacdc19d213b4"
+}

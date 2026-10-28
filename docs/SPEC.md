@@ -192,7 +192,6 @@ onhold/
     apps/app/                # staff web app, installable website (PWA) and offline engine
     apps/app/src-tauri/      # desktop and mobile app shell (Tauri 2)
     apps/app/brands/         # brand files for per-client branded app builds
-    apps/portal/             # talent portal (separate build, same API)
     tenants/<tenant-slug>/   # bespoke pages, widgets, overrides; loaded by slug
   infra/                    # Dockerfiles, compose, deploy scripts, backup scripts
   docs/                     # this spec, DECISIONS.md, MILESTONE-N.md, runbooks
@@ -390,7 +389,7 @@ International from day one. A workspace has a **base currency** for reporting; e
 
 ## Talent portal
 
-A separate, deliberately simple web app (`web/apps/portal`) on the same API, branded per workspace, for the people the tenant represents. It must feel good on a phone and need no training. For an artist invited by their manager it is a **free viewer**: useful on its own, and a window onto what OnHold could do for them.
+A deliberately simple part of the web app (`/portal`, loaded only for talent members, in place of the staff frame) on the same API, branded per workspace, for the people the tenant represents. It must feel good on a phone and need no training. For an artist invited by their manager it is a **free viewer**: useful on its own, and a window onto what OnHold could do for them.
 
 - Sign-in by magic link or password; the talent sees only their own talent record(s). One login moves between the free viewer and any workspaces of their own.
 - **Dates**: upcoming and past bookings with status, venue, times, fee (if the workspace allows), documents (contract, advance sheet, rider), travel and advance information; a confirm/decline button on pending dates that moves the booking and notifies the agent.
@@ -418,7 +417,7 @@ The staff app is a single-page React application that renders itself from the AP
 - `packages/api-client`: generated from the OpenAPI spec in CI; the build fails if the spec changed and the client was not regenerated.
 - `packages/ui`: design tokens (colour, spacing, type) as CSS variables that a workspace's branding overrides at runtime; shadcn/ui components; a `DataTable` (server-side sort, filter, paginate, column chooser, saved views, bulk actions), `EntityForm` (renders core + custom fields from a schema), `Timeline`, `Calendar`, `Inbox`, `MoneyInput`, `DateTimeTzInput`, `DocumentViewer`, `RuleBuilder`, `TemplateEditor` with live preview.
 - `apps/app`: routes per module (`/crm`, `/enquiries`, `/bookings`, `/calendar`, `/inbox`, `/documents`, `/finance`, `/settings`), a global command palette (⌘K: search, create, navigate), keyboard-first lists, optimistic updates with TanStack Query, SSE subscription for live changes.
-- `apps/portal`: the talent portal, same packages, a quarter of the surface.
+- The talent portal (`/portal`): a lazily loaded part of `apps/app` with its own frame, a quarter of the surface.
 
 **Extension points the frontend exposes to a tenant directory**: add routes and nav items; add a tab to any entity page; add a widget to the dashboard; override a template's preview; register a custom field renderer; register a bulk action; replace the branding theme. Each is a typed registration function; nothing in `apps/app` imports from `tenants/` directly.
 
@@ -602,7 +601,7 @@ After M8 the core is v1. Bespoke client work starts at M3 if a first customer is
 - [ ] M6: WhatsApp Business verification is per client and takes days; is it a launch requirement or a per-client add-on?
 - [ ] M6: submit OnHold's Domain Connect template to DNS providers (after checking its signature format with the Domain Connect checker).
 - [ ] M6: Gmail needs Google's app verification (with a yearly security assessment) before members outside the operator's own domain can connect it; when to start it.
-- [ ] M7: can talent see their fees by default, or is that off until the agency turns it on? (Spec assumes off.)
+- [x] M7: talent fees are off until the agency turns them on (Settings → Talent portal).
 - [ ] M7: how cross-workspace busy dates and the artist's consent work in detail, and what an artist keeps when leaving a manager (terms and privacy wording).
 - [ ] M7: OnHold's own subscription billing (free viewer, paid plans), separate from clients' Stripe Connect.
 - [ ] M8: your pricing tiers, so plan limits (seats, talent count, storage, apps allowed) can be enforced, and the onboarding price list's placeholder numbers replaced.

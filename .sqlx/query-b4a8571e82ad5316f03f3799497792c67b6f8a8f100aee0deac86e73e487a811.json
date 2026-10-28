@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT m.user_id\n           FROM bookings b\n           LEFT JOIN enquiries e ON e.workspace_id = b.workspace_id AND e.id = b.enquiry_id\n           CROSS JOIN LATERAL (VALUES (1, e.owner_id), (2, b.created_by)) AS c (ord, user_id)\n           JOIN memberships m ON m.workspace_id = b.workspace_id AND m.deleted_at IS NULL\n                AND m.role <> 'talent' AND m.user_id = c.user_id\n           WHERE b.workspace_id = app_workspace_id() AND b.id = $1\n           ORDER BY c.ord\n           LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "memberships",
+            "name": "user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b4a8571e82ad5316f03f3799497792c67b6f8a8f100aee0deac86e73e487a811"
+}

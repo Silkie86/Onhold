@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO invitations (id, workspace_id, email, role, token_hash, expires_at, invited_by)\n           VALUES ($1, $2, $3::text::citext, $4, $5, $6, $7)",
+  "query": "INSERT INTO invitations (id, workspace_id, email, role, token_hash, expires_at, invited_by, talent_id)\n           VALUES ($1, $2, $3::text::citext, $4, $5, $6, $7, $8)",
   "describe": {
     "columns": [],
     "parameters": {
@@ -25,10 +25,11 @@
         },
         "Bytea",
         "Timestamptz",
+        "Uuid",
         "Uuid"
       ]
     },
     "nullable": []
   },
-  "hash": "4812af5ccfd88c5f6124b79485c79c001589cfaeb3516bd6965be9fb919cc658"
+  "hash": "40523e577e412c62646b8ece84233c4600b869ecb39bcf83ca977e37f8dc6454"
 }

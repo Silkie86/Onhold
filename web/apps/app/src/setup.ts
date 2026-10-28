@@ -75,6 +75,7 @@ export const SECTIONS: { key: string; label: string }[] = [
   { key: "section:talent.members", label: "Members of an act" },
   { key: "section:talent.availability", label: "Availability on a talent" },
   { key: "section:talent.calendars", label: "Connected calendars on a talent" },
+  { key: "section:talent.portal", label: "Inviting a talent to their portal" },
   { key: "section:records.conversations", label: "Email conversations on contacts and organisations" },
 ];
 

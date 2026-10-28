@@ -208,6 +208,7 @@ impl AppState {
         (name = "payments", description = "Payments received, refunds and payouts"),
         (name = "settlements", description = "What each talent is owed for a booking"),
         (name = "reports", description = "Revenue, what is owed, cash and the funnel"),
+        (name = "portal", description = "The talent portal: a talent's own dates, availability, documents and money, and who has access"),
         (name = "public", description = "Pages reached by secret link, without an account"),
         (name = "events", description = "What changed, in order: the sync feed"),
         (name = "webhooks", description = "Events pushed to your URLs"),
@@ -253,6 +254,7 @@ fn api_router() -> OpenApiRouter<AppState> {
             .merge(routes::bookings::router())
             .merge(routes::travel::router())
             .merge(routes::projects::router())
+            .merge(routes::portal::router())
             .merge(routes::documents::router())
             .merge(routes::finance::router())
             .merge(routes::stripe::router())

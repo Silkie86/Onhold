@@ -2775,6 +2775,180 @@ export interface paths {
         patch: operations["update_pipeline"];
         trace?: never;
     };
+    "/api/v1/portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the portal opens with: whose dates these are and what the agency shares. */
+        get: operations["portal_home"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The talent's availability, busy times from their calendars, and the calendars themselves. */
+        get: operations["portal_availability"];
+        put?: never;
+        /** Mark a time unavailable or tentative. */
+        post: operations["add_portal_availability"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/availability/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a time the talent marked themselves. */
+        delete: operations["remove_portal_availability"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/calendar-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A link to connect the talent's own Google, Microsoft or iCal calendar. */
+        post: operations["portal_calendar_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The talent's upcoming dates (soonest first) or past ones (latest first). */
+        get: operations["portal_dates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/dates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A date with its times, travel and documents. */
+        get: operations["portal_date"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/dates/{id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm or decline a date. The agent gets a task saying so; the booking
+         *     itself stays the agency's to move.
+         */
+        post: operations["answer_portal_date"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Documents on the talent's dates (from three months back) and on their record. */
+        get: operations["portal_documents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/documents/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A document's current file. */
+        get: operations["download_portal_document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/money": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The talent's statements: what each date paid them, and what was paid out. */
+        get: operations["portal_money"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/project-crew/{id}": {
         parameters: {
             query?: never;
@@ -3798,6 +3972,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/talent/{id}/portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who a talent's portal opens for, and any invitation still waiting. */
+        get: operations["get_portal_access"];
+        put?: never;
+        /** Invite the talent to their portal by email. A waiting invitation is replaced. */
+        post: operations["invite_to_portal"];
+        /** End the talent's portal access and cancel waiting invitations. */
+        delete: operations["remove_portal_access"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/talent/{id}/timeline": {
         parameters: {
             query?: never;
@@ -4208,6 +4401,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspace/portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the workspace lets its talent see and do in the portal. */
+        get: operations["get_portal_settings"];
+        /** Change the portal's switches; every switch is replaced. */
+        put: operations["update_portal_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspace/roles": {
         parameters: {
             query?: never;
@@ -4545,6 +4756,18 @@ export interface components {
             paid_on: string;
             /** Format: uuid */
             payment_id: string;
+        };
+        AnswerInput: {
+            /** @description `confirmed` or `declined`. */
+            answer?: string;
+            /** @description A few words for the agent, e.g. why they cannot do it. */
+            note?: string | null;
+            /**
+             * Format: uuid
+             * @description Which of their talent records answers; needed only when several of
+             *     theirs are on the date.
+             */
+            talent_id?: string | null;
         };
         /** @description What someone ticked. */
         Answers: {
@@ -7118,11 +7341,16 @@ export interface components {
             ip?: string | null;
             user_agent?: string | null;
         };
+        PendingInvitation: {
+            email: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
         /**
          * @description A `resource:action` permission.
          * @enum {string}
          */
-        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write" | "enquiry:read" | "enquiry:write" | "booking:read" | "booking:write" | "booking:override" | "quote:read" | "quote:write" | "task:read" | "task:write" | "project:read" | "project:write" | "document:read" | "document:write" | "invoice:read" | "invoice:write" | "payment:write" | "report:read" | "finance:config" | "inbox:read" | "inbox:write" | "integration:manage";
+        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write" | "enquiry:read" | "enquiry:write" | "booking:read" | "booking:write" | "booking:override" | "quote:read" | "quote:write" | "task:read" | "task:write" | "project:read" | "project:write" | "document:read" | "document:write" | "invoice:read" | "invoice:write" | "payment:write" | "report:read" | "finance:config" | "inbox:read" | "inbox:write" | "integration:manage" | "portal:use";
         /**
          * @description Whether the workspace represents talent (`sells`), books talent for its
          *     own events (`buys`), or both. Changes vocabulary and defaults, never the
@@ -7162,6 +7390,224 @@ export interface components {
             perspective?: components["schemas"]["Perspective"] | null;
             presets: string[];
             vocabulary: Record<string, never>;
+        };
+        /** @description Who a talent record's portal opens for, and any invitation still waiting. */
+        PortalAccess: {
+            invitation?: components["schemas"]["PendingInvitation"] | null;
+            user?: components["schemas"]["PortalUser"] | null;
+        };
+        /** @description The talent's availability and busy times from their own calendars. */
+        PortalAvailability: {
+            /** @description Their connected calendars. */
+            calendars: components["schemas"]["TalentCalendarView"][];
+            /** @description Whether they may change it here. */
+            can_edit: boolean;
+            /** @description From a month ago to three years ahead. */
+            entries: components["schemas"]["AvailabilityView"][];
+        };
+        PortalCalendarLink: {
+            /**
+             * Format: uuid
+             * @description Which of their talent records; needed only when they have several.
+             */
+            talent_id?: string | null;
+        };
+        /** @description One of the talent's dates. */
+        PortalDate: {
+            all_day: boolean;
+            /** @description `confirmed` or `declined`, once they answered. */
+            answer?: string | null;
+            answer_note?: string | null;
+            /** Format: date-time */
+            answered_at?: string | null;
+            /** @description Whether they may answer (or change their answer) now. */
+            can_answer: boolean;
+            /** Format: date-time */
+            ends_at: string;
+            fee?: components["schemas"]["Money"] | null;
+            /**
+             * Format: date-time
+             * @description When a hold lapses by itself.
+             */
+            hold_expires_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description Who booked them (the promoter, brand or venue). */
+            organisation_name?: string | null;
+            /** @description Load-in, soundcheck, set times: `[{label, at}]`. */
+            schedule: unknown;
+            /** Format: date-time */
+            starts_at: string;
+            status: string;
+            /**
+             * Format: uuid
+             * @description Which of their talent records it is for.
+             */
+            talent_id: string;
+            talent_name: string;
+            /** @description The IANA zone the date's times are shown in. */
+            timezone: string;
+            title: string;
+            venue?: string | null;
+        };
+        /** @description A date with everything the talent needs for it. */
+        PortalDateDetail: {
+            documents: components["schemas"]["PortalDocument"][];
+            /** @description The date, once for each of their talent records on it. */
+            entries: components["schemas"]["PortalDate"][];
+            travel: components["schemas"]["PortalTravel"][];
+        };
+        PortalDocument: {
+            /** Format: date */
+            expires_on?: string | null;
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            /** @description `booking` or `talent`. */
+            related_entity: string;
+            /** Format: uuid */
+            related_id: string;
+            /** @description `none`, `awaiting`, `signed` or `declined`. */
+            signature_status: string;
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description What the portal opens with. */
+        PortalHome: {
+            /**
+             * Format: int64
+             * @description Dates waiting for their answer.
+             */
+            awaiting_answer: number;
+            /** @description The workspace's logo and colours, for the portal's look. */
+            branding: Record<string, never>;
+            settings: components["schemas"]["PortalSettings"];
+            /**
+             * @description The talent records opened for this person here (usually one; none
+             *     once the agency ends their access).
+             */
+            talent: components["schemas"]["PortalTalent"][];
+            workspace_name: string;
+        };
+        PortalInviteBody: {
+            email: string;
+        };
+        PortalNewAvailability: components["schemas"]["NewAvailability"] & {
+            /**
+             * Format: uuid
+             * @description Which of their talent records; needed only when they have several.
+             */
+            talent_id?: string | null;
+        };
+        /**
+         * @description What a workspace lets its talent see and do in the portal. Everything
+         *     is a switch the owner or an admin sets; a cautious agency can start with
+         *     read-only dates.
+         */
+        PortalSettings: {
+            /**
+             * @description Confirm or decline a date; the agent is told either way.
+             * @default true
+             */
+            answer_dates: boolean;
+            /**
+             * @description Add and remove their own unavailable or tentative times, and connect
+             *     their own calendar.
+             * @default true
+             */
+            edit_availability: boolean;
+            /**
+             * @description Hide the paid features shown locked in the free viewer.
+             * @default false
+             */
+            hide_locked: boolean;
+            /**
+             * @description Contracts, advance sheets, riders and the like on their dates and record.
+             * @default true
+             */
+            show_documents: boolean;
+            /**
+             * @description Fees on their dates. Off until the agency turns it on.
+             * @default false
+             */
+            show_fees: boolean;
+            /**
+             * @description Holds (pencilled dates) as well as pending and confirmed ones.
+             * @default true
+             */
+            show_holds: boolean;
+            /**
+             * @description Their statements: what each date paid them, and what was paid out.
+             * @default false
+             */
+            show_money: boolean;
+            /**
+             * @description Flights, trains, rides and hotels on their dates (never what they cost).
+             * @default true
+             */
+            show_travel: boolean;
+        };
+        /** @description What a date paid the talent. */
+        PortalStatement: {
+            /** Format: uuid */
+            booking_id: string;
+            booking_title: string;
+            commission: components["schemas"]["Money"];
+            /**
+             * Format: uuid
+             * @description The statement's PDF, opened through the portal's documents.
+             */
+            document_id?: string | null;
+            expenses: components["schemas"]["Money"];
+            /** Format: date-time */
+            finalised_at?: string | null;
+            gross: components["schemas"]["Money"];
+            /** Format: uuid */
+            id: string;
+            net: components["schemas"]["Money"];
+            /** @description Paid out to them so far. */
+            paid: components["schemas"]["Money"];
+            /** Format: date-time */
+            starts_at: string;
+            /** Format: uuid */
+            talent_id: string;
+            talent_name: string;
+        };
+        PortalTalent: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        /** @description Travel as the talent sees it: where and when, never what it cost. */
+        PortalTravel: {
+            carrier?: string | null;
+            end_tz?: string | null;
+            /** Format: date-time */
+            ends_at?: string | null;
+            from_code?: string | null;
+            from_place?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description `flight`, `train`, `bus`, `car`, `ferry`, `taxi`, `hotel` or `other`. */
+            kind: string;
+            notes?: string | null;
+            number?: string | null;
+            reference?: string | null;
+            start_tz: string;
+            /** Format: date-time */
+            starts_at: string;
+            /** @description `planned`, `booked` or `cancelled`. */
+            status: string;
+            to_code?: string | null;
+            to_place?: string | null;
+            travellers: string[];
+        };
+        PortalUser: {
+            email: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
         };
         Preview: {
             /** @description The rendered body (HTML for email). */
@@ -16819,6 +17265,405 @@ export interface operations {
             };
         };
     };
+    portal_home: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalHome"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_availability: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalAvailability"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_portal_availability: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalNewAvailability"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_portal_availability: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_calendar_link: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalCalendarLink"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedConnectLink"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_dates: {
+        parameters: {
+            query?: {
+                /** @description `upcoming` (default) or `past`. */
+                when?: ("upcoming" | "past") | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalDate"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_date: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalDateDetail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    answer_portal_date: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalDateDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_documents: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalDocument"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    download_portal_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_money: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalStatement"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     update_crew: {
         parameters: {
             query?: never;
@@ -19722,6 +20567,143 @@ export interface operations {
             };
         };
     };
+    get_portal_access: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalAccess"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    invite_to_portal: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalInviteBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalAccess"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_portal_access: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     talent_timeline: {
         parameters: {
             query?: {
@@ -21280,6 +22262,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_portal_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalSettings"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_portal_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalSettings"];
                 };
             };
             403: {

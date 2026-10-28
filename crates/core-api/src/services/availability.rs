@@ -141,15 +141,29 @@ pub async fn create(
     if core_db::talent::get(&mut tx, talent_id).await?.is_none() {
         return Err(ApiError::NotFound);
     }
+    let view = insert_in(&mut tx, ctx, talent_id, "manual", new).await?;
+    tx.commit().await?;
+    Ok(view)
+}
+
+/// Adds an entry for a talent already checked to exist, from `source`
+/// (`manual` by staff, `portal` by the talent).
+pub(crate) async fn insert_in(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    talent_id: Uuid,
+    source: &str,
+    new: NewAvailability,
+) -> ApiResult<AvailabilityView> {
     let mut check = Check::default();
     check_times(&mut check, new.starts_at, new.ends_at);
     let note = check.optional("note", new.note.as_deref(), 500);
     check.finish()?;
     let id = core_domain::ids::new_id();
     core_db::availability::insert(
-        &mut tx,
+        tx,
         id,
-        "manual",
+        source,
         core_db::availability::Values {
             talent_id,
             kind: new.kind.unwrap_or(AvailabilityKind::Unavailable),
@@ -161,9 +175,9 @@ pub async fn create(
         ctx.user_id(),
     )
     .await?;
-    let view = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let view = load(tx, id).await?.ok_or(ApiError::NotFound)?;
     record(
-        &mut tx,
+        tx,
         ctx,
         Change {
             topic: "availability.created",
@@ -175,7 +189,6 @@ pub async fn create(
         },
     )
     .await?;
-    tx.commit().await?;
     Ok(view)
 }
 
@@ -260,12 +273,18 @@ pub async fn update(
 pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::BookingWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let Some(before) = load(&mut tx, id).await? else {
-        return Err(missing(&mut tx, id).await);
+    delete_in(&mut tx, ctx, id).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+pub(crate) async fn delete_in(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
+    let Some(before) = load(tx, id).await? else {
+        return Err(missing(tx, id).await);
     };
-    core_db::availability::soft_delete(&mut tx, id, ctx.user_id()).await?;
+    core_db::availability::soft_delete(tx, id, ctx.user_id()).await?;
     record(
-        &mut tx,
+        tx,
         ctx,
         Change {
             topic: "availability.deleted",
@@ -277,6 +296,5 @@ pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
         },
     )
     .await?;
-    tx.commit().await?;
     Ok(())
 }

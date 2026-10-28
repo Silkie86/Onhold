@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT talent_id FROM invitations WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invitations",
+            "name": "talent_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "af905e4eedba966193403db6a84c31109f234dbd82b51b595ca5cc7b3f10c43a"
+}

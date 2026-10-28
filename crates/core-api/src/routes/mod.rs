@@ -12,6 +12,7 @@ pub mod finance;
 pub mod inbox;
 pub mod jobs;
 pub mod messaging;
+pub mod portal;
 pub mod projects;
 pub mod stripe;
 pub mod things;

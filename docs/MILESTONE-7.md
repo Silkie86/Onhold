@@ -1,0 +1,35 @@
+# Milestone 7: Talent portal (free artist viewer)
+
+**Demonstrable:** a talent confirms a pending date from a phone and the agent is notified.
+
+M7 comes in several PRs. This page grows with each.
+
+1. **The portal itself**: inviting a talent from their record, and their own dates, answers, availability, calendar, travel, documents and statements, with the agency's switches.
+2. Locked paid features with "Unlock features", a preview of the full app, and the agency's "hide locked features" switch.
+3. Messages between the talent and their agent, and profile edits.
+4. "Run your own bookings": the artist's own workspace, linked to the manager's, each seeing the other's dates as busy with the artist's consent.
+5. OnHold's own plans for talent, shown as a preview (nothing charged).
+
+## The portal
+
+Runs end to end in `web/apps/app/e2e/portal.spec.ts` on desktop and phone: an agent invites Nova Reyes from her record; she signs up from the invitation on her phone, sees her pending date (without its fee), opens it, confirms, and the agent finds the task "Nova Reyes confirmed Warehouse Project". `crates/core-api/tests/portal.rs` covers the API.
+
+### Built
+
+- **Inviting** (a talent's page → Their portal). Anyone who can edit talent can invite one person per talent record by email; the invitation email and page say what the portal is. Accepting opens that record for them. A waiting invitation can be sent again or cancelled; removing access ends it, and a talent member with no record left leaves the workspace. Talent access cannot be given from the members page, and leaving the workspace ends it too.
+- **What talent see** (Settings → Talent portal, owners and admins): confirm or decline dates, pencilled dates, fees, travel, documents, their own availability, statements. Fees and statements start off.
+- **The portal** (`/portal`), phone first, in the workspace's colours and logo, shown instead of the staff app to talent members (the staff app's addresses send them to it):
+  - **Dates**: coming up and the last two years, with status, venue, the venue's clock, and the fee when shared; a count of dates waiting for an answer.
+  - **A date**: times, running order, who it is for, travel (flights, trains, rides and hotels, never their cost), and documents of talent-facing kinds (contract, confirmation, advance sheet, rider, tech spec, stage plot).
+  - **Confirm or decline**, with a note. The agent gets a task (the enquiry's owner, or whoever made the booking), rules get `booking.talent_answered`, and the booking's status stays the agency's. Moving the date's time clears the answer. Holds, pending and confirmed dates can be answered until they end.
+  - **Availability**: their own unavailable and tentative times (removable by them; the agency's entries stay the agency's), busy times from their connected calendars, and "Connect a calendar", the same link an agency sends (Google, Outlook or an iCal link, busy only). Listed a month back to three years ahead.
+  - **Documents**: on their dates from three months back, and on their own record (rider, press kit, insurance, passport, visa).
+  - **Money**: final settlements, with fee, commission, expenses, net, what was paid out and the statement PDF.
+- **API**: `/api/v1/portal…` for talent (`portal:use`), `/api/v1/workspace/portal` and `/api/v1/talent/{id}/portal` for staff.
+- **What talent never see**: the talent role holds only `portal:use` (no staff endpoint, not even the workspace's rules or templates). On a booking with several acts, the shared fee is never shown and travel shows only items naming one of their acts. While fees are hidden, so are contracts and confirmations, which carry them. A record's portal opens only through the invitation (not by editing the record), not for a colleague whose role has no portal, and deleting the record ends it.
+
+### Not yet
+
+- Messages with the agent and profile edits (PR 3); padlocked features and the preview (PR 2).
+- No email or push to the agent beyond the task; a rule on `booking.talent_answered` can send one.
+- The portal keeps nothing on the device for offline use; dates need a connection.

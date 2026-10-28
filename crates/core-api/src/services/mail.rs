@@ -58,8 +58,9 @@ const QUOTE_BODY: &str = r#"<p>Hello,</p>
 
 const INVITATION_SUBJECT: &str = "You're invited to {{ workspace.name }} on OnHold";
 const INVITATION_BODY: &str = r#"<p>Hello,</p>
-<p>You've been invited to join <strong>{{ workspace.name }}</strong> on OnHold as {{ invitation.role }}.</p>
-<p><a href="{{ invitation.url }}">Accept the invitation</a></p>
+{% if invitation.role == "talent" %}<p><strong>{{ workspace.name }}</strong> has invited you to see your dates on OnHold: your shows, times, travel and documents in one place, free.</p>
+<p><a href="{{ invitation.url }}">Open your dates</a></p>{% else %}<p>You've been invited to join <strong>{{ workspace.name }}</strong> on OnHold as {{ invitation.role }}.</p>
+<p><a href="{{ invitation.url }}">Accept the invitation</a></p>{% endif %}
 <p>The link works until {{ invitation.expires_at | datetime }}. If you weren't expecting this, you can ignore it.</p>"#;
 
 const MAGIC_LINK_SUBJECT: &str = "Your OnHold sign-in link";
