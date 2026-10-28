@@ -22,6 +22,7 @@ use super::{IdempotencyHeader, IfMatchHeader, WorkspaceHeader, with_etag};
 use crate::AppState;
 use crate::error::{ApiError, ApiResult, ErrorBody};
 use crate::extract::{IfMatch, WsCtx};
+use crate::services::signatures::{self, SignatureBody, Signatures};
 use crate::services::tenancy as svc;
 
 pub fn router() -> OpenApiRouter<AppState> {
@@ -31,6 +32,9 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(preview_setup))
         .routes(routes!(get_streamline, set_streamline))
         .routes(routes!(close_workspace))
+        .routes(routes!(get_signatures))
+        .routes(routes!(set_my_signature))
+        .routes(routes!(set_workspace_signature))
         .routes(routes!(roles))
         .routes(routes!(list_members))
         .routes(routes!(get_member, update_member, remove_member))
@@ -168,6 +172,45 @@ pub struct WorkspacePatchRequest {
     pub require_staff_2fa: Option<bool>,
     /// 0 (holds never lapse) to 365.
     pub hold_days: Option<i32>,
+}
+
+/// Your email signature and the workspace's.
+#[utoipa::path(get, path = "/signatures", tag = "workspace", params(WorkspaceHeader),
+    responses((status = 200, body = Signatures), (status = 403, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn get_signatures(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<Signatures>> {
+    Ok(Json(signatures::get(&state, &ctx).await?))
+}
+
+/// Set your email signature in this workspace: under what you send from
+/// the inbox, and the quotes, invoices and signing requests you send.
+#[utoipa::path(put, path = "/signatures/mine", tag = "workspace", params(WorkspaceHeader),
+    request_body = SignatureBody,
+    responses((status = 200, body = Signatures), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody)),
+    security(("session" = [])))]
+async fn set_my_signature(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Json(b): Json<SignatureBody>,
+) -> ApiResult<Json<Signatures>> {
+    Ok(Json(signatures::set_mine(&state, &ctx, b).await?))
+}
+
+/// Set the workspace's email signature: used when a member has none, and
+/// under emails rules send.
+#[utoipa::path(put, path = "/signatures/workspace", tag = "workspace", params(WorkspaceHeader),
+    request_body = SignatureBody,
+    responses((status = 200, body = Signatures), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn set_workspace_signature(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Json(b): Json<SignatureBody>,
+) -> ApiResult<Json<Signatures>> {
+    Ok(Json(signatures::set_workspace(&state, &ctx, b).await?))
 }
 
 /// Change workspace settings. Only the fields sent are changed.

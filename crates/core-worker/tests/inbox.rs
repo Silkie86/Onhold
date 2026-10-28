@@ -670,7 +670,14 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
         .body;
     assert_eq!(read["thread"]["unread"], false);
 
-    // The reply goes out from Ana's Gmail, in the same Gmail thread.
+    // The reply goes out from Ana's Gmail, in the same Gmail thread, signed.
+    h.app
+        .put("/api/v1/signatures/mine")
+        .signed_in(&owner)
+        .json(json!({ "signature": "Ana Owl\nThe Owls" }))
+        .send()
+        .await
+        .ok();
     let reply = h
         .post(
             &owner,
@@ -706,6 +713,10 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
         .to_owned();
     let detail = h.thread(&owner, &thread_id).await;
     assert_eq!(detail["messages"][1]["status"], "sent", "{detail}");
+    let text = detail["messages"][1]["text"].as_str().unwrap();
+    assert!(text.ends_with("free.\n\n-- \nAna Owl\nThe Owls"), "{text}");
+    let html = detail["messages"][1]["html"].as_str().unwrap();
+    assert!(html.contains("Ana Owl<br>The Owls"), "{html}");
     assert!(
         h.sent_to("bea@grand.test").is_empty(),
         "nothing goes through OnHold's own sender"
@@ -1292,10 +1303,17 @@ async fn an_imap_mailbox_is_read_and_replies_go_out_by_smtp(pool: PgPool) {
         .ok();
     assert_eq!(download.body, "Two vocal mics, one DI.");
 
+    h.app
+        .put("/api/v1/signatures/workspace")
+        .signed_in(&owner)
+        .json(json!({ "signature": "The Owls" }))
+        .send()
+        .await
+        .ok();
     h.post(
         &owner,
         &format!("/api/v1/inbox/threads/{thread_id}/reply"),
-        json!({ "body": "Thanks Bea, 12 June is free." }),
+        json!({ "body": "Thanks Bea, 12 June is free.", "signature": false }),
     )
     .await
     .ok();
@@ -1310,6 +1328,8 @@ async fn an_imap_mailbox_is_read_and_replies_go_out_by_smtp(pool: PgPool) {
     assert!(sent[0].contains("Ana at The Owls"), "{}", sent[0]);
     let detail = h.thread(&owner, &thread_id).await;
     assert_eq!(detail["messages"][1]["status"], "sent", "{detail}");
+    let text = detail["messages"][1]["text"].as_str().unwrap();
+    assert!(!text.contains("-- "), "left unsigned when asked: {text}");
 
     // A new message arrives; only it is read.
     server.lock().unwrap().inbox.push((

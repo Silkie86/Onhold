@@ -623,6 +623,59 @@ async fn branding_takes_a_colour_and_a_logo(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn members_sign_their_own_emails(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let agent = app.add_member(&owner, "agent@acme.test", "agent").await;
+    let put = |who: &Client, path: &str, signature: Value| {
+        app.put(&format!("/api/v1/signatures/{path}"))
+            .signed_in(who)
+            .json(json!({ "signature": signature }))
+    };
+
+    let res = put(&owner, "workspace", json!("The Acme team\r\n"))
+        .send()
+        .await
+        .ok();
+    assert_eq!(res.body["workspace"], "The Acme team");
+    let res = put(&agent, "mine", json!("  Ali  \nAcme  "))
+        .send()
+        .await
+        .ok();
+    assert_eq!(res.body["mine"], "  Ali\nAcme");
+    assert_eq!(res.body["workspace"], "The Acme team");
+    assert_eq!(res.body["is_member"], true);
+    assert_eq!(res.body["can_edit_workspace"], false);
+
+    // Each member's is their own; only those who manage the workspace change its.
+    let mine = app
+        .get("/api/v1/signatures")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert_eq!(mine.body["mine"], Value::Null);
+    assert_eq!(mine.body["can_edit_workspace"], true);
+    put(&agent, "workspace", json!("Mine now"))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "permission_denied");
+    put(&agent, "mine", json!("x".repeat(2001)))
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+
+    // Empty removes it; an API key has no signature of its own.
+    let res = put(&agent, "mine", json!("")).send().await.ok();
+    assert_eq!(res.body["mine"], Value::Null);
+    let key = create_key(&app, &owner, json!(["workspace:read"])).await;
+    let res = app.get("/api/v1/signatures").bearer(&key).send().await.ok();
+    assert_eq!(res.body["mine"], Value::Null);
+    assert_eq!(res.body["is_member"], false);
+    assert_eq!(res.body["workspace"], "The Acme team");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn billing_details_need_billing_permissions(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let (_, owner) = app.workspace_with_owner("acme").await;
@@ -1254,6 +1307,20 @@ async fn impersonation_is_time_boxed_and_audited(pool: PgPool) {
         .send()
         .await
         .expect(StatusCode::FORBIDDEN, "not_a_member");
+    // A visitor has no signature of their own to set.
+    let sigs = app
+        .get("/api/v1/signatures")
+        .signed_in(&in_customer)
+        .send()
+        .await
+        .ok();
+    assert_eq!(sigs.body["is_member"], false);
+    app.put("/api/v1/signatures/mine")
+        .signed_in(&in_customer)
+        .json(json!({ "signature": "Support" }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "member_required");
     let me = app.get("/api/v1/auth/me").signed_in(&ops).send().await.ok();
     assert_eq!(
         me.body["impersonation"]["workspace_id"],

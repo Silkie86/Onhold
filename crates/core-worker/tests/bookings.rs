@@ -285,6 +285,19 @@ async fn sending_a_quote_emails_the_buyer_a_link_to_it(pool: PgPool) {
         )
         .await
         .id("/id");
+    // The sender's signature goes under the email, not the workspace's.
+    for (path, signature) in [
+        ("mine", "Sam at Acme\n07700 900123"),
+        ("workspace", "The Acme team"),
+    ] {
+        h.app
+            .put(&format!("/api/v1/signatures/{path}"))
+            .signed_in(&owner)
+            .json(json!({ "signature": signature }))
+            .send()
+            .await
+            .ok();
+    }
     let sent = h
         .post(&owner, &format!("/api/v1/quotes/{q}/send"), json!({}))
         .await;
@@ -307,6 +320,13 @@ async fn sending_a_quote_emails_the_buyer_a_link_to_it(pool: PgPool) {
         "{html}"
     );
     assert!(html.contains("£2,000.00"), "{html}");
+    assert!(html.contains("Sam at Acme<br>07700 900123"), "{html}");
+    assert!(!html.contains("The Acme team"), "{html}");
+    assert!(
+        mail.text.contains("\n-- \nSam at Acme\n07700 900123"),
+        "{}",
+        mail.text
+    );
 
     // The link in the email opens the quote.
     let public = h
