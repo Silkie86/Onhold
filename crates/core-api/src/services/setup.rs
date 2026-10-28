@@ -3,9 +3,12 @@
 //! again at any time; switching something off only hides it. Comments go to
 //! OnHold's team, and a price list (OnHold's to set) gives a live estimate.
 
+use std::collections::BTreeMap;
+
 use core_domain::workspace::{self as ws, Perspective};
 use core_domain::{Ctx, Permission};
 use core_modules::setup::{self, Answers, Plan, Question};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::AppState;
@@ -18,59 +21,77 @@ const COMMENT_MAX: usize = 4000;
 
 /// What OnHold charges, in minor units a month: a base price, plus each
 /// ticked feature, plus the team size. Shown as an estimate only.
-pub fn default_price_list() -> Value {
-    json!({
-        "currency": "GBP",
-        "placeholder": true,
-        "base": 1500,
-        "features": {
-            "bookings": 0, "calendar": 0, "email": 500, "invoicing": 800, "documents": 500,
-            "events": 500, "portal": 1000, "commission": 500, "custom": 1000
-        },
-        "team": { "just_me": 0, "small": 2000, "large": 6000 }
-    })
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PriceList {
+    /// ISO 4217, e.g. `GBP`.
+    pub currency: String,
+    /// Shown as example prices while pricing is not final.
+    #[serde(default)]
+    pub placeholder: bool,
+    pub base: u32,
+    /// Per feature key of the setup form.
+    pub features: BTreeMap<String, u32>,
+    /// Per team size (`just_me`, `small`, `large`).
+    pub team: BTreeMap<String, u32>,
 }
 
-/// Checks a price list's shape: a known currency, and whole, non-negative
-/// amounts for known features and team sizes only.
-pub fn validate_price_list(v: &Value) -> ApiResult<()> {
-    let bad = |m: &str| ApiError::invalid("price_list", m.to_owned());
-    let obj = v.as_object().ok_or_else(|| bad("must be an object"))?;
-    let currency = obj
-        .get("currency")
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad("currency is required"))?;
-    ws::validate_currency(currency).map_err(|e| bad(&e.message))?;
-    let amount = |x: &Value| x.as_u64().is_some_and(|n| n <= 10_000_000);
-    if !obj.get("base").is_some_and(amount) {
-        return Err(bad("base must be a whole amount in minor units"));
+pub fn default_price_list() -> PriceList {
+    let map = |pairs: &[(&str, u32)]| pairs.iter().map(|(k, v)| ((*k).to_owned(), *v)).collect();
+    PriceList {
+        currency: "GBP".into(),
+        placeholder: true,
+        base: 1500,
+        features: map(&[
+            ("bookings", 0),
+            ("calendar", 0),
+            ("email", 500),
+            ("invoicing", 800),
+            ("documents", 500),
+            ("events", 500),
+            ("portal", 1000),
+            ("commission", 500),
+            ("custom", 1000),
+        ]),
+        team: map(&[("just_me", 0), ("small", 2000), ("large", 6000)]),
+    }
+}
+
+const MAX_AMOUNT: u32 = 10_000_000;
+
+/// Checks a price list: a known currency, and amounts for known features
+/// and team sizes only, none absurdly large.
+pub fn validate_price_list(p: &PriceList) -> ApiResult<()> {
+    let bad = |m: String| ApiError::invalid("price_list", m);
+    ws::validate_currency(&p.currency).map_err(|e| bad(e.message))?;
+    if p.base > MAX_AMOUNT {
+        return Err(bad("base is too large".into()));
     }
     let questions = setup::questions();
-    for (group, question) in [("features", "features"), ("team", "team")] {
+    for (group, prices) in [("features", &p.features), ("team", &p.team)] {
         let known: Vec<&str> = questions
             .iter()
-            .find(|q| q.key == question)
+            .find(|q| q.key == group)
             .map(|q| q.choices.iter().map(|c| c.key.as_str()).collect())
             .unwrap_or_default();
-        let prices = obj
-            .get(group)
-            .and_then(Value::as_object)
-            .ok_or_else(|| bad(&format!("{group} must be an object")))?;
-        for (k, p) in prices {
+        for (k, amount) in prices {
             if !known.contains(&k.as_str()) {
-                return Err(bad(&format!("unknown {group} key `{k}`")));
+                return Err(bad(format!("unknown {group} key `{k}`")));
             }
-            if !amount(p) {
-                return Err(bad(&format!("{group}.{k} must be a whole amount")));
+            if *amount > MAX_AMOUNT {
+                return Err(bad(format!("{group}.{k} is too large")));
             }
-        }
-    }
-    for k in obj.keys() {
-        if !["currency", "placeholder", "base", "features", "team"].contains(&k.as_str()) {
-            return Err(bad(&format!("unknown field `{k}`")));
         }
     }
     Ok(())
+}
+
+/// The stored list, or the example one; a stored list from an older
+/// release that no longer reads falls back too.
+fn read_price_list(stored: Option<Value>) -> PriceList {
+    stored
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_else(default_price_list)
 }
 
 pub struct SetupState {
@@ -80,7 +101,7 @@ pub struct SetupState {
     pub done_at: Option<chrono::DateTime<chrono::Utc>>,
     pub current: Plan,
     pub requests: Vec<core_db::setup_requests::SetupRequest>,
-    pub price_list: Value,
+    pub price_list: PriceList,
 }
 
 fn current_plan(w: &core_db::workspaces::Workspace) -> Plan {
@@ -102,9 +123,7 @@ pub async fn get(state: &AppState, ctx: &Ctx) -> ApiResult<SetupState> {
         .await?
         .ok_or(ApiError::NotFound)?;
     let requests = core_db::setup_requests::recent(&mut tx, 10).await?;
-    let price_list = core_db::platform_settings::get(&mut tx, PRICE_LIST)
-        .await?
-        .unwrap_or_else(default_price_list);
+    let price_list = read_price_list(core_db::platform_settings::get(&mut tx, PRICE_LIST).await?);
     tx.commit().await?;
     let answers = w
         .setup
@@ -255,23 +274,24 @@ pub async fn admin_resolve(state: &AppState, session: &Session, id: uuid::Uuid) 
     }
 }
 
-pub async fn admin_price_list(state: &AppState, session: &Session) -> ApiResult<Value> {
+pub async fn admin_price_list(state: &AppState, session: &Session) -> ApiResult<PriceList> {
     admin::require_superadmin(state, session).await?;
     let mut tx = core_db::begin(&state.db, None, Some(session.user_id)).await?;
     let list = core_db::platform_settings::get(&mut tx, PRICE_LIST).await?;
     tx.commit().await?;
-    Ok(list.unwrap_or_else(default_price_list))
+    Ok(read_price_list(list))
 }
 
 pub async fn admin_set_price_list(
     state: &AppState,
     session: &Session,
-    list: &Value,
+    list: &PriceList,
 ) -> ApiResult<()> {
     admin::require_superadmin(state, session).await?;
     validate_price_list(list)?;
+    let list = serde_json::to_value(list).map_err(ApiError::internal)?;
     let mut tx = core_db::begin(&state.db, None, Some(session.user_id)).await?;
-    core_db::platform_settings::admin_set(&mut tx, PRICE_LIST, list).await?;
+    core_db::platform_settings::admin_set(&mut tx, PRICE_LIST, &list).await?;
     tx.commit().await?;
     Ok(())
 }
@@ -284,13 +304,17 @@ mod tests {
     fn the_default_price_list_is_valid() {
         validate_price_list(&default_price_list()).expect("valid");
         let mut bad = default_price_list();
-        bad["features"]["teleport"] = json!(100);
+        bad.features.insert("teleport".into(), 100);
         assert!(validate_price_list(&bad).is_err());
         let mut bad = default_price_list();
-        bad["base"] = json!(-1);
+        bad.base = MAX_AMOUNT + 1;
         assert!(validate_price_list(&bad).is_err());
         let mut bad = default_price_list();
-        bad["currency"] = json!("XYZ");
+        bad.currency = "XYZ".into();
         assert!(validate_price_list(&bad).is_err());
+        assert_eq!(
+            read_price_list(Some(json!({ "base": "free" }))),
+            default_price_list()
+        );
     }
 }

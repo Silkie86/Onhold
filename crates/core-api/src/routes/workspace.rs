@@ -217,9 +217,8 @@ pub struct SetupView {
     pub current: core_modules::setup::Plan,
     /// This workspace's latest comments, newest first.
     pub requests: Vec<SetupRequestView>,
-    /// OnHold's prices for the estimate: amounts in minor units a month.
-    #[schema(value_type = Object)]
-    pub price_list: Value,
+    /// OnHold's prices for the estimate.
+    pub price_list: crate::services::setup::PriceList,
     /// Send back as `If-Match` when saving.
     pub version: i64,
 }

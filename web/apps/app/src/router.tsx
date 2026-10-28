@@ -154,6 +154,12 @@ const operator = createRoute({
   component: lazyRouteComponent(() => import("./pages/operator.tsx"), "OperatorPage"),
 });
 
+const setupSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/setup",
+  component: lazyRouteComponent(() => import("./pages/setup-settings.tsx"), "SetupSettingsPage"),
+});
+
 const brandingSettings = createRoute({
   getParentRoute: () => app,
   path: "/settings/branding",
@@ -260,6 +266,7 @@ const tree = root.addChildren([
     calendarSettings,
     sendingDomain,
     brandingSettings,
+    setupSettings,
     themeStudio,
     sync,
     invoices,

@@ -1553,7 +1553,7 @@ async fn the_setup_form_shapes_the_workspace_and_reaches_operators(pool: PgPool)
     assert_eq!(form.body["price_list"]["base"], json!(2500));
     app.put("/api/v1/admin/price-list")
         .signed_in(&ops)
-        .json(json!({ "currency": "GBP", "base": -5, "features": {}, "team": {} }))
+        .json(json!({ "currency": "GBP", "base": 100, "features": { "teleport": 5 }, "team": {} }))
         .send()
         .await
         .expect(StatusCode::BAD_REQUEST, "invalid_input");

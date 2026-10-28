@@ -269,21 +269,21 @@ async fn resolve_setup_request(
 
 /// The price list the setup form's estimate uses (minor units a month).
 #[utoipa::path(get, path = "/admin/price-list", tag = "admin",
-    responses((status = 200, body = Object), (status = 403, body = ErrorBody)), security(("session" = [])))]
+    responses((status = 200, body = setup::PriceList), (status = 403, body = ErrorBody)), security(("session" = [])))]
 async fn get_price_list(
     State(state): State<AppState>,
     CurrentSession(session): CurrentSession,
-) -> ApiResult<Json<serde_json::Value>> {
+) -> ApiResult<Json<setup::PriceList>> {
     Ok(Json(setup::admin_price_list(&state, &session).await?))
 }
 
 /// Replace the price list: `currency`, `base`, `features` and `team` amounts in minor units a month.
-#[utoipa::path(put, path = "/admin/price-list", tag = "admin", request_body = Object,
+#[utoipa::path(put, path = "/admin/price-list", tag = "admin", request_body = setup::PriceList,
     responses((status = 204), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody)), security(("session" = [])))]
 async fn set_price_list(
     State(state): State<AppState>,
     CurrentSession(session): CurrentSession,
-    Json(body): Json<serde_json::Value>,
+    Json(body): Json<setup::PriceList>,
 ) -> ApiResult<StatusCode> {
     setup::admin_set_price_list(&state, &session, &body).await?;
     Ok(StatusCode::NO_CONTENT)

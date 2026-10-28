@@ -115,6 +115,166 @@
         ]
       }
     },
+    "/api/v1/admin/price-list": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "The price list the setup form's estimate uses (minor units a month).",
+        "operationId": "get_price_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceList"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Replace the price list: `currency`, `base`, `features` and `team` amounts in minor units a month.",
+        "operationId": "set_price_list",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceList"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/setup-requests": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Requests and questions clients left in the setup form, open ones first.",
+        "operationId": "list_setup_requests",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminSetupRequestView"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/setup-requests/{id}/resolve": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Mark a client's request dealt with.",
+        "operationId": "resolve_setup_request",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/workspaces": {
       "get": {
         "tags": [
@@ -20800,6 +20960,217 @@
         ]
       }
     },
+    "/api/v1/workspace/setup": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "The setup form (\"what will you use OnHold for?\"), its answers so far and what they set up.",
+        "operationId": "get_setup",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupView"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Set the workspace up from the form's answers. Modules left out are only\nhidden, never deleted, and the form can be sent again at any time.",
+        "operationId": "save_setup",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveSetupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workspace/setup/preview": {
+      "post": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "What a set of answers would set up, without saving it.",
+        "operationId": "preview_setup",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Answers"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -21016,6 +21387,54 @@
           }
         }
       },
+      "AdminSetupRequestView": {
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "workspace_name",
+          "body",
+          "created_at"
+        ],
+        "properties": {
+          "author_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "author_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "workspace_id": {
+            "$ref": "#/components/schemas/WorkspaceId"
+          },
+          "workspace_name": {
+            "type": "string"
+          }
+        }
+      },
       "AdminWorkspaceView": {
         "type": "object",
         "required": [
@@ -21025,12 +21444,28 @@
           "plan",
           "status",
           "created_at",
-          "member_count"
+          "member_count",
+          "presets",
+          "enabled_modules",
+          "extras",
+          "open_requests"
         ],
         "properties": {
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "enabled_modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "extras": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "id": {
             "$ref": "#/components/schemas/WorkspaceId"
@@ -21042,8 +21477,33 @@
           "name": {
             "type": "string"
           },
+          "open_requests": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Comments from the setup form not yet marked done."
+          },
           "plan": {
             "type": "string"
+          },
+          "presets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "setup": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The setup form's answers; absent until the client sends it."
+          },
+          "setup_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           },
           "slug": {
             "type": "string"
@@ -21139,6 +21599,37 @@
           "payment_id": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "Answers": {
+        "type": "object",
+        "description": "What someone ticked.",
+        "properties": {
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "talent_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "team": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`just_me`, `small` or `large`."
           }
         }
       },
@@ -22255,6 +22746,36 @@
           }
         }
       },
+      "Choice": {
+        "type": "object",
+        "description": "One tick box or choice.",
+        "required": [
+          "key",
+          "label",
+          "suggests"
+        ],
+        "properties": {
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "suggests": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Features worth ticking when this is ticked (a role's usual setup)."
+          }
+        }
+      },
       "Clash": {
         "type": "object",
         "description": "Something else taking a talent's time.",
@@ -23199,6 +23720,13 @@
               "string",
               "null"
             ]
+          },
+          "presets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Presets to combine, e.g. `[\"solo\", \"promoter\"]`."
           },
           "slug": {
             "type": "string",
@@ -28862,6 +29390,50 @@
           }
         }
       },
+      "Plan": {
+        "type": "object",
+        "description": "What the answers set up.",
+        "required": [
+          "presets",
+          "modules",
+          "extras",
+          "vocabulary"
+        ],
+        "properties": {
+          "extras": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "perspective": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Perspective",
+                "description": "`None` keeps the workspace's current perspective."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "presets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vocabulary": {
+            "type": "object"
+          }
+        }
+      },
       "Preview": {
         "type": "object",
         "required": [
@@ -28926,6 +29498,56 @@
             "description": "The same as `record_id` with `entity` `thing`."
           }
         }
+      },
+      "PriceList": {
+        "type": "object",
+        "description": "What OnHold charges, in minor units a month: a base price, plus each\nticked feature, plus the team size. Shown as an estimate only.",
+        "required": [
+          "currency",
+          "base",
+          "features",
+          "team"
+        ],
+        "properties": {
+          "base": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217, e.g. `GBP`."
+          },
+          "features": {
+            "type": "object",
+            "description": "Per feature key of the setup form.",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "placeholder": {
+            "type": "boolean",
+            "description": "Shown as example prices while pricing is not final."
+          },
+          "team": {
+            "type": "object",
+            "description": "Per team size (`just_me`, `small`, `large`).",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "PublicCalendarConnect": {
         "type": "object",
@@ -29253,6 +29875,40 @@
             "description": "pending, signed, declined, or cancelled (a newer version replaced it)."
           },
           "workspace_name": {
+            "type": "string"
+          }
+        }
+      },
+      "Question": {
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "multiple",
+          "choices"
+        ],
+        "properties": {
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            }
+          },
+          "help": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string",
+            "description": "The `Answers` field it fills."
+          },
+          "multiple": {
+            "type": "boolean",
+            "description": "Tick any (true) or pick one (false)."
+          },
+          "title": {
             "type": "string"
           }
         }
@@ -29931,6 +30587,24 @@
           "version": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "SaveSetupRequest": {
+        "type": "object",
+        "required": [
+          "answers"
+        ],
+        "properties": {
+          "answers": {
+            "$ref": "#/components/schemas/Answers"
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A request or question for OnHold's team (up to 4,000 characters)."
           }
         }
       },
@@ -30624,6 +31298,96 @@
           "version": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "SetupRequestView": {
+        "type": "object",
+        "required": [
+          "id",
+          "body",
+          "created_at"
+        ],
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When OnHold's team marked it dealt with."
+          }
+        }
+      },
+      "SetupView": {
+        "type": "object",
+        "required": [
+          "questions",
+          "answers",
+          "current",
+          "requests",
+          "price_list",
+          "version"
+        ],
+        "properties": {
+          "answers": {
+            "$ref": "#/components/schemas/Answers",
+            "description": "The answers last sent, or what the workspace's presets suggest."
+          },
+          "current": {
+            "$ref": "#/components/schemas/Plan",
+            "description": "What is set up now."
+          },
+          "done_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the form was last sent; absent if never."
+          },
+          "price_list": {
+            "$ref": "#/components/schemas/PriceList",
+            "description": "OnHold's prices for the estimate."
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            }
+          },
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SetupRequestView"
+            },
+            "description": "This workspace's latest comments, newest first."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Send back as `If-Match` when saving."
           }
         }
       },
@@ -33206,6 +33970,9 @@
           "default_timezone",
           "locale",
           "enabled_modules",
+          "presets",
+          "extras",
+          "vocabulary",
           "branding",
           "require_staff_2fa",
           "hold_days",
@@ -33243,6 +34010,13 @@
               "type": "string"
             }
           },
+          "extras": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Finer switches inside modules: `team`, `commission`, `advanced`."
+          },
           "hold_days": {
             "type": "integer",
             "format": "int32",
@@ -33269,8 +34043,23 @@
               "null"
             ]
           },
+          "presets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The presets the workspace combines, from its setup."
+          },
           "require_staff_2fa": {
             "type": "boolean"
+          },
+          "setup_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the setup form was last sent; absent until it has been."
           },
           "slug": {
             "type": "string"
@@ -33286,6 +34075,10 @@
             "type": "integer",
             "format": "int64",
             "description": "Send back as `If-Match` when saving to avoid overwriting someone else's change."
+          },
+          "vocabulary": {
+            "type": "object",
+            "description": "Its own words, per module: `{\"crm\": {\"talent\": {\"one\": \"DJ\", \"many\": \"DJs\"}}}`."
           }
         }
       }

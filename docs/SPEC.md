@@ -114,6 +114,8 @@ Rider and travel templates ship in M8 for every preset that represents talent. T
 
 Presets are starting points. Everything they seed is editable in Settings afterwards, and a workspace can switch preset only by applying another bundle on top, never by losing data.
 
+**The setup form.** A new workspace's owner is offered a short tick-box form in Settings → Your setup: what they do (each role is a preset), what they want OnHold to do (each feature switches on a module or an extra), who or what they book, and how many people will use it, plus a comments box whose requests reach OnHold's team on the Client workspaces page. The answers are kept on the workspace and can be changed at any time. They set its presets, perspective, modules, words per module and **extras**, the finer switches inside modules that keep a one-person setup simple: `team` (assigning work to each other), `commission` (settlements and who invoices) and `advanced` (custom fields, pipelines and imports in the menu). Menus, pages and buttons read these, so a solo artist sees a small app and an agency sees everything. Switching something off only hides it. While the form is filled in, a live estimate is worked out from OnHold's price list (a base price, plus each feature, plus team size), which OnHold's team edits on the Client workspaces page; it charges nothing. The presets so far seed perspective, modules, extras and words; their custom fields, pipeline stages, templates and rules arrive in M8.
+
 ## Architecture principles
 
 One shared, multi-tenant platform: one Rust API, one Postgres database, one React frontend, every tenant isolated by a `workspace_id` on every row and enforced at the database level. Bespoke work lives in three places only — tenant configuration (data), the frontend (per-tenant module directories) and thin backend plugins that hook the core's extension points. The core itself never carries a client's name.
@@ -425,7 +427,7 @@ A new client's "custom app" is the core plus, in order of preference: configurat
 
 **Onboarding a new client** (target: under two hours of your time)
 
-1. `onhold admin workspace create --slug acme --name "Acme Agency" --country GB --currency GBP --timezone Europe/London --owner-email owner@acme.example --plan standard` seeds defaults: roles, tax codes and templates; from M8 a `--preset` option (for example `--preset agency,manager`, combinable) adds the vertical presets' pipeline, rules and custom fields.
+1. `onhold admin workspace create --slug acme --name "Acme Agency" --country GB --currency GBP --timezone Europe/London --owner-email owner@acme.example --plan standard` seeds defaults: roles, tax codes and templates; a `--preset` option (for example `--preset agency,manager`, combinable) sets the presets' modules, extras and words now, and from M8 their pipeline, rules and custom fields. The owner can then adjust it in the setup form.
 2. Import their spreadsheet with the CSV importer; connect Google or Microsoft; connect Stripe.
 3. Adjust configuration with them on a call; most "bespoke" asks end here.
 4. If they need a tenant directory or plugin, create it from the templates in `web/tenants/_template` and `crates/plugins/_template`, ship it behind their slug.
