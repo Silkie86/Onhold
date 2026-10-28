@@ -21,6 +21,7 @@ import {
 } from "@onhold/ui";
 import {
   Building2,
+  BookOpenCheck,
   CalendarCheck,
   CalendarDays,
   CalendarCog,
@@ -129,6 +130,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
       { to: "/settings/calendar", label: "Calendar settings", icon: <CalendarCog />, module: "calendar" },
       { to: "/settings/finance", label: "Invoicing", icon: <Landmark />, module: "finance" },
       { to: "/settings/payments", label: "Card payments", icon: <CreditCard />, module: "finance" },
+      { to: "/settings/accounting", label: "Accounting", icon: <BookOpenCheck />, module: "finance" },
     ],
   },
 ];

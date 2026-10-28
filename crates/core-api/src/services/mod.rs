@@ -2,6 +2,7 @@
 //! transaction, and records the change in the audit log and the event outbox
 //! before committing. Handlers only translate HTTP to and from these calls.
 
+pub mod accounting;
 pub mod admin;
 pub mod app_sign_in;
 pub mod auth;

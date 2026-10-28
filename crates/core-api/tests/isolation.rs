@@ -326,6 +326,7 @@ struct Work {
     task: uuid::Uuid,
     feed: uuid::Uuid,
     push: uuid::Uuid,
+    books: uuid::Uuid,
     travel: uuid::Uuid,
     money_line: uuid::Uuid,
     project: uuid::Uuid,
@@ -391,6 +392,29 @@ async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
     .execute(&app.owner)
     .await
     .unwrap();
+    // The workspace's books, as connecting would leave them, with one
+    // invoice linked.
+    let books = core_domain::ids::new_id();
+    sqlx::query(
+        "INSERT INTO accounting_connections (id, workspace_id, provider, tenant_id, tenant_name, secret, start_date, sales_account)
+         SELECT $1, workspace_id, 'xero', $2, $2, '\\x00', current_date, '200' FROM bookings WHERE id = $3",
+    )
+    .bind(books)
+    .bind(format!("{slug}.books.test"))
+    .bind(booking)
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO accounting_links (id, workspace_id, connection_id, kind, local_id, remote_id, state)
+         SELECT $1, workspace_id, $2, 'contact', $1, $3, 'live' FROM accounting_connections WHERE id = $2",
+    )
+    .bind(core_domain::ids::new_id())
+    .bind(books)
+    .bind(format!("{slug}.remote.test"))
+    .execute(&app.owner)
+    .await
+    .unwrap();
     let travel = post(
         &format!("/api/v1/bookings/{booking}/travel"),
         json!({ "kind": "flight", "number": "BA 1", "reference": format!("{slug} secret flight"),
@@ -425,6 +449,7 @@ async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
         task,
         feed,
         push,
+        books,
         travel,
         money_line,
         project,
@@ -633,6 +658,9 @@ async fn world(app: &TestApp) -> World {
             b_work.feed.to_string(),
             b_work.push.to_string(),
             "bravo.push.test".into(),
+            b_work.books.to_string(),
+            "bravo.books.test".into(),
+            "bravo.remote.test".into(),
             b_money.tax_code.to_string(),
             b_money.invoice.to_string(),
             b_money.payment.to_string(),
@@ -731,6 +759,9 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
         ("POST", "/api/v1/calendar/feeds") => json!({ "name": "Intruder" }),
         ("POST", "/api/v1/calendar/pushes/start") => json!({ "provider": "google" }),
         ("POST", "/api/v1/calendar/pushes/finish") => json!({ "code": "x", "state": "x" }),
+        ("POST", "/api/v1/accounting/start") => json!({ "provider": "xero" }),
+        ("POST", "/api/v1/accounting/finish") => json!({ "code": "x", "state": "x" }),
+        ("PUT", "/api/v1/accounting/settings") => json!({ "sales_account": "200" }),
         ("POST", "/api/v1/quotes/{id}/send" | "/api/v1/invoices/{id}/send") => {
             json!({ "to": "intruder@alpha.test" })
         }
@@ -982,11 +1013,14 @@ async fn nothing_from_another_workspace_appears_in_this_ones_reads(pool: PgPool)
     for op in operations()
         .iter()
         // The live stream never ends; it has its own test in events.rs.
+        // The books' accounts are read from Xero or QuickBooks themselves;
+        // accounting.rs tests them against stand-ins.
         .filter(|o| {
             o.workspace_scoped
                 && o.method == Method::GET
                 && !o.path.contains('{')
                 && !o.path.ends_with("/stream")
+                && o.path != "/api/v1/accounting/options"
         })
     {
         for query in read_queries(&op.path) {

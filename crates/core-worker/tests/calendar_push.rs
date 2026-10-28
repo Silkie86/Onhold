@@ -621,7 +621,8 @@ async fn bookings_are_kept_in_members_own_calendars(pool: PgPool) {
     assert!(!events.keys().any(|t| t.contains("Long Gone")));
     // Never the fee.
     let all = serde_json::to_string(&events).unwrap();
-    assert!(!all.contains("9876") && !all.contains("987"), "{all}");
+    // (Ids and hashes are random, so look for the amount as it is written.)
+    assert!(!all.contains("9876") && !all.contains("9,876"), "{all}");
     assert!(
         ball_event["description"]
             .as_str()

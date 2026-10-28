@@ -227,6 +227,7 @@ fn scopes(provider: Provider, shared: bool) -> Vec<&'static str> {
             }
             s
         }
+        Provider::Xero | Provider::QuickBooks => Vec::new(),
     }
 }
 
@@ -354,10 +355,7 @@ pub async fn finish_connect(
         ));
     }
     let app = app(state, &flow.provider)?;
-    let name = match app.provider {
-        Provider::Google => "Google",
-        Provider::Microsoft => "Microsoft",
-    };
+    let name = app.provider.name();
     let http = &state.config.mailboxes.http;
     let tokens = app
         .exchange(http, req.code.trim(), &redirect_uri(state))
@@ -414,6 +412,9 @@ pub async fn finish_connect(
                 .map_err(|e| provider_error(name, e))?;
             }
             me
+        }
+        Provider::Xero | Provider::QuickBooks => {
+            return Err(ApiError::invalid("provider", "use google or microsoft"));
         }
     };
     let account = account.trim().to_ascii_lowercase();

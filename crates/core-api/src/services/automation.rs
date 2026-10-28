@@ -763,6 +763,8 @@ pub async fn dispatch_event(
         event.id,
     )
     .await?;
+    // Invoices and payments sent on to the workspace's books.
+    super::accounting::changed(&mut tx, workspace, &event.topic).await?;
 
     let rules = if rules_wanted(&event) {
         core_db::rules::for_event(&mut tx, &event.topic).await?

@@ -7,7 +7,9 @@ use anyhow::Context;
 use clap::Args;
 use core_api::Config;
 use core_api::config::ProxyHeaders;
-use core_api::config::{MailboxConfig, PdfConfig, SenderDomainsConfig, StorageConfig};
+use core_api::config::{
+    AccountingConfig, MailboxConfig, PdfConfig, SenderDomainsConfig, StorageConfig,
+};
 use core_api::oidc::OidcProvider;
 use core_domain::crypto::Keyring;
 use core_integrations::dns::{Doh, DomainConnect};
@@ -170,6 +172,32 @@ pub struct ApiArgs {
     stripe_api_base: Url,
     #[arg(long, env = "STRIPE_CONNECT_BASE", default_value = core_integrations::stripe::CONNECT_BASE, global = true, hide = true)]
     stripe_connect_base: Url,
+
+    /// Xero, for keeping workspaces' books: an app from developer.xero.com
+    /// with the redirect URI `<PUBLIC_BASE_URL>/settings/accounting`.
+    #[arg(long, env = "XERO_CLIENT_ID", global = true)]
+    xero_client_id: Option<String>,
+    #[arg(
+        long,
+        env = "XERO_CLIENT_SECRET",
+        hide_env_values = true,
+        global = true
+    )]
+    xero_client_secret: Option<String>,
+    /// QuickBooks Online: an app from developer.intuit.com with the same
+    /// redirect URI.
+    #[arg(long, env = "QUICKBOOKS_CLIENT_ID", global = true)]
+    quickbooks_client_id: Option<String>,
+    #[arg(
+        long,
+        env = "QUICKBOOKS_CLIENT_SECRET",
+        hide_env_values = true,
+        global = true
+    )]
+    quickbooks_client_secret: Option<String>,
+    /// Use Intuit's sandbox companies (while the app is in development).
+    #[arg(long, env = "QUICKBOOKS_SANDBOX", default_value_t = false, action = clap::ArgAction::Set, global = true)]
+    quickbooks_sandbox: bool,
 
     /// How often each connected mailbox is read, in seconds.
     #[arg(long, env = "MAIL_POLL_SECONDS", default_value_t = 120, global = true)]
@@ -464,6 +492,26 @@ impl ApiArgs {
             ),
         };
 
+        let mut accounting = AccountingConfig::default();
+        match (self.xero_client_id, self.xero_client_secret) {
+            (Some(id), Some(secret)) => accounting.xero = Some(OAuthApp::xero(id, secret)),
+            (None, None) => {}
+            _ => anyhow::bail!("set both XERO_CLIENT_ID and XERO_CLIENT_SECRET, or neither"),
+        }
+        match (self.quickbooks_client_id, self.quickbooks_client_secret) {
+            (Some(id), Some(secret)) => {
+                accounting.quickbooks = Some(OAuthApp::quickbooks(id, secret));
+            }
+            (None, None) => {}
+            _ => anyhow::bail!(
+                "set both QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET, or neither"
+            ),
+        }
+        if self.quickbooks_sandbox {
+            accounting.quickbooks_api =
+                Url::parse(core_integrations::accounting::QUICKBOOKS_SANDBOX_API)?;
+        }
+
         let sender_domains = match self.resend_api_key {
             Some(key) => {
                 anyhow::ensure!(
@@ -515,6 +563,7 @@ impl ApiArgs {
             webhooks_allow_private: self.webhooks_allow_private,
             stripe,
             mailboxes,
+            accounting,
             sender_domains,
             ..Config::new(self.public_base_url, keyring)
         })

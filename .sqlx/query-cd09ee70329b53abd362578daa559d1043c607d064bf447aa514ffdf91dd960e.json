@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounting_connections\n           SET sync_lease_until = now() + make_interval(secs => $3), sync_token = $2,\n               next_sync_at = now() + make_interval(secs => $3)\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL\n             AND status <> 'reconnect' AND (sync_lease_until IS NULL OR sync_lease_until < now())\n           RETURNING sync_token AS \"token!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "token!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "sync_token"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Float8"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "cd09ee70329b53abd362578daa559d1043c607d064bf447aa514ffdf91dd960e"
+}

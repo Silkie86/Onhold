@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounting_connections\n           SET last_synced_at = now(), status = 'active', failures = 0, last_error = NULL,\n               last_error_at = NULL, sync_lease_until = NULL, sync_token = NULL,\n               paid_checked_at = CASE WHEN $4 AND NOT sync_again THEN now() ELSE paid_checked_at END,\n               retry_before = CASE WHEN $4 AND NOT sync_again THEN now() ELSE retry_before END,\n               paid_cursor = CASE WHEN $4 THEN NULL ELSE paid_cursor END,\n               next_sync_at = CASE WHEN sync_again THEN now() ELSE $3 END,\n               sync_again = false\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2\n             AND disconnected_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cb82d15307f29d1ae038c506d779f227c0d036d4a90ff54adb824d70c52ec8a8"
+}

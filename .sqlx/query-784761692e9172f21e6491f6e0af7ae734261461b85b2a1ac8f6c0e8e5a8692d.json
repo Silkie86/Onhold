@@ -1,0 +1,316 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, provider, tenant_id, tenant_name, automatic_tax, secret, sales_account,\n                      bank_account, start_date, status, failures, last_error, last_error_at,\n                      last_synced_at, paid_checked_at, paid_cursor, retry_before, import_status, import_page, imported,\n                      import_error, connected_by AS \"connected_by: UserId\", connected_at,\n                      disconnected_at, version\n               FROM accounting_connections\n               WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "provider",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "tenant_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "tenant_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "tenant_name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "automatic_tax",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "automatic_tax"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "secret",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "secret"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "sales_account",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "sales_account"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "bank_account",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "bank_account"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "start_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "start_date"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "failures",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "failures"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "last_error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "last_error"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "last_error_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "last_error_at"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "last_synced_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "last_synced_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "paid_checked_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "paid_checked_at"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "paid_cursor",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "paid_cursor"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "retry_before",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "retry_before"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "import_status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "import_status"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "import_page",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "import_page"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "imported",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "imported"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "import_error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "import_error"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "connected_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "connected_by"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "connected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "connected_at"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "disconnected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "disconnected_at"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "784761692e9172f21e6491f6e0af7ae734261461b85b2a1ac8f6c0e8e5a8692d"
+}

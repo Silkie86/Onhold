@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounting_connections\n           SET tenant_name = $2, automatic_tax = $3, secret = $4, connected_by = $5,\n               connected_at = now(), disconnected_at = NULL, revoke_at = NULL, status = 'active',\n               failures = 0, last_error = NULL, last_error_at = NULL, next_sync_at = now(),\n               sync_lease_until = NULL, sync_token = NULL, sync_again = false\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bool",
+        "Bytea",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4c93a9d9ae51b3bed8b18df4d2a105d0b11b62b384027cd6af6047fc7f72ba8e"
+}

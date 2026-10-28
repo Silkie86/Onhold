@@ -290,6 +290,7 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "sender_domains",
         "talent_calendars",
         "calendar_pushes",
+        "accounting_connections",
     ];
     for table in tables(&app.owner).await {
         let read =
@@ -334,6 +335,10 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "SELECT remote_calendar FROM calendar_pushes",
         "UPDATE calendar_pushes SET next_sync_at = now()",
         "SELECT remote_id FROM calendar_push_events",
+        "SELECT secret FROM accounting_connections",
+        "SELECT tenant_name FROM accounting_connections",
+        "UPDATE accounting_connections SET next_sync_at = now()",
+        "SELECT remote_id FROM accounting_links",
         "SELECT total_minor FROM invoices",
         "UPDATE invoices SET status = 'paid'",
     ] {

@@ -1,7 +1,7 @@
 //! OAuth 2 authorization-code flows for the providers people connect their
-//! own accounts from: Google and Microsoft for mail and calendars (Xero and
-//! QuickBooks follow the same shape). OnHold keeps the refresh token,
-//! encrypted, and the worker refreshes access tokens as they run out.
+//! own accounts from: Google and Microsoft for mail and calendars, Xero and
+//! QuickBooks for accounting. OnHold keeps the refresh token, encrypted,
+//! and the worker refreshes access tokens as they run out.
 
 use chrono::{DateTime, Duration, Utc};
 use serde::Deserialize;
@@ -13,6 +13,12 @@ pub const GOOGLE_AUTHORIZE: &str = "https://accounts.google.com/o/oauth2/v2/auth
 pub const GOOGLE_TOKEN: &str = "https://oauth2.googleapis.com/token";
 pub const GOOGLE_REVOKE: &str = "https://oauth2.googleapis.com/revoke";
 pub const MICROSOFT_LOGIN: &str = "https://login.microsoftonline.com";
+pub const XERO_AUTHORIZE: &str = "https://login.xero.com/identity/connect/authorize";
+pub const XERO_TOKEN: &str = "https://identity.xero.com/connect/token";
+pub const XERO_REVOKE: &str = "https://identity.xero.com/connect/revocation";
+pub const QUICKBOOKS_AUTHORIZE: &str = "https://appcenter.intuit.com/connect/oauth2";
+pub const QUICKBOOKS_TOKEN: &str = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
+pub const QUICKBOOKS_REVOKE: &str = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke";
 
 /// Reading and sending a person's Gmail.
 pub const GOOGLE_MAIL_SCOPES: &[&str] = &[
@@ -30,6 +36,8 @@ pub const MICROSOFT_SHARED_MAIL_SCOPES: &[&str] = &["Mail.Read.Shared", "Mail.Se
 pub enum Provider {
     Google,
     Microsoft,
+    Xero,
+    QuickBooks,
 }
 
 impl Provider {
@@ -37,7 +45,25 @@ impl Provider {
         match self {
             Self::Google => "google",
             Self::Microsoft => "microsoft",
+            Self::Xero => "xero",
+            Self::QuickBooks => "quickbooks",
         }
+    }
+
+    /// The provider's name, for people.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Google => "Google",
+            Self::Microsoft => "Microsoft",
+            Self::Xero => "Xero",
+            Self::QuickBooks => "QuickBooks",
+        }
+    }
+
+    /// Xero and Intuit take the client's credentials as HTTP Basic
+    /// authentication rather than in the form.
+    fn basic_auth(self) -> bool {
+        matches!(self, Self::Xero | Self::QuickBooks)
     }
 }
 
@@ -63,6 +89,30 @@ impl OAuthApp {
             authorize_url: Url::parse(GOOGLE_AUTHORIZE).expect("static URL"),
             token_url: Url::parse(GOOGLE_TOKEN).expect("static URL"),
             revoke_url: Some(Url::parse(GOOGLE_REVOKE).expect("static URL")),
+        }
+    }
+
+    pub fn xero(client_id: String, client_secret: String) -> Self {
+        #[allow(clippy::expect_used)]
+        Self {
+            provider: Provider::Xero,
+            client_id,
+            client_secret,
+            authorize_url: Url::parse(XERO_AUTHORIZE).expect("static URL"),
+            token_url: Url::parse(XERO_TOKEN).expect("static URL"),
+            revoke_url: Some(Url::parse(XERO_REVOKE).expect("static URL")),
+        }
+    }
+
+    pub fn quickbooks(client_id: String, client_secret: String) -> Self {
+        #[allow(clippy::expect_used)]
+        Self {
+            provider: Provider::QuickBooks,
+            client_id,
+            client_secret,
+            authorize_url: Url::parse(QUICKBOOKS_AUTHORIZE).expect("static URL"),
+            token_url: Url::parse(QUICKBOOKS_TOKEN).expect("static URL"),
+            revoke_url: Some(Url::parse(QUICKBOOKS_REVOKE).expect("static URL")),
         }
     }
 
@@ -133,6 +183,7 @@ impl OAuthApp {
                     q.append_pair("response_mode", "query")
                         .append_pair("prompt", "select_account");
                 }
+                Provider::Xero | Provider::QuickBooks => {}
             }
             if let Some(hint) = login_hint {
                 q.append_pair("login_hint", hint);
@@ -195,16 +246,36 @@ impl OAuthApp {
         let Some(url) = &self.revoke_url else {
             return Ok(());
         };
-        let body = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("token", token)
-            .finish();
-        let req = http
-            .post(url.clone())
-            .header("content-type", "application/x-www-form-urlencoded")
-            .body(body);
+        let req = match self.provider {
+            // Intuit takes the token as JSON.
+            Provider::QuickBooks => http
+                .post(url.clone())
+                .header("content-type", "application/json")
+                .header("accept", "application/json")
+                .body(serde_json::json!({ "token": token }).to_string()),
+            _ => http
+                .post(url.clone())
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(
+                    url::form_urlencoded::Serializer::new(String::new())
+                        .append_pair("token", token)
+                        .finish(),
+                ),
+        };
+        let req = self.client_auth(req);
         match provider::send_raw(req).await {
             Ok(_) | Err(ProviderError::Refused { status: 400, .. }) => Ok(()),
             Err(e) => Err(e),
+        }
+    }
+
+    /// The client's credentials as Basic authentication, for the providers
+    /// that take them so.
+    fn client_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if self.provider.basic_auth() {
+            req.basic_auth(&self.client_id, Some(&self.client_secret))
+        } else {
+            req
         }
     }
 
@@ -213,16 +284,22 @@ impl OAuthApp {
         http: &reqwest::Client,
         form: &[(&str, &str)],
     ) -> Result<Tokens, ProviderError> {
-        let body = url::form_urlencoded::Serializer::new(String::new())
-            .extend_pairs(form)
-            .append_pair("client_id", &self.client_id)
-            .append_pair("client_secret", &self.client_secret)
-            .finish();
-        let req = http
-            .post(self.token_url.clone())
-            .header("content-type", "application/x-www-form-urlencoded")
-            .header("accept", "application/json")
-            .body(body);
+        // Built apart: the serializer must not live across an await.
+        let body = {
+            let mut body = url::form_urlencoded::Serializer::new(String::new());
+            body.extend_pairs(form);
+            if !self.provider.basic_auth() {
+                body.append_pair("client_id", &self.client_id)
+                    .append_pair("client_secret", &self.client_secret);
+            }
+            body.finish()
+        };
+        let req = self.client_auth(
+            http.post(self.token_url.clone())
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("accept", "application/json")
+                .body(body),
+        );
         let raw: RawTokens = match provider::send_json(req).await {
             // A token endpoint's 401 is a bad client or grant, not a stale
             // access token: refreshing again cannot help.

@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO accounting_connections\n               (id, workspace_id, provider, tenant_id, tenant_name, automatic_tax, secret, start_date, connected_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Bytea",
+        "Date",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6379df8c155a570e001a5b756747faa7464b59ccc3f91ea859700d4dfeb3ec8b"
+}

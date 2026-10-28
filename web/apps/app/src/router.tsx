@@ -244,6 +244,21 @@ const paymentsSettings = createRoute({
   }),
   component: lazyRouteComponent(() => import("./pages/payments-settings.tsx"), "PaymentsSettingsPage"),
 });
+const accountingSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/accounting",
+  // Xero and QuickBooks send the person back here with these.
+  validateSearch: (
+    s: Record<string, unknown>,
+  ): { code?: string; state?: string; realmId?: string; error?: string; error_description?: string } => ({
+    code: str(s.code),
+    state: str(s.state),
+    realmId: str(s.realmId),
+    error: str(s.error),
+    error_description: str(s.error_description),
+  }),
+  component: lazyRouteComponent(() => import("./pages/accounting-settings.tsx"), "AccountingSettingsPage"),
+});
 const financeSettings = createRoute({
   getParentRoute: () => app,
   path: "/settings/finance",
@@ -281,6 +296,7 @@ const tree = root.addChildren([
     fields,
     pipelines,
     calendarSettings,
+    accountingSettings,
     sendingDomain,
     brandingSettings,
     setupSettings,

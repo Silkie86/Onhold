@@ -10,9 +10,10 @@
 //! DNS through Domain Connect ([`dns`]).
 //! When people are busy comes from their own calendars ([`calendars`]:
 //! Google, Microsoft or an iCal link), and bookings go into members' own
-//! calendars ([`calendar_events`]). Accounting and messaging providers
-//! follow.
+//! calendars ([`calendar_events`]). A workspace's books are kept in Xero or
+//! QuickBooks ([`accounting`]). Messaging providers follow.
 
+pub mod accounting;
 pub mod calendar_events;
 pub mod calendars;
 pub mod dns;

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounting_connections\n           SET sales_account = $2, bank_account = $3, start_date = $4,\n               next_sync_at = CASE WHEN status = 'reconnect' OR coalesce(sync_lease_until > now(), false)\n                                   THEN next_sync_at ELSE now() END,\n               sync_again = sync_again OR coalesce(sync_lease_until > now(), false)\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Date"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c42f1576a3ef0f78db31997bd5086e539971a9e2d5edbd998ddc936a5ac63444"
+}

@@ -18,6 +18,10 @@ use super::{IdempotencyHeader, IfMatchHeader, WorkspaceHeader, with_etag};
 use crate::AppState;
 use crate::error::{ApiResult, ErrorBody};
 use crate::extract::{ClientMeta, IfMatch, WsCtx};
+use crate::services::accounting::{
+    self, Accounting, AccountingConnection, AccountingFailure, AccountingOptions,
+    AccountingSettings, AccountingStart, FinishAccounting, StartAccounting,
+};
 use crate::services::finance::{
     self, FinanceSettings, FinanceSettingsInput, FxQuote, TaxCodeInput, TaxCodeView,
 };
@@ -68,6 +72,14 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(settlement_payout))
         .routes(routes!(finance_report))
         .routes(routes!(export_csv))
+        .routes(routes!(get_accounting, disconnect_accounting))
+        .routes(routes!(start_accounting))
+        .routes(routes!(finish_accounting))
+        .routes(routes!(accounting_options))
+        .routes(routes!(update_accounting_settings))
+        .routes(routes!(sync_accounting))
+        .routes(routes!(import_from_accounting))
+        .routes(routes!(accounting_failures))
         .routes(routes!(public_invoice))
         .routes(routes!(public_invoice_pdf))
 }
@@ -630,4 +642,115 @@ async fn public_invoice_pdf(
     Path(token): Path<String>,
 ) -> ApiResult<Response> {
     Ok(file_response(invoices::public_pdf(&state, &token).await?))
+}
+
+// The workspace's books (Xero or QuickBooks) ----------------------------------------------
+
+/// The connection to the workspace's books, and which providers this
+/// server can connect to.
+#[utoipa::path(get, path = "/accounting", tag = "finance", params(WorkspaceHeader),
+    responses((status = 200, body = Accounting), (status = 403, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn get_accounting(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<Accounting>> {
+    Ok(Json(accounting::get(&state, &ctx).await?))
+}
+
+/// Start connecting Xero or QuickBooks Online.
+#[utoipa::path(post, path = "/accounting/start", tag = "finance", params(WorkspaceHeader),
+    request_body = StartAccounting,
+    responses((status = 200, body = AccountingStart), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody), (status = 409, body = ErrorBody)),
+    security(("session" = [])))]
+async fn start_accounting(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Json(b): Json<StartAccounting>,
+) -> ApiResult<Json<AccountingStart>> {
+    Ok(Json(accounting::start(&state, &ctx, b).await?))
+}
+
+/// Finish connecting with what the provider sent back.
+#[utoipa::path(post, path = "/accounting/finish", tag = "finance", params(WorkspaceHeader),
+    request_body = FinishAccounting,
+    responses((status = 200, body = AccountingConnection), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody), (status = 409, body = ErrorBody), (status = 502, body = ErrorBody)),
+    security(("session" = [])))]
+async fn finish_accounting(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Json(b): Json<FinishAccounting>,
+) -> ApiResult<Json<AccountingConnection>> {
+    Ok(Json(accounting::finish(&state, &ctx, b).await?))
+}
+
+/// Stop sending to the books, and revoke OnHold's access to them.
+#[utoipa::path(delete, path = "/accounting", tag = "finance", params(WorkspaceHeader),
+    responses((status = 204), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody)),
+    security(("session" = [])))]
+async fn disconnect_accounting(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<StatusCode> {
+    accounting::disconnect(&state, &ctx).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The accounts, items and tax rates in the books to choose from, read
+/// from the books now.
+#[utoipa::path(get, path = "/accounting/options", tag = "finance", params(WorkspaceHeader),
+    responses((status = 200, body = AccountingOptions), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 502, body = ErrorBody)),
+    security(("session" = [])))]
+async fn accounting_options(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<AccountingOptions>> {
+    Ok(Json(accounting::options(&state, &ctx).await?))
+}
+
+/// Where sales and payments go in the books, and which tax rate each tax
+/// code is there.
+#[utoipa::path(put, path = "/accounting/settings", tag = "finance", params(WorkspaceHeader),
+    request_body = AccountingSettings,
+    responses((status = 200, body = AccountingConnection), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody)),
+    security(("session" = [])))]
+async fn update_accounting_settings(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Json(b): Json<AccountingSettings>,
+) -> ApiResult<Json<AccountingConnection>> {
+    Ok(Json(accounting::update_settings(&state, &ctx, b).await?))
+}
+
+/// Send to the books now, trying again what they refused.
+#[utoipa::path(post, path = "/accounting/sync", tag = "finance", params(WorkspaceHeader),
+    responses((status = 200, body = AccountingConnection), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn sync_accounting(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<AccountingConnection>> {
+    Ok(Json(accounting::sync_now(&state, &ctx).await?))
+}
+
+/// Import the invoices issued in the books before OnHold, as past invoices.
+#[utoipa::path(post, path = "/accounting/import", tag = "finance", params(WorkspaceHeader),
+    responses((status = 200, body = AccountingConnection), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
+    security(("session" = [])))]
+async fn import_from_accounting(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<AccountingConnection>> {
+    Ok(Json(accounting::import(&state, &ctx).await?))
+}
+
+/// What the books refused, and why.
+#[utoipa::path(get, path = "/accounting/failures", tag = "finance", params(WorkspaceHeader),
+    responses((status = 200, body = Vec<AccountingFailure>), (status = 403, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn accounting_failures(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<Vec<AccountingFailure>>> {
+    Ok(Json(accounting::failures(&state, &ctx).await?))
 }

@@ -4,6 +4,152 @@
  */
 
 export interface paths {
+    "/api/v1/accounting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The connection to the workspace's books, and which providers this
+         *     server can connect to.
+         */
+        get: operations["get_accounting"];
+        put?: never;
+        post?: never;
+        /** Stop sending to the books, and revoke OnHold's access to them. */
+        delete: operations["disconnect_accounting"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/failures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the books refused, and why. */
+        get: operations["accounting_failures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish connecting with what the provider sent back. */
+        post: operations["finish_accounting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import the invoices issued in the books before OnHold, as past invoices. */
+        post: operations["import_from_accounting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The accounts, items and tax rates in the books to choose from, read
+         *     from the books now.
+         */
+        get: operations["accounting_options"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Where sales and payments go in the books, and which tax rate each tax
+         *     code is there.
+         */
+        put: operations["update_accounting_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start connecting Xero or QuickBooks Online. */
+        post: operations["start_accounting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send to the books now, trying again what they refused. */
+        post: operations["sync_accounting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/impersonation": {
         parameters: {
             query?: never;
@@ -4057,6 +4203,117 @@ export interface components {
             /** @description The buyer's name, as their acceptance. */
             name: string;
         };
+        Accounting: {
+            connection?: components["schemas"]["AccountingConnection"] | null;
+            /** @description QuickBooks can be connected on this server. */
+            quickbooks: boolean;
+            /** @description Xero can be connected on this server. */
+            xero: boolean;
+        };
+        AccountingChoice: {
+            id: string;
+            name: string;
+        };
+        /** @description The workspace's books. Never carries the grant. */
+        AccountingConnection: {
+            /** @description QuickBooks works out US sales tax itself: tax codes are only taxable or not. */
+            automatic_tax: boolean;
+            /** @description The account payments are paid into. */
+            bank_account?: string | null;
+            /** Format: date-time */
+            connected_at: string;
+            /** Format: uuid */
+            id: string;
+            import: components["schemas"]["AccountingImport"];
+            last_error?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            /** Format: date-time */
+            last_synced_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When what was paid in the books was last read back.
+             */
+            paid_checked_at?: string | null;
+            /** @description `xero` or `quickbooks`. */
+            provider: string;
+            /** @description Sending has started: where sales go is chosen. */
+            ready: boolean;
+            /**
+             * Format: int64
+             * @description Things the books refused, waiting to be put right.
+             */
+            refused: number;
+            /** @description Xero: the revenue account's code. QuickBooks: the service item. */
+            sales_account?: string | null;
+            /**
+             * Format: date
+             * @description What is issued on or after this day is sent; earlier invoices can be imported.
+             */
+            start_date: string;
+            /** @description `active`, `failing` (being retried) or `reconnect`. */
+            status: string;
+            /** @description The organisation (Xero) or company (QuickBooks). */
+            tenant_name: string;
+        };
+        AccountingFailure: {
+            /** Format: date-time */
+            at: string;
+            /** Format: int32 */
+            attempts: number;
+            error?: string | null;
+            /**
+             * @description `invoice` (or credit note), `allocation` (a payment), `credit` (a
+             *     credit note set against its invoice) or `contact`.
+             */
+            kind: string;
+            /** Format: uuid */
+            local_id: string;
+            /** @description The invoice's or credit note's number. */
+            reference?: string | null;
+        };
+        AccountingImport: {
+            error?: string | null;
+            /**
+             * Format: int32
+             * @description Past invoices brought in so far.
+             */
+            imported: number;
+            /** @description `none`, `running`, `done` or `failed`. */
+            status: string;
+        };
+        AccountingOptions: {
+            /** @description Accounts payments are paid into. */
+            banks: components["schemas"]["AccountingChoice"][];
+            /** @description Xero: revenue accounts. QuickBooks: service items. */
+            sales: components["schemas"]["AccountingChoice"][];
+            /** @description OnHold's tax codes and which of those each is. */
+            tax_codes: components["schemas"]["TaxCodeMapping"][];
+            /** @description Tax rates (Xero) or codes (QuickBooks). */
+            taxes: components["schemas"]["AccountingChoice"][];
+            /** @description Settings in the books worth changing for OnHold, in words. */
+            warnings: string[];
+        };
+        AccountingSettings: {
+            /** @description The account payments are paid into (Xero needs one to send payments). */
+            bank_account?: string | null;
+            /** @description Xero: a revenue account's code. QuickBooks: a service item's id. */
+            sales_account?: string | null;
+            /**
+             * Format: date
+             * @description What is issued on or after this day is sent. Default: unchanged.
+             */
+            start_date?: string | null;
+            tax_codes?: components["schemas"]["TaxCodeChoice"][];
+        };
+        AccountingStart: {
+            /**
+             * @description Send the person here; the provider sends them back to
+             *     `/settings/accounting` with `code`, `state` (and QuickBooks'
+             *     `realmId`), which the page passes to the finish call.
+             */
+            url: string;
+        };
         /** @description One action as planned or done, for the run log. */
         ActionResult: {
             detail?: Record<string, never>;
@@ -5379,6 +5636,14 @@ export interface components {
             payment_terms_days?: number | null;
             phone?: string | null;
             tax_number?: string | null;
+        };
+        FinishAccounting: {
+            /** @description From the provider's redirect. */
+            code: string;
+            /** @description QuickBooks' company, from its redirect (`realmId`). */
+            realm_id?: string | null;
+            /** @description From the provider's redirect, as the start call made it. */
+            state: string;
         };
         FinishCalendarConnect: {
             /** @description From the provider's redirect. */
@@ -7496,6 +7761,10 @@ export interface components {
             /** Format: int32 */
             sla_days?: number | null;
         };
+        StartAccounting: {
+            /** @description `xero` or `quickbooks`. */
+            provider: string;
+        };
         StartAppSignInRequest: {
             /** @description Shown when approving and in the session list, such as "Sam's MacBook". */
             device_name: string;
@@ -7776,6 +8045,12 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        TaxCodeChoice: {
+            /** @description None: let the books decide (Xero uses the account's default). */
+            remote?: string | null;
+            /** Format: uuid */
+            tax_code_id: string;
+        };
         TaxCodeInput: {
             /** @description Updates only: archive (true) or bring back (false). */
             archived?: boolean | null;
@@ -7787,6 +8062,15 @@ export interface components {
             position?: number | null;
             /** Format: int32 */
             rate_bps: number;
+        };
+        TaxCodeMapping: {
+            name: string;
+            /** Format: int32 */
+            rate_bps: number;
+            /** @description The tax rate (Xero) or code (QuickBooks) it is in the books. */
+            remote?: string | null;
+            /** Format: uuid */
+            tax_code_id: string;
         };
         TaxCodeView: {
             archived: boolean;
@@ -8371,6 +8655,389 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Accounting"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disconnect_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accounting_failures: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingFailure"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finish_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishAccounting"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingConnection"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    import_from_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingConnection"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accounting_options: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingOptions"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_accounting_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingConnection"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartAccounting"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingStart"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    sync_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingConnection"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     start_impersonation: {
         parameters: {
             query?: never;

@@ -9,8 +9,8 @@ use core_api::services::automation::{
 use core_api::services::bookings::{self, JOB_COMPLETE, JOB_EXPIRE_HOLD};
 use core_api::services::quotes::{self, JOB_EXPIRE as JOB_EXPIRE_QUOTE};
 use core_api::services::{
-    calendar_push, documents, files, imports, inbox, integrations, invoices, mail, sender_domains,
-    stripe, talent_calendars, webhooks,
+    accounting, calendar_push, documents, files, imports, inbox, integrations, invoices, mail,
+    sender_domains, stripe, talent_calendars, webhooks,
 };
 use core_db::jobs::{Claimed, LogLine};
 use core_domain::WorkspaceId;
@@ -253,6 +253,18 @@ impl Worker {
             calendar_push::JOB_REVOKE => {
                 let id = uuid_field(&job.payload, "push_id")?;
                 let outcome = calendar_push::revoke(&self.app, workspace(job)?, id).await?;
+                note(log, outcome);
+                Ok(())
+            }
+            accounting::JOB_SYNC => {
+                let id = uuid_field(&job.payload, "connection_id")?;
+                let outcome = accounting::sync(&self.app, workspace(job)?, id).await?;
+                note(log, outcome.to_string());
+                Ok(())
+            }
+            accounting::JOB_REVOKE => {
+                let id = uuid_field(&job.payload, "connection_id")?;
+                let outcome = accounting::revoke(&self.app, workspace(job)?, id).await?;
                 note(log, outcome);
                 Ok(())
             }
