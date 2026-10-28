@@ -1028,13 +1028,19 @@ pub async fn revoke(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<&'
     let app = kind.and_then(|k| oauth_app(state, k).ok());
     let in_use =
         core_db::accounting::books_in_use(&mut tx, &c.provider, &c.tenant_id, c.id).await?;
+    let mut rotated = None;
     if let (Some(g), Some(kind), Some(app), false) = (&grant, kind, app, in_use)
-        && let Err(e) = end_access(state, kind, app, g, &c.tenant_id).await
+        && let Err(e) = end_access(state, kind, app, g, &c.tenant_id, &mut rotated).await
     {
         let gave_up = c
             .disconnected_at
             .is_none_or(|at| Utc::now() - at > REVOKE_FOR);
         if e.is_temporary() && !gave_up {
+            // Xero's refresh tokens work once: trying again needs the new one.
+            if let Some(next) = &rotated {
+                let secret = seal(state, id, next)?;
+                core_db::accounting::keep_revoking_secret(&mut tx, id, &secret).await?;
+            }
             let at = Utc::now() + Duration::minutes(10);
             core_db::accounting::revoke_later(&mut tx, id, at).await?;
             tx.commit().await?;
@@ -1057,6 +1063,7 @@ async fn end_access(
     app: &OAuthApp,
     g: &Grant,
     tenant: &str,
+    rotated: &mut Option<Grant>,
 ) -> Result<(), ProviderError> {
     let http = &state.config.accounting.http;
     match kind {
@@ -1066,7 +1073,16 @@ async fn end_access(
                 g.access_token.clone()
             } else {
                 match app.refresh(http, &g.refresh_token).await {
-                    Ok(t) => t.access_token,
+                    Ok(t) => {
+                        *rotated = Some(Grant {
+                            refresh_token: t
+                                .refresh_token
+                                .unwrap_or_else(|| g.refresh_token.clone()),
+                            access_token: t.access_token.clone(),
+                            expires_at: t.expires_at,
+                        });
+                        t.access_token
+                    }
                     // Nothing left to end.
                     Err(ProviderError::Revoked(_)) => return Ok(()),
                     Err(e) => return Err(e),
@@ -1314,6 +1330,27 @@ impl Run<'_> {
         Ok(true)
     }
 
+    /// The books refused a payment or credit asked for again after its
+    /// answer was lost: kept as on its way, and asked again later.
+    async fn refuse_replay(
+        &mut self,
+        kind: &str,
+        local: Uuid,
+        why: &str,
+    ) -> Result<bool, ProviderError> {
+        let mut tx = self.tx().await?;
+        if !self.still_mine(&mut tx).await? {
+            self.out.lost = true;
+            return Ok(false);
+        }
+        core_db::accounting::refuse_sending(&mut tx, self.c.id, kind, local, why)
+            .await
+            .map_err(invalid)?;
+        tx.commit().await.map_err(invalid)?;
+        self.out.refused += 1;
+        Ok(true)
+    }
+
     /// Notes a payment or credit about to be asked for, so a lost answer
     /// is asked for again just so.
     async fn mark_sending(
@@ -1378,6 +1415,14 @@ impl Run<'_> {
                 .map_err(invalid)?;
             tx.commit().await.map_err(invalid)?;
             if let Some(remote) = link.and_then(|k| k.remote_id) {
+                if attempts > 0 && self.c.provider == Kind::QuickBooks.as_str() {
+                    // Refused before: perhaps for the customer having been
+                    // made inactive in QuickBooks since.
+                    self.calls += 1;
+                    if let Step::Refused(m) = step(self.b.reactivate_contact(&remote).await)? {
+                        return Ok(Step::Refused(m));
+                    }
+                }
                 return Ok(Step::Done(remote));
             }
         } else if let Some(remote) = self.contacts.get(&name.to_lowercase()) {
@@ -1554,13 +1599,17 @@ impl Run<'_> {
                             tx.commit().await.map_err(invalid)?;
                             l
                         };
-                        if applied
+                        if let Some(a) = applied
                             .as_ref()
-                            .is_some_and(|a| a.state.as_deref() == Some("sending"))
+                            .filter(|a| a.state.as_deref() == Some("sending"))
                         {
                             // Setting it against its invoice is still
-                            // waiting for an answer: that comes first.
-                            self.out.more = true;
+                            // waiting for an answer: that comes first (in
+                            // this sync, unless the books refused it last
+                            // time, when it waits for the next retry).
+                            if a.status != "failed" {
+                                self.out.more = true;
+                            }
                             continue;
                         }
                         if let Some(a) = applied
@@ -1681,8 +1730,13 @@ impl Run<'_> {
                     let mut amount = note.total.minor.min(owed.unwrap_or(0));
                     if self.c.provider == Kind::QuickBooks.as_str() {
                         self.calls += 1;
-                        if let Some(left) = self.b.remaining_credit(&credit, exponent).await? {
-                            amount = amount.min(left);
+                        match step(self.b.remaining_credit(&credit, exponent).await)? {
+                            Step::Done(Some(left)) => amount = amount.min(left),
+                            Step::Done(None) => {}
+                            Step::Refused(m) => {
+                                self.refuse("credit", id, &m).await?;
+                                continue;
+                            }
                         }
                     }
                     if amount <= 0 {
@@ -1713,6 +1767,9 @@ impl Run<'_> {
                 Step::Done(applied) => {
                     self.save("credit", id, Some(&applied), "live", "synced")
                         .await?;
+                }
+                Step::Refused(m) if resend.is_some() => {
+                    self.refuse_replay("credit", id, &m).await?;
                 }
                 Step::Refused(m) => {
                     self.refuse("credit", id, &m).await?;
@@ -1805,7 +1862,12 @@ impl Run<'_> {
                     // books give its id, and it is taken back.
                     (_, _, Some(amount)) => match self.send_payment(&a, amount).await? {
                         Step::Done(remote) => Some(remote),
-                        Step::Refused(_) => None,
+                        Step::Refused(m) => {
+                            // That does not show it never landed: kept
+                            // as on its way, and asked again later.
+                            self.refuse_replay("allocation", a.id, &m).await?;
+                            continue;
+                        }
                     },
                     // Never in the books.
                     _ => None,
@@ -1836,7 +1898,8 @@ impl Run<'_> {
                 }
                 continue;
             }
-            let amount = match sending(&a) {
+            let replay = sending(&a);
+            let amount = match replay {
                 Some(amount) => amount,
                 None => {
                     let Some(due) = owed.get(&a.remote_invoice).copied() else {
@@ -1866,6 +1929,9 @@ impl Run<'_> {
                     {
                         self.out.payments += 1;
                     }
+                }
+                Step::Refused(m) if replay.is_some() => {
+                    self.refuse_replay("allocation", a.id, &m).await?;
                 }
                 Step::Refused(m) => {
                     if let Some(due) = owed.get_mut(&a.remote_invoice) {

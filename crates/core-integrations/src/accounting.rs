@@ -572,32 +572,63 @@ impl Books {
                     .and_then(|c| text(c, "ContactID")))
             }
             Kind::QuickBooks => {
-                // Made inactive in QuickBooks, the name is still taken:
-                // such a customer is made active again.
+                // Made inactive in QuickBooks (which adds " (deleted)" to
+                // its name), such a customer is made active again rather
+                // than added a second time.
+                let name = quickbooks_name(name);
                 let rows = self
                     .query(
                         "Customer",
                         &format!(
-                            "select * from Customer where DisplayName = {} and Active in (true, false)",
-                            quoted(&quickbooks_name(name))
+                            "select * from Customer where DisplayName in ({}, {}) and Active in (true, false)",
+                            quoted(&name),
+                            quoted(&format!("{name} (deleted)"))
                         ),
                     )
                     .await?;
-                let Some(c) = rows.first() else {
+                let active = |c: &&Value| c.get("Active").and_then(Value::as_bool) != Some(false);
+                let Some(c) = rows.iter().find(active).or(rows.first()) else {
                     return Ok(None);
                 };
                 let id = text(c, "Id").ok_or_else(|| invalid("customer"))?;
-                if c.get("Active").and_then(Value::as_bool) == Some(false) {
-                    let token = text(c, "SyncToken").ok_or_else(|| invalid("sync token"))?;
-                    self.send(
-                        reqwest::Method::POST,
-                        "/customer",
-                        &json!({ "Id": id, "SyncToken": token, "sparse": true, "Active": true }),
-                        None,
-                    )
-                    .await?;
+                if !active(&c) {
+                    self.activate_customer(c, &name).await?;
                 }
                 Ok(Some(id))
+            }
+        }
+    }
+
+    /// Makes a QuickBooks customer (as read) active again, under `name`.
+    async fn activate_customer(&self, c: &Value, name: &str) -> Result<(), ProviderError> {
+        let id = text(c, "Id").ok_or_else(|| invalid("customer"))?;
+        let token = text(c, "SyncToken").ok_or_else(|| invalid("sync token"))?;
+        self.send(
+            reqwest::Method::POST,
+            "/customer",
+            &json!({ "Id": id, "SyncToken": token, "sparse": true, "Active": true, "DisplayName": name }),
+            None,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Makes a contact used before active again if it was made inactive
+    /// since (QuickBooks refuses anything for an inactive customer).
+    pub async fn reactivate_contact(&self, id: &str) -> Result<(), ProviderError> {
+        match self.kind {
+            Kind::Xero => Ok(()),
+            Kind::QuickBooks => {
+                let v = self.get(&format!("/customer/{}", segment(id))).await?;
+                let Some(c) = v.get("Customer") else {
+                    return Ok(());
+                };
+                if c.get("Active").and_then(Value::as_bool) == Some(false) {
+                    let name = text(c, "DisplayName").unwrap_or_default();
+                    let name = name.strip_suffix(" (deleted)").unwrap_or(&name).to_owned();
+                    self.activate_customer(c, &name).await?;
+                }
+                Ok(())
             }
         }
     }
@@ -783,6 +814,32 @@ impl Books {
             .ok_or_else(|| invalid("sync token"))
     }
 
+    /// A void or delete Intuit answered as about an entity not there: done
+    /// only if reading it again agrees, as the same answer means the change
+    /// was refused for something it uses (a customer, item or account)
+    /// having been made inactive.
+    async fn intuit_change(
+        &self,
+        entity: &str,
+        id: &str,
+        done: Result<Value, ProviderError>,
+    ) -> Result<(), ProviderError> {
+        match done {
+            Err(ProviderError::Refused {
+                status: 404,
+                message,
+            }) => match self.sync_token(entity, id).await {
+                Err(ProviderError::Refused { status: 404, .. }) => Ok(()),
+                Ok(_) => Err(ProviderError::Refused {
+                    status: 400,
+                    message,
+                }),
+                Err(e) => Err(e),
+            },
+            other => other.map(|_| ()),
+        }
+    }
+
     /// Whether Xero has this voided or deleted already: it refuses to do
     /// either twice.
     async fn xero_gone(&self, path: &str, list: &str, id: &str) -> Result<bool, ProviderError> {
@@ -840,13 +897,13 @@ impl Books {
                 };
                 let mut url = self.url(&format!("/{}", entity.to_ascii_lowercase()));
                 url.query_pairs_mut().append_pair("operation", op);
-                provider::send_json::<Value>(
+                let done = provider::send_json::<Value>(
                     self.request(reqwest::Method::POST, url)
                         .header("content-type", "application/json")
                         .body(json!({ "Id": id, "SyncToken": token }).to_string()),
                 )
-                .await
-                .map(|_| ())
+                .await;
+                return self.intuit_change(entity, id, done).await;
             }
         };
         match done {
@@ -939,13 +996,13 @@ impl Books {
                 };
                 let mut url = self.url("/payment");
                 url.query_pairs_mut().append_pair("operation", "delete");
-                provider::send_json::<Value>(
+                let done = provider::send_json::<Value>(
                     self.request(reqwest::Method::POST, url)
                         .header("content-type", "application/json")
                         .body(json!({ "Id": id, "SyncToken": token }).to_string()),
                 )
-                .await
-                .map(|_| ())
+                .await;
+                return self.intuit_change("Payment", id, done).await;
             }
         };
         match done {

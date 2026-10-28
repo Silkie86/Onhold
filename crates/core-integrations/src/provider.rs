@@ -166,7 +166,9 @@ pub fn classify(status: u16, retry_after: Option<u64>, body: &[u8]) -> ProviderE
                 d.contains("AuthorizationUnsuccessful") || d.contains("AuthenticationUnsuccessful")
             })
         }) || v.pointer("/Fault/type").and_then(Value::as_str) == Some("AuthorizationFault"));
-    // Intuit says an object is not there with 400 and code 610.
+    // Intuit says an object is not there with 400 and code 610. It says
+    // the same of a change to one that uses something made inactive, so a
+    // write answered so is read again to tell the two apart.
     let intuit_missing = v.pointer("/Fault/Error/0/code").and_then(Value::as_str) == Some("610");
     match status {
         429 => ProviderError::RateLimited { retry_after },

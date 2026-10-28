@@ -429,7 +429,7 @@ impl Worker {
             .await?;
             queued += 1;
         }
-        for c in core_db::accounting::due(tx, now, DUE_BATCH).await? {
+        for c in core_db::accounting::due(tx, DUE_BATCH).await? {
             let key = accounting::sync_key(c.id, c.at);
             let payload = json!({ "connection_id": c.id, "at": c.at });
             core_db::jobs::enqueue(

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT c.id, c.workspace_id AS \"workspace_id: WorkspaceId\", c.next_sync_at AS \"at!\"\n           FROM accounting_connections c JOIN workspaces w ON w.id = c.workspace_id\n           WHERE c.next_sync_at <= $1\n             AND (c.sync_lease_until IS NULL OR c.sync_lease_until < $1)\n             AND w.status IN ('trial', 'active')\n           ORDER BY c.next_sync_at LIMIT $2",
+  "query": "SELECT c.id, c.workspace_id AS \"workspace_id: WorkspaceId\", c.next_sync_at AS \"at!\"\n           FROM accounting_connections c JOIN workspaces w ON w.id = c.workspace_id\n           WHERE c.next_sync_at <= now()\n             AND (c.sync_lease_until IS NULL OR c.sync_lease_until < now())\n             AND w.status IN ('trial', 'active')\n           ORDER BY c.next_sync_at LIMIT $1",
   "describe": {
     "columns": [
       {
@@ -39,7 +39,6 @@
     ],
     "parameters": {
       "Left": [
-        "Timestamptz",
         "Int8"
       ]
     },
@@ -49,5 +48,5 @@
       true
     ]
   },
-  "hash": "b5a9cb6ff8b4c43627f1c640d06fc30bb5a0022ced470cba2b1394e8dfff8ed3"
+  "hash": "c415a7636b06137937fc0181b4d96d06cda9832d2d9f9229dd479f8bc6cec229"
 }

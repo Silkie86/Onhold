@@ -508,6 +508,21 @@ pub async fn to_revoke(conn: &mut PgConnection, id: Uuid) -> Result<Option<Conne
 }
 
 /// The grant has been revoked (or need not be): forget it.
+/// The grant of a disconnected connection whose revoking is tried again,
+/// as it now is (Xero's refresh tokens change with each use).
+pub async fn keep_revoking_secret(conn: &mut PgConnection, id: Uuid, secret: &[u8]) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE accounting_connections SET secret = $2
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NOT NULL
+             AND length(secret) > 0"#,
+        id,
+        secret
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 pub async fn forget_grant(conn: &mut PgConnection, id: Uuid) -> Result<()> {
     sqlx::query!(
         r#"UPDATE accounting_connections SET secret = '\x'::bytea, revoke_at = NULL
@@ -527,16 +542,18 @@ pub struct Due {
 }
 
 /// Connections due a sync, in workspaces still working (the worker's sweep).
-pub async fn due(conn: &mut PgConnection, now: DateTime<Utc>, limit: i64) -> Result<Vec<Due>> {
+/// Against the database's clock, as claiming a sync is: a job queued
+/// before the lease it waits for has run out would be skipped, and its key
+/// is not used twice.
+pub async fn due(conn: &mut PgConnection, limit: i64) -> Result<Vec<Due>> {
     Ok(sqlx::query_as!(
         Due,
         r#"SELECT c.id, c.workspace_id AS "workspace_id: WorkspaceId", c.next_sync_at AS "at!"
            FROM accounting_connections c JOIN workspaces w ON w.id = c.workspace_id
-           WHERE c.next_sync_at <= $1
-             AND (c.sync_lease_until IS NULL OR c.sync_lease_until < $1)
+           WHERE c.next_sync_at <= now()
+             AND (c.sync_lease_until IS NULL OR c.sync_lease_until < now())
              AND w.status IN ('trial', 'active')
-           ORDER BY c.next_sync_at LIMIT $2"#,
-        now,
+           ORDER BY c.next_sync_at LIMIT $1"#,
         limit
     )
     .fetch_all(conn)
@@ -706,6 +723,30 @@ pub async fn fail_link(
     Ok(())
 }
 
+/// The books refused a payment or credit asked for again after its answer
+/// was lost. That does not show the first ask never landed, so it stays
+/// `sending` (same key, same amount) and is asked again on the next retry.
+pub async fn refuse_sending(
+    conn: &mut PgConnection,
+    connection: Uuid,
+    kind: &str,
+    local: Uuid,
+    error: &str,
+) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE accounting_links SET status = 'failed', error = left($4, 1000)
+           WHERE workspace_id = app_workspace_id() AND connection_id = $1 AND kind = $2 AND local_id = $3
+             AND state = 'sending'"#,
+        connection,
+        kind,
+        local,
+        error
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 /// Which tax rate in the books each tax code is.
 pub async fn tax_map(conn: &mut PgConnection, connection: Uuid) -> Result<Vec<(Uuid, String)>> {
     Ok(sqlx::query!(
@@ -828,16 +869,17 @@ pub async fn pending_credits(
     Ok(sqlx::query_scalar!(
         r#"SELECT c.id FROM invoices c
            JOIN accounting_links lc
-             ON lc.connection_id = $1 AND lc.kind = 'invoice' AND lc.local_id = c.id
-            AND lc.status = 'synced' AND lc.state = 'issued' AND lc.remote_id IS NOT NULL
+             ON lc.connection_id = $1 AND lc.kind = 'invoice' AND lc.local_id = c.id AND lc.remote_id IS NOT NULL
            JOIN accounting_links li
              ON li.connection_id = $1 AND li.kind = 'invoice' AND li.local_id = c.credits_invoice_id
-            AND li.status = 'synced' AND li.remote_id IS NOT NULL
+            AND li.remote_id IS NOT NULL
            LEFT JOIN accounting_links la
              ON la.connection_id = $1 AND la.kind = 'credit' AND la.local_id = c.id
            WHERE c.workspace_id = app_workspace_id() AND c.kind = 'credit_note' AND c.deleted_at IS NULL
-             AND (la.state IS NOT DISTINCT FROM 'sending'
-                  OR (c.status <> 'void'
+             -- One still waiting for an answer is settled whatever has
+             -- happened to either document since.
+             AND ((la.state = 'sending' AND (la.status = 'synced' OR la.updated_at < $2))
+                  OR (c.status <> 'void' AND lc.status = 'synced' AND lc.state = 'issued' AND li.status = 'synced'
                       AND (la.id IS NULL
                            OR (la.status = 'failed'
                                AND (la.updated_at < $2 OR c.updated_at > la.updated_at)))))
@@ -873,9 +915,9 @@ pub struct AllocationWork {
 }
 
 /// Payments' allocations to invoices in the books that the books do not
-/// have as they are now: new ones (`send_new`), ones still waiting for an
-/// answer, ones taken back (a payment voided), or ones refused before. Not
-/// those that came from the books.
+/// have as they are now: new ones and ones still waiting for an answer
+/// (both only with `send_new`), ones taken back (a payment voided), or ones
+/// refused before. Not those that came from the books.
 pub async fn pending_allocations(
     conn: &mut PgConnection,
     connection: Uuid,
@@ -904,7 +946,7 @@ pub async fn pending_allocations(
              WHERE li.workspace_id = app_workspace_id() AND li.connection_id = $1
                AND li.kind = 'invoice' AND li.status = 'synced' AND li.remote_id IS NOT NULL
                AND a.workspace_id = app_workspace_id() AND p.kind = 'payment'
-               AND (la.state IS NOT DISTINCT FROM 'sending'
+               AND ((la.state = 'sending' AND $2 AND (la.status = 'synced' OR la.updated_at < $3))
                     OR ($2 AND (la.id IS NULL
                                 OR (la.status = 'failed' AND la.updated_at < $3))))
              UNION ALL
@@ -919,7 +961,10 @@ pub async fn pending_allocations(
               AND li.remote_id IS NOT NULL
              WHERE la.workspace_id = app_workspace_id() AND la.connection_id = $1
                AND la.kind = 'allocation' AND la.status <> 'imported'
-               AND (la.state IN ('live', 'sending') OR la.status = 'failed')
+               -- A lost answer is asked for again only when it can be
+               -- asked just so (Xero needs the account it was paid into).
+               AND (la.state = 'live' OR (la.state = 'sending' AND $2)
+                    OR (la.status = 'failed' AND la.state IS DISTINCT FROM 'sending'))
                AND (la.status = 'synced' OR la.updated_at < $3 OR a.removed_at > la.updated_at)
            ) w
            ORDER BY w.refused, w.created_at, w.id
@@ -948,6 +993,15 @@ pub async fn allocation_work_pending(
              WHERE a.workspace_id = app_workspace_id() AND a.invoice_id = $2
                AND la.status <> 'imported'
                AND (la.state = 'sending' OR (a.removed_at IS NOT NULL AND la.state = 'live'))
+           ) OR EXISTS (
+             -- Credit notes against it still on their way, or still applied
+             -- in the books though voided here.
+             SELECT 1 FROM invoices cn
+             JOIN accounting_links lc
+               ON lc.connection_id = $1 AND lc.kind = 'credit' AND lc.local_id = cn.id
+             WHERE cn.workspace_id = app_workspace_id() AND cn.kind = 'credit_note' AND cn.credits_invoice_id = $2
+               AND (lc.state = 'sending'
+                    OR (lc.state = 'live' AND (cn.status = 'void' OR cn.deleted_at IS NOT NULL)))
            ) AS "pending!""#,
         connection,
         invoice
