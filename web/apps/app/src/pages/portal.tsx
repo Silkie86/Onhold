@@ -13,6 +13,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   EmptyState,
   Input,
   Menu,
@@ -833,6 +834,7 @@ export function PortalAvailabilityPage() {
           </Button>
         )}
       </section>
+      <SharingCard />
     </div>
   );
 }
@@ -1239,6 +1241,46 @@ function ProfileForm({ p, onSaved }: { p: Schemas["PortalProfile"]; onSaved: () 
           </div>
         )}
       </form>
+    </Card>
+  );
+}
+
+/** Letting their other agencies (or their own workspace) see when they are booked: times only. */
+function SharingCard() {
+  const qc = useQueryClient();
+  const sharing = useQuery({ queryKey: ["portal", "sharing"], queryFn: () => ok(api.GET("/api/v1/portal/sharing")) });
+  const [error, setError] = useState<string | null>(null);
+  if (sharing.isPending) return null;
+  if (sharing.isError) return <Alert>{sharing.error.message}</Alert>;
+  const { share_busy, other_workspaces } = sharing.data;
+  return (
+    <Card className="flex flex-col gap-2 p-4">
+      <label className="flex items-start gap-3">
+        <Checkbox
+          className="mt-0.5"
+          checked={share_busy}
+          onChange={async (e) => {
+            setError(null);
+            try {
+              const next = await ok(api.PUT("/api/v1/portal/sharing", { body: { share_busy: e.target.checked } }));
+              qc.setQueryData(["portal", "sharing"], next);
+            } catch (err) {
+              setError(failure(err));
+            }
+          }}
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium">Share when I&apos;m booked or pencilled in with my other agencies</span>
+          <span className="text-xs text-muted-foreground">
+            {other_workspaces > 0
+              ? `You are with ${other_workspaces === 1 ? "one other agency or workspace" : `${other_workspaces} other agencies or workspaces`} on OnHold. `
+              : "For when you work with more than one agency on OnHold. "}
+            Each sees only that you are busy at a time, never what the booking is, who it is for or the fee, so no one double-books
+            you.
+          </span>
+        </span>
+      </label>
+      {error && <Alert>{error}</Alert>}
     </Card>
   );
 }

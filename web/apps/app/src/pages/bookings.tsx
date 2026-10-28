@@ -259,21 +259,32 @@ export function ClashList({ report }: { report: ClashReport | undefined }) {
     <Alert tone={report.blocking ? "error" : "info"}>
       <p className="flex items-center gap-2 font-medium">
         <AlertTriangle className="size-4 shrink-0" />
-        {report.blocking ? "This would double-book someone." : "Something else is pencilled in at this time."}
+        {report.blocking
+          ? "This would double-book someone."
+          : report.clashes.every((c) => c.kind === "elsewhere")
+            ? "Someone is busy elsewhere at this time. Check with them before confirming."
+            : "Something else is pencilled in at this time."}
       </p>
       <ul className="mt-1 list-disc pl-5">
         {report.clashes.map((c, i) => (
           <li key={`${c.booking_id ?? c.availability_id}-${c.talent_id}-${i}`}>
             {c.talent_name}:{" "}
-            {c.booking_id ? (
-              <Link to="/bookings/$id" params={{ id: c.booking_id }} className="underline">
-                {c.title ?? "a booking"}
-              </Link>
+            {c.kind === "elsewhere" ? (
+              <>busy elsewhere, booked or pencilled in with another agency or workspace of theirs; check with them</>
             ) : (
-              (c.title ?? "marked")
+              <>
+                {c.booking_id ? (
+                  <Link to="/bookings/$id" params={{ id: c.booking_id }} className="underline">
+                    {c.title ?? "a booking"}
+                  </Link>
+                ) : (
+                  (c.title ?? "marked")
+                )}{" "}
+                ({c.kind === "booking" ? STATUS_LABEL[c.status as BookingStatus] ?? c.status : c.status}
+                {c.blocking ? "" : ", a warning only"})
+              </>
             )}{" "}
-            ({c.kind === "booking" ? STATUS_LABEL[c.status as BookingStatus] ?? c.status : c.status}
-            {c.blocking ? "" : ", a warning only"}) — {formatWhen(c.starts_at, c.ends_at, false)}
+            — {formatWhen(c.starts_at, c.ends_at, false)}
           </li>
         ))}
       </ul>

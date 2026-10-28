@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT share_busy FROM users WHERE id = app_user_id()",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "share_busy",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "share_busy"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "72c141c7269be45327316f32f8414f1b2d795f9c8645ba7c2673b630a028e061"
+}
