@@ -29,6 +29,10 @@ test("a solo artist sets up a simple app, then adds invoicing back", async ({ pa
   await page.getByRole("link", { name: "Set up OnHold" }).click();
   await expect(page.getByRole("heading", { name: "Your setup" })).toBeVisible();
 
+  // It starts from what the workspace has now, so saving as is changes nothing.
+  await expect(page.getByLabel("Shape it to how I work: custom fields, pipelines and imports")).toBeChecked();
+  await page.getByLabel("Shape it to how I work: custom fields, pipelines and imports").uncheck();
+  await page.getByLabel("Take commission and pay talent their share").uncheck();
   await page.getByLabel("Artist, DJ or producer running their own bookings").check();
   // A role ticks what it usually needs; it can be unticked.
   await expect(page.getByLabel("Send quotes and invoices, and get paid")).toBeChecked();
