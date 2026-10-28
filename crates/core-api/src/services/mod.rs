@@ -34,6 +34,7 @@ pub mod records;
 pub mod reports;
 pub mod rules;
 pub mod search;
+pub mod sender_domains;
 pub mod settlements;
 pub mod stripe;
 pub mod talent;

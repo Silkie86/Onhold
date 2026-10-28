@@ -1364,6 +1364,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inbox/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The workspace's own domains to send email from, and whether this server can verify them. */
+        get: operations["list_domains"];
+        put?: never;
+        /** Add a domain to send from. The answer lists the DNS records to add. */
+        post: operations["add_domain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/domains/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop sending from a domain and remove it. */
+        delete: operations["remove_domain"];
+        options?: never;
+        head?: never;
+        /** Choose the sending address, or whether to send from this domain. */
+        patch: operations["update_domain"];
+        trace?: never;
+    };
+    "/api/v1/inbox/domains/{id}/automatic-setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A signed link to the domain's DNS provider, where the owner approves the records in one step. */
+        post: operations["domain_automatic_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/domains/{id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Look for the domain's DNS records now. The result shows within a minute. */
+        post: operations["check_domain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inbox/mailboxes": {
         parameters: {
             query?: never;
@@ -3300,6 +3370,12 @@ export interface components {
             ok: boolean;
             type: string;
         };
+        AddSenderDomain: {
+            /** @description The domain to send from, e.g. `acme.com` or `mail.acme.com`. */
+            domain: string;
+            /** @description The part before the @; `hello` if left out. */
+            local_part?: string | null;
+        };
         /** @description A postal address. Every part is optional, but not all of them. */
         Address: {
             city?: string | null;
@@ -3430,6 +3506,10 @@ export interface components {
              * @description Pass as `before` for the next page; absent on the last page.
              */
             next_before?: string | null;
+        };
+        AutomaticSetup: {
+            /** @description Send the owner here to approve the records at their DNS provider. */
+            url: string;
         };
         AutomationsState: {
             /** @description While paused no rule runs; events are still recorded and webhooks still sent. */
@@ -5762,6 +5842,25 @@ export interface components {
             suggestions: components["schemas"]["Suggestions"];
             templates: string[];
         };
+        /** @description One DNS record to add. */
+        RecordView: {
+            /** @description The provider has found it. */
+            found: boolean;
+            /**
+             * @description The name as most DNS providers want it: relative to the zone, e.g.
+             *     `resend._domainkey` (or `resend._domainkey.mail` for a subdomain).
+             */
+            host: string;
+            /** @description The full name. */
+            name: string;
+            /** Format: int32 */
+            priority?: number | null;
+            /** @description What it is for: `DKIM`, `SPF` or `DMARC`. */
+            purpose: string;
+            /** @description `TXT`, `MX` or `CNAME`. */
+            type: string;
+            value: string;
+        };
         RecoveryCodesResponse: {
             /** @description Shown once. Each works once if the authenticator app is lost. */
             recovery_codes: string[];
@@ -5964,6 +6063,52 @@ export interface components {
         SendQuote: {
             /** @description Default: the booking contact's first email address. */
             to?: string | null;
+        };
+        SenderDomainPatch: {
+            /**
+             * @description Send the workspace's email from this domain (once verified). Turning
+             *     it on turns any other domain off.
+             */
+            in_use?: boolean | null;
+            /** @description The part before the @ of the sending address. */
+            local_part?: string | null;
+        };
+        /** @description What the settings page shows. */
+        SenderDomainSetup: {
+            /** @description This server can verify domains (its mail provider is set up for it). */
+            available: boolean;
+            domains: components["schemas"]["SenderDomainView"][];
+        };
+        SenderDomainView: {
+            /** @description The domain's DNS provider, when it can add the records itself. */
+            automatic_setup?: string | null;
+            /** Format: date-time */
+            checked_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            dmarc_record?: components["schemas"]["RecordView"] | null;
+            domain: string;
+            /** @description The address email is sent from once verified and in use. */
+            from_address: string;
+            /** Format: uuid */
+            id: string;
+            /** @description Chosen to send from. */
+            in_use: boolean;
+            local_part: string;
+            records: components["schemas"]["RecordView"][];
+            /**
+             * Format: date-time
+             * @description When it is removed if its records are still not found.
+             */
+            remove_after?: string | null;
+            /** @description Email is going out from it now. */
+            sending: boolean;
+            /** @description `pending` (waiting for its records), `verified` or `failed`. */
+            status: string;
+            /** Format: date-time */
+            verified_at?: string | null;
+            /** Format: int64 */
+            version: number;
         };
         SentInvoice: {
             invoice: components["schemas"]["InvoiceView"];
@@ -10562,6 +10707,248 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_domains: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderDomainSetup"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_domain: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddSenderDomain"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderDomainView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_domain: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_domain: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SenderDomainPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderDomainView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    domain_automatic_setup: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomaticSetup"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    check_domain: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderDomainView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

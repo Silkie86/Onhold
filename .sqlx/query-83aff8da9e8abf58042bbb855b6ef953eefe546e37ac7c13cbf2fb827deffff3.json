@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE sender_domains SET in_use = false WHERE workspace_id = app_workspace_id() AND in_use AND id <> $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "83aff8da9e8abf58042bbb855b6ef953eefe546e37ac7c13cbf2fb827deffff3"
+}

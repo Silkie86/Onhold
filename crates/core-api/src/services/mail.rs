@@ -193,6 +193,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                     .await?
                 }
             };
+            let from_address = core_db::sender_domains::sending_address(&mut tx).await?;
             tx.commit().await?;
             let rendered = place_link(rendered, &url);
             let name = workspace
@@ -208,7 +209,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                         .map(|(_, v)| v.into_owned())
                 })
                 .unwrap_or_default();
-            Ok(outgoing(
+            let mut out = outgoing(
                 state,
                 job.id,
                 rendered,
@@ -220,7 +221,9 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 SYSTEM_INVITATION,
                 None,
                 vec![url, token],
-            ))
+            );
+            out.email.from_address = from_address;
+            Ok(out)
         }
         "auth.magic_link_requested" => {
             let user: Option<UserId> = event
@@ -397,7 +400,7 @@ async fn workspace_mail(
         .and_then(Value::as_str)
         .unwrap_or("OnHold")
         .to_owned();
-    Ok(outgoing(
+    let mut out = outgoing(
         state,
         job_id,
         rendered,
@@ -409,7 +412,9 @@ async fn workspace_mail(
         key,
         None,
         vec![url],
-    ))
+    );
+    out.email.from_address = core_db::sender_domains::sending_address(tx).await?;
+    Ok(out)
 }
 
 /// Builds a rule's email for a `mail.send` job.
@@ -462,13 +467,14 @@ pub async fn prepare_rule_mail(state: &AppState, job: &Claimed) -> ApiResult<Out
         &options,
     )
     .await?;
+    let from_address = core_db::sender_domains::sending_address(&mut tx).await?;
     tx.commit().await?;
     let name = workspace
         .get("name")
         .and_then(Value::as_str)
         .unwrap_or("OnHold")
         .to_owned();
-    Ok(outgoing(
+    let mut out = outgoing(
         state,
         job.id,
         rendered,
@@ -480,7 +486,9 @@ pub async fn prepare_rule_mail(state: &AppState, job: &Claimed) -> ApiResult<Out
         key,
         rule_id,
         vec![],
-    ))
+    );
+    out.email.from_address = from_address;
+    Ok(out)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -501,6 +509,7 @@ fn outgoing(
         email: Email {
             to: to.to_owned(),
             from_name,
+            from_address: None,
             reply_to: None,
             subject: rendered.subject.unwrap_or_default(),
             html: Some(layout(&rendered.body, footer)),

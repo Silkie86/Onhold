@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM sender_domains WHERE workspace_id = app_workspace_id() RETURNING id, provider_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "sender_domains",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "provider_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sender_domains",
+            "name": "provider_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "1341e1550b4cbf8ff8877e4e943adb18d0a5b7754c1b4e8c972876bb41531aef"
+}

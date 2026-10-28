@@ -9,7 +9,8 @@ use core_api::services::automation::{
 use core_api::services::bookings::{self, JOB_COMPLETE, JOB_EXPIRE_HOLD};
 use core_api::services::quotes::{self, JOB_EXPIRE as JOB_EXPIRE_QUOTE};
 use core_api::services::{
-    documents, files, imports, inbox, integrations, invoices, mail, stripe, webhooks,
+    documents, files, imports, inbox, integrations, invoices, mail, sender_domains, stripe,
+    webhooks,
 };
 use core_db::jobs::{Claimed, LogLine};
 use core_domain::WorkspaceId;
@@ -210,6 +211,21 @@ impl Worker {
                 let id = uuid_field(&job.payload, "thread_id")?;
                 let at = time_field(&job.payload, "at")?;
                 inbox::wake(&self.app, workspace(job)?, id, at).await?;
+                Ok(())
+            }
+            sender_domains::JOB_CHECK => {
+                let id = uuid_field(&job.payload, "domain_id")?;
+                let outcome = sender_domains::check(&self.app, workspace(job)?, id).await?;
+                note(log, outcome.to_string());
+                Ok(())
+            }
+            sender_domains::JOB_FORGET => {
+                let id = job
+                    .payload
+                    .get("provider_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| JobError::permanent("the job has no `provider_id`"))?;
+                sender_domains::forget(&self.app, id).await?;
                 Ok(())
             }
             JOB_WEBHOOK => self.deliver_webhook(job, log).await,

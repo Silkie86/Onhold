@@ -29,7 +29,7 @@ use core_api::services::events::CHANNEL as EVENTS_CHANNEL;
 use core_api::services::invoices::JOB_OVERDUE;
 use core_api::services::mail::SYSTEM_TOPICS;
 use core_api::services::quotes::JOB_EXPIRE as JOB_EXPIRE_QUOTE;
-use core_api::services::{inbox, integrations};
+use core_api::services::{inbox, integrations, sender_domains};
 use core_db::DbError;
 use core_db::jobs::{Claimed, LogLine, NewJob, RunRecord};
 use core_integrations::http::WebhookClient;
@@ -371,6 +371,16 @@ impl Worker {
             core_db::jobs::enqueue(
                 tx,
                 NewJob::new(Some(m.workspace_id), integrations::JOB_POLL, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for d in core_db::sender_domains::due(tx, now, DUE_BATCH).await? {
+            let key = sender_domains::check_key(d.id, d.at);
+            let payload = json!({ "domain_id": d.id, "at": d.at });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(d.workspace_id), sender_domains::JOB_CHECK, &payload).dedupe(&key),
             )
             .await?;
             queued += 1;

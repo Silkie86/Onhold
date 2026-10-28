@@ -42,6 +42,7 @@ pub mod quotes;
 pub mod reports;
 pub mod rules;
 pub mod search;
+pub mod sender_domains;
 pub mod sessions;
 pub mod settlements;
 pub mod stripe;
