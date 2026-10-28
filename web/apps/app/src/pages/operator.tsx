@@ -57,7 +57,7 @@ export function OperatorPage() {
           <li key={w.id}>
             <Card className="flex flex-col gap-3 p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 basis-full sm:basis-auto sm:flex-1">
                   <span className="font-medium">{w.name}</span>{" "}
                   <span className="text-xs text-muted-foreground">
                     {w.slug} · {w.member_count} {w.member_count === 1 ? "member" : "members"}
