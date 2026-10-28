@@ -37,8 +37,6 @@ CREATE TABLE setup_requests (
     resolved_by  uuid REFERENCES users (id)
 );
 CREATE INDEX setup_requests_workspace ON setup_requests (workspace_id, created_at DESC);
-CREATE INDEX setup_requests_open ON setup_requests (created_at) WHERE resolved_at IS NULL;
-
 ALTER TABLE setup_requests ENABLE ROW LEVEL SECURITY;
 CREATE POLICY setup_requests_tenant ON setup_requests FOR ALL TO onhold_app
     USING (workspace_id = app_workspace_id()) WITH CHECK (workspace_id = app_workspace_id());

@@ -10,7 +10,7 @@ license.workspace = true
 core-domain.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
+toml.workspace = true
 utoipa.workspace = true
 
 [lints]

@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use core_domain::workspace::{self as ws, Perspective};
+use core_domain::workspace as ws;
 use core_domain::{Ctx, Permission};
 use core_modules::setup::{self, Answers, Plan, Question};
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,8 @@ use crate::services::{Change, admin, record};
 
 pub const PRICE_LIST: &str = "price_list";
 const COMMENT_MAX: usize = 4000;
+/// Comments a workspace can have waiting for OnHold's team at once.
+const OPEN_REQUESTS_MAX: i64 = 20;
 
 /// What OnHold charges, in minor units a month: a base price, plus each
 /// ticked feature, plus the team size. Shown as an estimate only.
@@ -100,8 +102,10 @@ pub struct SetupState {
     /// When the form was last sent; `None` if never.
     pub done_at: Option<chrono::DateTime<chrono::Utc>>,
     pub current: Plan,
+    /// The workspace's own comments; only for those who can change the setup.
     pub requests: Vec<core_db::setup_requests::SetupRequest>,
     pub price_list: PriceList,
+    pub version: i64,
 }
 
 fn current_plan(w: &core_db::workspaces::Workspace) -> Plan {
@@ -122,14 +126,24 @@ pub async fn get(state: &AppState, ctx: &Ctx) -> ApiResult<SetupState> {
     let w = core_db::workspaces::get(&mut tx, ctx.workspace_id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    let requests = core_db::setup_requests::recent(&mut tx, 10).await?;
+    let requests = if ctx.permissions.contains(&Permission::WorkspaceUpdate) {
+        core_db::setup_requests::recent(&mut tx, 10).await?
+    } else {
+        Vec::new()
+    };
     let price_list = read_price_list(core_db::platform_settings::get(&mut tx, PRICE_LIST).await?);
     tx.commit().await?;
     let answers = w
         .setup
         .clone()
         .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_else(|| setup::answers_for(&w.presets));
+        .unwrap_or_else(|| {
+            if w.presets.is_empty() {
+                setup::answers_from(&w.enabled_modules, &w.extras)
+            } else {
+                setup::answers_for(&w.presets)
+            }
+        });
     Ok(SetupState {
         questions: setup::questions(),
         answers,
@@ -137,6 +151,7 @@ pub async fn get(state: &AppState, ctx: &Ctx) -> ApiResult<SetupState> {
         current: current_plan(&w),
         requests,
         price_list,
+        version: w.version,
     })
 }
 
@@ -151,11 +166,12 @@ pub fn preview(ctx: &Ctx, answers: &Answers) -> ApiResult<Plan> {
 pub async fn save(
     state: &AppState,
     ctx: &Ctx,
-    answers: Answers,
+    mut answers: Answers,
     comment: Option<String>,
     if_match: Option<i64>,
 ) -> ApiResult<core_db::workspaces::Workspace> {
     ctx.authorize(Permission::WorkspaceUpdate)?;
+    answers.tidy();
     let plan = setup::plan(&answers).map_err(|e| ApiError::invalid(e.field, e.to_string()))?;
     let comment = comment
         .map(|c| c.trim().to_owned())
@@ -180,43 +196,66 @@ pub async fn save(
     }
     let vocabulary = serde_json::to_value(&plan.vocabulary).map_err(ApiError::internal)?;
     let answers_json = serde_json::to_value(&answers).map_err(ApiError::internal)?;
-    let saved = core_db::workspaces::apply_setup(
-        &mut tx,
-        ctx.workspace_id,
-        core_db::workspaces::Setup {
-            // No role ticked keeps the perspective as it is.
-            perspective: plan.perspective.unwrap_or(before.perspective),
-            presets: &plan.presets,
-            enabled_modules: &plan.modules,
-            extras: &plan.extras,
-            vocabulary: &vocabulary,
-            answers: &answers_json,
-        },
-        expected,
-        ctx.user_id(),
-    )
-    .await?;
-    if !saved {
-        return Err(ApiError::version_conflict());
-    }
-    let after = core_db::workspaces::get(&mut tx, ctx.workspace_id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
-    record(
-        &mut tx,
-        ctx,
-        Change {
-            topic: "workspace.setup_changed",
-            resource: "workspace",
-            object_id: Some(ctx.workspace_id.0),
-            before: Some(setup_view(&before)),
-            after: Some(setup_view(&after)),
-            event_extra: None,
-        },
-    )
-    .await?;
+    let perspective = plan.perspective.unwrap_or(before.perspective);
+    let unchanged = before.setup_at.is_some()
+        && before.setup.as_ref() == Some(&answers_json)
+        && before.perspective == perspective
+        && before.presets == plan.presets
+        && before.enabled_modules == plan.modules
+        && before.extras == plan.extras
+        && before.vocabulary == vocabulary;
+    let after = if unchanged {
+        before
+    } else {
+        let saved = core_db::workspaces::apply_setup(
+            &mut tx,
+            ctx.workspace_id,
+            core_db::workspaces::Setup {
+                // No role ticked keeps the perspective as it is.
+                perspective,
+                presets: &plan.presets,
+                enabled_modules: &plan.modules,
+                extras: &plan.extras,
+                vocabulary: &vocabulary,
+                answers: &answers_json,
+            },
+            expected,
+            ctx.user_id(),
+        )
+        .await?;
+        if !saved {
+            return Err(ApiError::version_conflict());
+        }
+        let after = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+            .await?
+            .ok_or(ApiError::NotFound)?;
+        let (was, now) = changed(&setup_view(&before), &setup_view(&after));
+        record(
+            &mut tx,
+            ctx,
+            Change {
+                topic: "workspace.setup_changed",
+                resource: "workspace",
+                object_id: Some(ctx.workspace_id.0),
+                before: Some(was),
+                after: Some(now),
+                event_extra: None,
+            },
+        )
+        .await?;
+        after
+    };
     if let Some(body) = comment {
+        if core_db::setup_requests::open_count(&mut tx).await? >= OPEN_REQUESTS_MAX {
+            return Err(ApiError::invalid(
+                "comment",
+                format!(
+                    "you have {OPEN_REQUESTS_MAX} messages waiting for the OnHold team; we'll answer those first"
+                ),
+            ));
+        }
         let request = core_db::setup_requests::insert(&mut tx, &body, ctx.user_id()).await?;
+        // The comment itself stays in its own table, not copied into the log.
         record(
             &mut tx,
             ctx,
@@ -225,7 +264,7 @@ pub async fn save(
                 resource: "setup_request",
                 object_id: Some(request.id),
                 before: None,
-                after: Some(json!({ "body": request.body })),
+                after: Some(json!({ "id": request.id })),
                 event_extra: None,
             },
         )
@@ -235,18 +274,25 @@ pub async fn save(
     Ok(after)
 }
 
+/// Only the keys that differ between two flat objects.
+fn changed(before: &Value, after: &Value) -> (Value, Value) {
+    let (mut was, mut now) = (serde_json::Map::new(), serde_json::Map::new());
+    if let (Some(b), Some(a)) = (before.as_object(), after.as_object()) {
+        for (k, v) in a {
+            if b.get(k) != Some(v) {
+                was.insert(k.clone(), b.get(k).cloned().unwrap_or(Value::Null));
+                now.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    (Value::Object(was), Value::Object(now))
+}
+
 fn setup_view(w: &core_db::workspaces::Workspace) -> Value {
     json!({
         "perspective": w.perspective, "presets": w.presets, "enabled_modules": w.enabled_modules,
         "extras": w.extras, "vocabulary": w.vocabulary, "answers": w.setup,
     })
-}
-
-/// The perspective a set of presets gives, for the command line.
-pub fn perspective_of(presets: &[String]) -> ApiResult<Option<Perspective>> {
-    core_modules::presets::combine(presets)
-        .map(|c| c.perspective)
-        .map_err(|e| ApiError::invalid("presets", e.to_string()))
 }
 
 // Streamlining (OnHold's team) -------------------------------------------------------
@@ -277,40 +323,56 @@ async fn is_operator(tx: &mut core_db::Tx, ctx: &Ctx) -> ApiResult<bool> {
     })
 }
 
-/// What is hidden, and every optional field that could be.
+/// Every optional field of the entities that can be streamlined, read in
+/// the caller's transaction.
+async fn optional_fields(tx: &mut core_db::Tx, ctx: &Ctx) -> ApiResult<Vec<HideableField>> {
+    let mut fields = Vec::new();
+    for entity in FIELD_ENTITIES {
+        let schema = super::views::full_schema_in(tx, ctx, entity).await?;
+        fields.extend(
+            schema
+                .fields
+                .into_iter()
+                .filter(|f| !f.required)
+                .map(|f| HideableField {
+                    entity,
+                    key: f.key,
+                    label: f.label,
+                    hidden: false,
+                }),
+        );
+    }
+    Ok(fields)
+}
+
+/// What is hidden, and every optional field that could be, with the
+/// workspace's version from the same read.
 pub async fn streamline_options(
     state: &AppState,
     ctx: &Ctx,
-) -> ApiResult<(Vec<String>, Vec<HideableField>)> {
+) -> ApiResult<(Vec<String>, Vec<HideableField>, i64)> {
     ctx.authorize(Permission::WorkspaceRead)?;
     let mut tx = core_db::begin(&state.db, Some(ctx.workspace_id), ctx.user_id()).await?;
     let w = core_db::workspaces::get(&mut tx, ctx.workspace_id)
         .await?
         .ok_or(ApiError::NotFound)?;
+    let mut fields = optional_fields(&mut tx, ctx).await?;
     tx.commit().await?;
-    let mut fields = Vec::new();
-    for entity in FIELD_ENTITIES {
-        let schema = super::views::full_schema(state, ctx, entity).await?;
-        for f in schema.fields.into_iter().filter(|f| !f.required) {
-            fields.push(HideableField {
-                entity,
-                hidden: w.hidden.contains(&format!("field:{entity}.{}", f.key)),
-                key: f.key,
-                label: f.label,
-            });
-        }
+    for f in &mut fields {
+        f.hidden = w.hidden.contains(&format!("field:{}.{}", f.entity, f.key));
     }
-    Ok((w.hidden, fields))
+    Ok((w.hidden, fields, w.version))
 }
 
-/// Checks a hidden key's shape; fields must exist and be optional.
-async fn check_hidden(state: &AppState, ctx: &Ctx, hidden: &[String]) -> ApiResult<()> {
+/// Checks hidden keys' shape. A field that no longer exists or has since
+/// become required is dropped rather than refused, so a list saved before
+/// a custom field was removed can still be saved again.
+fn check_hidden(hidden: &mut Vec<String>, optional: &[HideableField]) -> ApiResult<()> {
     let bad = |m: String| ApiError::invalid("hidden", m);
     if hidden.len() > MAX_HIDDEN {
         return Err(bad(format!("at most {MAX_HIDDEN} items")));
     }
-    let mut optional: Option<Vec<String>> = None;
-    for key in hidden {
+    for key in hidden.iter() {
         let (kind, rest) = key
             .split_once(':')
             .ok_or_else(|| bad(format!("`{key}` must start with nav:, section: or field:")))?;
@@ -318,43 +380,25 @@ async fn check_hidden(state: &AppState, ctx: &Ctx, hidden: &[String]) -> ApiResu
             && rest
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b"_./-".contains(&b));
-        if !shape_ok {
-            return Err(bad(format!("`{key}` is not a valid key")));
-        }
-        match kind {
-            "nav" if rest.starts_with('/') => {}
-            "section" => {}
-            "field" => {
-                if optional.is_none() {
-                    let mut all = Vec::new();
-                    for entity in FIELD_ENTITIES {
-                        let schema = super::views::full_schema(state, ctx, entity).await?;
-                        all.extend(
-                            schema
-                                .fields
-                                .into_iter()
-                                .filter(|f| !f.required)
-                                .map(|f| format!("{entity}.{}", f.key)),
-                        );
-                    }
-                    optional = Some(all);
-                }
-                if !optional
-                    .as_ref()
-                    .is_some_and(|o| o.iter().any(|k| k == rest))
-                {
-                    return Err(bad(format!(
-                        "`{key}` is not an optional field; required fields always show"
-                    )));
-                }
-            }
-            _ => {
-                return Err(bad(format!(
-                    "`{key}` must start with nav:, section: or field:"
-                )));
-            }
+        let kind_ok = match kind {
+            "nav" => rest.starts_with('/'),
+            "section" | "field" => true,
+            _ => false,
+        };
+        if !shape_ok || !kind_ok {
+            return Err(bad(format!(
+                "`{key}` is not a valid key; keys start with nav:/, section: or field:"
+            )));
         }
     }
+    hidden.retain(|key| match key.strip_prefix("field:") {
+        Some(rest) => optional.iter().any(|f| {
+            rest.strip_prefix(f.entity)
+                .and_then(|r| r.strip_prefix('.'))
+                == Some(f.key.as_str())
+        }),
+        None => true,
+    });
     Ok(())
 }
 
@@ -367,9 +411,6 @@ pub async fn set_hidden(
     if_match: Option<i64>,
 ) -> ApiResult<core_db::workspaces::Workspace> {
     ctx.authorize(Permission::WorkspaceUpdate)?;
-    hidden.sort();
-    hidden.dedup();
-    check_hidden(state, ctx, &hidden).await?;
     let mut tx = core_db::begin(&state.db, Some(ctx.workspace_id), ctx.user_id()).await?;
     if !is_operator(&mut tx, ctx).await? {
         return Err(ApiError::forbidden(
@@ -377,6 +418,10 @@ pub async fn set_hidden(
             "only OnHold's team can hide parts of the app; use Your setup instead",
         ));
     }
+    hidden.sort();
+    hidden.dedup();
+    let optional = optional_fields(&mut tx, ctx).await?;
+    check_hidden(&mut hidden, &optional)?;
     let before = core_db::workspaces::get(&mut tx, ctx.workspace_id)
         .await?
         .ok_or(ApiError::NotFound)?;

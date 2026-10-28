@@ -35,6 +35,16 @@ pub async fn insert(
     .await?)
 }
 
+/// How many of the workspace's comments OnHold's team has not marked done.
+pub async fn open_count(conn: &mut PgConnection) -> Result<i64> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT count(*) AS "n!" FROM setup_requests
+           WHERE workspace_id = app_workspace_id() AND resolved_at IS NULL"#
+    )
+    .fetch_one(conn)
+    .await?)
+}
+
 /// The workspace's latest comments, newest first.
 pub async fn recent(conn: &mut PgConnection, limit: i64) -> Result<Vec<SetupRequest>> {
     Ok(sqlx::query_as!(

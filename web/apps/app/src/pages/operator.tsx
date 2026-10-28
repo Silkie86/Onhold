@@ -5,7 +5,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { Schemas } from "@onhold/api-client";
-import { Alert, Badge, Button, Card, Checkbox, Input, Label, Spinner, cn } from "@onhold/ui";
+import { Alert, Badge, Button, Card, Checkbox, Input, Label, Spinner, cn, moneyInputText, parseMoneyInput } from "@onhold/ui";
 import { useState } from "react";
 import { api, ok, setWorkspace } from "../api.ts";
 import { GoTo } from "../go-to.tsx";
@@ -233,7 +233,7 @@ function PriceListEditor() {
   const money = (name: string, label: string, minor: number | undefined) => (
     <div key={name} className="flex flex-col gap-1.5">
       <Label htmlFor={`price-${name}`}>{label}</Label>
-      <Input id={`price-${name}`} name={name} type="number" min={0} step="0.01" inputMode="decimal" defaultValue={((minor ?? 0) / 100).toString()} />
+      <Input id={`price-${name}`} name={name} type="number" min={0} step="0.01" inputMode="decimal" defaultValue={moneyInputText({ minor: minor ?? 0, currency: p.currency })} />
     </div>
   );
   return (
@@ -250,9 +250,10 @@ function PriceListEditor() {
             e.preventDefault();
             setMessage(null);
             const f = new FormData(e.currentTarget);
-            const minor = (k: string) => Math.max(0, Math.round(Number(f.get(k) ?? 0) * 100));
+            const currency = String(f.get("currency") ?? "GBP").trim().toUpperCase();
+            const minor = (k: string) => Math.max(0, parseMoneyInput(String(f.get(k) ?? ""), currency) ?? 0);
             const body = {
-              currency: String(f.get("currency") ?? "GBP").trim().toUpperCase(),
+              currency,
               placeholder: f.get("placeholder") === "on",
               base: minor("base"),
               features: Object.fromEntries(Object.keys(FEATURE_NAMES).map((k) => [k, minor(`feature-${k}`)])),

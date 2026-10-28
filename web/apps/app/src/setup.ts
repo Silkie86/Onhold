@@ -4,6 +4,7 @@
 // agency sees everything. Nothing switched off is deleted; it is only hidden.
 
 import { useQuery } from "@tanstack/react-query";
+import { currencyDigits } from "@onhold/ui";
 import { fetchWorkspace, useOffline } from "./data.ts";
 import type { OfflineSync } from "./offline/sync.ts";
 
@@ -30,15 +31,17 @@ export type Setup = {
 
 export function setupOf(
   ws:
-    | { enabled_modules: string[]; extras: string[]; vocabulary: unknown; setup_at?: string | null; hidden?: string[] }
+    | { enabled_modules: string[]; extras?: string[]; vocabulary?: unknown; setup_at?: string | null; hidden?: string[] }
     | undefined,
 ): Setup {
   const words = (ws?.vocabulary ?? {}) as Words;
   return {
     known: !!ws,
     done: !!ws?.setup_at,
-    has: (m) => !ws || ws.enabled_modules.includes(m),
-    hasExtra: (e) => !ws || ws.extras.includes(e),
+    // A device's copy saved before setups existed has no extras and no
+    // finance module; it keeps showing everything, as the server did then.
+    has: (m) => !ws || ws.enabled_modules.includes(m) || (m === "finance" && !ws.extras),
+    hasExtra: (e) => !ws?.extras || ws.extras.includes(e),
     shows: (key) => !ws?.hidden?.includes(key),
     word: (module, term, plural = false) => {
       const own = words[module]?.[term]?.[plural ? "many" : "one"];
@@ -64,6 +67,7 @@ export function useSetup(engine?: OfflineSync | null): Setup {
 export const SECTIONS: { key: string; label: string }[] = [
   { key: "section:booking.quotes", label: "Quotes on a booking" },
   { key: "section:booking.finance", label: "Invoices and payments on a booking" },
+  { key: "section:booking.documents", label: "Contracts and documents on a booking" },
   { key: "section:booking.settlements", label: "Settlements (what talent are owed) on a booking" },
   { key: "section:tasks.assign", label: "Assigning tasks to people" },
   { key: "section:talent.members", label: "Members of an act" },
@@ -72,18 +76,20 @@ export const SECTIONS: { key: string; label: string }[] = [
   { key: "section:records.conversations", label: "Email conversations on contacts and organisations" },
 ];
 
-/** Formats an amount in minor units, e.g. 2900 GBP → "£29". */
+/** Formats an amount in minor units, e.g. 2900 GBP → "£29" (pence only when there are some). */
 export function price(minor: number, currency: string): string {
-  const whole = minor % 100 === 0;
+  const digits = currencyDigits(currency);
+  const amount = minor / 10 ** digits;
+  const shown = Number.isInteger(amount) ? 0 : digits;
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency,
-      minimumFractionDigits: whole ? 0 : 2,
-      maximumFractionDigits: whole ? 0 : 2,
-    }).format(minor / 100);
+      minimumFractionDigits: shown,
+      maximumFractionDigits: shown,
+    }).format(amount);
   } catch {
-    return `${(minor / 100).toFixed(whole ? 0 : 2)} ${currency}`;
+    return `${amount.toFixed(shown)} ${currency}`;
   }
 }
 

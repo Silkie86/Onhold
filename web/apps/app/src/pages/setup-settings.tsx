@@ -79,7 +79,12 @@ export function SetupSettingsPage() {
         }),
       );
       setComment("");
-      await Promise.all([qc.invalidateQueries({ queryKey: ["workspace"] }), qc.invalidateQueries({ queryKey: ["setup"] })]);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["workspace"] }),
+        qc.invalidateQueries({ queryKey: ["setup"] }),
+        // Field labels follow the workspace's words.
+        qc.invalidateQueries({ queryKey: ["schema"] }),
+      ]);
       setAnswers(null);
       setMessage({ ok: true, text: "Saved. Your menus now match your answers, and you can come back and change them any time." });
     } catch (err) {
@@ -179,7 +184,7 @@ export function SetupSettingsPage() {
               {done_at && <span className="text-xs text-muted-foreground">Last changed {new Date(done_at).toLocaleDateString()}</span>}
             </div>
           )}
-          {requests.length > 0 && (
+          {canChange && requests.length > 0 && (
             <Card className="flex flex-col gap-2 p-4">
               <h2 className="font-semibold">Your messages to OnHold</h2>
               <ul className="flex flex-col gap-2">

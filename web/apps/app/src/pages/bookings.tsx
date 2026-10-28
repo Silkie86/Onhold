@@ -710,7 +710,7 @@ export function BookingPage() {
               {setup.shows("section:booking.finance") && <BookingFinancePanel booking={b} />}
             </>
           )}
-          <BookingDocumentsPanel booking={b} />
+          {setup.has("documents") && setup.shows("section:booking.documents") && <BookingDocumentsPanel booking={b} />}
         </section>
         <section aria-label="Tasks and activity" className="flex flex-col gap-6">
           <RelatedTasks entity="booking" id={id} />

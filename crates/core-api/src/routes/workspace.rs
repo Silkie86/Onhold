@@ -234,7 +234,6 @@ pub struct SetupView {
     security(("session" = []), ("api_key" = [])))]
 async fn get_setup(State(state): State<AppState>, WsCtx(ctx): WsCtx) -> ApiResult<Json<SetupView>> {
     let s = crate::services::setup::get(&state, &ctx).await?;
-    let version = svc::get_workspace(&state, &ctx).await?.version;
     Ok(Json(SetupView {
         questions: s.questions,
         answers: s.answers,
@@ -252,7 +251,7 @@ async fn get_setup(State(state): State<AppState>, WsCtx(ctx): WsCtx) -> ApiResul
             })
             .collect(),
         price_list: s.price_list,
-        version,
+        version: s.version,
     }))
 }
 
@@ -318,8 +317,8 @@ async fn get_streamline(
     State(state): State<AppState>,
     WsCtx(ctx): WsCtx,
 ) -> ApiResult<Json<StreamlineView>> {
-    let (hidden, fields) = crate::services::setup::streamline_options(&state, &ctx).await?;
-    let version = svc::get_workspace(&state, &ctx).await?.version;
+    let (hidden, fields, version) =
+        crate::services::setup::streamline_options(&state, &ctx).await?;
     Ok(Json(StreamlineView {
         hidden,
         fields: fields

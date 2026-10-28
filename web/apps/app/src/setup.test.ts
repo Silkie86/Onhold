@@ -24,10 +24,19 @@ describe("setup", () => {
     expect(s.word("bookings", "enquiry")).toBe("Enquiry");
   });
 
+  it("keeps showing everything from a device copy saved before setups", () => {
+    const s = setupOf({ enabled_modules: ["crm", "bookings", "messaging"] });
+    expect(s.has("finance")).toBe(true);
+    expect(s.hasExtra("commission")).toBe(true);
+    expect(s.has("documents")).toBe(false);
+  });
+
   it("adds up an estimate", () => {
     const list = { currency: "GBP", base: 1500, features: { email: 500, invoicing: 800 }, team: { small: 2000 } };
     expect(estimate(list, { features: ["email", "invoicing", "bookings"], team: "small" })).toBe(4800);
     expect(estimate(list, { features: [], team: null })).toBe(1500);
     expect(price(4800, "GBP")).toContain("48");
+    expect(price(4850, "GBP")).toContain("48.50");
+    expect(price(4800, "JPY")).toContain("4,800");
   });
 });

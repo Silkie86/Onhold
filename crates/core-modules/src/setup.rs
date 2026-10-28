@@ -275,6 +275,22 @@ pub struct Answers {
     pub team: Option<String>,
 }
 
+impl Answers {
+    /// Drops repeated ticks, keeping the order they were ticked in.
+    pub fn tidy(&mut self) {
+        for list in [&mut self.roles, &mut self.features, &mut self.talent_kinds] {
+            let mut seen = Vec::with_capacity(list.len());
+            list.retain(|x| {
+                let fresh = !seen.contains(x);
+                if fresh {
+                    seen.push(x.clone());
+                }
+                fresh
+            });
+        }
+    }
+}
+
 /// What the answers set up.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, utoipa::ToSchema)]
 pub struct Plan {
@@ -406,6 +422,29 @@ pub fn answers_for(preset_keys: &[String]) -> Answers {
     }
 }
 
+/// The answers that would give what a workspace has switched on now, to
+/// pre-fill the form for a workspace made before setups existed.
+pub fn answers_from(modules: &[String], extras: &[String]) -> Answers {
+    let on = |f: &Feature| match f.effect {
+        Effect::Module(m) => modules.iter().any(|x| x == m),
+        Effect::Extra(e) => extras.iter().any(|x| x == e),
+    };
+    let team = if extras.iter().any(|e| e == "team") {
+        "small"
+    } else {
+        "just_me"
+    };
+    Answers {
+        features: FEATURES
+            .iter()
+            .filter(|f| on(f))
+            .map(|f| f.key.to_owned())
+            .collect(),
+        team: Some(team.into()),
+        ..Answers::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -468,5 +507,29 @@ mod tests {
         let a = answers_for(&["solo".into()]);
         assert!(a.features.contains(&"invoicing".to_owned()));
         assert!(!a.features.contains(&"commission".to_owned()));
+    }
+
+    #[test]
+    fn an_older_workspace_keeps_what_it_has_and_repeats_are_dropped() {
+        let owned = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        let a = answers_from(
+            &owned(&["crm", "bookings", "finance"]),
+            &owned(&["team", "commission"]),
+        );
+        assert_eq!(a.features, ["bookings", "invoicing", "commission"]);
+        assert_eq!(a.team.as_deref(), Some("small"));
+        let p = plan(&a).expect("valid");
+        assert_eq!(p.modules, ["crm", "bookings", "finance"]);
+        assert_eq!(p.extras, ["team", "commission"]);
+
+        let mut a = answers(
+            &["solo", "solo"],
+            &["email", "bookings", "email"],
+            &[],
+            "just_me",
+        );
+        a.tidy();
+        assert_eq!(a.roles, ["solo"]);
+        assert_eq!(a.features, ["email", "bookings"]);
     }
 }

@@ -549,9 +549,10 @@ fn write_permission(entity: &str) -> Permission {
 /// without the ones OnHold's team hid for the workspace, nor commission
 /// where it takes none. Hiding a field never drops a required one.
 pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<EntitySchema> {
-    let mut schema = full_schema(state, ctx, entity).await?;
+    authorize_read(ctx, entity)?;
     let mut tx = begin(state, ctx).await?;
-    let w = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+    let mut schema = full_schema_in(&mut tx, ctx, entity).await?;
+    let w = core_db::workspaces::shape(&mut tx, ctx.workspace_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     tx.commit().await?;
@@ -584,8 +585,12 @@ pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<Enti
     Ok(schema)
 }
 
-/// Every field of an entity, hidden or not.
-pub async fn full_schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<EntitySchema> {
+/// Every field of an entity, hidden or not, read in the caller's transaction.
+pub async fn full_schema_in(
+    tx: &mut core_db::Tx,
+    ctx: &Ctx,
+    entity: &str,
+) -> ApiResult<EntitySchema> {
     authorize_read(ctx, entity)?;
     let (label, plural) = match entity {
         "talent" => ("Talent", "Talent"),
@@ -620,9 +625,7 @@ pub async fn full_schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult
             validation: None,
         })
         .collect();
-    let mut tx = begin(state, ctx).await?;
-    let defs = core_db::fields::list(&mut tx, Some(entity), false).await?;
-    tx.commit().await?;
+    let defs = core_db::fields::list(tx, Some(entity), false).await?;
     for d in defs {
         let Some(def) = super::fields::to_engine(&d) else {
             continue;

@@ -1481,8 +1481,44 @@ async fn the_setup_form_shapes_the_workspace_and_reaches_operators(pool: PgPool)
         .send()
         .await;
     assert_eq!(res.status, StatusCode::FORBIDDEN, "{}", res.body);
+    // They see the form, but not the owners' messages to OnHold.
+    let theirs = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&agent)
+        .send()
+        .await
+        .ok();
+    assert_eq!(theirs.body["requests"], json!([]));
     let actions = app.audit_actions(ws).await;
     assert!(actions.iter().any(|a| a == "setup_request.created"));
+
+    // Sending the same answers again changes nothing and logs nothing.
+    let logged = actions
+        .iter()
+        .filter(|a| *a == "workspace.setup_changed")
+        .count();
+    let current = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    let same = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": current.body["answers"] }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(same.body["version"], current.body["version"]);
+    assert_eq!(
+        app.audit_actions(ws)
+            .await
+            .iter()
+            .filter(|a| *a == "workspace.setup_changed")
+            .count(),
+        logged
+    );
 
     // OnHold's team sees the setup and the comment, and marks it done.
     let ops = operator(&app).await;
@@ -1642,18 +1678,25 @@ async fn operators_streamline_a_workspace_and_it_survives_the_form(pool: PgPool)
             .any(|f| f["entity"] == "contact" && f["key"] == "name"),
         "required fields cannot be hidden"
     );
+    // A required field, or one since removed, is dropped rather than refused.
+    let mut with_stale = hide.clone();
+    for extra in ["field:contact.name", "field:contact.nope"] {
+        with_stale["hidden"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!(extra));
+    }
     let saved = app
         .put("/api/v1/workspace/streamline")
         .signed_in(&visit)
-        .json(hide)
+        .json(with_stale)
         .send()
         .await
         .ok();
     assert_eq!(saved.body["hidden"].as_array().unwrap().len(), 3);
     for bad in [
-        json!(["field:contact.name"]),
-        json!(["field:contact.nope"]),
         json!(["menu:/x"]),
+        json!(["field:"]),
         json!(["nav:no-slash"]),
     ] {
         let res = app
