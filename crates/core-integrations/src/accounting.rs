@@ -259,6 +259,45 @@ pub async fn xero_tenants(
     Ok(tenants)
 }
 
+/// Ends the grant's connection to one Xero organisation only: revoking the
+/// grant itself would end its connections to every organisation.
+pub async fn xero_disconnect(
+    http: &reqwest::Client,
+    base: &Url,
+    token: &str,
+    tenant_id: &str,
+) -> Result<(), ProviderError> {
+    let v: Value = provider::send_json(
+        http.get(endpoint(base, "/connections"))
+            .bearer_auth(token)
+            .header("accept", "application/json"),
+    )
+    .await?;
+    let Some(id) = v
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|c| text(c, "tenantId").as_deref() == Some(tenant_id))
+        .and_then(|c| text(c, "id"))
+    else {
+        return Ok(());
+    };
+    match provider::send_raw(
+        http.delete(endpoint(base, &format!("/connections/{}", segment(&id))))
+            .bearer_auth(token),
+    )
+    .await
+    {
+        Ok(_) | Err(ProviderError::Refused { status: 404, .. }) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Intuit's names are at most 100 characters.
+fn quickbooks_name(name: &str) -> String {
+    name.trim().chars().take(100).collect()
+}
+
 /// A quote for Intuit's query language.
 fn quoted(s: &str) -> String {
     format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'"))
@@ -533,16 +572,32 @@ impl Books {
                     .and_then(|c| text(c, "ContactID")))
             }
             Kind::QuickBooks => {
+                // Made inactive in QuickBooks, the name is still taken:
+                // such a customer is made active again.
                 let rows = self
                     .query(
                         "Customer",
                         &format!(
-                            "select * from Customer where DisplayName = {}",
-                            quoted(name.trim())
+                            "select * from Customer where DisplayName = {} and Active in (true, false)",
+                            quoted(&quickbooks_name(name))
                         ),
                     )
                     .await?;
-                Ok(rows.first().and_then(|c| text(c, "Id")))
+                let Some(c) = rows.first() else {
+                    return Ok(None);
+                };
+                let id = text(c, "Id").ok_or_else(|| invalid("customer"))?;
+                if c.get("Active").and_then(Value::as_bool) == Some(false) {
+                    let token = text(c, "SyncToken").ok_or_else(|| invalid("sync token"))?;
+                    self.send(
+                        reqwest::Method::POST,
+                        "/customer",
+                        &json!({ "Id": id, "SyncToken": token, "sparse": true, "Active": true }),
+                        None,
+                    )
+                    .await?;
+                }
+                Ok(Some(id))
             }
         }
     }
@@ -574,9 +629,7 @@ impl Books {
                     .ok_or_else(|| invalid("contact"))
             }
             Kind::QuickBooks => {
-                // Intuit's names are at most 100 characters.
-                let mut c =
-                    json!({ "DisplayName": name.trim().chars().take(100).collect::<String>() });
+                let mut c = json!({ "DisplayName": quickbooks_name(name) });
                 if let Some(e) = email {
                     c["PrimaryEmailAddr"] = json!({ "Address": e });
                 }
@@ -730,6 +783,20 @@ impl Books {
             .ok_or_else(|| invalid("sync token"))
     }
 
+    /// Whether Xero has this voided or deleted already: it refuses to do
+    /// either twice.
+    async fn xero_gone(&self, path: &str, list: &str, id: &str) -> Result<bool, ProviderError> {
+        let v = match self.get(&format!("/{path}/{}", segment(id))).await {
+            Err(ProviderError::Refused { status: 404, .. }) => return Ok(true),
+            other => other?,
+        };
+        Ok(matches!(
+            v.pointer(&format!("/{list}/0/Status"))
+                .and_then(Value::as_str),
+            Some("VOIDED" | "DELETED")
+        ))
+    }
+
     /// Voids an invoice or credit note. One already gone counts as done.
     pub async fn void_document(&self, kind: DocKind, id: &str) -> Result<(), ProviderError> {
         let done = match self.kind {
@@ -738,14 +805,24 @@ impl Books {
                     DocKind::Invoice => ("Invoices", "Invoices", "InvoiceID"),
                     DocKind::CreditNote => ("CreditNotes", "CreditNotes", "CreditNoteID"),
                 };
-                self.send(
-                    reqwest::Method::POST,
-                    &format!("/{path}/{}", segment(id)),
-                    &json!({ list: [{ key: id, "Status": "VOIDED" }] }),
-                    None,
-                )
-                .await
-                .map(|_| ())
+                match self
+                    .send(
+                        reqwest::Method::POST,
+                        &format!("/{path}/{}", segment(id)),
+                        &json!({ list: [{ key: id, "Status": "VOIDED" }] }),
+                        None,
+                    )
+                    .await
+                {
+                    Err(e @ ProviderError::Refused { status: 400, .. }) => {
+                        if self.xero_gone(path, list, id).await? {
+                            Ok(())
+                        } else {
+                            Err(e)
+                        }
+                    }
+                    other => other.map(|_| ()),
+                }
             }
             Kind::QuickBooks => {
                 let entity = match kind {
@@ -837,7 +914,7 @@ impl Books {
     /// Takes a payment back. One already gone counts as done.
     pub async fn delete_payment(&self, id: &str) -> Result<(), ProviderError> {
         let done = match self.kind {
-            Kind::Xero => self
+            Kind::Xero => match self
                 .send(
                     reqwest::Method::POST,
                     &format!("/Payments/{}", segment(id)),
@@ -845,7 +922,16 @@ impl Books {
                     None,
                 )
                 .await
-                .map(|_| ()),
+            {
+                Err(e @ ProviderError::Refused { status: 400, .. }) => {
+                    if self.xero_gone("Payments", "Payments", id).await? {
+                        Ok(())
+                    } else {
+                        Err(e)
+                    }
+                }
+                other => other.map(|_| ()),
+            },
             Kind::QuickBooks => {
                 let token = match self.sync_token("Payment", id).await {
                     Err(ProviderError::Refused { status: 404, .. }) => return Ok(()),
@@ -918,6 +1004,41 @@ impl Books {
                 v.pointer("/Payment/Id")
                     .and_then(|v| text(&json!({ "Id": v }), "Id"))
                     .ok_or_else(|| invalid("payment id"))
+            }
+        }
+    }
+
+    /// What is left of a QuickBooks credit memo to set against invoices:
+    /// QuickBooks may have set it against the customer's oldest invoices
+    /// itself ("Automatically apply credits"). Xero never does.
+    pub async fn remaining_credit(
+        &self,
+        credit: &str,
+        exponent: u32,
+    ) -> Result<Option<i64>, ProviderError> {
+        match self.kind {
+            Kind::Xero => Ok(None),
+            Kind::QuickBooks => {
+                let v = self
+                    .get(&format!("/creditmemo/{}", segment(credit)))
+                    .await?;
+                Ok(v.get("CreditMemo")
+                    .and_then(|m| m.get("RemainingCredit").or_else(|| m.get("Balance")))
+                    .map(|r| minor(Some(r), exponent)))
+            }
+        }
+    }
+
+    /// Whether QuickBooks sets new credits against the customer's oldest
+    /// invoices itself, rather than the ones they credit.
+    pub async fn applies_credits_itself(&self) -> Result<bool, ProviderError> {
+        match self.kind {
+            Kind::Xero => Ok(false),
+            Kind::QuickBooks => {
+                let v = self.get("/preferences").await?;
+                Ok(v.pointer("/Preferences/SalesFormsPrefs/AutoApplyCredit")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false))
             }
         }
     }

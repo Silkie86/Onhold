@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (\n             SELECT 1 FROM payment_allocations a\n             JOIN accounting_links la\n               ON la.connection_id = $1 AND la.kind = 'allocation' AND la.local_id = a.id\n             WHERE a.workspace_id = app_workspace_id() AND a.invoice_id = $2\n               AND la.status <> 'imported'\n               AND (la.state = 'sending' OR (a.removed_at IS NOT NULL AND la.state = 'live'))\n           ) AS \"pending!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pending!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "205bce69f920a2861bb482e13529e298e77bac4f8970135d726735180e94e878"
+}

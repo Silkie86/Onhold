@@ -21913,7 +21913,8 @@
           "sales",
           "banks",
           "taxes",
-          "tax_codes"
+          "tax_codes",
+          "warnings"
         ],
         "properties": {
           "banks": {
@@ -21943,6 +21944,13 @@
               "$ref": "#/components/schemas/AccountingChoice"
             },
             "description": "Tax rates (Xero) or codes (QuickBooks)."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Settings in the books worth changing for OnHold, in words."
           }
         }
       },

@@ -9,7 +9,7 @@
 #[path = "../../core-api/tests/common/mod.rs"]
 mod common;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -56,6 +56,10 @@ struct World {
     refreshes: usize,
     withdrawn: bool,
     revoked: Vec<String>,
+    /// Xero connections ended (one organisation each).
+    disconnected: Vec<String>,
+    /// Customers made inactive in QuickBooks.
+    inactive: BTreeSet<String>,
     /// Contacts (customers) by id.
     contacts: BTreeMap<String, String>,
     docs: BTreeMap<String, Doc>,
@@ -63,10 +67,13 @@ struct World {
     payments: BTreeMap<String, (String, i64, Value)>,
     /// Credit notes set against invoices: (credit note, invoice, amount).
     allocations: BTreeMap<String, (String, String, i64)>,
-    /// Answers by idempotency key (Xero) or request id (Intuit).
-    keys: HashMap<String, Value>,
+    /// Answers by idempotency key (Xero) or request id (Intuit), refusals
+    /// included.
+    keys: HashMap<String, (StatusCode, Value)>,
     /// The next document added is kept but its answer is lost.
     lose_next: bool,
+    /// The next payment added is kept but its answer is lost.
+    lose_next_payment: bool,
     /// Contacts of this name are refused.
     refuse: Option<String>,
     ids: usize,
@@ -203,8 +210,8 @@ fn xero(
     let key = headers
         .get("idempotency-key")
         .map(|k| k.to_str().unwrap().to_owned());
-    if let Some(v) = key.as_ref().and_then(|k| w.keys.get(k)) {
-        return axum::Json(v.clone()).into_response();
+    if let Some((status, v)) = key.as_ref().and_then(|k| w.keys.get(k)) {
+        return answer(*status, v.clone());
     }
     let body: Value = serde_json::from_str(body).unwrap_or(Value::Null);
     let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
@@ -232,7 +239,16 @@ fn xero(
         ("PUT", ["Contacts"]) => {
             let name = body["Contacts"][0]["Name"].as_str().unwrap().to_owned();
             if w.refuse.as_deref() == Some(name.as_str()) {
-                return xero_invalid(&format!("{name} is on hold in these books"));
+                // Remembered under its key: the same request is refused again.
+                let message = format!("{name} is on hold in these books");
+                w.keys.insert(
+                    key.unwrap(),
+                    (
+                        StatusCode::BAD_REQUEST,
+                        json!({ "Elements": [{ "ValidationErrors": [{ "Message": message }] }] }),
+                    ),
+                );
+                return xero_invalid(&message);
             }
             let id = w.id("contact");
             w.contacts.insert(id.clone(), name);
@@ -283,7 +299,7 @@ fn xero(
             let v = json!({ *list: [{ field: id }] });
             if w.lose_next {
                 w.lose_next = false;
-                w.keys.insert(key.unwrap(), v);
+                w.keys.insert(key.unwrap(), (StatusCode::OK, v));
                 return answer(
                     StatusCode::SERVICE_UNAVAILABLE,
                     json!({ "Message": "lost" }),
@@ -329,12 +345,21 @@ fn xero(
             };
             json!({ "Invoices": rows })
         }
+        ("GET", [list @ ("Invoices" | "CreditNotes"), id]) => {
+            let Some(d) = w.docs.get(*id) else {
+                return not_found();
+            };
+            json!({ *list: [{ "Status": d.status }] })
+        }
         ("POST", [list @ ("Invoices" | "CreditNotes"), id]) => {
             let entry = &body[*list][0];
             assert_eq!(entry["Status"], "VOIDED");
             let Some(d) = w.docs.get_mut(*id) else {
                 return not_found();
             };
+            if d.status == "VOIDED" {
+                return xero_invalid("Invoice not of valid status for modification");
+            }
             if d.due != d.total {
                 return xero_invalid(
                     "This document cannot be edited as it has a payment or credit note allocated to it.",
@@ -363,7 +388,16 @@ fn xero(
             }
             let id = w.id("payment");
             w.payments.insert(id.clone(), (invoice, amount, p.clone()));
-            json!({ "Payments": [{ "PaymentID": id }] })
+            let v = json!({ "Payments": [{ "PaymentID": id }] });
+            if w.lose_next_payment {
+                w.lose_next_payment = false;
+                w.keys.insert(key.unwrap(), (StatusCode::OK, v));
+                return answer(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    json!({ "Message": "lost" }),
+                );
+            }
+            v
         }
         ("POST", ["Payments", id]) => {
             assert_eq!(body["Payments"][0]["Status"], "DELETED");
@@ -400,7 +434,7 @@ fn xero(
         _ => panic!("unexpected Xero call {method} {path}"),
     };
     if let Some(k) = key {
-        w.keys.insert(k, done.clone());
+        w.keys.insert(k, (StatusCode::OK, done.clone()));
     }
     axum::Json(done).into_response()
 }
@@ -448,11 +482,16 @@ fn intuit_query(w: &World, query: &str) -> Value {
         json!({ "QueryResponse": { "Account": [{ "Id": "35", "Name": "Checking", "AccountType": "Bank" }] } })
     } else if query.contains("from Customer") {
         let name = quoted_after(query, "DisplayName =");
+        // Intuit leaves inactive ones out unless asked for them.
+        let all = query.contains("Active in (true, false)");
         let found: Vec<Value> = w
             .contacts
             .iter()
-            .filter(|(_, n)| **n == name)
-            .map(|(id, n)| json!({ "Id": id, "DisplayName": n }))
+            .filter(|(id, n)| **n == name && (all || !w.inactive.contains(*id)))
+            .map(|(id, n)| {
+                json!({ "Id": id, "DisplayName": n, "SyncToken": "0",
+                                   "Active": !w.inactive.contains(id) })
+            })
             .collect();
         json!({ "QueryResponse": { "Customer": found } })
     } else if query.contains("from Invoice where Id in (") {
@@ -489,8 +528,8 @@ fn quickbooks(
     assert_eq!(headers["authorization"], "Bearer access");
     assert_eq!(q["minorversion"], "75");
     let key = q.get("requestid").cloned();
-    if let Some(v) = key.as_ref().and_then(|k| w.keys.get(k)) {
-        return axum::Json(v.clone()).into_response();
+    if let Some((status, v)) = key.as_ref().and_then(|k| w.keys.get(k)) {
+        return answer(*status, v.clone());
     }
     let body: Value = serde_json::from_str(body).unwrap_or(Value::Null);
     let operation = q.get("operation").map(String::as_str);
@@ -500,11 +539,24 @@ fn quickbooks(
             json!({ "CompanyInfo": { "CompanyName": "Owls Inc", "Country": "US" } })
         }
         ("GET", ["query"], _) => intuit_query(w, &q["query"]),
+        ("GET", ["preferences"], _) => {
+            json!({ "Preferences": { "SalesFormsPrefs": { "AutoApplyCredit": true } } })
+        }
+        ("POST", ["customer"], None) if body["sparse"] == true => {
+            assert_eq!(body["Active"], true);
+            let id = body["Id"].as_str().unwrap().to_owned();
+            assert!(w.inactive.remove(&id), "only inactive ones are made active");
+            json!({ "Customer": { "Id": id } })
+        }
         ("POST", ["customer"], None) => {
             let name = body["DisplayName"].as_str().unwrap().to_owned();
             if w.refuse.as_deref() == Some(name.as_str()) {
                 return intuit_invalid("Duplicate Name Exists Error");
             }
+            assert!(
+                !w.contacts.values().any(|n| *n == name),
+                "Intuit refuses a name taken, inactive or not"
+            );
             let id = w.id("cust");
             w.contacts.insert(id.clone(), name);
             json!({ "Customer": { "Id": id } })
@@ -551,7 +603,13 @@ fn quickbooks(
                 w.payments.contains_key(*id)
             };
             if !known {
-                return intuit_invalid("Object Not Found");
+                return answer(
+                    StatusCode::BAD_REQUEST,
+                    json!({ "Fault": { "Error": [{ "Message": "Object Not Found",
+                                                   "Detail": "Object Not Found : Something you're trying to use has been made inactive.",
+                                                   "code": "610" }],
+                                       "type": "ValidationFault" } }),
+                );
             }
             let name = if *entity == "invoice" {
                 "Invoice"
@@ -595,7 +653,7 @@ fn quickbooks(
         _ => panic!("unexpected Intuit call {method} {path} {operation:?}"),
     };
     if let Some(k) = key {
-        w.keys.insert(k, done.clone());
+        w.keys.insert(k, (StatusCode::OK, done.clone()));
     }
     axum::Json(done).into_response()
 }
@@ -625,14 +683,19 @@ async fn handle(
         ("GET", "/connections") => {
             assert_eq!(headers["authorization"], "Bearer access");
             axum::Json(json!([
-                { "tenantId": "tenant-0", "tenantType": "ORGANISATION", "tenantName": "Chosen Before",
-                  "updatedDateUtc": "2025-01-01T10:00:00" },
-                { "tenantId": "practice", "tenantType": "PRACTICEMANAGER", "tenantName": "A Practice",
-                  "updatedDateUtc": "2026-12-01T10:00:00" },
-                { "tenantId": "tenant-1", "tenantType": "ORGANISATION", "tenantName": "Owls Agency Ltd",
-                  "updatedDateUtc": "2026-10-01T10:00:00" },
+                { "id": "conn-0", "tenantId": "tenant-0", "tenantType": "ORGANISATION",
+                  "tenantName": "Chosen Before", "updatedDateUtc": "2025-01-01T10:00:00" },
+                { "id": "conn-p", "tenantId": "practice", "tenantType": "PRACTICEMANAGER",
+                  "tenantName": "A Practice", "updatedDateUtc": "2026-12-01T10:00:00" },
+                { "id": "conn-1", "tenantId": "tenant-1", "tenantType": "ORGANISATION",
+                  "tenantName": "Owls Agency Ltd", "updatedDateUtc": "2026-10-01T10:00:00" },
             ]))
             .into_response()
+        }
+        ("DELETE", p) if p.starts_with("/connections/") => {
+            assert_eq!(headers["authorization"], "Bearer access");
+            w.disconnected.push(p["/connections/".len()..].to_owned());
+            StatusCode::NO_CONTENT.into_response()
         }
         (m, p) if p.starts_with("/api.xro/2.0/") => {
             xero(&mut w, m, &p["/api.xro/2.0".len()..], &q, &headers, &body)
@@ -916,6 +979,7 @@ async fn xero_keeps_the_books(pool: PgPool) {
         o["taxes"][0],
         json!({ "id": "OUTPUT2", "name": "20% (VAT on Income) (20.0000%)" })
     );
+    assert_eq!(o["warnings"], json!([]));
     let saved = choose(&h, &owner, "200", "bank-1", |rate| {
         Some(if rate > 0 { "OUTPUT2" } else { "NONE" })
     })
@@ -963,6 +1027,32 @@ async fn xero_keeps_the_books(pool: PgPool) {
         &owner,
         &format!("/api/v1/payments/{payment}/void"),
         json!({ "reason": "Bounced" }),
+    )
+    .await;
+    h.drain().await;
+    assert!(h.world.lock().unwrap().payments.is_empty());
+    assert_eq!(h.doc(&first_id).due, 120_000);
+
+    // Paid in full, and Xero's answer lost: asked for again with the same
+    // key, so it is there once and known, and taken back when voided.
+    h.world.lock().unwrap().lose_next_payment = true;
+    let whole = h
+        .post(
+            &owner,
+            "/api/v1/payments",
+            json!({ "amount": { "minor": 120_000, "currency": "GBP" },
+                    "allocations": [{ "invoice_id": first["id"] }] }),
+        )
+        .await;
+    h.drain().await;
+    assert!(h.accounting(&owner).await["last_error"].is_string());
+    h.sync(&owner).await;
+    assert_eq!(h.world.lock().unwrap().payments.len(), 1);
+    assert_eq!(h.doc(&first_id).due, 0);
+    h.post(
+        &owner,
+        &format!("/api/v1/payments/{}/void", whole["id"].as_str().unwrap()),
+        json!({ "reason": "Entered twice" }),
     )
     .await;
     h.drain().await;
@@ -1026,7 +1116,15 @@ async fn xero_keeps_the_books(pool: PgPool) {
     assert_eq!(h.doc(&note_id).status, "VOIDED");
     assert_eq!(h.doc(&second_id).due, 60_000);
 
-    // Voided after it was sent: voided there. Voided before: never sent.
+    // Voided after it was sent: voided there (already voided there is
+    // fine too). Voided before: never sent.
+    h.world
+        .lock()
+        .unwrap()
+        .docs
+        .get_mut(&second_id)
+        .unwrap()
+        .status = "VOIDED".into();
     h.post(
         &owner,
         &format!("/api/v1/invoices/{}/void", second["id"].as_str().unwrap()),
@@ -1042,6 +1140,7 @@ async fn xero_keeps_the_books(pool: PgPool) {
     .await;
     h.drain().await;
     assert_eq!(h.doc(&second_id).status, "VOIDED");
+    assert_eq!(h.accounting(&owner).await["refused"], 0);
     assert!(
         h.world
             .lock()
@@ -1071,6 +1170,14 @@ async fn xero_keeps_the_books(pool: PgPool) {
             .contains("on hold in these books"),
         "{failures}"
     );
+    assert_eq!(failures[0]["attempts"], 1);
+    // Other work goes on; the refusal is tried again on "send now", not on
+    // every change.
+    let meanwhile = h.issue(&owner, hall, 2_500).await;
+    h.drain().await;
+    h.in_books(&meanwhile);
+    let failures = h.get(&owner, "/api/v1/accounting/failures").await;
+    assert_eq!(failures[0]["attempts"], 1, "{failures}");
     h.world.lock().unwrap().refuse = None;
     h.sync(&owner).await;
     assert_eq!(h.accounting(&owner).await["refused"], 0);
@@ -1090,6 +1197,35 @@ async fn xero_keeps_the_books(pool: PgPool) {
     h.sync(&owner).await;
     h.in_books(&lost);
     assert_eq!(h.accounting(&owner).await["last_error"], Value::Null);
+
+    // A sync cut off part way (its worker gone): a change meanwhile waits
+    // for it, and once its lease runs out another sync follows.
+    sqlx::query(
+        "UPDATE accounting_connections SET sync_token = gen_random_uuid(),
+                sync_lease_until = now() + interval '10 minutes',
+                next_sync_at = now() + interval '10 minutes'",
+    )
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    let late = h.issue(&owner, hall, 4_000).await;
+    h.sync(&owner).await;
+    assert!(
+        h.world
+            .lock()
+            .unwrap()
+            .doc_numbered(late["reference"].as_str().unwrap())
+            .is_empty()
+    );
+    sqlx::query(
+        "UPDATE accounting_connections SET sync_lease_until = now() - interval '1 second',
+                next_sync_at = now() - interval '1 second'",
+    )
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    h.drain().await;
+    h.in_books(&late);
 
     // Past invoices: those before the start date, with what they still owe,
     // matched to the organisation; never sent back; imported once.
@@ -1156,17 +1292,30 @@ async fn xero_keeps_the_books(pool: PgPool) {
         .await
         .expect(StatusCode::CONFLICT, "already_connected");
 
-    // Disconnecting: the grant is revoked and forgotten.
-    h.app
-        .delete("/api/v1/accounting")
-        .signed_in(&owner)
-        .send()
-        .await
-        .ok();
-    h.drain().await;
-    {
+    // Another workspace connects the same organisation.
+    let theirs = h.connect(&stranger, "xero").await;
+    assert_eq!(theirs["tenant_name"], "Owls Agency Ltd");
+
+    // Disconnecting: the grant is forgotten. The organisation stays
+    // connected while the other workspace uses it; once that one
+    // disconnects too, only the connection to that organisation is ended
+    // (revoking the grant would end the person's others too).
+    for who in [&owner, &stranger] {
+        h.app
+            .delete("/api/v1/accounting")
+            .signed_in(who)
+            .send()
+            .await
+            .ok();
+        h.drain().await;
         let w = h.world.lock().unwrap();
-        assert_eq!(w.revoked, std::slice::from_ref(&w.refresh));
+        assert!(w.revoked.is_empty());
+        let expected: &[&str] = if std::ptr::eq(who, &owner) {
+            &[]
+        } else {
+            &["conn-1"]
+        };
+        assert_eq!(w.disconnected, expected);
     }
     assert_eq!(h.accounting(&owner).await, Value::Null);
     let kept: i64 = sqlx::query_scalar(
@@ -1185,6 +1334,10 @@ async fn quickbooks_keeps_the_books(pool: PgPool) {
     {
         let mut w = h.world.lock().unwrap();
         w.contacts.insert("cust-old".into(), "Old Client".into());
+        // Made inactive in QuickBooks: found and made active again.
+        w.contacts
+            .insert("cust-hall".into(), "The Grand Hall".into());
+        w.inactive.insert("cust-hall".into());
         seed_past(&mut w, "cust-old", "1001", 120, 30_000, 0, "PAID");
     }
     let hall = h.organisation(&owner, "The Grand Hall").await;
@@ -1211,6 +1364,7 @@ async fn quickbooks_keeps_the_books(pool: PgPool) {
         .map(|t| t["id"].as_str().unwrap())
         .collect();
     assert_eq!(taxes, ["TAX", "NON"]);
+    assert_eq!(o["warnings"].as_array().unwrap().len(), 1, "{o}");
     // Tax codes left to OnHold's rates: taxable or not.
     choose(&h, &owner, "1", "35", |_| None).await;
 
@@ -1218,10 +1372,8 @@ async fn quickbooks_keeps_the_books(pool: PgPool) {
     h.drain().await;
     let (first_id, doc) = h.in_books(&first);
     assert_eq!(doc.total, 120_000);
-    assert_eq!(
-        h.world.lock().unwrap().contacts[&doc.contact],
-        "The Grand Hall"
-    );
+    assert_eq!(doc.contact, "cust-hall");
+    assert!(h.world.lock().unwrap().inactive.is_empty());
     let line = &doc.body["Line"][0];
     assert_eq!(line["SalesItemLineDetail"]["TaxCodeRef"]["value"], "TAX");
     assert_eq!(line["Description"], "Evening performance");
@@ -1256,6 +1408,19 @@ async fn quickbooks_keeps_the_books(pool: PgPool) {
     .await;
     h.drain().await;
     assert_eq!(h.doc(&second_id).status, "VOIDED");
+    // Deleted in QuickBooks before it was voided here: nothing to do.
+    let third = h.issue(&owner, hall, 6_000).await;
+    h.drain().await;
+    let (third_id, _) = h.in_books(&third);
+    h.world.lock().unwrap().docs.remove(&third_id);
+    h.post(
+        &owner,
+        &format!("/api/v1/invoices/{}/void", third["id"].as_str().unwrap()),
+        json!({}),
+    )
+    .await;
+    h.drain().await;
+    assert_eq!(h.accounting(&owner).await["refused"], 0);
 
     // The rest paid in QuickBooks.
     h.world.lock().unwrap().docs.get_mut(&first_id).unwrap().due = 0;

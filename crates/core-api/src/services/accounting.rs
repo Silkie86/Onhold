@@ -42,10 +42,12 @@ const LEASE_SECS: f64 = 10.0 * 60.0;
 /// Calls to the books in one sync; the rest follow a minute later, which
 /// keeps well within Xero's 60 a minute.
 const MAX_CALLS: usize = 50;
-/// How often the books are looked at when nothing changes: refused items
-/// are tried again, and what was paid there read back.
-const EVERY: Duration = Duration::hours(6);
-const PAID_EVERY: Duration = Duration::hours(3);
+/// How often the books are looked at when nothing changes: what was paid
+/// there is read back, and refused items are tried again.
+const EVERY: Duration = Duration::hours(3);
+/// A sync this long after the last read-back reads back again (a little
+/// under [`EVERY`], so the scheduled sync always does).
+const PAID_EVERY: Duration = Duration::minutes(3 * 60 - 15);
 const QUIET_FAILURES: i32 = 3;
 /// How long revoking a grant is tried before it is forgotten anyway.
 const REVOKE_FOR: Duration = Duration::days(3);
@@ -456,9 +458,15 @@ pub async fn finish(
         }
         Some(c) => {
             // Other books with the same provider: the grant just made is
-            // for nothing. Intuit's are per company, so it goes; Xero's can
-            // reach the connected organisation too, so it is left to lapse.
+            // for nothing. Intuit's are per company, so it goes, unless
+            // another workspace uses that company (revoking would cut it
+            // off too); Xero's can reach the connected organisation too, so
+            // it is left to lapse.
+            let elsewhere =
+                core_db::accounting::books_in_use(&mut tx, kind.as_str(), &tenant_id, c.id).await?;
+            tx.commit().await?;
             if kind == Kind::QuickBooks
+                && !elsewhere
                 && let Err(e) = app.revoke(http, &grant.refresh_token).await
             {
                 tracing::info!(error = %e, "revoking an unused accounting grant failed");
@@ -700,6 +708,8 @@ pub struct AccountingOptions {
     pub taxes: Vec<AccountingChoice>,
     /// OnHold's tax codes and which of those each is.
     pub tax_codes: Vec<TaxCodeMapping>,
+    /// Settings in the books worth changing for OnHold, in words.
+    pub warnings: Vec<String>,
 }
 
 async fn tax_codes(tx: &mut Tx, ctx: &Ctx, c: &Connection) -> ApiResult<Vec<TaxCodeMapping>> {
@@ -727,8 +737,18 @@ pub async fn options(state: &AppState, ctx: &Ctx) -> ApiResult<AccountingOptions
     let c = live(&mut tx).await?;
     let codes = tax_codes(&mut tx, ctx, &c).await?;
     tx.commit().await?;
-    let o = with_books(state, ctx, &c, |b| async move { b.options().await }).await?;
+    let (o, auto_credit) = with_books(state, ctx, &c, |b| async move {
+        Ok((b.options().await?, b.applies_credits_itself().await?))
+    })
+    .await?;
+    let mut warnings = Vec::new();
+    if auto_credit {
+        warnings.push(
+            "QuickBooks is set to apply credits automatically, so a credit note may be set against the customer's oldest invoice rather than the one it credits. Turn off \"Automatically apply credits\" in QuickBooks (Account and settings, Advanced, Automation).".to_owned(),
+        );
+    }
     Ok(AccountingOptions {
+        warnings,
         sales: o.sales.into_iter().map(Into::into).collect(),
         banks: o.banks.into_iter().map(Into::into).collect(),
         taxes: o.taxes.into_iter().map(Into::into).collect(),
@@ -989,8 +1009,13 @@ pub(crate) async fn changed(tx: &mut Tx, ws: WorkspaceId, topic: &str) -> ApiRes
 
 // Revoking --------------------------------------------------------------------------------
 
-/// The worker's `accounting.revoke`: revokes a disconnected connection's
-/// grant and forgets it, trying again while the provider is unavailable.
+/// The worker's `accounting.revoke`: ends OnHold's access to a
+/// disconnected connection's books and forgets the grant, trying again
+/// while the provider is unavailable. Intuit's grant is revoked (it is for
+/// that company only); for Xero only the connection to that organisation
+/// is ended, since revoking the grant would end the person's connections
+/// to every organisation. Books another workspace still uses are left
+/// connected.
 pub async fn revoke(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<&'static str> {
     let ctx = Ctx::system(ws);
     let mut tx = begin(state, &ctx).await?;
@@ -999,13 +1024,12 @@ pub async fn revoke(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<&'
         return Ok("nothing to revoke");
     };
     let grant = open(state, &c).ok();
-    let app = kind(&c.provider)
-        .ok()
-        .and_then(|k| oauth_app(state, k).ok());
-    if let (Some(g), Some(app)) = (&grant, app)
-        && let Err(e) = app
-            .revoke(&state.config.accounting.http, &g.refresh_token)
-            .await
+    let kind = Kind::parse(&c.provider);
+    let app = kind.and_then(|k| oauth_app(state, k).ok());
+    let in_use =
+        core_db::accounting::books_in_use(&mut tx, &c.provider, &c.tenant_id, c.id).await?;
+    if let (Some(g), Some(kind), Some(app), false) = (&grant, kind, app, in_use)
+        && let Err(e) = end_access(state, kind, app, g, &c.tenant_id).await
     {
         let gave_up = c
             .disconnected_at
@@ -1020,11 +1044,42 @@ pub async fn revoke(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<&'
     }
     core_db::accounting::forget_grant(&mut tx, id).await?;
     tx.commit().await?;
-    Ok(if grant.is_some() {
-        "revoked"
-    } else {
-        "forgotten"
+    Ok(match (&grant, in_use) {
+        (Some(_), false) => "revoked",
+        (Some(_), true) => "forgotten; another workspace uses these books",
+        (None, _) => "forgotten",
     })
+}
+
+async fn end_access(
+    state: &AppState,
+    kind: Kind,
+    app: &OAuthApp,
+    g: &Grant,
+    tenant: &str,
+) -> Result<(), ProviderError> {
+    let http = &state.config.accounting.http;
+    match kind {
+        Kind::QuickBooks => app.revoke(http, &g.refresh_token).await,
+        Kind::Xero => {
+            let token = if g.expires_at - Duration::seconds(60) > Utc::now() {
+                g.access_token.clone()
+            } else {
+                match app.refresh(http, &g.refresh_token).await {
+                    Ok(t) => t.access_token,
+                    // Nothing left to end.
+                    Err(ProviderError::Revoked(_)) => return Ok(()),
+                    Err(e) => return Err(e),
+                }
+            };
+            match books::xero_disconnect(http, &state.config.accounting.xero_api, &token, tenant)
+                .await
+            {
+                Err(ProviderError::Revoked(_)) => Ok(()),
+                other => other,
+            }
+        }
+    }
 }
 
 // Syncing ---------------------------------------------------------------------------------
@@ -1259,6 +1314,26 @@ impl Run<'_> {
         Ok(true)
     }
 
+    /// Notes a payment or credit about to be asked for, so a lost answer
+    /// is asked for again just so.
+    async fn mark_sending(
+        &mut self,
+        kind: &str,
+        local: Uuid,
+        amount: i64,
+    ) -> Result<bool, ProviderError> {
+        let mut tx = self.tx().await?;
+        if !self.still_mine(&mut tx).await? {
+            self.out.lost = true;
+            return Ok(false);
+        }
+        core_db::accounting::sending(&mut tx, self.c.id, kind, local, amount)
+            .await
+            .map_err(invalid)?;
+        tx.commit().await.map_err(invalid)?;
+        Ok(true)
+    }
+
     async fn go(mut self, check_paid: bool) -> Result<SyncOutcome, ProviderError> {
         self.documents().await?;
         if !self.out.lost {
@@ -1269,6 +1344,9 @@ impl Run<'_> {
         }
         if !self.out.lost && check_paid && !self.out.more {
             self.paid_in_books().await?;
+        } else {
+            // Not read back this time: the next sync does.
+            self.out.paid_checked = false;
         }
         if !self.out.lost && self.c.import_status == "running" && !self.out.more {
             self.import_page().await?;
@@ -1283,8 +1361,14 @@ impl Run<'_> {
         Ok(inv)
     }
 
-    /// The payer's contact in the books, found by name or added.
-    async fn contact(&mut self, inv: &InvoiceView) -> Result<Step<String>, ProviderError> {
+    /// The payer's contact in the books, found by name or added. `attempts`
+    /// are the refusals of what needs it, so a new try after a refusal is
+    /// a new request.
+    async fn contact(
+        &mut self,
+        inv: &InvoiceView,
+        attempts: i32,
+    ) -> Result<Step<String>, ProviderError> {
         let local = inv.payer_organisation_id.or(inv.payer_talent_id);
         let name = inv.payer_name.trim().to_owned();
         if let Some(l) = local {
@@ -1317,7 +1401,7 @@ impl Run<'_> {
                     None => None,
                 };
                 self.calls += 1;
-                let key = create_key(self.c.id, "contact", local.unwrap_or(inv.id), 0);
+                let key = create_key(self.c.id, "contact", local.unwrap_or(inv.id), attempts);
                 match step(self.b.create_contact(&name, email.as_deref(), &key).await)? {
                     Step::Done(r) => r,
                     Step::Refused(m) => {
@@ -1394,6 +1478,7 @@ impl Run<'_> {
                 &mut tx,
                 self.c.id,
                 self.c.start_date,
+                self.c.retry_before,
                 MAX_CALLS as i64,
             )
             .await
@@ -1428,7 +1513,8 @@ impl Run<'_> {
                     self.save("invoice", id, None, "void", "synced").await?;
                 }
                 None => {
-                    let contact = match self.contact(&inv).await? {
+                    let attempts = link.as_ref().map_or(0, |l| l.attempts);
+                    let contact = match self.contact(&inv, attempts).await? {
                         Step::Done(c) => c,
                         Step::Refused(m) => {
                             self.refuse("invoice", id, &m).await?;
@@ -1468,6 +1554,15 @@ impl Run<'_> {
                             tx.commit().await.map_err(invalid)?;
                             l
                         };
+                        if applied
+                            .as_ref()
+                            .is_some_and(|a| a.state.as_deref() == Some("sending"))
+                        {
+                            // Setting it against its invoice is still
+                            // waiting for an answer: that comes first.
+                            self.out.more = true;
+                            continue;
+                        }
                         if let Some(a) = applied
                             .filter(|a| a.state.as_deref() == Some("live"))
                             .and_then(|a| a.remote_id)
@@ -1517,9 +1612,14 @@ impl Run<'_> {
     async fn credits(&mut self) -> Result<(), ProviderError> {
         let ids = {
             let mut tx = self.tx().await?;
-            let ids = core_db::accounting::pending_credits(&mut tx, self.c.id, MAX_CALLS as i64)
-                .await
-                .map_err(invalid)?;
+            let ids = core_db::accounting::pending_credits(
+                &mut tx,
+                self.c.id,
+                self.c.retry_before,
+                MAX_CALLS as i64,
+            )
+            .await
+            .map_err(invalid)?;
             tx.commit().await.map_err(invalid)?;
             ids
         };
@@ -1533,7 +1633,7 @@ impl Run<'_> {
             let Some(original) = note.credits_invoice_id else {
                 continue;
             };
-            let (credit, invoice, attempts) = {
+            let (credit, invoice, applied) = {
                 let mut tx = self.tx().await?;
                 let c = core_db::accounting::link(&mut tx, self.c.id, "invoice", id)
                     .await
@@ -1545,36 +1645,56 @@ impl Run<'_> {
                     .await
                     .map_err(invalid)?;
                 tx.commit().await.map_err(invalid)?;
-                (
-                    c.and_then(|l| l.remote_id),
-                    i.and_then(|l| l.remote_id),
-                    a.map_or(0, |l| l.attempts),
-                )
+                (c.and_then(|l| l.remote_id), i.and_then(|l| l.remote_id), a)
             };
             let (Some(credit), Some(invoice)) = (credit, invoice) else {
                 continue;
             };
-            let contact = match self.contact(&note).await? {
+            let attempts = applied.as_ref().map_or(0, |l| l.attempts);
+            let contact = match self.contact(&note, attempts).await? {
                 Step::Done(c) => c,
                 Step::Refused(m) => {
                     self.refuse("credit", id, &m).await?;
                     continue;
                 }
             };
-            // No more than the invoice still owes in the books.
-            self.calls += 1;
-            let owed = self
-                .b
-                .invoice_states(std::slice::from_ref(&invoice))
-                .await?
-                .into_iter()
-                .next()
-                .map(|s| s.due_minor);
-            let amount = note.total.minor.min(owed.unwrap_or(0));
-            if amount <= 0 {
-                self.save("credit", id, None, "live", "synced").await?;
-                continue;
-            }
+            let exponent = minor_unit_exponent(&note.currency);
+            let resend = applied
+                .as_ref()
+                .filter(|l| l.state.as_deref() == Some("sending"))
+                .and_then(|l| l.amount_minor);
+            let amount = match resend {
+                // Asked for before, and the answer was lost: asked for
+                // again just so.
+                Some(a) => a,
+                None => {
+                    // No more than the invoice still owes in the books, nor
+                    // than is left of the credit there.
+                    self.calls += 1;
+                    let owed = self
+                        .b
+                        .invoice_states(std::slice::from_ref(&invoice))
+                        .await?
+                        .into_iter()
+                        .next()
+                        .map(|s| s.due_minor);
+                    let mut amount = note.total.minor.min(owed.unwrap_or(0));
+                    if self.c.provider == Kind::QuickBooks.as_str() {
+                        self.calls += 1;
+                        if let Some(left) = self.b.remaining_credit(&credit, exponent).await? {
+                            amount = amount.min(left);
+                        }
+                    }
+                    if amount <= 0 {
+                        self.save("credit", id, None, "live", "synced").await?;
+                        continue;
+                    }
+                    if !self.mark_sending("credit", id, amount).await? {
+                        break;
+                    }
+                    amount
+                }
+            };
             let key = create_key(self.c.id, "credit", id, attempts);
             self.calls += 1;
             match step(
@@ -1584,7 +1704,7 @@ impl Run<'_> {
                         &invoice,
                         &contact,
                         amount,
-                        minor_unit_exponent(&note.currency),
+                        exponent,
                         note.issue_date.unwrap_or_else(|| Utc::now().date_naive()),
                         &key,
                     )
@@ -1602,22 +1722,63 @@ impl Run<'_> {
         Ok(())
     }
 
+    /// Asks the books for the payment `a` stands for, of `amount`.
+    async fn send_payment(
+        &mut self,
+        a: &AllocationWork,
+        amount: i64,
+    ) -> Result<Step<String>, ProviderError> {
+        let Some(inv) = self.invoice(a.invoice_id).await? else {
+            return Ok(Step::Refused("the invoice is no longer in OnHold".into()));
+        };
+        let contact = match self.contact(&inv, a.attempts).await? {
+            Step::Done(c) => c,
+            Step::Refused(m) => return Ok(Step::Refused(m)),
+        };
+        let payment = books::Payment {
+            invoice: a.remote_invoice.clone(),
+            contact,
+            amount_minor: amount,
+            exponent: minor_unit_exponent(&a.currency),
+            date: a.paid_on,
+            account: self.c.bank_account.clone(),
+            reference: a.reference.clone(),
+        };
+        let key = create_key(self.c.id, "allocation", a.id, a.attempts);
+        self.calls += 1;
+        step(self.b.create_payment(&payment, &key).await)
+    }
+
     /// Payments recorded against invoices in the books: sent, or taken
-    /// back when the payment is voided.
+    /// back when the payment is voided. Xero needs the account payments
+    /// are paid into; without one, none are sent.
     async fn allocations(&mut self) -> Result<(), ProviderError> {
+        let send_new = !(self.c.provider == Kind::Xero.as_str() && self.c.bank_account.is_none());
         let work: Vec<AllocationWork> = {
             let mut tx = self.tx().await?;
-            let w = core_db::accounting::pending_allocations(&mut tx, self.c.id, MAX_CALLS as i64)
-                .await
-                .map_err(invalid)?;
+            let w = core_db::accounting::pending_allocations(
+                &mut tx,
+                self.c.id,
+                send_new,
+                self.c.retry_before,
+                MAX_CALLS as i64,
+            )
+            .await
+            .map_err(invalid)?;
             tx.commit().await.map_err(invalid)?;
             w
+        };
+        let sending = |a: &AllocationWork| {
+            a.state
+                .as_deref()
+                .filter(|s| *s == "sending")
+                .and(a.sent_minor)
         };
         // What the invoices still owe in the books, so nothing is paid twice.
         let wanted: Vec<String> = {
             let mut v: Vec<String> = work
                 .iter()
-                .filter(|a| !a.removed)
+                .filter(|a| !a.removed && sending(a).is_none())
                 .map(|a| a.remote_invoice.clone())
                 .collect();
             v.sort();
@@ -1638,79 +1799,78 @@ impl Run<'_> {
                 break;
             }
             if a.removed {
-                match (&a.remote_id, a.state.as_deref()) {
-                    (Some(remote), Some("live")) => {
+                let remote = match (&a.remote_id, a.state.as_deref(), sending(&a)) {
+                    (Some(remote), Some("live"), _) => Some(remote.clone()),
+                    // Its answer was lost: asked for again (same key), the
+                    // books give its id, and it is taken back.
+                    (_, _, Some(amount)) => match self.send_payment(&a, amount).await? {
+                        Step::Done(remote) => Some(remote),
+                        Step::Refused(_) => None,
+                    },
+                    // Never in the books.
+                    _ => None,
+                };
+                if self.out.lost {
+                    break;
+                }
+                match remote {
+                    Some(remote) => {
                         self.calls += 1;
-                        match step(self.b.delete_payment(remote).await)? {
+                        match step(self.b.delete_payment(&remote).await)? {
                             Step::Done(()) => {
-                                self.save("allocation", a.id, Some(remote), "removed", "synced")
+                                self.save("allocation", a.id, Some(&remote), "removed", "synced")
                                     .await?;
                             }
                             Step::Refused(m) => {
+                                // Kept as sent, so taking it back is tried again.
+                                self.save("allocation", a.id, Some(&remote), "live", "synced")
+                                    .await?;
                                 self.refuse("allocation", a.id, &m).await?;
                             }
                         }
                     }
-                    // Never in the books.
-                    _ => {
+                    None => {
                         self.save("allocation", a.id, None, "removed", "synced")
                             .await?;
                     }
                 }
                 continue;
             }
-            let Some(due) = owed.get(&a.remote_invoice).copied() else {
-                self.refuse("allocation", a.id, "the invoice is no longer in the books")
-                    .await?;
-                continue;
-            };
-            let amount = a.amount_minor.min(due);
-            if amount <= 0 {
-                // Paid in the books already.
-                self.save("allocation", a.id, None, "live", "synced")
-                    .await?;
-                continue;
-            }
-            let Some(inv) = self.invoice(a.invoice_id).await? else {
-                continue;
-            };
-            let contact = match self.contact(&inv).await? {
-                Step::Done(c) => c,
-                Step::Refused(m) => {
-                    self.refuse("allocation", a.id, &m).await?;
-                    continue;
+            let amount = match sending(&a) {
+                Some(amount) => amount,
+                None => {
+                    let Some(due) = owed.get(&a.remote_invoice).copied() else {
+                        self.refuse("allocation", a.id, "the invoice is no longer in the books")
+                            .await?;
+                        continue;
+                    };
+                    let amount = a.amount_minor.min(due);
+                    if amount <= 0 {
+                        // Paid in the books already.
+                        self.save("allocation", a.id, None, "live", "synced")
+                            .await?;
+                        continue;
+                    }
+                    if !self.mark_sending("allocation", a.id, amount).await? {
+                        break;
+                    }
+                    owed.insert(a.remote_invoice.clone(), due - amount);
+                    amount
                 }
             };
-            let attempts = {
-                let mut tx = self.tx().await?;
-                let l = core_db::accounting::link(&mut tx, self.c.id, "allocation", a.id)
-                    .await
-                    .map_err(invalid)?;
-                tx.commit().await.map_err(invalid)?;
-                l.map_or(0, |l| l.attempts)
-            };
-            let payment = books::Payment {
-                invoice: a.remote_invoice.clone(),
-                contact,
-                amount_minor: amount,
-                exponent: minor_unit_exponent(&a.currency),
-                date: a.paid_on,
-                account: self.c.bank_account.clone(),
-                reference: a.reference.clone(),
-            };
-            let key = create_key(self.c.id, "allocation", a.id, attempts);
-            self.calls += 1;
-            match step(self.b.create_payment(&payment, &key).await)? {
+            match self.send_payment(&a, amount).await? {
                 Step::Done(remote) => {
                     if self
                         .save("allocation", a.id, Some(&remote), "live", "synced")
                         .await?
                     {
                         self.out.payments += 1;
-                        owed.insert(a.remote_invoice.clone(), due - amount);
                     }
                 }
                 Step::Refused(m) => {
+                    if let Some(due) = owed.get_mut(&a.remote_invoice) {
+                        *due += amount;
+                    }
                     self.refuse("allocation", a.id, &m).await?;
                 }
             }
@@ -1722,7 +1882,8 @@ impl Run<'_> {
     /// invoices paid there show paid here.
     async fn paid_in_books(&mut self) -> Result<(), ProviderError> {
         let name = Kind::parse(&self.c.provider).map_or("the books", Kind::name);
-        let mut after = Uuid::nil();
+        // Goes on from where a read-back cut short stopped.
+        let mut after = self.c.paid_cursor.unwrap_or_else(Uuid::nil);
         loop {
             let page = {
                 let mut tx = self.tx().await?;
@@ -1740,11 +1901,16 @@ impl Run<'_> {
             let Some(last) = page.last() else {
                 break;
             };
-            after = last.id;
             if !self.budget() {
                 self.out.paid_checked = false;
+                let mut tx = self.tx().await?;
+                core_db::accounting::set_paid_cursor(&mut tx, self.c.id, self.token, Some(after))
+                    .await
+                    .map_err(invalid)?;
+                tx.commit().await.map_err(invalid)?;
                 break;
             }
+            after = last.id;
             self.calls += 1;
             let ids: Vec<String> = page.iter().map(|i| i.remote_id.clone()).collect();
             let states: HashMap<String, books::InvoiceState> = self
@@ -1769,6 +1935,14 @@ impl Run<'_> {
                 if !self.still_mine(&mut tx).await? {
                     self.out.lost = true;
                     return Ok(());
+                }
+                // A payment from here still on its way there, or being
+                // taken back: what the books show is not final yet.
+                if core_db::accounting::allocation_work_pending(&mut tx, self.c.id, i.id)
+                    .await
+                    .map_err(invalid)?
+                {
+                    continue;
                 }
                 let paid = super::payments::create_in(
                     &mut tx,

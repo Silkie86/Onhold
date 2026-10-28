@@ -3922,6 +3922,8 @@ export interface components {
             tax_codes: components["schemas"]["TaxCodeMapping"][];
             /** @description Tax rates (Xero) or codes (QuickBooks). */
             taxes: components["schemas"]["AccountingChoice"][];
+            /** @description Settings in the books worth changing for OnHold, in words. */
+            warnings: string[];
         };
         AccountingSettings: {
             /** @description The account payments are paid into (Xero needs one to send payments). */

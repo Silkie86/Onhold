@@ -29,8 +29,13 @@ CREATE TABLE accounting_connections (
     last_error       text CHECK (length(last_error) <= 1000),
     last_error_at    timestamptz,
     last_synced_at   timestamptz,
-    -- When what was paid in the books was last read back.
+    -- When what was paid in the books was last read back in full, and
+    -- where a read-back cut short by the call budget goes on from.
     paid_checked_at  timestamptz,
+    paid_cursor      uuid,
+    -- Items the books refused before this are tried again (once each) by
+    -- the next sync; it moves on after each full sync and on "send now".
+    retry_before     timestamptz NOT NULL DEFAULT now(),
     next_sync_at     timestamptz,
     sync_lease_until timestamptz,
     -- Names the sync holding the lease; each of its steps checks it.
@@ -78,8 +83,12 @@ CREATE TABLE accounting_links (
     -- None: nothing was sent (a voided invoice never sent, a payment the
     -- books had already).
     remote_id     text CHECK (length(remote_id) BETWEEN 1 AND 200),
-    -- What was sent last (`issued`, `void`, `live`, `removed`).
+    -- What was sent last (`issued`, `void`, `live`, `removed`), or
+    -- `sending`: a payment or credit asked for whose answer has not come
+    -- back yet, tried again with the same key and amount.
     state         text CHECK (length(state) <= 20),
+    -- What a `sending` payment or credit was for.
+    amount_minor  bigint CHECK (amount_minor > 0),
     -- synced: in the books as OnHold has it. failed: refused (`error` says
     -- why), tried again at the next full sync or when it changes.
     -- imported: came from the books, never sent back.
@@ -107,6 +116,22 @@ CREATE POLICY accounting_links_tenant ON accounting_links FOR ALL TO onhold_app
 -- times only); the job runs inside the workspace as the app role.
 CREATE POLICY accounting_connections_worker ON accounting_connections FOR SELECT TO onhold_worker
     USING (next_sync_at IS NOT NULL OR revoke_at IS NOT NULL);
+
+-- Whether another live connection, in any workspace, reaches the same
+-- books: ending OnHold's access to them (Intuit's revoke, Xero's
+-- connection delete) would cut that one off too, so it is left alone.
+CREATE FUNCTION accounting_books_in_use(p_provider text, p_tenant text, p_except uuid)
+    RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+    AS $$
+        SELECT EXISTS (
+            SELECT 1 FROM accounting_connections
+            WHERE provider = p_provider AND tenant_id = p_tenant AND id <> p_except
+              AND disconnected_at IS NULL
+        )
+    $$;
+REVOKE ALL ON FUNCTION accounting_books_in_use(text, text, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION accounting_books_in_use(text, text, uuid) TO onhold_app;
 
 GRANT SELECT, INSERT, UPDATE ON accounting_connections, accounting_links TO onhold_app;
 GRANT SELECT (id, workspace_id, next_sync_at, sync_lease_until, revoke_at) ON accounting_connections TO onhold_worker;

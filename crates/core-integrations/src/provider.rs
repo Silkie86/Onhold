@@ -120,7 +120,8 @@ pub async fn send_json<T: DeserializeOwned>(
 /// Sorts a failed answer. Google, Microsoft, Xero and Intuit all put a
 /// message under `error.message`, `error_description`, `Message` or a plain
 /// `error` string; Xero's validation failures say what was wrong under
-/// `Elements`, and Intuit's under `Fault.Error`.
+/// `Elements` (its other failures under `Detail`), and Intuit's under
+/// `Fault.Error`.
 pub fn classify(status: u16, retry_after: Option<u64>, body: &[u8]) -> ProviderError {
     let v: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
     let message = v
@@ -131,6 +132,8 @@ pub fn classify(status: u16, retry_after: Option<u64>, body: &[u8]) -> ProviderE
         .or_else(|| v.get("error_description"))
         .or_else(|| v.get("Message"))
         .or_else(|| v.get("message"))
+        .or_else(|| v.get("Detail"))
+        .or_else(|| v.get("Title"))
         .or_else(|| v.get("error").filter(|e| e.is_string()))
         .and_then(Value::as_str)
         .unwrap_or("no reason given")
@@ -154,8 +157,24 @@ pub fn classify(status: u16, retry_after: Option<u64>, body: &[u8]) -> ProviderE
                 )
             })
         });
+    // Xero answers for an organisation no longer connected with 403
+    // `AuthorizationUnsuccessful`; Intuit for a company no longer connected
+    // with 403 and an `AuthorizationFault`.
+    let disconnected = status == 403
+        && (["/Detail", "/Title"].iter().any(|p| {
+            v.pointer(p).and_then(Value::as_str).is_some_and(|d| {
+                d.contains("AuthorizationUnsuccessful") || d.contains("AuthenticationUnsuccessful")
+            })
+        }) || v.pointer("/Fault/type").and_then(Value::as_str) == Some("AuthorizationFault"));
+    // Intuit says an object is not there with 400 and code 610.
+    let intuit_missing = v.pointer("/Fault/Error/0/code").and_then(Value::as_str) == Some("610");
     match status {
         429 => ProviderError::RateLimited { retry_after },
+        _ if disconnected => ProviderError::Revoked(message),
+        400 if intuit_missing => ProviderError::Refused {
+            status: 404,
+            message,
+        },
         403 if rate_reason => ProviderError::RateLimited { retry_after },
         500..=599 => ProviderError::Unavailable(format!("status {status}")),
         // OAuth token endpoints answer 400 `invalid_grant` for a revoked
@@ -230,6 +249,24 @@ mod tests {
         assert!(matches!(
             classify(400, None, intuit),
             ProviderError::Refused { message, .. } if message == "The name supplied already exists."
+        ));
+        let gone = br#"{"Fault":{"Error":[{"Message":"Object Not Found","Detail":"Object Not Found : Something you're trying to use has been made inactive.","code":"610"}],"type":"ValidationFault"}}"#;
+        assert!(matches!(
+            classify(400, None, gone),
+            ProviderError::Refused { status: 404, .. }
+        ));
+    }
+
+    #[test]
+    fn books_no_longer_connected_need_connecting_again() {
+        let xero = br#"{"Type":null,"Title":"Forbidden","Status":403,"Detail":"AuthorizationUnsuccessful"}"#;
+        assert!(
+            matches!(classify(403, None, xero), ProviderError::Revoked(m) if m == "AuthorizationUnsuccessful")
+        );
+        let intuit = br#"{"Fault":{"Error":[{"Message":"message=ApplicationAuthorizationFailed; errorCode=003100; statusCode=403","code":"3100"}],"type":"AuthorizationFault"}}"#;
+        assert!(matches!(
+            classify(403, None, intuit),
+            ProviderError::Revoked(_)
         ));
     }
 }

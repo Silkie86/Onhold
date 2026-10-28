@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, provider, tenant_id, tenant_name, automatic_tax, secret, sales_account,\n                      bank_account, start_date, status, failures, last_error, last_error_at,\n                      last_synced_at, paid_checked_at, import_status, import_page, imported,\n                      import_error, connected_by AS \"connected_by: UserId\", connected_at,\n                      disconnected_at, version\n               FROM accounting_connections\n               WHERE workspace_id = app_workspace_id() AND id = $1 AND revoke_at IS NOT NULL FOR UPDATE",
+  "query": "SELECT id, provider, tenant_id, tenant_name, automatic_tax, secret, sales_account,\n                      bank_account, start_date, status, failures, last_error, last_error_at,\n                      last_synced_at, paid_checked_at, paid_cursor, retry_before, import_status, import_page, imported,\n                      import_error, connected_by AS \"connected_by: UserId\", connected_at,\n                      disconnected_at, version\n               FROM accounting_connections\n               WHERE workspace_id = app_workspace_id() AND provider = $1 AND tenant_id = $2 ORDER BY connected_at DESC LIMIT 1 FOR UPDATE",
   "describe": {
     "columns": [
       {
@@ -170,6 +170,28 @@
       },
       {
         "ordinal": 15,
+        "name": "paid_cursor",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "paid_cursor"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "retry_before",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "retry_before"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
         "name": "import_status",
         "type_info": "Text",
         "origin": {
@@ -180,7 +202,7 @@
         }
       },
       {
-        "ordinal": 16,
+        "ordinal": 18,
         "name": "import_page",
         "type_info": "Int4",
         "origin": {
@@ -191,7 +213,7 @@
         }
       },
       {
-        "ordinal": 17,
+        "ordinal": 19,
         "name": "imported",
         "type_info": "Int4",
         "origin": {
@@ -202,7 +224,7 @@
         }
       },
       {
-        "ordinal": 18,
+        "ordinal": 20,
         "name": "import_error",
         "type_info": "Text",
         "origin": {
@@ -213,7 +235,7 @@
         }
       },
       {
-        "ordinal": 19,
+        "ordinal": 21,
         "name": "connected_by: UserId",
         "type_info": "Uuid",
         "origin": {
@@ -224,7 +246,7 @@
         }
       },
       {
-        "ordinal": 20,
+        "ordinal": 22,
         "name": "connected_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -235,7 +257,7 @@
         }
       },
       {
-        "ordinal": 21,
+        "ordinal": 23,
         "name": "disconnected_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -246,7 +268,7 @@
         }
       },
       {
-        "ordinal": 22,
+        "ordinal": 24,
         "name": "version",
         "type_info": "Int8",
         "origin": {
@@ -259,7 +281,8 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Text",
+        "Text"
       ]
     },
     "nullable": [
@@ -278,6 +301,8 @@
       true,
       true,
       true,
+      true,
+      false,
       false,
       false,
       false,
@@ -288,5 +313,5 @@
       false
     ]
   },
-  "hash": "3f2b5d7afbb5acaf2a65502cf7b5b0ded198d963aa58416aa5fb571c91e5aeaa"
+  "hash": "6b3027d2446af200c1043cbe61b1a92750cedf4f10a5c6737453cd0237123911"
 }

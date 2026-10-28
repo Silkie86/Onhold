@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT i.id, l.remote_id AS \"remote_id!\", i.currency AS \"currency!\", i.total_minor,\n                  i.paid_minor, i.credited_minor\n           FROM invoices i\n           JOIN accounting_links l\n             ON l.connection_id = $1 AND l.kind = 'invoice' AND l.local_id = i.id\n            AND l.status = 'synced' AND l.remote_id IS NOT NULL\n           WHERE i.workspace_id = app_workspace_id() AND i.kind = 'invoice'\n             AND i.status IN ('issued', 'part_paid', 'overdue') AND i.deleted_at IS NULL\n             AND i.id > $2\n           ORDER BY i.id LIMIT $3",
+  "query": "SELECT i.id, l.remote_id AS \"remote_id!\", i.currency AS \"currency!\", i.total_minor,\n                  i.paid_minor, i.credited_minor\n           FROM invoices i\n           JOIN accounting_links l\n             ON l.connection_id = $1 AND l.kind = 'invoice' AND l.local_id = i.id\n            AND l.status IN ('synced', 'imported') AND l.remote_id IS NOT NULL\n           WHERE i.workspace_id = app_workspace_id() AND i.kind = 'invoice'\n             AND i.status IN ('issued', 'part_paid', 'overdue') AND i.deleted_at IS NULL\n             AND i.id > $2\n           ORDER BY i.id LIMIT $3",
   "describe": {
     "columns": [
       {
@@ -86,5 +86,5 @@
       false
     ]
   },
-  "hash": "5b8d0a2b1d04485e99977132f90239bb0e9cdc87a60d585fdeec9f59ed0aa994"
+  "hash": "7ade46e086c83f861a03820d6eda14ad0823e49359cad3e45833ae4b51df762e"
 }

@@ -25,6 +25,10 @@ pub struct Connection {
     pub last_error_at: Option<DateTime<Utc>>,
     pub last_synced_at: Option<DateTime<Utc>>,
     pub paid_checked_at: Option<DateTime<Utc>>,
+    /// Where a read-back cut short goes on from.
+    pub paid_cursor: Option<Uuid>,
+    /// Refusals from before this are tried again.
+    pub retry_before: DateTime<Utc>,
     pub import_status: String,
     pub import_page: i32,
     pub imported: i32,
@@ -41,7 +45,7 @@ macro_rules! select_connection {
             Connection,
             r#"SELECT id, provider, tenant_id, tenant_name, automatic_tax, secret, sales_account,
                       bank_account, start_date, status, failures, last_error, last_error_at,
-                      last_synced_at, paid_checked_at, import_status, import_page, imported,
+                      last_synced_at, paid_checked_at, paid_cursor, retry_before, import_status, import_page, imported,
                       import_error, connected_by AS "connected_by: UserId", connected_at,
                       disconnected_at, version
                FROM accounting_connections
@@ -169,7 +173,8 @@ pub async fn set_settings(
     sqlx::query!(
         r#"UPDATE accounting_connections
            SET sales_account = $2, bank_account = $3, start_date = $4,
-               next_sync_at = CASE WHEN status = 'reconnect' THEN next_sync_at ELSE now() END,
+               next_sync_at = CASE WHEN status = 'reconnect' OR coalesce(sync_lease_until > now(), false)
+                                   THEN next_sync_at ELSE now() END,
                sync_again = sync_again OR coalesce(sync_lease_until > now(), false)
            WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL"#,
         id,
@@ -184,11 +189,14 @@ pub async fn set_settings(
 
 /// Takes the connection for one sync, returning the token its steps carry:
 /// `None` when it is disconnected, needs connecting again, or another sync
-/// holds it.
+/// holds it. Until the sync ends, the next one is due when its lease runs
+/// out, so a sync cut off part way is followed by another (queued under a
+/// time no job has used).
 pub async fn claim(conn: &mut PgConnection, id: Uuid, lease_secs: f64) -> Result<Option<Uuid>> {
     Ok(sqlx::query_scalar!(
         r#"UPDATE accounting_connections
-           SET sync_lease_until = now() + make_interval(secs => $3), sync_token = $2
+           SET sync_lease_until = now() + make_interval(secs => $3), sync_token = $2,
+               next_sync_at = now() + make_interval(secs => $3)
            WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL
              AND status <> 'reconnect' AND (sync_lease_until IS NULL OR sync_lease_until < now())
            RETURNING sync_token AS "token!""#,
@@ -209,7 +217,9 @@ pub async fn renew(
     lease_secs: f64,
 ) -> Result<bool> {
     let done = sqlx::query!(
-        r#"UPDATE accounting_connections SET sync_lease_until = now() + make_interval(secs => $3)
+        r#"UPDATE accounting_connections
+           SET sync_lease_until = now() + make_interval(secs => $3),
+               next_sync_at = now() + make_interval(secs => $3)
            WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2
              AND disconnected_at IS NULL"#,
         id,
@@ -222,7 +232,8 @@ pub async fn renew(
 }
 
 /// A good sync: healthy again, next due at `next`, or straight away when
-/// something changed while it ran.
+/// something changed while it ran. With `paid_checked` (a full read-back),
+/// what was refused so far is tried again by the next sync.
 pub async fn synced(
     conn: &mut PgConnection,
     id: Uuid,
@@ -235,6 +246,8 @@ pub async fn synced(
            SET last_synced_at = now(), status = 'active', failures = 0, last_error = NULL,
                last_error_at = NULL, sync_lease_until = NULL, sync_token = NULL,
                paid_checked_at = CASE WHEN $4 AND NOT sync_again THEN now() ELSE paid_checked_at END,
+               retry_before = CASE WHEN $4 AND NOT sync_again THEN now() ELSE retry_before END,
+               paid_cursor = CASE WHEN $4 THEN NULL ELSE paid_cursor END,
                next_sync_at = CASE WHEN sync_again THEN now() ELSE $3 END,
                sync_again = false
            WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2
@@ -290,9 +303,12 @@ pub async fn needs_reconnect(conn: &mut PgConnection, id: Uuid, error: &str) -> 
     Ok(())
 }
 
+/// When the next sync is due, if one is to be queued now: not while one
+/// runs (it is followed by another when something changed meanwhile).
 pub async fn next_sync_at(conn: &mut PgConnection, id: Uuid) -> Result<Option<DateTime<Utc>>> {
     Ok(sqlx::query_scalar!(
-        r#"SELECT next_sync_at FROM accounting_connections WHERE workspace_id = app_workspace_id() AND id = $1"#,
+        r#"SELECT CASE WHEN coalesce(sync_lease_until > now(), false) THEN NULL ELSE next_sync_at END
+           FROM accounting_connections WHERE workspace_id = app_workspace_id() AND id = $1"#,
         id
     )
     .fetch_optional(conn)
@@ -300,8 +316,8 @@ pub async fn next_sync_at(conn: &mut PgConnection, id: Uuid) -> Result<Option<Da
     .flatten())
 }
 
-/// Asks for a sync now (a member asked, or a sync met another running);
-/// with `check_paid`, one that also reads back what was paid.
+/// Asks for a sync now (a member asked); with `check_paid`, one that also
+/// reads back what was paid and tries every refused item again.
 pub async fn sync_now(
     conn: &mut PgConnection,
     id: Uuid,
@@ -309,8 +325,11 @@ pub async fn sync_now(
 ) -> Result<Option<DateTime<Utc>>> {
     Ok(sqlx::query_scalar!(
         r#"UPDATE accounting_connections
-           SET next_sync_at = now(), sync_again = sync_again OR coalesce(sync_lease_until > now(), false),
-               paid_checked_at = CASE WHEN $2 THEN NULL ELSE paid_checked_at END
+           SET next_sync_at = CASE WHEN coalesce(sync_lease_until > now(), false) THEN next_sync_at
+                                   ELSE now() END,
+               sync_again = sync_again OR coalesce(sync_lease_until > now(), false),
+               paid_checked_at = CASE WHEN $2 THEN NULL ELSE paid_checked_at END,
+               retry_before = CASE WHEN $2 THEN now() ELSE retry_before END
            WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL
              AND status <> 'reconnect'
            RETURNING next_sync_at AS "at!""#,
@@ -375,7 +394,8 @@ pub async fn start_import(conn: &mut PgConnection, id: Uuid) -> Result<()> {
     sqlx::query!(
         r#"UPDATE accounting_connections
            SET import_status = 'running', import_page = 1, imported = 0, import_error = NULL,
-               next_sync_at = CASE WHEN status = 'reconnect' THEN next_sync_at ELSE now() END,
+               next_sync_at = CASE WHEN status = 'reconnect' OR coalesce(sync_lease_until > now(), false)
+                                   THEN next_sync_at ELSE now() END,
                sync_again = sync_again OR coalesce(sync_lease_until > now(), false)
            WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL"#,
         id
@@ -422,6 +442,42 @@ pub async fn import_failed(conn: &mut PgConnection, id: Uuid, error: &str) -> Re
     .execute(conn)
     .await?;
     Ok(())
+}
+
+/// Where a read-back cut short goes on from next time.
+pub async fn set_paid_cursor(
+    conn: &mut PgConnection,
+    id: Uuid,
+    token: Uuid,
+    cursor: Option<Uuid>,
+) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE accounting_connections SET paid_cursor = $3
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2"#,
+        id,
+        token,
+        cursor
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Whether another live connection, in any workspace, reaches these books.
+pub async fn books_in_use(
+    conn: &mut PgConnection,
+    provider: &str,
+    tenant_id: &str,
+    except: Uuid,
+) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT accounting_books_in_use($1, $2, $3) AS "used!""#,
+        provider,
+        tenant_id,
+        except
+    )
+    .fetch_one(conn)
+    .await?)
 }
 
 /// Stops syncing. The grant is kept for the worker, which revokes it, then
@@ -523,6 +579,8 @@ pub struct Link {
     pub status: String,
     pub error: Option<String>,
     pub attempts: i32,
+    /// What a `sending` payment or credit was for.
+    pub amount_minor: Option<i64>,
 }
 
 pub async fn link(
@@ -533,7 +591,8 @@ pub async fn link(
 ) -> Result<Option<Link>> {
     Ok(sqlx::query_as!(
         Link,
-        r#"SELECT kind, local_id, remote_id, state, status, error, attempts FROM accounting_links
+        r#"SELECT kind, local_id, remote_id, state, status, error, attempts, amount_minor
+           FROM accounting_links
            WHERE workspace_id = app_workspace_id() AND connection_id = $1 AND kind = $2 AND local_id = $3"#,
         connection,
         kind,
@@ -578,7 +637,7 @@ pub async fn save_link(
            VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7)
            ON CONFLICT (connection_id, kind, local_id)
            DO UPDATE SET remote_id = EXCLUDED.remote_id, state = EXCLUDED.state,
-                         status = EXCLUDED.status, error = NULL"#,
+                         status = EXCLUDED.status, error = NULL, amount_minor = NULL"#,
         core_domain::ids::new_id(),
         connection,
         kind,
@@ -592,7 +651,34 @@ pub async fn save_link(
     Ok(())
 }
 
-/// The books refused `local`: why, and one more refusal counted.
+/// A payment or credit of `amount` is about to be asked for: until its
+/// answer is in, it is asked for again just so (same key, same amount).
+pub async fn sending(
+    conn: &mut PgConnection,
+    connection: Uuid,
+    kind: &str,
+    local: Uuid,
+    amount: i64,
+) -> Result<()> {
+    sqlx::query!(
+        r#"INSERT INTO accounting_links (id, workspace_id, connection_id, kind, local_id, state, status, amount_minor)
+           VALUES ($1, app_workspace_id(), $2, $3, $4, 'sending', 'synced', $5)
+           ON CONFLICT (connection_id, kind, local_id)
+           DO UPDATE SET remote_id = NULL, state = 'sending', status = 'synced', error = NULL,
+                         amount_minor = EXCLUDED.amount_minor"#,
+        core_domain::ids::new_id(),
+        connection,
+        kind,
+        local,
+        amount
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// The books refused `local`: why, and one more refusal counted. A refused
+/// payment or credit was never made, so it is worked out afresh next time.
 pub async fn fail_link(
     conn: &mut PgConnection,
     connection: Uuid,
@@ -605,7 +691,10 @@ pub async fn fail_link(
            VALUES ($1, app_workspace_id(), $2, $3, $4, 'failed', left($5, 1000), 1)
            ON CONFLICT (connection_id, kind, local_id)
            DO UPDATE SET status = 'failed', error = EXCLUDED.error,
-                         attempts = accounting_links.attempts + 1"#,
+                         attempts = accounting_links.attempts + 1,
+                         state = CASE WHEN accounting_links.state = 'sending' THEN NULL
+                                      ELSE accounting_links.state END,
+                         amount_minor = NULL"#,
         core_domain::ids::new_id(),
         connection,
         kind,
@@ -690,6 +779,9 @@ pub async fn failure_count(conn: &mut PgConnection, connection: Uuid) -> Result<
 }
 
 // Work ------------------------------------------------------------------------------------
+//
+// A refused item is tried again once after each full sync (`retry_before`)
+// and whenever it changes; new work always comes first.
 
 /// Invoices and credit notes the workspace issued from `start` on that the
 /// books do not have as they are now: never sent, voided since, or refused
@@ -698,6 +790,7 @@ pub async fn pending_documents(
     conn: &mut PgConnection,
     connection: Uuid,
     start: NaiveDate,
+    retry_before: DateTime<Utc>,
     limit: i64,
 ) -> Result<Vec<Uuid>> {
     Ok(sqlx::query_scalar!(
@@ -707,13 +800,16 @@ pub async fn pending_documents(
            WHERE i.workspace_id = app_workspace_id() AND i.issuer_kind = 'workspace'
              AND NOT i.historical AND i.status <> 'draft' AND i.deleted_at IS NULL
              AND i.issue_date >= $2
-             AND (l.id IS NULL OR l.status = 'failed'
+             AND (l.id IS NULL
+                  OR (l.status = 'failed' AND (l.updated_at < $3 OR i.updated_at > l.updated_at))
                   OR (l.status = 'synced'
                       AND l.state IS DISTINCT FROM CASE WHEN i.status = 'void' THEN 'void' ELSE 'issued' END))
-           ORDER BY (i.kind = 'credit_note'), i.issue_date, i.created_at, i.id
-           LIMIT $3"#,
+           ORDER BY (l.status IS NOT DISTINCT FROM 'failed'), (i.kind = 'credit_note'), i.issue_date,
+                    i.created_at, i.id
+           LIMIT $4"#,
         connection,
         start,
+        retry_before,
         limit
     )
     .fetch_all(conn)
@@ -721,10 +817,12 @@ pub async fn pending_documents(
 }
 
 /// Issued credit notes in the books not yet set against the invoice they
-/// credit (which is in the books too).
+/// credit (which is in the books too), and ones whose setting against it
+/// is still waiting for an answer (voided since, too).
 pub async fn pending_credits(
     conn: &mut PgConnection,
     connection: Uuid,
+    retry_before: DateTime<Utc>,
     limit: i64,
 ) -> Result<Vec<Uuid>> {
     Ok(sqlx::query_scalar!(
@@ -737,12 +835,16 @@ pub async fn pending_credits(
             AND li.status = 'synced' AND li.remote_id IS NOT NULL
            LEFT JOIN accounting_links la
              ON la.connection_id = $1 AND la.kind = 'credit' AND la.local_id = c.id
-           WHERE c.workspace_id = app_workspace_id() AND c.kind = 'credit_note'
-             AND c.status <> 'void' AND c.deleted_at IS NULL
-             AND (la.id IS NULL OR la.status = 'failed')
-           ORDER BY c.issue_date, c.id
-           LIMIT $2"#,
+           WHERE c.workspace_id = app_workspace_id() AND c.kind = 'credit_note' AND c.deleted_at IS NULL
+             AND (la.state IS NOT DISTINCT FROM 'sending'
+                  OR (c.status <> 'void'
+                      AND (la.id IS NULL
+                           OR (la.status = 'failed'
+                               AND (la.updated_at < $2 OR c.updated_at > la.updated_at)))))
+           ORDER BY (la.status IS NOT DISTINCT FROM 'failed'), c.issue_date, c.id
+           LIMIT $3"#,
         connection,
+        retry_before,
         limit
     )
     .fetch_all(conn)
@@ -762,41 +864,95 @@ pub struct AllocationWork {
     pub removed: bool,
     /// What the books have for it, when sent.
     pub remote_id: Option<String>,
-    /// What OnHold last did with it in the books (`live`, `removed`).
+    /// What OnHold last did with it in the books (`live`, `removed`,
+    /// `sending`).
     pub state: Option<String>,
+    /// What a `sending` payment was for.
+    pub sent_minor: Option<i64>,
+    pub attempts: i32,
 }
 
 /// Payments' allocations to invoices in the books that the books do not
-/// have as they are now: new ones, ones taken back (a payment voided), or
-/// ones refused before. Not those that came from the books.
+/// have as they are now: new ones (`send_new`), ones still waiting for an
+/// answer, ones taken back (a payment voided), or ones refused before. Not
+/// those that came from the books.
 pub async fn pending_allocations(
     conn: &mut PgConnection,
     connection: Uuid,
+    send_new: bool,
+    retry_before: DateTime<Utc>,
     limit: i64,
 ) -> Result<Vec<AllocationWork>> {
+    // Two halves, each on an index: what stands (from the invoices in the
+    // books), and what was taken back (from what was sent).
     Ok(sqlx::query_as!(
         AllocationWork,
-        r#"SELECT a.id, a.invoice_id, li.remote_id AS "remote_invoice!", a.amount_minor,
-                  p.currency AS "currency!", p.paid_on, p.reference,
-                  (a.removed_at IS NOT NULL) AS "removed!", la.remote_id AS "remote_id?",
-                  la.state AS "state?"
-           FROM payment_allocations a
-           JOIN payments p ON p.id = a.payment_id
-           JOIN accounting_links li
-             ON li.connection_id = $1 AND li.kind = 'invoice' AND li.local_id = a.invoice_id
-            AND li.status = 'synced' AND li.remote_id IS NOT NULL
-           LEFT JOIN accounting_links la
-             ON la.connection_id = $1 AND la.kind = 'allocation' AND la.local_id = a.id
-           WHERE a.workspace_id = app_workspace_id() AND p.kind = 'payment'
-             AND ((la.id IS NULL AND a.removed_at IS NULL)
-                  OR la.status = 'failed'
-                  OR (la.status = 'synced' AND a.removed_at IS NOT NULL AND la.state = 'live'))
-           ORDER BY a.created_at, a.id
-           LIMIT $2"#,
+        r#"SELECT w.id AS "id!", w.invoice_id AS "invoice_id!", w.remote_invoice AS "remote_invoice!",
+                  w.amount_minor AS "amount_minor!", w.currency AS "currency!", w.paid_on AS "paid_on!",
+                  w.reference, w.removed AS "removed!", w.remote_id, w.state, w.sent_minor,
+                  w.attempts AS "attempts!"
+           FROM (
+             SELECT a.id, a.invoice_id, li.remote_id AS remote_invoice, a.amount_minor, p.currency,
+                    p.paid_on, p.reference, false AS removed, la.remote_id, la.state,
+                    la.amount_minor AS sent_minor, coalesce(la.attempts, 0) AS attempts,
+                    (la.status IS NOT DISTINCT FROM 'failed') AS refused, a.created_at
+             FROM accounting_links li
+             JOIN payment_allocations a ON a.invoice_id = li.local_id AND a.removed_at IS NULL
+             JOIN payments p ON p.id = a.payment_id
+             LEFT JOIN accounting_links la
+               ON la.connection_id = $1 AND la.kind = 'allocation' AND la.local_id = a.id
+             WHERE li.workspace_id = app_workspace_id() AND li.connection_id = $1
+               AND li.kind = 'invoice' AND li.status = 'synced' AND li.remote_id IS NOT NULL
+               AND a.workspace_id = app_workspace_id() AND p.kind = 'payment'
+               AND (la.state IS NOT DISTINCT FROM 'sending'
+                    OR ($2 AND (la.id IS NULL
+                                OR (la.status = 'failed' AND la.updated_at < $3))))
+             UNION ALL
+             SELECT a.id, a.invoice_id, li.remote_id, a.amount_minor, p.currency, p.paid_on,
+                    p.reference, true, la.remote_id, la.state, la.amount_minor, la.attempts,
+                    (la.status = 'failed'), a.created_at
+             FROM accounting_links la
+             JOIN payment_allocations a ON a.id = la.local_id AND a.removed_at IS NOT NULL
+             JOIN payments p ON p.id = a.payment_id
+             JOIN accounting_links li
+               ON li.connection_id = $1 AND li.kind = 'invoice' AND li.local_id = a.invoice_id
+              AND li.remote_id IS NOT NULL
+             WHERE la.workspace_id = app_workspace_id() AND la.connection_id = $1
+               AND la.kind = 'allocation' AND la.status <> 'imported'
+               AND (la.state IN ('live', 'sending') OR la.status = 'failed')
+               AND (la.status = 'synced' OR la.updated_at < $3 OR a.removed_at > la.updated_at)
+           ) w
+           ORDER BY w.refused, w.created_at, w.id
+           LIMIT $4"#,
         connection,
+        send_new,
+        retry_before,
         limit
     )
     .fetch_all(conn)
+    .await?)
+}
+
+/// Whether a payment against this invoice is still on its way to the books
+/// or being taken back there, so what the books show is not yet final.
+pub async fn allocation_work_pending(
+    conn: &mut PgConnection,
+    connection: Uuid,
+    invoice: Uuid,
+) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT EXISTS (
+             SELECT 1 FROM payment_allocations a
+             JOIN accounting_links la
+               ON la.connection_id = $1 AND la.kind = 'allocation' AND la.local_id = a.id
+             WHERE a.workspace_id = app_workspace_id() AND a.invoice_id = $2
+               AND la.status <> 'imported'
+               AND (la.state = 'sending' OR (a.removed_at IS NOT NULL AND la.state = 'live'))
+           ) AS "pending!""#,
+        connection,
+        invoice
+    )
+    .fetch_one(conn)
     .await?)
 }
 
@@ -810,8 +966,8 @@ pub struct OpenInvoice {
     pub credited_minor: i64,
 }
 
-/// Invoices in the books that OnHold still shows as owing, a page at a
-/// time after `after`.
+/// Invoices in the books (sent from here or imported from there) that
+/// OnHold still shows as owing, a page at a time after `after`.
 pub async fn open_invoices(
     conn: &mut PgConnection,
     connection: Uuid,
@@ -825,7 +981,7 @@ pub async fn open_invoices(
            FROM invoices i
            JOIN accounting_links l
              ON l.connection_id = $1 AND l.kind = 'invoice' AND l.local_id = i.id
-            AND l.status = 'synced' AND l.remote_id IS NOT NULL
+            AND l.status IN ('synced', 'imported') AND l.remote_id IS NOT NULL
            WHERE i.workspace_id = app_workspace_id() AND i.kind = 'invoice'
              AND i.status IN ('issued', 'part_paid', 'overdue') AND i.deleted_at IS NULL
              AND i.id > $2

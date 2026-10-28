@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO accounting_links (id, workspace_id, connection_id, kind, local_id, status, error, attempts)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, 'failed', left($5, 1000), 1)\n           ON CONFLICT (connection_id, kind, local_id)\n           DO UPDATE SET status = 'failed', error = EXCLUDED.error,\n                         attempts = accounting_links.attempts + 1,\n                         state = CASE WHEN accounting_links.state = 'sending' THEN NULL\n                                      ELSE accounting_links.state END,\n                         amount_minor = NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d2a0d5ada04aedbc599371be55bddcaf145f8089d82883324b61fbee2297b4af"
+}

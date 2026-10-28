@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT kind, local_id, remote_id, state, status, error, attempts FROM accounting_links\n           WHERE workspace_id = app_workspace_id() AND connection_id = $1 AND kind = $2 AND local_id = $3",
+  "query": "SELECT kind, local_id, remote_id, state, status, error, attempts, amount_minor\n           FROM accounting_links\n           WHERE workspace_id = app_workspace_id() AND connection_id = $1 AND kind = $2 AND local_id = $3",
   "describe": {
     "columns": [
       {
@@ -79,6 +79,17 @@
             "name": "attempts"
           }
         }
+      },
+      {
+        "ordinal": 7,
+        "name": "amount_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "amount_minor"
+          }
+        }
       }
     ],
     "parameters": {
@@ -95,8 +106,9 @@
       true,
       false,
       true,
-      false
+      false,
+      true
     ]
   },
-  "hash": "f5b499a3065e455fd653e871b13007cdaf42a4dc5500aa970acddbe7d542b165"
+  "hash": "da1325807e10cfea73d03184dbf6d1f42272fe856344db731cb43429bd73a00b"
 }
