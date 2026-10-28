@@ -49,6 +49,8 @@ CREATE TABLE platform_settings (
     updated_at timestamptz NOT NULL DEFAULT now(),
     updated_by uuid REFERENCES users (id)
 );
+ALTER TABLE platform_settings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY platform_settings_read ON platform_settings FOR SELECT TO onhold_app USING (true);
 GRANT SELECT ON platform_settings TO onhold_app;
 
 CREATE FUNCTION admin_set_platform_setting(p_key text, p_value jsonb)
