@@ -30167,7 +30167,11 @@
           "new_organisations",
           "issues",
           "sample",
-          "problem_rows"
+          "problem_rows",
+          "new_contacts",
+          "to_check",
+          "to_check_total",
+          "readings"
         ],
         "properties": {
           "create": {
@@ -30185,6 +30189,11 @@
             },
             "description": "The first problems (up to 200)."
           },
+          "new_contacts": {
+            "type": "integer",
+            "description": "Contacts an organisation import would add: the person each row\nnames, unless they are already there.",
+            "minimum": 0
+          },
           "new_organisations": {
             "type": "array",
             "items": {
@@ -30199,6 +30208,13 @@
             },
             "description": "The first rows with problems (up to 100), corrections applied, to\ncorrect or leave out."
           },
+          "readings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValueReading"
+            },
+            "description": "How values that needed reading were read, each once with the rows\ngiving it (up to 100 read, and up to 100 that could not be):\n`Amber` as a status, a sheet name as a region, `Holland` as the\nNetherlands."
+          },
           "sample": {
             "type": "array",
             "items": {
@@ -30208,6 +30224,18 @@
           },
           "skip": {
             "type": "integer",
+            "minimum": 0
+          },
+          "to_check": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProblemRow"
+            },
+            "description": "Rows that would write something, but are worth a look first (up to\n100): notes saying a place closed or not to contact them, a contact\nwith no name or left out. Leave them out with `skip_rows`."
+          },
+          "to_check_total": {
+            "type": "integer",
+            "description": "All the rows to check, of which `to_check` holds the first.",
             "minimum": 0
           },
           "update": {
@@ -31740,6 +31768,13 @@
           "message"
         ],
         "properties": {
+          "at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the row is in its workbook when several sheets were read:\n`Europe, row 5`."
+          },
           "field": {
             "type": [
               "string",
@@ -31752,7 +31787,7 @@
           },
           "row": {
             "type": "integer",
-            "description": "The spreadsheet row (the header is row 1).",
+            "description": "The row in the file as uploaded (the header is row 1). For a\nworkbook of several sheets read together, the row in the joined\ntable; `at` says where it is in its own sheet.",
             "minimum": 0
           }
         }
@@ -31841,7 +31876,8 @@
           "import",
           "sample",
           "suggested",
-          "targets"
+          "targets",
+          "sheets"
         ],
         "properties": {
           "import": {
@@ -31856,6 +31892,13 @@
               }
             },
             "description": "The first rows, as text."
+          },
+          "sheets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportSheet"
+            },
+            "description": "A workbook's sheets, and which of them are in the import."
           },
           "source": {
             "oneOf": [
@@ -31884,6 +31927,29 @@
               "$ref": "#/components/schemas/ImportTarget"
             },
             "description": "The fields columns can feed."
+          }
+        }
+      },
+      "ImportSheet": {
+        "type": "object",
+        "description": "One sheet of an uploaded workbook.",
+        "required": [
+          "name",
+          "rows",
+          "included"
+        ],
+        "properties": {
+          "included": {
+            "type": "boolean",
+            "description": "Its rows are imported, with its name in the `Sheet` column. A sheet\nwhose columns are unlike the first one's (notes, totals) is left out."
+          },
+          "name": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "integer",
+            "description": "Rows under its header.",
+            "minimum": 0
           }
         }
       },
@@ -34492,7 +34558,7 @@
               "string",
               "null"
             ],
-            "description": "An Excel workbook (`.xlsx`), base64: its first visible sheet with\nanything on it is imported. Up to 7 MB."
+            "description": "An Excel workbook (`.xlsx`), base64: its first visible sheet with\nanything on it is imported, with every other sheet that has the same\ncolumns (the sheet's name in a `Sheet` column, and each row's fill\ncolour in a `Colour` column). Up to 7 MB."
           }
         }
       },
@@ -37115,6 +37181,13 @@
           "issues"
         ],
         "properties": {
+          "at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where it is in its workbook when several sheets were read."
+          },
           "cells": {
             "type": "array",
             "items": {
@@ -37131,7 +37204,7 @@
           },
           "row": {
             "type": "integer",
-            "description": "The spreadsheet row (the header is row 1).",
+            "description": "The row in the file as uploaded (the header is row 1), as\ncorrections and `skip_rows` give it.",
             "minimum": 0
           }
         }
@@ -42105,6 +42178,40 @@
           "date",
           "money"
         ]
+      },
+      "ValueReading": {
+        "type": "object",
+        "required": [
+          "field",
+          "text",
+          "rows"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What to do about it, when there is something to do."
+          },
+          "read_as": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What it was read as; `null` when it could not be, and is left out."
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "text": {
+            "type": "string"
+          }
+        }
       },
       "Variable": {
         "type": "object",

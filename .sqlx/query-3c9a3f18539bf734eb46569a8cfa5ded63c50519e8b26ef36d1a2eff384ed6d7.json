@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, name, emails, phone_keys FROM contacts\n           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL",
+  "query": "SELECT id, name, organisation_id, emails, phone_keys FROM contacts\n           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL",
   "describe": {
     "columns": [
       {
@@ -27,6 +27,17 @@
       },
       {
         "ordinal": 2,
+        "name": "organisation_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "organisation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
         "name": "emails",
         "type_info": "TextArray",
         "origin": {
@@ -37,7 +48,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "phone_keys",
         "type_info": "TextArray",
         "origin": {
@@ -54,9 +65,10 @@
     "nullable": [
       false,
       false,
+      true,
       false,
       false
     ]
   },
-  "hash": "6d3a516e9c1958820d04d54fa632ff2890a02a575ee0475927e2ac13eec6ee1e"
+  "hash": "3c9a3f18539bf734eb46569a8cfa5ded63c50519e8b26ef36d1a2eff384ed6d7"
 }

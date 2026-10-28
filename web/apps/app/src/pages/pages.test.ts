@@ -1,5 +1,5 @@
 import { safeRedirect } from "./auth.tsx";
-import { decodeFile, isWorkbook, needsResaving, stripCardAttachments } from "./imports.tsx";
+import { decodeFile, isWorkbook, needsResaving, rowLabel, sheetsSummary, stripCardAttachments } from "./imports.tsx";
 import { dialable, validateListSearch } from "./crm.tsx";
 import { keyFor, newKey } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
@@ -75,4 +75,23 @@ test("Excel files are told apart from text", () => {
   expect(needsResaving("book.xlsx", new Uint8Array([0x50, 0x4b, 0x03, 0x04]))).toBe(false);
   expect(needsResaving("people.csv", new TextEncoder().encode("Name"))).toBe(false);
   expect(isWorkbook(new TextEncoder().encode("PK,Name\n1,Ada"))).toBe(false);
+});
+
+test("a workbook's sheets are summed up in a sentence", () => {
+  expect(sheetsSummary([])).toBeNull();
+  expect(sheetsSummary([{ name: "Sheet1", rows: 3, included: true }])).toBeNull();
+  expect(
+    sheetsSummary([
+      { name: "UK & Ireland", rows: 4, included: true },
+      { name: "Europe", rows: 1, included: true },
+      { name: "Notes", rows: 1, included: false },
+    ]),
+  ).toBe(
+    "Read 2 sheets: UK & Ireland (4 rows), Europe (1 row). Each row's sheet is in the Sheet column, which can go into Region, and its row there in the Sheet row column. Left out, as their columns are different: Notes.",
+  );
+});
+
+test("rows are named where they can be found", () => {
+  expect(rowLabel({ row: 7 })).toBe("Row 7");
+  expect(rowLabel({ row: 7, at: "Europe, row 2" })).toBe("Europe, row 2");
 });
