@@ -177,6 +177,15 @@ fn message_id(state: &AppState, job_id: Uuid) -> String {
     format!("<{job_id}@{host}>")
 }
 
+/// Who did what an event records, when a member did.
+fn actor(event: &Value) -> Option<UserId> {
+    event
+        .pointer("/actor/user_id")
+        .and_then(Value::as_str)
+        .and_then(|s| s.parse().ok())
+        .map(UserId)
+}
+
 fn permanent(message: impl Into<String>) -> ApiError {
     ApiError::unprocessable("mail_not_sendable", message)
 }
@@ -351,6 +360,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 (QUOTE_SUBJECT, QUOTE_BODY),
                 json!({ "quote": quote, "booking": event.get("booking") }),
                 url,
+                actor(&event),
             )
             .await?;
             tx.commit().await?;
@@ -387,6 +397,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 (INVOICE_SUBJECT, INVOICE_BODY),
                 json!({ "invoice": invoice }),
                 url,
+                actor(&event),
             )
             .await?;
             tx.commit().await?;
@@ -421,6 +432,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                     "link": { "url": LINK_PLACEHOLDER },
                 }),
                 url,
+                actor(&event),
             )
             .await?;
             tx.commit().await?;
@@ -445,6 +457,7 @@ async fn workspace_mail(
     default: (&str, &str),
     extra: Value,
     url: String,
+    sender: Option<UserId>,
 ) -> ApiResult<Outgoing> {
     let (workspace, options) = context::workspace(tx, state).await?;
     let mut ctx_json = extra;
@@ -458,7 +471,11 @@ async fn workspace_mail(
     };
     let rendered =
         super::templates::render_in(tx, Kind::Email, subject, body, &ctx_json, &options).await?;
-    let rendered = place_link(rendered, &url);
+    let mut rendered = place_link(rendered, &url);
+    // Under the message, before the layout: the sender's signature.
+    if let Some(sig) = core_db::signatures::for_sender(tx, sender).await? {
+        super::signatures::append(&mut rendered.text, &mut rendered.body, &sig);
+    }
     let brand = mail_brand(state, tx, ws).await?;
     let name = workspace
         .get("name")
@@ -524,7 +541,7 @@ pub async fn prepare_rule_mail(state: &AppState, job: &Claimed) -> ApiResult<Out
     if template.kind != "email" {
         return Err(permanent(format!("`{key}` is not an email template")));
     }
-    let rendered = super::templates::render_in(
+    let mut rendered = super::templates::render_in(
         &mut tx,
         Kind::Email,
         template.subject.as_deref(),
@@ -533,6 +550,10 @@ pub async fn prepare_rule_mail(state: &AppState, job: &Claimed) -> ApiResult<Out
         &options,
     )
     .await?;
+    // Sent by a rule, not a member: the workspace's signature.
+    if let Some(sig) = core_db::signatures::workspace(&mut tx).await? {
+        super::signatures::append(&mut rendered.text, &mut rendered.body, &sig);
+    }
     let from_address = core_db::sender_domains::sending_address(&mut tx).await?;
     let brand = mail_brand(state, &mut tx, ws).await?;
     tx.commit().await?;

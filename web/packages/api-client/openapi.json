@@ -16212,6 +16212,194 @@
         ]
       }
     },
+    "/api/v1/signatures": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Your email signature and the workspace's.",
+        "operationId": "get_signatures",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Signatures"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/signatures/mine": {
+      "put": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Set your email signature in this workspace: under what you send from\nthe inbox, and the quotes, invoices and signing requests you send.",
+        "operationId": "set_my_signature",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignatureBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Signatures"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/signatures/workspace": {
+      "put": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Set the workspace's email signature: used when a member has none, and\nunder emails rules send.",
+        "operationId": "set_workspace_signature",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignatureBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Signatures"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/tags": {
       "get": {
         "tags": [
@@ -22439,6 +22627,10 @@
             ],
             "format": "uuid",
             "description": "The mailbox to send from; default the sender's own, if connected."
+          },
+          "signature": {
+            "type": "boolean",
+            "description": "Add your signature (or the workspace's) under it. Default: yes."
           },
           "subject": {
             "type": [
@@ -29630,6 +29822,10 @@
               "type": "string"
             }
           },
+          "signature": {
+            "type": "boolean",
+            "description": "Add your signature (or the workspace's) under it. Default: yes."
+          },
           "template_key": {
             "type": [
               "string",
@@ -30656,6 +30852,18 @@
           }
         }
       },
+      "SignatureBody": {
+        "type": "object",
+        "properties": {
+          "signature": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plain text; empty or absent removes it."
+          }
+        }
+      },
       "SignatureView": {
         "type": "object",
         "required": [
@@ -30726,6 +30934,32 @@
               "null"
             ],
             "format": "date-time"
+          }
+        }
+      },
+      "Signatures": {
+        "type": "object",
+        "required": [
+          "can_edit_workspace"
+        ],
+        "properties": {
+          "can_edit_workspace": {
+            "type": "boolean",
+            "description": "You may change the workspace's."
+          },
+          "mine": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Yours, in this workspace."
+          },
+          "workspace": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The workspace's: used when a member has none, and on emails rules send."
           }
         }
       },

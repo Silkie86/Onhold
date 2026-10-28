@@ -398,6 +398,16 @@ async fn rules_email_contacts_and_the_email_shows_on_their_timeline(pool: PgPool
                 "actions": [{ "type": "send_email", "template": "hello", "to": { "field": "contact.email" } }] }),
     )
     .await;
+    // Rules sign with the workspace's signature, never a member's.
+    for (path, signature) in [("workspace", "The Acme team"), ("mine", "Sam")] {
+        h.app
+            .put(&format!("/api/v1/signatures/{path}"))
+            .signed_in(&owner)
+            .json(json!({ "signature": signature }))
+            .send()
+            .await
+            .ok();
+    }
     h.drain().await;
     let before = h.mailer.sent().len();
 
@@ -425,6 +435,13 @@ async fn rules_email_contacts_and_the_email_shows_on_their_timeline(pool: PgPool
     assert_eq!(sent.len(), before + 1);
     assert_eq!(sent.last().unwrap().to, "jo@example.com");
     assert_eq!(sent.last().unwrap().subject, "Hello Jo");
+    let text = &sent.last().unwrap().text;
+    assert!(text.ends_with("\n-- \nThe Acme team"), "{text}");
+    let html = sent.last().unwrap().html.clone().unwrap_or_default();
+    assert!(
+        html.contains("The Acme team") && !html.contains("Sam<"),
+        "{html}"
+    );
 
     for path in [
         format!("/api/v1/contacts/{jo}/timeline"),

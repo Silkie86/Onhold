@@ -621,6 +621,13 @@ pub struct Reply {
     /// Files uploaded with `POST /files` to send with it.
     #[serde(default)]
     pub attachments: Vec<Uuid>,
+    /// Add your signature (or the workspace's) under it. Default: yes.
+    #[serde(default = "yes")]
+    pub signature: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
@@ -643,6 +650,9 @@ pub struct Compose {
     pub booking_id: Option<Uuid>,
     #[serde(default)]
     pub attachments: Vec<Uuid>,
+    /// Add your signature (or the workspace's) under it. Default: yes.
+    #[serde(default = "yes")]
+    pub signature: bool,
 }
 
 fn clean_addresses(field: &str, list: &[String], check: &mut Check) -> Vec<String> {
@@ -900,7 +910,7 @@ pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult
         enquiry_id: thread.enquiry_id,
         booking_id: thread.booking_id,
     };
-    let written = write_body(
+    let mut written = write_body(
         state,
         &mut tx,
         ctx,
@@ -909,6 +919,11 @@ pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult
         &links,
     )
     .await?;
+    if r.signature
+        && let Some(sig) = core_db::signatures::for_sender(&mut tx, ctx.user_id()).await?
+    {
+        super::signatures::append(&mut written.text, &mut written.html, &sig);
+    }
     let base = thread.subject.clone().unwrap_or_default();
     let subject = written.subject.clone().unwrap_or_else(|| {
         if base.to_ascii_lowercase().starts_with("re:") {
@@ -1016,7 +1031,7 @@ pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<Threa
     check.finish()?;
     let attachments =
         check_attachments(&mut tx, ctx, &c.attachments, send_limit(mailbox.as_ref())).await?;
-    let written = write_body(
+    let mut written = write_body(
         state,
         &mut tx,
         ctx,
@@ -1025,6 +1040,11 @@ pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<Threa
         &links,
     )
     .await?;
+    if c.signature
+        && let Some(sig) = core_db::signatures::for_sender(&mut tx, ctx.user_id()).await?
+    {
+        super::signatures::append(&mut written.text, &mut written.html, &sig);
+    }
     let subject = c
         .subject
         .as_deref()
