@@ -19,6 +19,8 @@ struct Feature {
     key: &'static str,
     label: &'static str,
     hint: Option<&'static str>,
+    /// What it lets them do, shown behind the choice's info button.
+    details: &'static str,
     effect: Effect,
 }
 
@@ -27,54 +29,63 @@ const FEATURES: &[Feature] = &[
         key: "bookings",
         label: "Take enquiries, hold dates and confirm bookings",
         hint: None,
+        details: "Take enquiries from email or add them by hand, and move them from first contact to confirmed. Put dates on hold (first, second and so on) so nothing is double-booked, get warned about clashes, and keep each booking's times, fee, venue, contacts, travel and notes in one place, with tasks and reminders.",
         effect: Effect::Module("bookings"),
     },
     Feature {
         key: "calendar",
         label: "A calendar of what's on and who's free",
         hint: Some("Connect Google or Outlook calendars too"),
+        details: "See every hold and confirmed booking on one calendar by month, week or list, and who is free. Connect Google or Outlook so bookings appear in your own calendars, and let talent share their personal calendars (busy times only) so clashes are caught automatically.",
         effect: Effect::Module("calendar"),
     },
     Feature {
         key: "email",
         label: "Read and answer email inside OnHold",
         hint: None,
+        details: "Connect Gmail, Outlook or any mailbox and read and answer email inside OnHold. Conversations attach to the right contact and booking, you can turn an email into an enquiry, send texts and WhatsApp messages, use ready-made follow-ups, and send from your own domain with your signature.",
         effect: Effect::Module("messaging"),
     },
     Feature {
         key: "invoicing",
         label: "Send quotes and invoices, and get paid",
         hint: Some("Card payments and reports included"),
+        details: "Send quotes that turn into bookings when accepted, raise invoices with VAT, take card payments online, record what's been paid and see what's late. Reports show what you're owed and earned by month, client and talent, and your books can sync to Xero or QuickBooks.",
         effect: Effect::Module("finance"),
     },
     Feature {
         key: "documents",
         label: "Contracts, e-signatures and paperwork",
         hint: None,
+        details: "Make contracts, confirmations and advance sheets from a booking in your own look, send them for e-signature and keep everything signed in one place. Old PDFs can be imported and searched, including the words inside them.",
         effect: Effect::Module("documents"),
     },
     Feature {
         key: "events",
         label: "Plan events, tours and line-ups",
         hint: Some("Tours and runs of dates, with budget, crew and day sheets"),
+        details: "Run tours and other projects: a run of dates with travel and hotels, a budget against the fees and buyouts, crew, and a day-by-day itinerary, showing whether each date and the whole run pays. Promoters and venues can run their events as projects the same way.",
         effect: Effect::Module("events"),
     },
     Feature {
         key: "portal",
         label: "Give my artists or clients their own login",
-        hint: Some("Coming soon"),
+        hint: Some("Free for them; they see their dates and documents"),
+        details: "Give the artists or people you represent a free login of their own. They see their dates, answer holds and offers, keep their availability and calendar up to date, read their documents and message you, without seeing the rest of your business.",
         effect: Effect::Module("portal"),
     },
     Feature {
         key: "commission",
         label: "Take commission and pay talent their share",
         hint: None,
+        details: "Record the commission you take on each booking, decide who invoices the buyer, and see what each artist is owed after commission and costs. Settlements and statements show every artist their share.",
         effect: Effect::Extra("commission"),
     },
     Feature {
         key: "custom",
         label: "Shape it to how I work: custom fields, pipelines and imports",
         hint: None,
+        details: "Add your own fields to contacts, artists, enquiries and bookings, change the stages enquiries move through, and import your existing spreadsheets, so OnHold fits how you already work.",
         effect: Effect::Extra("advanced"),
     },
 ];
@@ -164,18 +175,37 @@ const KINDS: &[Kind] = &[
     },
 ];
 
-const TEAM: &[(&str, &str)] = &[
-    ("just_me", "Just me"),
-    ("small", "2 to 5 people"),
-    ("large", "6 or more"),
-];
+struct Team {
+    key: &'static str,
+    label: &'static str,
+    details: &'static str,
+}
 
+const TEAM: &[Team] = &[
+    Team {
+        key: "just_me",
+        label: "Just me",
+        details: "The app stays simple for one person: no assigning work to others, and every task is yours.",
+    },
+    Team {
+        key: "small",
+        label: "2 to 5 people",
+        details: "Work as a team: assign tasks to each other and filter to what's yours, and each person can have their bookings in their own Google or Outlook calendar.",
+    },
+    Team {
+        key: "large",
+        label: "6 or more",
+        details: "The same team features as 2 to 5 people, priced for a bigger team.",
+    },
+];
 /// One tick box or choice.
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct Choice {
     pub key: String,
     pub label: String,
     pub hint: Option<String>,
+    /// A fuller explanation of what it lets them do, behind an info button.
+    pub details: String,
     /// Features worth ticking when this is ticked (a role's usual setup).
     pub suggests: Vec<String>,
 }
@@ -191,13 +221,37 @@ pub struct Question {
     pub choices: Vec<Choice>,
 }
 
-fn choice(key: &str, label: &str, hint: Option<&str>, suggests: Vec<String>) -> Choice {
+fn choice(
+    key: &str,
+    label: &str,
+    hint: Option<&str>,
+    details: String,
+    suggests: Vec<String>,
+) -> Choice {
     Choice {
         key: key.to_owned(),
         label: label.to_owned(),
         hint: hint.map(str::to_owned),
+        details,
         suggests,
     }
+}
+
+/// What ticking a kind of talent does to the workspace's words.
+fn kind_details(k: &Kind) -> String {
+    format!(
+        "Names your list of who you book {many}, and each one {one}, in the menus and forms. If you tick several kinds, or you run your own bookings, the word that suits your role is kept instead. It only changes words: nothing is switched on or off.",
+        many = k.many,
+        one = article(k.one),
+    )
+}
+
+fn article(word: &str) -> String {
+    let an = word
+        .chars()
+        .next()
+        .is_some_and(|c| "AEIOU".contains(c.to_ascii_uppercase()));
+    format!("{} {word}", if an { "an" } else { "a" })
 }
 
 /// The features a preset usually needs.
@@ -222,7 +276,15 @@ pub fn questions() -> Vec<Question> {
             multiple: true,
             choices: presets::all()
                 .iter()
-                .map(|p| choice(p.key, &p.name, None, suggested_features(p)))
+                .map(|p| {
+                    choice(
+                        p.key,
+                        &p.name,
+                        None,
+                        p.description.clone(),
+                        suggested_features(p),
+                    )
+                })
                 .collect(),
         },
         Question {
@@ -235,7 +297,7 @@ pub fn questions() -> Vec<Question> {
             multiple: true,
             choices: FEATURES
                 .iter()
-                .map(|f| choice(f.key, f.label, f.hint, Vec::new()))
+                .map(|f| choice(f.key, f.label, f.hint, f.details.into(), Vec::new()))
                 .collect(),
         },
         Question {
@@ -245,7 +307,7 @@ pub fn questions() -> Vec<Question> {
             multiple: true,
             choices: KINDS
                 .iter()
-                .map(|k| choice(k.key, k.label, None, Vec::new()))
+                .map(|k| choice(k.key, k.label, None, kind_details(k), Vec::new()))
                 .collect(),
         },
         Question {
@@ -255,7 +317,7 @@ pub fn questions() -> Vec<Question> {
             multiple: false,
             choices: TEAM
                 .iter()
-                .map(|(k, l)| choice(k, l, None, Vec::new()))
+                .map(|t| choice(t.key, t.label, None, t.details.into(), Vec::new()))
                 .collect(),
         },
     ]
@@ -340,7 +402,7 @@ pub fn plan(a: &Answers) -> Result<Plan, BadAnswer> {
         check(
             "team",
             std::slice::from_ref(t),
-            &TEAM.iter().map(|(k, _)| *k).collect::<Vec<_>>(),
+            &TEAM.iter().map(|t| t.key).collect::<Vec<_>>(),
         )?;
     }
     let combined = presets::combine(&a.roles).map_err(|e| BadAnswer {
@@ -504,6 +566,16 @@ mod tests {
             ["roles", "features", "talent_kinds", "team"]
         );
         assert!(q[0].choices.iter().all(|c| !c.suggests.is_empty()));
+        // Every choice explains itself behind its info button.
+        assert!(
+            q.iter()
+                .flat_map(|q| &q.choices)
+                .all(|c| (40..600).contains(&c.details.len()))
+        );
+        assert_eq!(
+            kind_details(&KINDS[9]),
+            "Names your list of who you book Crew, and each one a Crew member, in the menus and forms. If you tick several kinds, or you run your own bookings, the word that suits your role is kept instead. It only changes words: nothing is switched on or off."
+        );
         let a = answers_for(&["solo".into()]);
         assert!(a.features.contains(&"invoicing".to_owned()));
         assert!(!a.features.contains(&"commission".to_owned()));

@@ -28078,9 +28078,14 @@
         "required": [
           "key",
           "label",
+          "details",
           "suggests"
         ],
         "properties": {
+          "details": {
+            "type": "string",
+            "description": "A fuller explanation of what it lets them do, behind an info button."
+          },
           "hint": {
             "type": [
               "string",

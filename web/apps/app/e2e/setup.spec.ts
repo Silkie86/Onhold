@@ -29,17 +29,23 @@ test("a solo artist sets up a simple app, then adds invoicing back", async ({ pa
   await page.getByRole("link", { name: "Set up OnHold" }).click();
   await expect(page.getByRole("heading", { name: "Your setup" })).toBeVisible();
 
+  // Each choice explains itself behind an info button.
+  const soloInfo = page.getByRole("button", { name: "More about Artist, DJ or producer running their own bookings" });
+  await soloInfo.click();
+  await expect(soloInfo).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText(/For an artist, DJ or producer running their own bookings\. A simple app/)).toBeVisible();
+
   // It starts from what the workspace has now, so saving as is changes nothing.
-  await expect(page.getByLabel("Shape it to how I work: custom fields, pipelines and imports")).toBeChecked();
-  await page.getByLabel("Shape it to how I work: custom fields, pipelines and imports").uncheck();
-  await page.getByLabel("Take commission and pay talent their share").uncheck();
-  await page.getByLabel("Artist, DJ or producer running their own bookings").check();
+  await expect(page.getByRole("checkbox", { name: "Shape it to how I work: custom fields, pipelines and imports" })).toBeChecked();
+  await page.getByRole("checkbox", { name: "Shape it to how I work: custom fields, pipelines and imports" }).uncheck();
+  await page.getByRole("checkbox", { name: "Take commission and pay talent their share" }).uncheck();
+  await page.getByRole("checkbox", { name: "Artist, DJ or producer running their own bookings" }).check();
   // A role ticks what it usually needs; it can be unticked.
-  await expect(page.getByLabel("Send quotes and invoices, and get paid")).toBeChecked();
-  await page.getByLabel("Read and answer email inside OnHold").uncheck();
-  await page.getByLabel("Send quotes and invoices, and get paid").uncheck();
-  await page.getByLabel("DJs").check();
-  await page.getByLabel("Just me").check();
+  await expect(page.getByRole("checkbox", { name: "Send quotes and invoices, and get paid" })).toBeChecked();
+  await page.getByRole("checkbox", { name: "Read and answer email inside OnHold" }).uncheck();
+  await page.getByRole("checkbox", { name: "Send quotes and invoices, and get paid" }).uncheck();
+  await page.getByRole("checkbox", { name: "DJs" }).check();
+  await page.getByRole("radio", { name: "Just me" }).check();
   const summary = page.getByRole("heading", { name: "Your app" }).locator("..");
   await expect(summary.getByText("Requests and gigs")).toBeVisible();
   await expect(summary.getByText("Estimated price")).toBeVisible();
@@ -59,7 +65,7 @@ test("a solo artist sets up a simple app, then adds invoicing back", async ({ pa
   await expect(page.getByText("Can I keep my rider in here?")).toBeVisible();
 
   // Nothing is locked in: tick invoicing again and it comes back.
-  await page.getByLabel("Send quotes and invoices, and get paid").check();
+  await page.getByRole("checkbox", { name: "Send quotes and invoices, and get paid" }).check();
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText(/^Saved\./)).toBeVisible();
   await openMenu();

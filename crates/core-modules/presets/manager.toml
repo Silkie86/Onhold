@@ -1,6 +1,7 @@
 # Artist manager. Seeds in this file: perspective, modules, extras and vocabulary.
 # Custom fields, pipeline stages, templates and rules arrive in M8.
 name = "Artist manager"
+description = "For managing one or a few artists' careers. Track offers and holds across their diary, keep contracts and paperwork together, take your commission and show each artist their dates and money in their own free login."
 perspective = "sells"
 modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "portal"]
 extras = ["commission", "advanced"]
