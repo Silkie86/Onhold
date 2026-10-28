@@ -276,6 +276,30 @@ pub async fn update_workspace(
             });
         }
     }
+    // The colour and logo print on documents and colour the app, so only a
+    // hex colour and an image data URI are taken.
+    if patch.branding.is_some() {
+        if let Some(c) = branding.get("primary_color")
+            && !c.is_null()
+            && c.as_str()
+                .and_then(core_engines::documents::colour)
+                .is_none()
+        {
+            return Err(ApiError::invalid(
+                "branding",
+                "primary_color must be a hex colour such as #2747c7",
+            ));
+        }
+        if let Some(l) = branding.get("logo")
+            && !l.is_null()
+            && l.as_str().and_then(core_engines::documents::logo).is_none()
+        {
+            return Err(ApiError::invalid(
+                "branding",
+                "logo must be a PNG, JPEG, GIF, WebP or SVG image as a base64 data URI",
+            ));
+        }
+    }
     // An uploaded logo is kept for as long as the branding uses it.
     if let Some(logo) = branding.get("logo_file_id").and_then(Value::as_str)
         && branding.get("logo_file_id") != before.branding.get("logo_file_id")

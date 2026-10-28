@@ -18,7 +18,7 @@ import {
   Spinner,
   Textarea,
   applyBranding,
-  type Branding,
+  readBranding,
   cn,
   formatMoney,
 } from "@onhold/ui";
@@ -468,8 +468,7 @@ export function PublicQuotePage() {
   });
   const [answer, setAnswer] = useState<"accept" | "decline" | null>(null);
   useEffect(() => {
-    const b = quote.data?.branding as { colours?: Branding; name?: string } | undefined;
-    if (b?.colours) applyBranding(b.colours);
+    if (quote.data) applyBranding(readBranding(quote.data.branding).colours);
     if (quote.data) document.title = `Quote ${quote.data.reference} · ${quote.data.workspace_name}`;
   }, [quote.data]);
 
@@ -492,11 +491,11 @@ export function PublicQuotePage() {
     );
   }
   const q = quote.data;
-  const logo = (q.branding as { logo_url?: string } | null)?.logo_url;
+  const logo = readBranding(q.branding).logo;
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 p-4 sm:p-8">
       <header className="flex items-center gap-3">
-        {logo && <img src={logo} alt="" className="size-10 rounded object-contain" />}
+        {logo && <img src={logo} alt="" className="h-10 w-auto max-w-40 rounded object-contain" />}
         <div>
           <p className="text-sm text-muted-foreground">{q.workspace_name}</p>
           <h1 className="text-2xl font-semibold">Quote {q.reference}</h1>
