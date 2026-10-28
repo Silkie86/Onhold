@@ -1,6 +1,6 @@
 # Core Platform Build Spec
 
-Oct 27, 2026 · @Solomon Rose · updated Oct 28, 2026 with every decision made since M0
+Oct 27, 2026 · @Solomon Rose · updated Oct 28, 2026 (10:30 UTC) with every decision made since M0
 
 ## How to use this prompt
 
@@ -16,8 +16,14 @@ This document is the master build prompt for a reusable platform core (working n
 - **Importing past PDFs** (old contracts, invoices and so on) without AI: text layer extraction, optional OCR, field suggestions a person confirms, and past invoices kept as historical records.
 - **Own-domain email:** any mailbox by IMAP and SMTP beside Google and Microsoft, and sending from a workspace's own verified domain with automatic DNS setup through Domain Connect and a guided manual fallback.
 - **A small footprint** in the cloud and on devices is a standing rule for every change.
-- **The talent side too:** OnHold also serves artists, DJs, producers and other creatives, across creative fields. In v1 that is a free artist viewer (M7) with visible-but-locked paid features; presets become combinable (M8); the full talent version (fee splits, royalties, releases) comes after v1.
+- **The talent side too:** OnHold also serves artists, DJs, producers and other creatives, across creative fields. In v1 that is a free artist viewer (M7) with visible-but-locked paid features; presets become combinable (being built with the onboarding questionnaire); the full talent version (fee splits, royalties, releases) comes after v1.
 - **Hosting at near-zero cost** while there are no clients, easy to scale (see Operations).
+- **Theming in two layers:** clients set their name, logo and one brand colour; OnHold's team sets a full theme in a theme studio. The theme reaches every screen, email, PDF and public page.
+- **Email signatures** for each member and the workspace, and **bookings written into members' own Google or Outlook calendars** (a calendar OnHold makes there, never their main one).
+- **An onboarding questionnaire sets up each client** (being built): they tick what they will use OnHold for and leave comments; the answers choose presets, modules and words, and the app's sections, menus and buttons scale with that setup (simple for a solo artist, full for an agency). A live price estimate updates as they tick. Nothing is locked in: the setup can be changed any time.
+- **A master admin for OnHold's team** inside the same app ("OnHold team": Client workspaces, audited visits and Theme studio are built; each client's setup and requests, the Streamline panel and the price list are being built).
+- **Three levels of customisation, never a fork:** shared modules switched on per client, configuration per workspace, and small per-client plugins at fixed hook points.
+- **Travel on any booking and tours as projects** (being built): structured flights, trains, ground transport and hotels on any booking, a "does it pay?" check of fee and buyouts against costs, and tours (or any field's equivalent run of dates) as projects with a profit and loss per date and overall.
 
 Rules that override everything else in this document:
 
@@ -110,7 +116,7 @@ A **preset** is a seed bundle: perspective, vocabulary, enabled modules, custom 
 | `tuition` | sells | Recurring lessons; term and block invoicing; attendance; guardian portal variant |
 | `solo` (artist, DJ, producer) | sells | One person running their own bookings: simple pipeline, own availability and connected personal calendar, rider and travel templates, own invoices; can be linked to a manager's workspace |
 
-Rider and travel templates ship in M8 for every preset that represents talent. The simple solo artist, DJ and producer presets arrive in M8; selling them as a full talent product comes after v1.
+Combinable presets as data files, including simple solo artist, DJ and producer setups, are being built with the onboarding questionnaire; rider and travel templates for every preset that represents talent follow in M8; selling them as a full talent product comes after v1.
 
 Presets are starting points. Everything they seed is editable in Settings afterwards, and a workspace can switch preset only by applying another bundle on top, never by losing data.
 
@@ -158,7 +164,7 @@ Rust for everything server-side, TypeScript for everything in the browser, Postg
 | Desktop and mobile apps | Tauri 2 wrapping the same web app (Windows, macOS, Linux, iOS, Android); session token in the system keychain | One codebase for every platform; small installers (a 2.7 MB `.deb`) |
 | Realtime | Server-sent events from the API | Simpler than WebSockets; enough for live lists and toasts |
 | File storage | Postgres by default, or a directory or any S3-compatible store (R2, S3, MinIO) via `STORAGE` | Nothing extra to host at launch; moves to object storage when it grows |
-| Infra | Docker images; `docker-compose` for dev; at launch Neon (free Postgres), one auto-stopping Fly.io machine running `onhold serve`, Cloudflare Pages for the web app, Resend (or SES) free tier for mail | Near-zero cost and operations while there are no clients; scales by keeping a machine running, adding machines or splitting out the worker |
+| Infra | Docker images; `docker-compose` for dev; at launch Neon (free Postgres), one auto-stopping Fly.io machine running `onhold serve`, Cloudflare Pages for the web app, Resend free tier for mail (it also verifies clients' own sending domains, so the platform's `SMTP_URL` is Resend's) | Near-zero cost and operations while there are no clients; scales by keeping a machine running, adding machines or splitting out the worker |
 | Observability | `tracing` → OpenTelemetry → Grafana Cloud free tier or Axiom; Sentry for frontend | See every tenant's errors from one screen |
 
 **Repository layout**
@@ -170,7 +176,7 @@ onhold/
     core-domain/             # entities, value types (Money, Tz), errors — no I/O
     core-db/                 # sqlx queries, migrations, RLS helpers
     core-engines/            # custom fields, rules, templates, documents, events, jobs
-    core-modules/            # vertical presets (M8); the modules themselves are services in core-api on core-db queries
+    core-modules/            # vertical presets (being built); the modules themselves are services in core-api on core-db queries
     core-integrations/       # google, microsoft, imap/smtp, resend, stripe, xero, quickbooks, whatsapp, sms
     core-pdf/                # reading imported PDFs: text, OCR, field suggestions (no AI)
     core-api/                # axum routes, auth, OpenAPI, SSE, services
@@ -198,7 +204,12 @@ A **workspace** is the unit of isolation and billing. A **user** is a person who
 
 **Workspace record** holds: slug, display name, plan, enabled modules, default currency, default timezone, locale, branding (logo, colours, name, custom domain, app icon, email footer, document header), billing contact, status (trial, active, suspended, closed), and `plugin_slug` (which bespoke plugin and frontend directory activate for it).
 
-**White-label branding.** Each client can run OnHold under their own logo, colours, name and custom domain. The website installed from their domain carries their name and icon. Quote pages, documents, emails and the talent portal use the same branding. Store apps, when published, are one shared OnHold app with OnHold's name and icon, showing the workspace's logo and colours after sign-in; per-client branded desktop builds stay possible from a brand file but there are no per-client store listings.
+**White-label branding.** Each client can run OnHold under their own logo, colours, name and custom domain. The website installed from their domain carries their name and icon. Theming has two layers:
+
+- **Clients** (owners and admins, Settings → Branding) set their business name, a logo and one brand colour; the text on it is chosen white or black for contrast. The logo is resized in the browser and kept in the workspace's branding as a small image (at most 14 kB), so it travels everywhere with no file store.
+- **OnHold's team** sets a client's full theme at onboarding in the **theme studio**: every colour in light and dark (including success, warning and info), one of seven system font stacks (no font downloads) and corner radius. The studio flags any colour pair under 4.5:1 contrast, so every client's app stays readable. Only a superadmin with two-factor sign-in, or one on an audited visit into the workspace, can change it.
+
+The theme reaches everything a client's staff or customers see: every screen, the quote, invoice, signing and invitation pages and emails (logo or name, and a shade of the brand colour that reads on white), PDFs (the theme's typeface), and the talent portal. In dark mode a logo sits on a light tile. The sign-in page stays OnHold's, since it does not know the workspace yet. Store apps, when published, are one shared OnHold app with OnHold's name and icon, showing the workspace's logo and colours after sign-in; per-client branded desktop builds stay possible from a brand file but there are no per-client store listings.
 
 There is no open sign-up in v1: accounts are created by accepting an invitation, and workspaces are created by the operator together with the owner's invitation. The talent "run your own bookings" path (M7) is the first self-service workspace creation.
 
@@ -240,7 +251,7 @@ Every table below has `id` (UUIDv7), `workspace_id`, `created_at`, `updated_at`,
 | Contact | A person at an Organisation (or standalone) | name, emails, phones, role, preferred channel, opt-in flags | belongs to Organisation; linked to Threads |
 | Enquiry | An inbound or outbound request for talent | source (email, form, manual, portal), requested talent(s), event date(s), venue, budget, stage (pipeline), owner, lost reason | has 0..n holds (Bookings), which carry the Quotes; linked Thread |
 | Quote | A priced offer | number (Q-0001, revisions Q-0001-R2), line items (fee, travel, extras; tax is applied on invoices), currency, validity date, status (draft, sent, viewed, accepted, declined, expired, withdrawn when a newer quote is sent), accepted snapshot | belongs to a Booking (usually a hold); accepting moves the hold to pending |
-| Booking | A confirmed or held engagement | talent, organisation, contact, event name, venue, start/end (tz-aware), load-in/soundcheck/set times, status (hold, expired for a lapsed hold that can be held again, pending, confirmed, cancelled, completed), fee breakdown, deposit terms, contract document, settlement | has many Invoices, Documents, Tasks; appears on Calendar |
+| Booking | A confirmed or held engagement | talent, organisation, contact, event name, venue, start/end (tz-aware), load-in/soundcheck/set times, travel (flights with airports and times, trains, ground transport, hotels), income and cost lines (buyouts, expenses), status (hold, expired for a lapsed hold that can be held again, pending, confirmed, cancelled, completed), fee breakdown, deposit terms, contract document, settlement | has many Invoices, Documents, Tasks; appears on Calendar |
 | Availability | A talent's blocked or open time | talent, range, kind (unavailable, tentative, available-only), source (manual, portal, external calendar, connected personal calendar), note | belongs to Talent; drives clash detection |
 | Invoice | A request for money | number (per-workspace sequence), issuer (workspace or talent), payer organisation, line items, currency, tax lines, due date, status (draft, issued, part-paid, paid, overdue, credited, void), historical flag for imported past invoices (own reference, never sent), Stripe link, accounting sync id | belongs to Booking (optional); has many Payments |
 | Payment | Money received or paid out | amount, currency, method, received at, reference, allocation to invoices, payout to talent | belongs to Invoice(s) |
@@ -258,7 +269,7 @@ Two further entities make the buyer side and labels work. Both use the same engi
 | --- | --- | --- | --- |
 | Event | A show, night, festival day, conference or shoot that the workspace runs or sells into | name, venue (Organisation), date(s) and timezone, doors/curfew, capacity, status (idea, confirmed, on sale, done, cancelled), budget, settlement, recurring template link | has many Slots, Bookings, Tasks, Documents, Invoices (costs and income) |
 | Slot | A position in an Event's line-up or schedule | event, order, set times, stage/room, fee budget, status (open, hold, offered, confirmed) | belongs to Event; filled by 0..1 Booking |
-| Project | A container for related work over time: a release campaign, a tour, a season, a brand campaign | kind, name, dates, owner, milestones (Tasks), budget, linked talent | has many Bookings, Events, Tasks, Documents |
+| Project | A container for related work over time: a tour, a season, a speaking circuit, a travelling exhibition, a shoot schedule, a release or brand campaign | kind, name, dates, owner, milestones (Tasks), budget, linked talent, crew, project-wide travel and costs | has many Bookings, Events, Tasks, Documents; profit and loss per date and overall |
 
 A seller's Booking links to a Slot only when the buyer is also on the platform (two workspaces, one booking seen from both sides, each editing only its own fields); otherwise the Slot just records the external act's details.
 
@@ -313,17 +324,26 @@ Any status can also end in lost, declined, expired or cancelled, each with its o
 
 Every step is a stage or status change that emits an event, so each client's variations (deposit percentage, who signs first, whether a hold needs approval) are rules and configuration.
 
-**Calendar and availability** — a workspace calendar with lanes per talent and per staff member, day/week/month/agenda views, holds shown distinctly from confirmed, drag to reschedule (with clash re-check), filters by status and tag. Talent availability is editable by staff and by the talent through the portal. Two-way sync with Google and Microsoft calendars per user and optionally per talent (export bookings as events; import external busy time as unavailability). iCal feed per talent and per workspace, token-protected.
+**Calendar and availability** — a workspace calendar with lanes per talent and per staff member, day/week/month/agenda views, holds shown distinctly from confirmed, drag to reschedule (with clash re-check), filters by status and tag. Talent availability is editable by staff and by the talent through the portal. iCal feed per talent and per workspace, token-protected (talent who want their bookings in their own calendar subscribe to it).
 
-**Connecting talent's personal calendars.** An agency can send each talent a "connect your calendar" link that needs no OnHold account: a busy-only grant from Google or Microsoft, or a private iCal link (Apple and others). Only busy blocks are kept (no titles or details), as unavailability that clash checks use, refreshed every few minutes. Each member of a band can connect their own, and the act is busy when any member is. The solo preset and the talent portal connect directly. Across workspaces (an artist's own workspace and their manager's), each sees the other's dates as busy, with the artist's consent (M7).
+**Bookings in members' own calendars.** A member connects Google Calendar or Outlook (Settings → Calendar), for every booking or one talent's. OnHold makes a calendar of its own in that account ("OnHold · <workspace>") and keeps it filled: holds and pending bookings as tentative, confirmed ones as busy, with talent, venue and a link back, never the fee. It never touches the member's own events, and disconnecting removes OnHold's calendar. Google is asked only for `calendar.app.created`.
 
-**Messaging and follow-ups** — a unified inbox per workspace showing email (via connected Google, Microsoft or any IMAP/SMTP mailbox), WhatsApp and SMS threads, linked to contacts and to the enquiry or booking they concern. A connected mailbox is private to the member who connected it unless shared with the team. Reply from inside the app using templates with merge fields. To keep storage small, the inbox keeps only mail from people, mail in an existing conversation and mail to or from a contact; attachments are not copied (name and size are kept and the file is read from the mailbox when opened); stored text and HTML are capped. A workspace can send from its own domain once the domain is verified (SPF, DKIM), set up automatically through Domain Connect where the DNS provider supports it, otherwise through guided manual steps with copy buttons and automatic checks. Snooze, assign and resolve. Follow-up sequences are rules: for example, enquiry not replied to in 2 days → reminder task; quote not opened in 3 days → chase email; invoice overdue 1, 7 and 14 days → three escalating templates then a task for a human. Opt-out and bounce handling per channel. Rendered sends are stored, and nothing is sent without a template or a human-written body.
+**Connecting talent's personal calendars.** An agency can send each talent a "connect your calendar" link that needs no OnHold account: a busy-only grant from Google or Microsoft, or a private iCal link (Apple and others). Only busy blocks are kept (no titles or details), as unavailability that clash checks use, read every 15 minutes for a year ahead and replaced on each read so the copy never grows. Busy and out-of-office time blocks; tentative time warns; busy time inside a booking OnHold knows (most likely that booking) only warns. Each member of a band can connect their own, and the act is busy when any member is. The solo preset and the talent portal connect directly. Across workspaces (an artist's own workspace and their manager's), each sees the other's dates as busy, with the artist's consent (M7).
 
-**Documents** — generated from templates (contract, confirmation, advance sheet, invoice, quote, rider pack) with the workspace's branding, stored and versioned per booking or talent, optionally sent for e-signature. Uploads (signed PDFs, insurance certificates, passports for travel, stage plots) with expiry dates and a reminder rule for expiring items. A **Document pack** for a booking is a one-click zip of everything a venue or artist needs.
+**Messaging and follow-ups** — a unified inbox per workspace showing email (via connected Google, Microsoft or any IMAP/SMTP mailbox), WhatsApp and SMS threads, linked to contacts and to the enquiry or booking they concern. A connected mailbox is private to the member who connected it unless shared with the team. Reply from inside the app using templates with merge fields. Each member has a plain-text email signature per workspace, with a workspace default; it is added to inbox, quote, invoice and signing emails (rule emails use the workspace's). To keep storage small, the inbox keeps only mail from people, mail in an existing conversation and mail to or from a contact; attachments are not copied (name and size are kept and the file is read from the mailbox when opened); stored text and HTML are capped. A workspace can send from its own domain once the domain is verified (SPF, DKIM), set up automatically through Domain Connect where the DNS provider supports it, otherwise through guided manual steps with copy buttons and automatic checks. Snooze, assign and resolve. Follow-up sequences are rules: for example, enquiry not replied to in 2 days → reminder task; quote not opened in 3 days → chase email; invoice overdue 1, 7 and 14 days → three escalating templates then a task for a human. Opt-out and bounce handling per channel. Rendered sends are stored, and nothing is sent without a template or a human-written body.
+
+**Documents** — generated from templates (contract, confirmation, advance sheet with travel, day sheet, invoice, quote, rider pack) with the workspace's branding, stored and versioned per booking or talent, optionally sent for e-signature. Uploads (signed PDFs, insurance certificates, passports for travel, stage plots) with expiry dates and a reminder rule for expiring items. A **Document pack** for a booking is a one-click zip of everything a venue or artist needs.
 
 **Importing past PDFs** — bulk upload of old contracts, invoices and other files, attached to a talent, organisation, contact or booking (matched by filename or picked), with kind, date and optional expiry. No AI: the PDF's text layer is extracted so contents are searchable, Tesseract OCR reads scans when installed, and fixed patterns and per-issuer templates suggest fields (invoice number, dates, total and currency, emails) for a person to confirm before saving. Past invoices are imported as historical records (from PDFs, or entered one by one through the API, now; from Xero and QuickBooks history in M6; CSV import still to come) with the PDF attached: they keep their original numbers, count in reports, and are never re-sent. See `PDF-IMPORT.md`.
 
 **Events and projects** (on by default for `buys` and `both` perspectives, available to all) — Events with a line-up of Slots, each slot running its own hold → offer → contracted mini-pipeline against the agent or act; a programme calendar showing events, slots and their fill state; recurring event templates for weekly nights; run sheets and day sheets generated from slot times; event settlement (fees, door split, costs, net) with a statement document. Projects group bookings, events and tasks under a release campaign, tour or season with milestone tasks and a budget, and give labels and tour managers a single page per campaign.
+
+**Travel and tours** (any workspace can switch them on: agents and agencies as much as tour managers):
+
+- **Travel on any booking**, not only tours: flights (number, airports, times), trains, rides and hotels, feeding the advance sheet, a phone-friendly day sheet and the artist's phone view. Live flight-status lookups can come later.
+- **"Does it pay?"** on any booking: fee plus buyouts, minus travel, hotels, crew and other costs, minus commission, gives the net, converted across currencies, with a warning when costs eat the fee.
+- **Tours as projects**: a self-contained run of dated bookings with routing, crew, tour-wide travel and costs, a budget against actuals, milestone tasks, a day-by-day itinerary and printable day sheets, and a profit and loss per date and for the whole tour.
+- **Field-neutral**: the core never assumes music. The same project is a theatre, dance or comedy tour or season, a speaking circuit or book tour, a travelling exhibition, a shoot schedule or production, or a campaign or release run, each with its own words.
 
 ## Integrations layer
 
@@ -332,10 +352,10 @@ Every provider implements one of four traits in `core-integrations` — `MailPro
 | Provider | Trait | v1 scope | Notes |
 | --- | --- | --- | --- |
 | Google Workspace / Gmail | Mail | Send as user; receive by polling the Gmail history API (Pub/Sub push later); thread + label mapping; attachments read on demand | One connection per user; shareable with the team. Gmail's mail scopes are "restricted": Google must verify the app (yearly security assessment) before members outside the operator's own domain can connect |
-| Google Calendar | Calendar | Push confirmed bookings and holds (holds as tentative); import busy blocks as unavailability; incremental sync tokens | Per user and per talent calendar; talent's personal calendars busy-only, without an OnHold account |
-| Microsoft 365 (Graph) | Mail + Calendar | Same scope as Google via Graph delta queries (subscriptions later) | Shared mailbox support |
+| Google Calendar | Calendar | Write bookings into a calendar OnHold makes in the member's account (holds tentative, confirmed busy, never the fee); read talent's busy times (free/busy) as unavailability | `calendar.app.created` for members, `calendar.freebusy` for talent (no OnHold account needed); both are sensitive scopes, so Google must verify the app (no security assessment) |
+| Microsoft 365 (Graph) | Mail + Calendar | Mail via Graph delta queries (subscriptions later); members' bookings written to a calendar OnHold makes, with `Calendars.ReadWrite` (Microsoft has no narrower grant; OnHold writes only to its own calendar); talent's busy times via `Calendars.ReadBasic` (times and "show as" only) | Shared mailbox support |
 | Any mailbox (IMAP + SMTP) | Mail | Read INBOX by UID; send by SMTP; servers pre-filled for common providers | Public servers on the usual ports with TLS only |
-| Resend | Mail (sender domains) | Verify a workspace's own sending domain (SPF, DKIM) and send OnHold's mail from it; OnHold's own fallback sender | Domain Connect for one-click DNS setup (template registered per DNS provider), guided manual fallback; Entri (paid) optional for wider coverage |
+| Resend | Mail (sender domains) | Verify a workspace's own sending domain (DKIM, and SPF on a `send` subdomain) and send OnHold's mail from it; OnHold's own fallback sender | Up to 5 domains a workspace, one in use; a domain belongs to one workspace and is released after 14 days unverified. Domain Connect for one-click DNS setup (OnHold's template is written but not yet submitted to DNS providers), guided manual fallback; Entri (paid) optional for wider coverage |
 | Apple and other calendars | Calendar | Private iCal link read for busy time | For talent connecting a personal calendar |
 | Stripe | Payment | Stripe Connect (Standard) per workspace so money settles to the client, not to you; payment links on invoices (card-only Stripe Checkout on the client's connected account); deposit and balance; webhooks for paid/failed/refunded; multi-currency per workspace's Stripe account | Platform fee optional, off by default |
 | Xero | Accounting | Push invoices and payments; pull paid status; contact mapping; tax-rate mapping table per workspace; import past invoices as historical records | OAuth 2, tenant id per org |
@@ -414,7 +434,23 @@ OnHold must work on every operating system: in any browser, and as desktop and m
 
 ## Per-client bespoke work
 
+There is only ever one codebase and one app. Each client's workspace stores its setup as data (modules switched on, presets, words, pipelines, templates, branding), and the app reads it when someone signs in. Special features come in three levels, never a fork:
+
+1. **A feature many clients could want** (a tour itinerary, say) is built once as a module, gets a tick box on the setup questionnaire and a line in the price list (both arriving with the questionnaire), and each client switches it on or off. Everyone on it gets every fix.
+2. **Something one client wants done their way** (their own fields, stages, templates, rules) is configuration in their workspace, set from Settings with no code.
+3. **Truly bespoke logic for one client** (their own commission formula, say) is a small plugin named for that client, plugged into fixed hook points in the core and switched on only for their workspace. This is the paid bespoke work.
+
+Once the questionnaire lands, a client's request from its comments box shows on the Client workspaces page, where OnHold's team decides which level it is.
+
 A new client's "custom app" is the core plus, in order of preference: configuration, frontend tenant directory, backend plugin. Choosing the lowest layer that works is the whole discipline that keeps one deploy serving everyone.
+
+**Onboarding questionnaire** (being built, Oct 28, 2026). A plain form where a client ticks what they will use OnHold for (their roles, such as solo artist, agency, manager, label, promoter, venue or tour management, and features), says how big their team is, and leaves comments to request things or ask questions.
+
+- The answers choose combinable presets, modules, words per module and extras (team, commission, advanced), and the app follows: menus, sections, screens and buttons scale with the setup, so a solo artist sees a simple app with no multi-agent assignment, commission splits or team pages, and a full agency sees everything.
+- Nothing is locked in: a "Your setup" page lets them re-run or edit it any time. Until it is sent, owners and admins are offered it with a "Set up OnHold" banner.
+- A **live price estimate** beside the answers updates as they tick (a base price, plus a price per ticked feature, plus a price for the team size). The price list is data OnHold's team edits, with placeholder numbers until pricing is decided. Nothing is charged from it.
+- Comments and the setup show on the Client workspaces page, with "Mark done" for requests.
+- **Streamline** (master admin, per client): on top of what the presets give, OnHold's team can hide any menu item, page section, button or optional field for one client. These choices are kept apart from the questionnaire answers, so they survive re-running it, and anything can be unhidden with one click. Hiding never deletes data, and fields that invoices or contracts depend on (amounts, dates, the payer's name) stay required behind the scenes.
 
 | Client asks for | Layer | Example |
 | --- | --- | --- |
@@ -425,13 +461,18 @@ A new client's "custom app" is the core plus, in order of preference: configurat
 
 **Onboarding a new client** (target: under two hours of your time)
 
-1. `onhold admin workspace create --slug acme --name "Acme Agency" --country GB --currency GBP --timezone Europe/London --owner-email owner@acme.example --plan standard` seeds defaults: roles, tax codes and templates; from M8 a `--preset` option (for example `--preset agency,manager`, combinable) adds the vertical presets' pipeline, rules and custom fields.
+1. `onhold admin workspace create --slug acme --name "Acme Agency" --country GB --currency GBP --timezone Europe/London --owner-email owner@acme.example --plan standard` seeds defaults: roles, tax codes and templates; once presets land (being built) a `--preset` option (for example `--preset agency,manager`, combinable) adds the vertical presets' pipeline, rules and custom fields.
 2. Import their spreadsheet with the CSV importer; connect Google or Microsoft; connect Stripe.
 3. Adjust configuration with them on a call; most "bespoke" asks end here.
 4. If they need a tenant directory or plugin, create it from the templates in `web/tenants/_template` and `crates/plugins/_template`, ship it behind their slug.
 5. Hand over, start the monthly fee.
 
-**Operator admin area** (superadmin only): list workspaces with plan, health, last activity, usage counters; create and suspend workspaces; impersonate; see failing jobs and integrations across all tenants; feature flags per workspace; release notes broadcast.
+**Operator admin area** (superadmin only): the master admin is inside the same app, not a separate one. OnHold's team sees an "OnHold team" section in the menu:
+
+- **Client workspaces**: every client with status and plan (built). Being built with the questionnaire: their setup and answers, their comments and requests with "Mark done", a Streamline panel for hiding parts of their app (see Onboarding questionnaire), and the price list behind the estimate. A **Visit** button goes into a client's workspace to help: it needs a reason, is time-boxed and shows to the client in their audit log (it reuses superadmin impersonation).
+- **Theme studio**: each client's full theme, with contrast checks.
+
+Still to come (M8): health, last activity and usage counters; create and suspend workspaces from the browser; failing jobs and integrations across all tenants; feature flags per workspace; export and backups; release notes broadcast.
 
 ### Plugin SDK contract
 
@@ -466,7 +507,7 @@ One production deployment serves every tenant; the monthly fee is paying for thi
 **Hosting and deploy**
 
 - One image, one binary with subcommands: `onhold serve` runs the API and worker in one process (the launch setup), and `onhold api` and `onhold worker` run them as separate containers when scale needs it; `onhold migrate` runs migrations as a one-shot step. Static frontends on a CDN (Cloudflare Pages). Managed Postgres with point-in-time recovery. Files in Postgres at first, S3-compatible object storage (Cloudflare R2) once they grow.
-- **Launch plan (near-zero cost and operations while there are no clients):** Neon free Postgres, one auto-stopping Fly.io machine running `onhold serve`, Cloudflare Pages for the web app, Resend (or SES) free tier for mail. Scale by keeping one machine always running (`min_machines_running = 1`), adding machines, or splitting out the worker. Accounts are created at deploy time, not before.
+- **Launch plan (near-zero cost and operations while there are no clients):** Neon free Postgres, one auto-stopping Fly.io machine running `onhold serve`, Cloudflare Pages for the web app, Resend free tier for mail. Scale by keeping one machine always running (`min_machines_running = 1`), adding machines, or splitting out the worker. Accounts are created at deploy time, not before.
 - Environments: `dev` (docker-compose, seeded demo workspace), `staging` (mirrors prod, anonymised copy of data on demand), `prod`.
 - CI on every pull request and on `main`: `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `sqlx prepare --check`, OpenAPI diff, TypeScript typecheck, frontend unit tests, Playwright smoke suite against a fresh database (desktop and phone sizes), build and unit tests on Windows and macOS as well as Linux, and desktop app builds for all three. Once hosting accounts exist, merge to `main` will deploy to staging and a tagged release to prod with a one-command rollback (not built yet).
 - The repository is public for now, so CI minutes are free. Just before the first paying client goes live it goes private, and CI is trimmed to fit the free private minutes: Linux on every push (the server runs on Linux), Windows and macOS on releases only.
@@ -525,7 +566,8 @@ Build bottom-up: isolation and engines before any feature, so every module writt
    - **Apps (after M3).** Native Tauri desktop apps (iOS and Android from the same shell still to come) with sign-in by approval on the website, an offline copy and a queue of offline changes, the apps plan switch, branded builds; then the installable website (PWA) reusing the same offline engine. Demonstrable: sign the app in on the website, keep working with no connection, and settle a conflict when someone else changed the same record. See `MILESTONE-APPS.md`.
 5. **M4 — Bookings and calendar.** Enquiry pipeline, holds, quotes with web acceptance, bookings with statuses and clash detection, availability, workspace calendar views, iCal feeds, tasks. Demonstrable: enquiry → hold → quote → accept → confirmed booking on the calendar, with the clash test blocking a double booking.
 6. **M5 — Documents and money.** Document engine with PDF and e-signature; contract, confirmation and advance-sheet templates; invoices, credit notes, payments, settlement, tax codes, FX, reporting; importing past PDFs and past invoices (`core-pdf`); Stripe Connect with payment links and webhooks (a separate PR). Demonstrable: the full E2E flow through deposit paid and balance chased, in two currencies.
-7. **M6 — Messaging and integrations**, in five PRs: (1) unified email inbox for Gmail, Microsoft and any IMAP/SMTP mailbox, plus opt-in recent email on a device; (2) sending from a workspace's own domain (Resend, SPF/DKIM) with Domain Connect and a guided manual fallback; (3) two-way calendar sync with Google and Microsoft, and connecting talent's personal calendars (busy only); (4) Xero and QuickBooks, including past invoices; (5) SMS, WhatsApp and follow-up rules. Demonstrable: an email enquiry arrives in the inbox linked to its contact; a confirmed booking appears in Google Calendar; a paid invoice shows paid in Xero.
+7. **M6 — Messaging and integrations**, in parts: (1) unified email inbox for Gmail, Microsoft and any IMAP/SMTP mailbox, then opt-in recent email on a device; (2) sending from a workspace's own domain (Resend, SPF/DKIM) with Domain Connect and a guided manual fallback; (3) talent connecting their own calendars (busy only); (3b) bookings written into members' own Google or Outlook calendars; alongside, email signatures; (4) Xero and QuickBooks, including past invoices; (5) SMS, WhatsApp and follow-up rules. Demonstrable: an email enquiry arrives in the inbox linked to its contact; a confirmed booking appears in Google Calendar; a paid invoice shows paid in Xero.
+   - **Alongside M6 (Oct 28, 2026):** client branding and the theme studio with audited visits, carried to every screen, email, PDF and public page (built); the onboarding questionnaire with setup-driven navigation and a live price estimate (being built); travel on any booking with the "does it pay?" check and day sheets, then tours as projects with profit and loss (being built).
 8. **M7 — Talent portal (free artist viewer).** Portal app with dates, confirm/decline, availability with connected calendar, riders, travel and advance info, documents, messages, profile, money view, per-workspace permission toggles; padlocked paid features with "Unlock features" opening a preview of the full app and an upgrade link to the website; agency "hide locked features" setting; "run your own bookings" path to the artist's own linked workspace; cross-workspace busy dates with consent. Demonstrable: a talent confirms a pending date from a phone and the agent is notified.
 9. **M8 — Operator tooling and hardening.** Admin area, workspace CLI, vertical presets and seeds (combinable in one workspace and addable later, plus simple solo artist, DJ and producer presets and rider and travel templates), tenant export, erasure, retention, backups and restore drill, performance seeding and tuning, security review, runbooks, plugin and tenant-directory templates with one worked example each. Demonstrable: onboard a new client from CLI to first login in under two hours; restore drill passes.
 
@@ -537,7 +579,7 @@ After M8 the core is v1. Bespoke client work starts at M3 if a first customer is
 
 - Working name **OnHold (written OnHold in the product, onhold in code); it appears only in crate names, the CLI and this document**.
 - Rust backend, TypeScript frontend, Postgres, one shared deployment, as discussed.
-- Vertical presets at launch (M8): `agency`, `manager`, `freelance` and `solo` (artist, DJ, producer), combinable; the full preset list and the buyer/seller perspective are in the Vertical presets section.
+- Vertical presets at launch (being built with the onboarding questionnaire): `agency`, `manager`, `freelance` and `solo` (artist, DJ, producer), combinable; the full preset list and the buyer/seller perspective are in the Vertical presets section.
 - Stripe Connect Standard so each client holds their own Stripe account and the money never passes through you.
 - E-signature is built in at a simple, evidential level; qualified e-signatures are a later integration.
 - Email ingestion uses the client's own mailbox (Google, Microsoft or any IMAP provider); no separate inbound mail domain in v1.
@@ -556,11 +598,12 @@ After M8 the core is v1. Bespoke client work starts at M3 if a first customer is
 **Open** (answer before the relevant milestone):
 
 - [ ] M6: WhatsApp Business verification is per client and takes days; is it a launch requirement or a per-client add-on?
+- [ ] M6: submit OnHold's Domain Connect template to DNS providers (after checking its signature format with the Domain Connect checker).
 - [ ] M6: Gmail needs Google's app verification (with a yearly security assessment) before members outside the operator's own domain can connect it; when to start it.
 - [ ] M7: can talent see their fees by default, or is that off until the agency turns it on? (Spec assumes off.)
 - [ ] M7: how cross-workspace busy dates and the artist's consent work in detail, and what an artist keeps when leaving a manager (terms and privacy wording).
 - [ ] M7: OnHold's own subscription billing (free viewer, paid plans), separate from clients' Stripe Connect.
-- [ ] M8: your pricing tiers, so plan limits (seats, talent count, storage, apps allowed) can be enforced.
+- [ ] M8: your pricing tiers, so plan limits (seats, talent count, storage, apps allowed) can be enforced, and the onboarding price list's placeholder numbers replaced.
 - [ ] Hosting: EU-only at launch or EU + US regions from day one? And how the API shares the web app's origin (needed for cookies and sign-in redirects): a Cloudflare route sending `/api` to the Fly machine, or the API serving the static app.
 - [ ] M5: whether to fetch ECB rates for workspaces outside Europe too.
 - [ ] Before the first paying client: make the repository private and trim CI (see Operations); check single-user plans sold outside the App Store against Apple's rules before publishing store apps.
