@@ -11,6 +11,8 @@ M6 comes in several PRs. This page grows with each.
 4. Xero and QuickBooks, including importing past invoices.
 5. SMS, WhatsApp and follow-up rules.
 
+Alongside: **email signatures** for members and the workspace.
+
 ## Email inbox
 
 The first part of the demonstrable outcome runs end to end in `crates/core-worker/tests/inbox.rs`, against stand-ins for Google, Gmail, Microsoft login, Microsoft Graph and an IMAP/SMTP server that answer with recorded responses (`crates/core-worker/tests/fixtures/mail`):
@@ -118,6 +120,16 @@ Runs end to end in `crates/core-worker/tests/calendar_push.rs`, against stand-in
 
 - Writing into a talent's own calendar through the connect link (the link reads busy times only).
 - `calendar.app.created` is a sensitive scope: until Google verifies the app, people outside the operator's own domain see an "unverified app" warning.
+
+## Email signatures
+
+Covered by `crates/core-api/tests/tenancy.rs` (who may set which) and the end-to-end mail tests in `crates/core-worker/tests` (`bookings.rs`, `crm.rs`, `inbox.rs`):
+
+- Each member sets their own signature in Settings → Email → Signature; owners and admins also set the workspace's. Plain text, up to 20 lines and 2,000 characters; mail apps make addresses and links in it clickable themselves.
+- Inbox replies and new messages are signed with the sender's signature, or the workspace's when they have none. The API can leave it off with `"signature": false`.
+- Quote, invoice and signing emails carry the signature of the member who sent them (under the message, above the branded footer). Emails sent by rules carry the workspace's.
+- In the plain text the signature follows the usual `-- ` line; in the HTML it sits in a muted block. It is stored with the message, so the thread shows what was sent.
+- **Small.** Two short text columns (`memberships.email_signature`, `workspaces.email_signature`); nothing on devices. The audit log records that a member's changed, not its text.
 
 ## Email inbox: not yet
 
