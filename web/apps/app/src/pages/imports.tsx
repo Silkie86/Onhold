@@ -75,6 +75,19 @@ function base64(bytes: Uint8Array): string {
   return btoa(text);
 }
 
+/** What became of a workbook's sheets, in a sentence, or nothing for a
+ * file with one sheet. */
+export function sheetsSummary(sheets: Schemas["ImportSheet"][]): string | null {
+  if (sheets.length < 2) return null;
+  const rows = (n: number) => `${n} ${n === 1 ? "row" : "rows"}`;
+  const read = sheets.filter((s) => s.included);
+  const left = sheets.filter((s) => !s.included);
+  let text = `Read ${read.length} ${read.length === 1 ? "sheet" : "sheets"}: ${read.map((s) => `${s.name} (${rows(s.rows)})`).join(", ")}.`;
+  if (read.length > 1) text += " Each row's sheet is in the Sheet column, which can go into Region.";
+  if (left.length > 0) text += ` Left out, as their columns are different: ${left.map((s) => s.name).join(", ")}.`;
+  return text;
+}
+
 /** Corrections made while checking, by `row:column`. */
 type Edits = Record<string, string>;
 
@@ -248,6 +261,12 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
             <Stat label="Skipped (already there)" value={dry.skip} />
             <Stat label="Rows with problems" value={dry.fail} tone={dry.fail > 0 ? "warn" : undefined} />
           </div>
+          {dry.new_contacts > 0 && (
+            <p className="text-sm">
+              {dry.new_contacts} new {dry.new_contacts === 1 ? "contact" : "contacts"}: the person each row names, added to their
+              organisation.
+            </p>
+          )}
           {dry.new_organisations.length > 0 && (
             <p className="text-sm">
               New organisations: {dry.new_organisations.slice(0, 10).join(", ")}
@@ -268,12 +287,16 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
           ) : (
             dry.issues.length > 0 && <Issues issues={dry.issues} />
           )}
+          {dry.to_check.length > 0 && (
+            <ToCheck rows={dry.to_check} headers={preview.import.headers} skipRows={skipRows} onSkip={(row) => setSkipRows([...skipRows, row])} />
+          )}
+          {dry.readings.length > 0 && <Readings readings={dry.readings} targets={preview.targets} />}
           {error && <Alert>{error}</Alert>}
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="ghost" onClick={() => setDry(null)}>
               Back
             </Button>
-            {(dry.fail > 0 || Object.keys(edits).length > 0) && (
+            {(dry.fail > 0 || Object.keys(edits).length > 0 || skipRows.length > 0) && (
               <Button variant="outline" disabled={busy} onClick={check}>
                 Check again
               </Button>
@@ -317,6 +340,7 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
             matched what we could.
           </p>
         )}
+        {sheetsSummary(preview.sheets) && <Alert tone="info">{sheetsSummary(preview.sheets)}</Alert>}
         {entity === "auto" && (
           <p className="text-sm text-muted-foreground">
             Not {kind}?{" "}
@@ -381,7 +405,11 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
               <option value="create">Create a new record anyway</option>
             </NativeSelect>
             <p className="text-xs text-muted-foreground">
-              {preview.import.entity === "contact" ? "Contacts match by email or phone number." : "Records match by name."}
+              {preview.import.entity === "contact"
+                ? "Contacts match by email or phone number, or by name at the same organisation."
+                : preview.import.entity === "organisation"
+                  ? "Organisations match by name; the person a row names, by email, phone number or name there."
+                  : "Records match by name."}
             </p>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -457,7 +485,9 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
           />
           <p className="text-xs text-muted-foreground">
             A CSV export from the app you are moving from, as it comes: Google Contacts, Outlook, HubSpot, Salesforce, Pipedrive,
-            Mailchimp, LinkedIn or a booking system. Excel files (.xlsx) work as they are (the first visible sheet is read), and so do
+            Mailchimp, LinkedIn or a booking system. Excel files (.xlsx) work as they are (every sheet with the same columns is read,
+            with its name and each row's fill colour, so a pitching list split into regions and coloured by how things stand comes
+            across as it is), and so do
             contact cards (.vcf) from Apple Contacts, iCloud or Android. Older .xls, Numbers or OpenDocument files: save them as .xlsx or
             CSV first. Up to 10 MB (7 MB for Excel) and 50,000 rows.
           </p>
@@ -606,6 +636,90 @@ function ProblemRows({
         </div>
       )}
     </div>
+  );
+}
+
+/** Rows that import, but whose notes or gaps are worth a look first, to
+ * leave out if need be. */
+function ToCheck({
+  rows,
+  headers,
+  skipRows,
+  onSkip,
+}: {
+  rows: Schemas["ProblemRow"][];
+  headers: string[];
+  skipRows: number[];
+  onSkip: (row: number) => void;
+}) {
+  const shown = rows.filter((r) => !skipRows.includes(r.row));
+  if (shown.length === 0) return null;
+  const nameAt = headers.findIndex((h) => h.trim() !== "");
+  return (
+    <details className="rounded-md border p-3 text-sm" open={shown.length <= 10}>
+      <summary className="cursor-pointer font-medium">
+        {shown.length} {shown.length === 1 ? "row" : "rows"} to check (they import unless you leave them out)
+      </summary>
+      <ul className="mt-2 flex max-h-72 flex-col gap-2 overflow-y-auto">
+        {shown.map((r) => (
+          <li key={r.row} className="flex flex-wrap items-start justify-between gap-2 border-t pt-2 first:border-t-0 first:pt-0">
+            <div className="min-w-0">
+              <p className="font-medium">
+                Row {r.row}
+                {r.cells[nameAt] ? `: ${r.cells[nameAt]}` : ""}
+              </p>
+              <ul className="text-muted-foreground">
+                {r.issues.map((i, n) => (
+                  <li key={`${i.field}-${n}`}>{i.message}</li>
+                ))}
+              </ul>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => onSkip(r.row)}>
+              Leave out
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+/** How values that needed reading were read: colours as statuses, sheet
+ * names as regions, countries however they were typed. */
+function Readings({ readings, targets }: { readings: Schemas["ValueReading"][]; targets: Schemas["ImportTarget"][] }) {
+  const label = (key: string) => targets.find((t) => t.key === key)?.label ?? key;
+  const unread = readings.filter((r) => r.read_as == null).length;
+  return (
+    <details className="rounded-md border p-3 text-sm" open={unread > 0}>
+      <summary className="cursor-pointer font-medium">
+        How values were read{unread > 0 ? ` (${unread} not read)` : ""}
+      </summary>
+      <div className="mt-2 max-h-72 overflow-auto">
+        <table className="w-full text-left">
+          <thead className="text-xs text-muted-foreground">
+            <tr>
+              <th className="py-1 pr-3">Field</th>
+              <th className="py-1 pr-3">In the sheet</th>
+              <th className="py-1 pr-3">Read as</th>
+              <th className="py-1">Rows</th>
+            </tr>
+          </thead>
+          <tbody>
+            {readings.map((r) => (
+              <tr key={`${r.field}:${r.text}`} className="border-t align-top">
+                <td className="py-1 pr-3">{label(r.field)}</td>
+                <td className="py-1 pr-3">{r.text}</td>
+                <td className="py-1 pr-3">
+                  {r.read_as ?? <span className="text-warning">Left out</span>}
+                  {r.hint && <p className="text-xs text-muted-foreground">{r.hint}</p>}
+                </td>
+                <td className="py-1">{r.rows}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
   );
 }
 

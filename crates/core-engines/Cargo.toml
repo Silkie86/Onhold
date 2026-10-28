@@ -12,6 +12,7 @@ chrono-tz.workspace = true
 core-domain.workspace = true
 croner.workspace = true
 calamine.workspace = true
+quick-xml.workspace = true
 zip.workspace = true
 csv.workspace = true
 data-encoding.workspace = true

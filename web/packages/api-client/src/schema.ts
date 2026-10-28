@@ -5865,6 +5865,11 @@ export interface components {
             fail: number;
             /** @description The first problems (up to 200). */
             issues: components["schemas"]["ImportIssue"][];
+            /**
+             * @description Contacts an organisation import would add: the person each row
+             *     names, unless they are already there.
+             */
+            new_contacts: number;
             /** @description Organisations a contact import would create. */
             new_organisations: string[];
             /**
@@ -5872,9 +5877,21 @@ export interface components {
              *     correct or leave out.
              */
             problem_rows: components["schemas"]["ProblemRow"][];
+            /**
+             * @description How values that needed reading were read, each once with the rows
+             *     giving it (up to 100): `Amber` as a status, a sheet name as a
+             *     region, `Holland` as the Netherlands.
+             */
+            readings: components["schemas"]["ValueReading"][];
             /** @description The first records as they would be saved. */
             sample: Record<string, never>[];
             skip: number;
+            /**
+             * @description Rows that import, but are worth a look first (up to 100): notes
+             *     saying a place closed or not to contact them, a contact with no
+             *     name. Leave them out with `skip_rows`.
+             */
+            to_check: components["schemas"]["ProblemRow"][];
             update: number;
         };
         /** @description A record that may be the one being entered. */
@@ -6368,11 +6385,24 @@ export interface components {
             import: components["schemas"]["ImportView"];
             /** @description The first rows, as text. */
             sample: string[][];
+            /** @description A workbook's sheets, and which of them are in the import. */
+            sheets: components["schemas"]["ImportSheet"][];
             source?: components["schemas"]["ImportSource"] | null;
             /** @description The field each column most likely feeds (`null` when unsure). */
             suggested: (string | null)[];
             /** @description The fields columns can feed. */
             targets: components["schemas"]["ImportTarget"][];
+        };
+        /** @description One sheet of an uploaded workbook. */
+        ImportSheet: {
+            /**
+             * @description Its rows are imported, with its name in the `Sheet` column. A sheet
+             *     whose columns are unlike the first one's (notes, totals) is left out.
+             */
+            included: boolean;
+            name: string;
+            /** @description Rows under its header. */
+            rows: number;
         };
         /** @description An app whose export was recognised. */
         ImportSource: {
@@ -7189,7 +7219,9 @@ export interface components {
             filename?: string | null;
             /**
              * @description An Excel workbook (`.xlsx`), base64: its first visible sheet with
-             *     anything on it is imported. Up to 7 MB.
+             *     anything on it is imported, with every other sheet that has the same
+             *     columns (the sheet's name in a `Sheet` column, and each row's fill
+             *     colour in a `Colour` column). Up to 7 MB.
              */
             workbook?: string | null;
         };
@@ -9576,6 +9608,15 @@ export interface components {
          * @enum {string}
          */
         ValueKind: "text" | "reference" | "date" | "money";
+        ValueReading: {
+            field: string;
+            /** @description What to do about it, when there is something to do. */
+            hint?: string | null;
+            /** @description What it was read as; `null` when it could not be, and is left out. */
+            read_as?: string | null;
+            rows: number;
+            text: string;
+        };
         /** @description One variable a template can use. */
         Variable: {
             description: string;

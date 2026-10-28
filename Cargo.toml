@@ -55,6 +55,7 @@ chrono-tz = "0.10"
 rrule = "0.14"
 csv = "1"
 calamine = { version = "0.37", default-features = false, features = ["dates"] }
+quick-xml = { version = "0.42", default-features = false }
 data-encoding = "2"
 dotenvy = "0.15"
 getrandom = "0.4"

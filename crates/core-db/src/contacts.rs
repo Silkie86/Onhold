@@ -305,11 +305,12 @@ pub async fn similar(
 }
 
 /// What an import matches rows against: every live contact's id, name,
-/// emails and phone keys.
+/// organisation, emails and phone keys.
 #[derive(Debug, Clone)]
 pub struct Key {
     pub id: Uuid,
     pub name: String,
+    pub organisation_id: Option<Uuid>,
     pub emails: Vec<String>,
     pub phone_keys: Vec<String>,
 }
@@ -317,7 +318,7 @@ pub struct Key {
 pub async fn keys(conn: &mut PgConnection) -> Result<Vec<Key>> {
     Ok(sqlx::query_as!(
         Key,
-        r#"SELECT id, name, emails, phone_keys FROM contacts
+        r#"SELECT id, name, organisation_id, emails, phone_keys FROM contacts
            WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL"#
     )
     .fetch_all(conn)

@@ -534,3 +534,250 @@ async fn uploads_never_run_are_cleaned_up(pool: PgPool) {
         .unwrap();
     assert_eq!(left, [ids[1]]);
 }
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_pitching_workbook_imports_every_sheet_with_its_people(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let kemi = h
+        .post(&owner, "/api/v1/talent", json!({ "name": "DJ Kemi" }))
+        .await
+        .id("/id");
+
+    // Two sheets of venues with their bookers, rows coloured by how things
+    // stand, and a sheet of notes that is not a list.
+    let xlsx = include_bytes!("../../core-engines/tests/fixtures/pitching.xlsx");
+    let upload = h
+        .post(
+            &owner,
+            "/api/v1/imports",
+            json!({ "entity": "auto", "filename": "pitching.xlsx",
+                    "workbook": data_encoding::BASE64.encode(xlsx) }),
+        )
+        .await;
+    assert_eq!(
+        upload.body["import"]["entity"], "organisation",
+        "{}",
+        upload.body
+    );
+    assert_eq!(
+        upload.body["sheets"],
+        json!([
+            { "name": "UK & Ireland", "rows": 4, "included": true },
+            { "name": "Europe", "rows": 1, "included": true },
+            { "name": "Notes", "rows": 1, "included": false },
+        ])
+    );
+    assert_eq!(
+        upload.body["suggested"],
+        json!([
+            "name",
+            "address.city",
+            "address.country",
+            "contact.name",
+            "contact.emails",
+            "contact.phones",
+            "interested_in",
+            "follow_up_on",
+            "notes",
+            "region",
+            "status"
+        ])
+    );
+    let id = upload.id("/import/id");
+    let plan = json!({ "columns": upload.body["suggested"] });
+
+    let dry = h
+        .post(
+            &owner,
+            &format!("/api/v1/imports/{id}/dry-run"),
+            plan.clone(),
+        )
+        .await;
+    let d = &dry.body;
+    // The Grand's second booker is added to it rather than a second Grand.
+    assert_eq!(
+        (&d["create"], &d["update"], &d["fail"], &d["new_contacts"]),
+        (&json!(4), &json!(1), &json!(0), &json!(4)),
+        "{d}"
+    );
+    let to_check: Vec<(i64, String)> = d["to_check"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|r| {
+            r["issues"].as_array().unwrap().iter().map(|i| {
+                (
+                    i["row"].as_i64().unwrap(),
+                    i["field"].as_str().unwrap().to_owned(),
+                )
+            })
+        })
+        .collect();
+    assert_eq!(
+        to_check,
+        [
+            (4, "notes".to_owned()),
+            (4, "contact.name".to_owned()),
+            (5, "do_not_contact".to_owned()),
+        ]
+    );
+    let readings: Vec<(String, String, Value, i64)> = d["readings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            (
+                r["field"].as_str().unwrap().to_owned(),
+                r["text"].as_str().unwrap().to_owned(),
+                r["read_as"].clone(),
+                r["rows"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    let read = |field: &str, text: &str| {
+        readings
+            .iter()
+            .find(|r| r.0 == field && r.1 == text)
+            .map(|r| (r.2.clone(), r.3))
+    };
+    assert_eq!(read("region", "UK & Ireland"), Some((Value::Null, 4)));
+    assert_eq!(
+        read("region", "Europe"),
+        Some((json!("Europe (incl. UK)"), 1))
+    );
+    assert_eq!(
+        read("status", "green"),
+        Some((json!("Booked or worked with"), 2))
+    );
+    assert_eq!(
+        read("status", "amber"),
+        Some((json!("Talking or interested"), 1))
+    );
+    assert_eq!(read("status", "red"), Some((Value::Null, 1)));
+    assert_eq!(
+        read("address.country", "England"),
+        Some((json!("United Kingdom"), 1))
+    );
+    assert_eq!(
+        read("address.country", "Frnace"),
+        Some((json!("France (a near miss)"), 1))
+    );
+    assert_eq!(read("address.country", "Ireland"), None);
+    assert_eq!(read("interested_in", "Unknown Act"), Some((Value::Null, 1)));
+
+    h.post(&owner, &format!("/api/v1/imports/{id}/run"), plan)
+        .await;
+    h.drain().await;
+    let view = h.get(&owner, &format!("/api/v1/imports/{id}")).await;
+    assert_eq!(view["status"], "done", "{view}");
+    assert_eq!(
+        (
+            view["created"].as_i64(),
+            view["updated"].as_i64(),
+            view["failed"].as_i64()
+        ),
+        (Some(4), Some(1), Some(0)),
+        "{view}"
+    );
+
+    let orgs = h.get(&owner, "/api/v1/organisations?sort=name").await;
+    assert_eq!(
+        names(&orgs["items"]),
+        ["Le Club", "Owl Bar", "Plain Hall", "The Grand"]
+    );
+    let by_name = |n: &str| {
+        orgs["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["name"] == n)
+            .unwrap()
+            .clone()
+    };
+    let grand = by_name("The Grand");
+    assert_eq!(grand["status"], "booked");
+    assert_eq!(grand["country_code"], "GB");
+    // Europe, from its country: not pinned to the sheet's region.
+    assert_eq!(
+        (&grand["region"], &grand["region_picked"]),
+        (&json!("europe"), &json!(false)),
+        "{grand}"
+    );
+    assert_eq!(grand["follow_up_on"], "2027-03-01");
+    let grand = h
+        .get(
+            &owner,
+            &format!("/api/v1/organisations/{}", grand["id"].as_str().unwrap()),
+        )
+        .await;
+    assert_eq!(grand["interested_in"][0]["id"], json!(kemi));
+    assert_eq!(by_name("Owl Bar")["status"], "talking");
+    assert_eq!(by_name("Le Club")["country_code"], "FR");
+    assert_eq!(by_name("Le Club")["status"], Value::Null);
+    assert_eq!(by_name("Plain Hall")["do_not_contact"], true);
+
+    let people: Vec<(String, String)> = sqlx::query_as(
+        "SELECT c.name, o.name FROM contacts c JOIN organisations o ON o.id = c.organisation_id ORDER BY c.name COLLATE \"C\"",
+    )
+    .fetch_all(&h.app.owner)
+    .await
+    .unwrap();
+    let people: Vec<(&str, &str)> = people
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    assert_eq!(
+        people,
+        [
+            ("Jo Booker", "The Grand"),
+            ("Marie Roux", "Le Club"),
+            ("Sam Promo", "The Grand"),
+            ("owl@bar.test", "Owl Bar"),
+        ]
+    );
+
+    // The same sheet again finds everyone: nothing new, nobody twice.
+    let again = h
+        .post(
+            &owner,
+            "/api/v1/imports",
+            json!({ "entity": "organisation", "workbook": data_encoding::BASE64.encode(xlsx) }),
+        )
+        .await;
+    let id = again.id("/import/id");
+    let dry = h
+        .post(
+            &owner,
+            &format!("/api/v1/imports/{id}/dry-run"),
+            json!({ "columns": again.body["suggested"] }),
+        )
+        .await;
+    assert_eq!(
+        (
+            &dry.body["create"],
+            &dry.body["update"],
+            &dry.body["new_contacts"]
+        ),
+        (&json!(0), &json!(0), &json!(0)),
+        "{}",
+        dry.body
+    );
+
+    // Bookers by name at the place they work count as the same person in a
+    // contact import too.
+    let view = h
+        .import(
+            &owner,
+            "contact",
+            "Name,Company,Role\nSam Promo,The Grand,Promoter\n",
+            json!({ "on_match": "update" }),
+        )
+        .await;
+    assert_eq!(view["updated"], 1, "{view}");
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM contacts WHERE name = 'Sam Promo'")
+        .fetch_one(&h.app.owner)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+}

@@ -823,6 +823,7 @@ dependencies = [
  "html2text",
  "minijinja",
  "proptest",
+ "quick-xml",
  "regex",
  "serde",
  "serde_json",
