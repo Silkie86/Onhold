@@ -59,4 +59,11 @@ test("write, reply and resolve in the inbox, then find where to connect a mailbo
   await page.getByLabel("Provider").selectOption("Fastmail");
   await expect(page.getByLabel("Incoming mail (IMAP) server")).toHaveValue("imap.fastmail.com");
   await expect(page.getByLabel("Outgoing mail (SMTP) port")).toHaveValue("465");
+
+  // Sending from the workspace's own domain needs the server's mail provider
+  // set up for it; this one is not, and the page says so.
+  await page.goto("/settings/email/domain");
+  await expect(page.getByRole("heading", { name: "Send from your own domain" })).toBeVisible();
+  await expect(page.getByText("not switched on for this OnHold server yet")).toBeVisible();
+  await expect(page.getByRole("form", { name: "Add a domain" })).toHaveCount(0);
 });

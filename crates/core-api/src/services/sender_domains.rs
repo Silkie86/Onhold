@@ -472,12 +472,12 @@ pub async fn update(
 /// within a minute.
 pub async fn check_now(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<SenderDomainView> {
     ctx.authorize(Permission::IntegrationManage)?;
-    let cfg = configured(state)?;
     let mut tx = begin(state, ctx).await?;
     let d = core_db::sender_domains::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     tx.commit().await?;
+    let cfg = configured(state)?;
     cfg.resend
         .verify(&d.provider_id)
         .await
@@ -503,12 +503,12 @@ pub struct AutomaticSetup {
 /// The signed link that adds the records at the domain's DNS provider.
 pub async fn automatic_setup(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<AutomaticSetup> {
     ctx.authorize(Permission::IntegrationManage)?;
-    let cfg = configured(state)?;
     let mut tx = begin(state, ctx).await?;
     let d = core_db::sender_domains::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     tx.commit().await?;
+    let cfg = configured(state)?;
     let unavailable = || {
         ApiError::conflict(
             "automatic_setup_unavailable",

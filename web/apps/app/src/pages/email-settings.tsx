@@ -6,14 +6,15 @@
 
 import type { Schemas } from "@onhold/api-client";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Alert, Badge, Button, Card, Checkbox, Input, Label, NativeSelect, Spinner, cn, relativeTime } from "@onhold/ui";
-import { Mail, RefreshCw, Server, Unplug } from "lucide-react";
+import { Globe, Mail, RefreshCw, Server, Unplug } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
 import { useSession } from "../session.tsx";
 import { useMailSetup } from "./inbox.tsx";
 import { KeepMailCard } from "./mail-device.tsx";
+import { useSenderDomains } from "./sending-domain.tsx";
 
 type Mailbox = Schemas["IntegrationView"];
 type Security = "tls" | "starttls";
@@ -125,6 +126,7 @@ export function EmailSettingsPage() {
       {error && <Alert>{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
       <KeepMailCard />
+      {manager && <SendingDomainCard />}
 
       {s.mailboxes.length > 0 && (
         <section aria-label="Connected mailboxes" className="flex flex-col gap-3">
@@ -408,6 +410,33 @@ function ImapForm({ existing, onClose, onConnected }: { existing: Mailbox | null
           </Button>
         </div>
       </form>
+    </Card>
+  );
+}
+
+/** Where the workspace's own email comes from, with a way to change it. */
+function SendingDomainCard() {
+  const domains = useSenderDomains();
+  const s = domains.data;
+  if (!s || (!s.available && s.domains.length === 0)) return null;
+  const sending = s.domains.find((d) => d.sending);
+  const waiting = s.domains.find((d) => d.status !== "verified");
+  return (
+    <Card className="flex flex-wrap items-center gap-3 p-4 text-sm">
+      <Globe className="size-5" />
+      <div className="flex flex-1 flex-col">
+        <span className="font-medium">Your own domain</span>
+        <span className="text-muted-foreground">
+          {sending
+            ? `The workspace's email goes out from ${sending.from_address}.`
+            : waiting
+              ? `${waiting.domain} is waiting for its DNS records.`
+              : "The workspace's email goes out from OnHold's address in your name."}
+        </span>
+      </div>
+      <Link to="/settings/email/domain" search={{}} className="underline">
+        {s.domains.length ? "Manage" : "Send from your domain"}
+      </Link>
     </Card>
   );
 }

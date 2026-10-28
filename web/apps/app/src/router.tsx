@@ -148,6 +148,17 @@ const emailSettings = createRoute({
   component: lazyRouteComponent(() => import("./pages/email-settings.tsx"), "EmailSettingsPage"),
 });
 
+const sendingDomain = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/email/domain",
+  // A DNS provider sends the owner back here after Domain Connect.
+  validateSearch: (s: Record<string, unknown>): { checked?: string; error?: string } => ({
+    checked: str(s.checked),
+    error: str(s.error),
+  }),
+  component: lazyRouteComponent(() => import("./pages/sending-domain.tsx"), "SendingDomainPage"),
+});
+
 const sync = createRoute({ getParentRoute: () => app, path: "/sync", component: SyncPage });
 
 const invoices = createRoute({ getParentRoute: () => app, path: "/finance/invoices", component: InvoicesPage });
@@ -200,6 +211,7 @@ const tree = root.addChildren([
     fields,
     pipelines,
     calendarSettings,
+    sendingDomain,
     sync,
     invoices,
     invoice,

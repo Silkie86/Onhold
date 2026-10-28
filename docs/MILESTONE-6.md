@@ -4,8 +4,8 @@
 
 M6 comes in several PRs. This page grows with each.
 
-1. **Email inbox** (this PR): Gmail, Outlook and Microsoft 365, and any other mailbox by IMAP and SMTP.
-2. Own-domain sending: verified sender domains (SPF, DKIM), with automatic DNS setup through Domain Connect and a guided manual fallback.
+1. **Email inbox**: Gmail, Outlook and Microsoft 365, and any other mailbox by IMAP and SMTP.
+2. **Own-domain sending**: verified sender domains (SPF, DKIM), with automatic DNS setup through Domain Connect and a guided manual fallback.
 3. Calendar sync with Google and Microsoft.
 4. Xero and QuickBooks, including importing past invoices.
 5. SMS, WhatsApp and follow-up rules.
@@ -37,7 +37,34 @@ The first part of the demonstrable outcome runs end to end in `crates/core-worke
 - **API.** `/api/v1/inbox/mailboxes` and `/api/v1/inbox/threads`, with new permissions `inbox:read` (every role), `inbox:write` (all but viewers) and `integration:manage` (owners and admins).
 - **Quote emails** now get their link put in after the template is rendered, as invitations have since M2, so a workspace's own quote template cannot reshape or leak it.
 
+## Sending from your own domain
+
+Runs end to end in `crates/core-worker/tests/domains.rs`, against stand-ins for Resend's domain API, a DNS-over-HTTPS resolver and a DNS provider with Domain Connect:
+
+- An owner adds `acme.test`. Resend's DKIM and SPF records show with copy buttons, as most DNS providers want the names.
+- The first check finds the domain's DNS provider through Domain Connect, so "Set up automatically" appears, and finds no DMARC policy, so a harmless one is suggested. The setup link is signed and names the template's values.
+- Until the records are found, email still goes out from the platform's address. Once they are, the first verified domain is used straight away, and invitations go out from `bookings@acme.test`. Turning it off goes back to the platform's address.
+- Another workspace cannot add the same domain; agents cannot see the page; removing the domain removes it at Resend too and frees it.
+- A domain never verified is removed after 14 days.
+
+`e2e/inbox.spec.ts` checks the page on a server without Resend set up.
+
+### Built
+
+- **Settings → Email accounts → Your own domain** (owners and admins). Up to 5 domains a workspace, one sent from at a time. Mail services' own domains (gmail.com and the like) and the platform's own domain are refused. The sending address's part before the @ is chosen per domain (`hello` unless changed).
+- **Records.** Resend gives a DKIM key and SPF with a bounce MX on a `send` subdomain, so the domain's own SPF record is left alone. A DMARC record is suggested only when neither the domain nor a domain it is under has one.
+- **Automatic setup.** When `DOMAIN_CONNECT_*` is set and the domain's DNS provider has taken in OnHold's template (`docs/domain-connect/`), "Set up automatically" sends the owner to their provider with a signed link; the provider sends them back and OnHold checks straight away. Discovery follows the domain's `_domainconnect` record to public https addresses only.
+- **Checks.** The worker asks Resend about a pending domain often at first (every minute, slowing to every six hours) and about a verified one daily; "Check now" asks Resend to look straight away. Records that go missing after verification turn the domain "Records not found", and email falls back to the platform's address. A domain never verified within 14 days is removed here and at Resend, so nobody can hold a domain they do not own. Closing a workspace releases its domains.
+- **What uses it.** Invitations, quote, invoice and signature emails, rule emails, and inbox messages sent without a connected mailbox. The display name stays the workspace's (or "member at workspace"); replies still go where they did. Mail from a connected mailbox always comes from that mailbox.
+- **Small.** Each domain is one row with its handful of records; nothing is kept on devices.
+- **Configuration.** `RESEND_API_KEY` (and `RESEND_REGION`, default `eu-west-1`), with `SMTP_URL` pointing at Resend's SMTP server for the same account, since only the account that verified a domain may send from it.
+
 ### Not yet
+
+- Resend's webhooks instead of checking on a timer.
+- OnHold's Domain Connect template is written but not yet submitted; until providers take it in, every domain is set up by hand.
+
+## Email inbox: not yet
 
 - Push notifications from Gmail and Graph instead of polling.
 - IMAP reads INBOX only; replies sent from another mail program show in OnHold only when the other side answers.
