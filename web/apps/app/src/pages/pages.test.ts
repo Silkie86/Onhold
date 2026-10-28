@@ -1,5 +1,5 @@
 import { safeRedirect } from "./auth.tsx";
-import { decodeFile, isWorkbook, needsResaving, sheetsSummary, stripCardAttachments } from "./imports.tsx";
+import { canUndo, decodeFile, isWorkbook, needsResaving, sheetsSummary, stripCardAttachments } from "./imports.tsx";
 import { dialable, validateListSearch } from "./crm.tsx";
 import { keyFor, newKey } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
@@ -89,4 +89,12 @@ test("a workbook's sheets are summed up in a sentence", () => {
   ).toBe(
     "Read 2 sheets: UK & Ireland (4 rows), Europe (1 row). Each row's sheet is in the Sheet column, which can go into Region. Left out, as their columns are different: Notes.",
   );
+});
+
+test("only finished imports that created something can be undone", () => {
+  expect(canUndo({ status: "done", created: 3 })).toBe(true);
+  expect(canUndo({ status: "failed", created: 1 })).toBe(true);
+  expect(canUndo({ status: "done", created: 0 })).toBe(false);
+  expect(canUndo({ status: "running", created: 5 })).toBe(false);
+  expect(canUndo({ status: "undone", created: 5 })).toBe(false);
 });

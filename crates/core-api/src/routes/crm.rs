@@ -84,6 +84,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_import))
         .routes(routes!(dry_run_import))
         .routes(routes!(run_import))
+        .routes(routes!(undo_import))
 }
 
 // Talent -------------------------------------------------------------------------------
@@ -824,5 +825,22 @@ async fn run_import(
     Ok((
         StatusCode::ACCEPTED,
         Json(imports::run(&state, &ctx, id, b).await?),
+    ))
+}
+
+/// Take away what a finished import created, in the background: records
+/// changed since, or in use elsewhere, are kept, and what it updated stays.
+/// Follow it at `GET /imports/{id}`.
+#[utoipa::path(post, path = "/imports/{id}/undo", tag = "imports", params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path)),
+    responses((status = 202, body = ImportView), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn undo_import(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<(StatusCode, Json<ImportView>)> {
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(imports::undo(&state, &ctx, id).await?),
     ))
 }

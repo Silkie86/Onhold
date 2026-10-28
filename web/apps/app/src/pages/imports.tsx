@@ -97,11 +97,43 @@ const STATUS: Record<string, string> = {
   running: "Importing",
   done: "Done",
   failed: "Failed",
+  undoing: "Undoing",
+  undone: "Undone",
 };
+
+/** Whether a finished import can be undone: it created something, and is
+ * not being or already undone. */
+export function canUndo(i: Pick<ImportView, "status" | "created">): boolean {
+  return (i.status === "done" || i.status === "failed") && i.created > 0;
+}
 
 export function ImportsPage() {
   const [wizard, setWizard] = useState(false);
-  const imports = useQuery({ queryKey: ["imports"], queryFn: () => ok(api.GET("/api/v1/imports")) });
+  const qc = useQueryClient();
+  const imports = useQuery({
+    queryKey: ["imports"],
+    queryFn: () => ok(api.GET("/api/v1/imports")),
+    // Follow an undo until it ends.
+    refetchInterval: (q) => (q.state.data?.some((i) => i.status === "undoing") ? 2000 : false),
+  });
+  const [undoError, setUndoError] = useState<string | null>(null);
+  const undo = async (i: ImportView) => {
+    const what = `${i.created} ${i.created === 1 ? "record" : "records"}`;
+    if (
+      !window.confirm(
+        `Undo ${i.filename ?? "this import"}? The ${what} it created are removed, except any changed since or now in use. What it updated stays as it is.`,
+      )
+    )
+      return;
+    setUndoError(null);
+    try {
+      await ok(api.POST("/api/v1/imports/{id}/undo", { params: { path: { id: i.id } } }));
+    } catch (e) {
+      setUndoError(e instanceof Error ? e.message : String(e));
+    }
+    void qc.invalidateQueries({ queryKey: ["imports"] });
+    void qc.invalidateQueries({ queryKey: ["list"] });
+  };
   if (wizard) return <ImportWizard onDone={() => setWizard(false)} />;
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4 sm:p-6">
@@ -112,6 +144,7 @@ export function ImportsPage() {
         </Button>
       </div>
       {imports.isPending && <Spinner />}
+      {undoError && <Alert>{undoError}</Alert>}
       {imports.data?.length === 0 && (
         <Card className="flex flex-col items-center gap-3 p-8 text-center">
           <FileUp className="size-8 text-muted-foreground" />
@@ -136,6 +169,9 @@ export function ImportsPage() {
                 <th className="px-3 py-2">Updated</th>
                 <th className="px-3 py-2">Failed</th>
                 <th className="px-3 py-2">When</th>
+                <th className="px-3 py-2">
+                  <span className="sr-only">Undo</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -145,11 +181,24 @@ export function ImportsPage() {
                   <td className="px-3 py-2 capitalize">{i.entity}</td>
                   <td className="px-3 py-2">
                     <Badge>{STATUS[i.status] ?? i.status}</Badge>
+                    {(i.status === "undoing" || i.status === "undone") && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {i.undone} removed{i.kept > 0 ? `, ${i.kept} kept (changed since or in use)` : ""}
+                      </p>
+                    )}
+                    {i.status === "done" && i.error && <p className="mt-1 text-xs text-destructive">{i.error}</p>}
                   </td>
                   <td className="px-3 py-2">{i.created}</td>
                   <td className="px-3 py-2">{i.updated}</td>
                   <td className="px-3 py-2">{i.failed}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{relativeTime(i.created_at)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {canUndo(i) && (
+                      <Button size="sm" variant="ghost" onClick={() => void undo(i)} aria-label={`Undo ${i.filename ?? "import"}`}>
+                        Undo
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
