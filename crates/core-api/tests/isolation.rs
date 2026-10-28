@@ -326,6 +326,8 @@ struct Work {
     task: uuid::Uuid,
     feed: uuid::Uuid,
     push: uuid::Uuid,
+    travel: uuid::Uuid,
+    money_line: uuid::Uuid,
 }
 
 async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
@@ -387,6 +389,20 @@ async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
     .execute(&app.owner)
     .await
     .unwrap();
+    let travel = post(
+        &format!("/api/v1/bookings/{booking}/travel"),
+        json!({ "kind": "flight", "number": "BA 1", "reference": format!("{slug} secret flight"),
+                "starts_at": "2031-06-01T08:00:00Z" }),
+    )
+    .await
+    .id("/id");
+    let money_line = post(
+        &format!("/api/v1/bookings/{booking}/money"),
+        json!({ "direction": "cost", "category": "crew", "description": format!("{slug} secret cost"),
+                "amount": { "minor": 100, "currency": "GBP" } }),
+    )
+    .await
+    .id("/id");
     Work {
         enquiry,
         booking,
@@ -395,6 +411,8 @@ async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
         task,
         feed,
         push,
+        travel,
+        money_line,
     }
 }
 
@@ -709,6 +727,13 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
             "issue_date": "2024-01-01", "total_minor": 1
         }),
         ("POST", "/api/v1/bookings/{id}/invoices") => json!({ "purpose": "full" }),
+        ("POST", "/api/v1/bookings/{id}/travel") | ("PUT", "/api/v1/travel/{id}") => {
+            json!({ "kind": "flight", "starts_at": "2031-06-01T08:00:00Z" })
+        }
+        ("POST", "/api/v1/bookings/{id}/money") | ("PUT", "/api/v1/money-lines/{id}") => json!({
+            "direction": "cost", "category": "crew", "description": "Intruder",
+            "amount": { "minor": 1, "currency": "GBP" }
+        }),
         ("POST", "/api/v1/payments") => json!({ "amount": { "minor": 1, "currency": "GBP" } }),
         ("POST", "/api/v1/payments/{id}/allocations") => json!({ "invoice_id": w.b_money.invoice }),
         ("POST", "/api/v1/payments/{id}/refunds") => json!({ "amount_minor": 1 }),
@@ -738,7 +763,11 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
 }
 
 fn fill_path(path: &str, w: &World) -> String {
-    let object = if path.contains("/inbox/threads/") {
+    let object = if path.starts_with("/api/v1/travel/") {
+        w.b_work.travel
+    } else if path.starts_with("/api/v1/money-lines/") {
+        w.b_work.money_line
+    } else if path.contains("/inbox/threads/") {
         w.b_inbox.thread
     } else if path.contains("/inbox/mailboxes/") {
         w.b_inbox.mailbox
