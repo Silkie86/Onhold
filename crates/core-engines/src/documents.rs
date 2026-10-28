@@ -315,20 +315,40 @@ const CONFIRMATION_BODY: &str = concat!(
 <p>{{ issuer.name }}{% if issuer.email %} · {{ issuer.email }}{% endif %}{% if issuer.phone %} · {{ issuer.phone }}{% endif %}</p>"#
 );
 
-/// Travel and hotels, shared by the advance sheet and the day sheet.
+/// Travel and hotels, shared by the advance sheet and the day sheet. Booking
+/// references go only where `$refs` is true: they are enough to change a
+/// booking, so they stay off pages that go to buyers and venues.
 macro_rules! travel_part {
-    () => {
-        r#"{% if travel %}<h2>Travel</h2>
-<table><tr><th>When</th><th>What</th><th>From</th><th>To</th><th>Reference</th></tr>
-{% for t in travel %}{% if t.kind != "hotel" %}<tr><td>{{ t.starts_at | datetime("%a %-d %b, %H:%M", t.start_tz) }}{% if t.ends_at %} – {{ t.ends_at | datetime("%H:%M", t.end_tz) }}{% endif %}</td><td>{{ t.label }}{% if t.travellers %}<br><span class="note">{{ t.travellers | join(", ") }}</span>{% endif %}</td><td>{{ t.from_code or "" }}{% if t.from_code and t.from_place %} · {% endif %}{{ t.from_place or "" }}</td><td>{{ t.to_code or "" }}{% if t.to_code and t.to_place %} · {% endif %}{{ t.to_place or "" }}</td><td>{{ t.reference or "" }}</td></tr>{% endif %}{% endfor %}
-</table>
-{% for t in travel %}{% if t.kind == "hotel" %}<h2>Hotel</h2>
+    ($ref_head:literal, $ref_cell:literal, $hotel_ref:literal) => {
+        concat!(
+            r#"{% set journeys = travel | rejectattr("kind", "equalto", "hotel") | list %}{% if journeys %}<h2>Travel</h2>
+<table><tr><th>When</th><th>What</th><th>From</th><th>To</th>"#,
+            $ref_head,
+            r#"</tr>
+{% for t in journeys %}<tr><td>{{ t.starts_at | datetime("%a %-d %b, %H:%M", t.start_tz) }}{% if t.ends_at %} – {% if (t.ends_at | datetime("%F", t.end_tz)) != (t.starts_at | datetime("%F", t.start_tz)) %}{{ t.ends_at | datetime("%a %-d %b, %H:%M", t.end_tz) }}{% else %}{{ t.ends_at | datetime("%H:%M", t.end_tz) }}{% endif %}{% endif %}</td><td>{{ t.label }}{% if t.status == "planned" %} <strong>(not booked yet)</strong>{% endif %}{% if t.travellers %}<br><span class="note">{{ t.travellers | join(", ") }}</span>{% endif %}</td><td>{{ t.from_code or "" }}{% if t.from_code and t.from_place %} · {% endif %}{{ t.from_place or "" }}</td><td>{{ t.to_code or "" }}{% if t.to_code and t.to_place %} · {% endif %}{{ t.to_place or "" }}</td>"#,
+            $ref_cell,
+            r#"</tr>{% endfor %}
+</table>{% endif %}
+{% for t in travel %}{% if t.kind == "hotel" %}<h2>Hotel{% if t.status == "planned" %} (not booked yet){% endif %}</h2>
 <table><tr><th>Hotel</th><td>{{ t.carrier or "To be confirmed" }}{% if t.to_place %}<br>{{ t.to_place }}{% endif %}</td></tr>
 <tr><th>Check-in</th><td>{{ t.starts_at | datetime("%a %-d %b, %H:%M", t.start_tz) }}</td></tr>
 {% if t.ends_at %}<tr><th>Check-out</th><td>{{ t.ends_at | datetime("%a %-d %b, %H:%M", t.end_tz) }}</td></tr>{% endif %}
-{% if t.reference %}<tr><th>Reference</th><td>{{ t.reference }}</td></tr>{% endif %}
+"#,
+            $hotel_ref,
+            r#"
 {% if t.travellers %}<tr><th>Guests</th><td>{{ t.travellers | join(", ") }}</td></tr>{% endif %}
-{% if t.notes %}<tr><th>Notes</th><td class="pre">{{ t.notes }}</td></tr>{% endif %}</table>{% endif %}{% endfor %}{% endif %}"#
+{% if t.notes %}<tr><th>Notes</th><td class="pre">{{ t.notes }}</td></tr>{% endif %}</table>{% endif %}{% endfor %}"#
+        )
+    };
+    (private) => {
+        travel_part!(
+            "<th>Reference</th>",
+            r#"<td>{{ t.reference or "" }}</td>"#,
+            r#"{% if t.reference %}<tr><th>Reference</th><td>{{ t.reference }}</td></tr>{% endif %}"#
+        )
+    };
+    (shared) => {
+        travel_part!("", "", "")
     };
 }
 
@@ -351,7 +371,7 @@ const ADVANCE_SHEET_BODY: &str = concat!(
 </table>
 {% if talent.members %}<h2>Party</h2><table><tr><th>Name</th><th>Role</th></tr>{% for m in talent.members %}<tr><td>{{ m.name }}</td><td>{{ m.role }}</td></tr>{% endfor %}</table>{% endif %}
 "#,
-    travel_part!(),
+    travel_part!(shared),
     r#"
 <h2>Notes</h2>
 <p class="pre">{{ booking.notes or "Parking, load-in access, hospitality and anything else the artist should know." }}</p>"#
@@ -364,7 +384,7 @@ const DAY_SHEET_BODY: &str = concat!(
 <div class="meta">
   <div><span class="label">Day</span>{{ booking.starts_at | date(none, booking.timezone) }}</div>
   <div><span class="label">Engagement</span>{{ booking.title }}</div>
-  <div><span class="label">Venue</span>{{ booking.venue or "To be confirmed" }}{% if organisation.address %}<br>{{ organisation.address | address }}{% endif %}</div>
+  <div><span class="label">Venue</span>{{ booking.venue or "To be confirmed" }}{% if booking.venue_address %}<br>{{ booking.venue_address | address }}{% endif %}</div>
   <div><span class="label">Who</span>{{ booking.talent_names or talent.name }}</div>
 </div>
 <h2>Schedule</h2>
@@ -372,7 +392,7 @@ const DAY_SHEET_BODY: &str = concat!(
 {% for s in booking.schedule %}<tr><td>{{ s.at | datetime("%H:%M", booking.timezone) }}</td><td>{{ s.label }}</td></tr>{% else %}<tr><td>{% if not booking.all_day %}{{ booking.starts_at | datetime("%H:%M", booking.timezone) }}{% endif %}</td><td>Start</td></tr><tr><td>{% if not booking.all_day %}{{ booking.ends_at | datetime("%H:%M", booking.timezone) }}{% endif %}</td><td>Finish</td></tr>{% endfor %}
 </table>
 "#,
-    travel_part!(),
+    travel_part!(private),
     r#"
 <h2>Contacts</h2>
 <table>
@@ -572,7 +592,7 @@ mod tests {
                   "to_code": "BCN", "to_place": null, "starts_at": "2031-06-14T06:10:00Z", "start_tz": "Europe/London",
                   "ends_at": "2031-06-14T08:25:00Z", "end_tz": "Europe/Madrid", "reference": "X7YQ2P",
                   "travellers": ["Ada", "Grace"], "notes": null },
-                { "kind": "hotel", "label": "Hotel", "carrier": "Hotel Arts", "to_place": "Carrer de la Marina 19",
+                { "kind": "hotel", "status": "planned", "label": "Hotel", "carrier": "Hotel Arts", "to_place": "Carrer de la Marina 19",
                   "starts_at": "2031-06-14T13:00:00Z", "start_tz": "Europe/Madrid", "ends_at": "2031-06-15T10:00:00Z",
                   "end_tz": "Europe/Madrid", "reference": null, "travellers": [], "notes": "Late check-out agreed" }
             ],
@@ -626,6 +646,20 @@ mod tests {
         assert!(day.body.contains("Flight · BA 1442"));
         assert!(day.body.contains("Hotel Arts"));
         assert!(day.body.contains("Ada, Grace"));
+        assert!(day.body.contains("X7YQ2P"));
+        assert!(day.body.contains("Hotel (not booked yet)"));
+        // References are enough to change a booking: not on pages for the buyer.
+        let advance = render(
+            Kind::Document,
+            None,
+            ADVANCE_SHEET_BODY,
+            BTreeMap::new(),
+            &ctx,
+            &opts,
+        )
+        .expect("renders");
+        assert!(advance.body.contains("Flight · BA 1442"));
+        assert!(!advance.body.contains("X7YQ2P"));
         let invoice = render(
             Kind::Document,
             None,

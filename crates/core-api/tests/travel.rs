@@ -48,7 +48,7 @@ async fn gig(app: &TestApp, who: &Client) -> Uuid {
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn flights_and_hotels_sit_on_a_booking(pool: PgPool) {
     let app = TestApp::new(pool).await;
-    let (_, owner) = app.workspace_with_owner("acme").await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
     let booking = gig(&app, &owner).await;
 
     let flight = post(
@@ -161,9 +161,10 @@ async fn flights_and_hotels_sit_on_a_booking(pool: PgPool) {
         .ok();
     let list = get(&app, &owner, &format!("/api/v1/bookings/{booking}/travel")).await;
     assert_eq!(list.body.as_array().unwrap().len(), 1);
-    let ws = app.workspace_with_owner("other").await.0;
     let actions = app.audit_actions(ws).await;
-    assert!(!actions.contains(&"travel.created".to_owned()));
+    for a in ["travel.created", "travel.updated", "travel.deleted"] {
+        assert!(actions.contains(&a.to_owned()), "{a}");
+    }
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -278,4 +279,34 @@ async fn the_money_check_weighs_costs_against_the_fee(pool: PgPool) {
     for a in ["travel.created", "money_line.created", "money_line.updated"] {
         assert!(actions.contains(&a.to_owned()), "{a}");
     }
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_fee_with_no_talent_still_counts(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let booking = post(
+        &app,
+        &owner,
+        "/api/v1/bookings",
+        json!({ "title": "Corporate", "status": "pending", "timezone": "Europe/London",
+                "starts_at": "2031-06-14T19:00:00Z", "ends_at": "2031-06-14T22:00:00Z",
+                "fee": { "minor": 200_000, "currency": "GBP" } }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let m = get(&app, &owner, &format!("/api/v1/bookings/{booking}/money")).await;
+    assert_eq!(m.body["total_income"]["minor"], 200_000, "{}", m.body);
+    assert_eq!(m.body["net"]["minor"], 200_000);
+    // Only flight numbers take the airline-code spacing.
+    let bus = post(
+        &app,
+        &owner,
+        &format!("/api/v1/bookings/{booking}/travel"),
+        json!({ "kind": "bus", "number": "X90", "starts_at": "2031-06-14T08:00:00Z" }),
+    )
+    .await
+    .ok();
+    assert_eq!(bus.body["number"], "X90");
 }

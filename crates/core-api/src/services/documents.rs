@@ -511,6 +511,15 @@ pub(crate) async fn booking_context(
         }),
         None => None,
     };
+    // Where the venue is, for the people going there; its own organisation.
+    if let Some(id) = b.venue_id {
+        let address = super::organisations::load(tx, id)
+            .await?
+            .and_then(|o| o.addresses.first().cloned());
+        if let Some(o) = booking.as_object_mut() {
+            o.insert("venue_address".into(), json!(address));
+        }
+    }
     let contact = match b.contact_id {
         Some(id) => super::contacts::load(tx, id)
             .await?
@@ -534,6 +543,7 @@ pub(crate) async fn booking_context(
         .map(|t| {
             json!({
                 "kind": t.kind,
+                "status": t.status,
                 "label": super::travel::travel_title(&t),
                 "carrier": t.carrier,
                 "number": t.number,

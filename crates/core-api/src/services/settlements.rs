@@ -127,7 +127,7 @@ pub async fn get(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<SettlementV
 pub(crate) async fn shares(
     tx: &mut Tx,
     booking: &super::bookings::BookingView,
-) -> ApiResult<(String, Vec<(Uuid, i64)>)> {
+) -> ApiResult<(String, Vec<(Uuid, i64)>, i64)> {
     let quotes = core_db::quotes::list(
         tx,
         Some(booking.id),
@@ -154,6 +154,7 @@ pub(crate) async fn shares(
             None => (String::new(), vec![]),
         },
     };
+    let total = lines.iter().map(|(_, m)| *m).sum();
     let mut out: Vec<(Uuid, i64)> = talent.iter().map(|t| (*t, 0)).collect();
     let mut unassigned = 0i64;
     for (t, amount) in lines {
@@ -172,7 +173,7 @@ pub(crate) async fn shares(
             slot.1 += each + if i == 0 { rest } else { 0 };
         }
     }
-    Ok((currency, out))
+    Ok((currency, out, total))
 }
 
 /// Drafts a settlement for each talent on a booking that has none yet.
@@ -186,7 +187,7 @@ pub async fn create_for_booking(
     let booking = super::bookings::load(&mut tx, booking_id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    let (currency, shares) = shares(&mut tx, &booking).await?;
+    let (currency, shares, _) = shares(&mut tx, &booking).await?;
     if currency.is_empty() || shares.is_empty() {
         return Err(ApiError::conflict(
             "booking_unpriced",

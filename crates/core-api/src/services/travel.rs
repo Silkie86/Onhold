@@ -231,9 +231,16 @@ fn check_travel(input: TravelInput, booking_tz: &str) -> ApiResult<CheckedTravel
         check.issue("paid_by", "use us or buyer");
     }
     let carrier = check.optional("carrier", input.carrier.as_deref(), 100);
+    // Only flight numbers follow the airline-code pattern; a bus "X90" stays as typed.
     let number = check
         .optional("number", input.number.as_deref(), 20)
-        .map(|n| touring::transport_number(&n));
+        .map(|n| {
+            if kind == "flight" {
+                touring::transport_number(&n)
+            } else {
+                n
+            }
+        });
     let reference = check.optional("reference", input.reference.as_deref(), 50);
     let from_place = check.optional("from_place", input.from_place.as_deref(), 200);
     let to_place = check.optional("to_place", input.to_place.as_deref(), 200);
@@ -267,7 +274,13 @@ fn check_travel(input: TravelInput, booking_tz: &str) -> ApiResult<CheckedTravel
         }
     }
     let mut travellers: Vec<String> = Vec::new();
-    for t in &input.travellers {
+    if input.travellers.len() > MAX_TRAVELLERS * 4 {
+        check.issue(
+            "travellers",
+            format!("list at most {MAX_TRAVELLERS} travellers"),
+        );
+    }
+    for t in input.travellers.iter().take(MAX_TRAVELLERS * 4) {
         let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
         if t.is_empty() || travellers.contains(&t) {
             continue;
@@ -788,7 +801,8 @@ pub(crate) async fn check_booking(
     ctx: &Ctx,
     b: &BookingView,
 ) -> ApiResult<MoneyCheck> {
-    let (fee_currency, shares) = super::settlements::shares(tx, b).await?;
+    // The whole fee counts even when no talent is on the booking to share it.
+    let (fee_currency, shares, fee_total) = super::settlements::shares(tx, b).await?;
     let currency = if fee_currency.is_empty() {
         super::finance::base_currency(tx, ctx).await?
     } else {
@@ -811,7 +825,6 @@ pub(crate) async fn check_booking(
 
     let mut income = Vec::new();
     let mut commission = Vec::new();
-    let fee_total: i64 = shares.iter().map(|(_, m)| *m).sum();
     if !fee_currency.is_empty() {
         income.push(MoneyItem {
             category: "fee".into(),
@@ -826,7 +839,8 @@ pub(crate) async fn check_booking(
         // Commission is taken from each talent's share of the fee, at their
         // rate; buyouts and other income are left out of it.
         for (talent_id, gross) in &shares {
-            let Some(t) = core_db::talent::get(tx, *talent_id).await? else {
+            // Talent deleted since the booking was made still take their commission.
+            let Some(t) = core_db::talent::commission(tx, *talent_id).await? else {
                 continue;
             };
             let bps = t.commission_bps.unwrap_or(0).clamp(0, 10_000);

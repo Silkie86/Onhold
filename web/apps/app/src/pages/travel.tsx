@@ -161,6 +161,8 @@ export function BookingTravelPanel({ booking }: { booking: Booking }) {
       {error && <Alert>{error}</Alert>}
       {travel.isPending && !local ? (
         <Spinner />
+      ) : travel.isError && !local ? (
+        <p className="text-sm text-muted-foreground">Travel could not be loaded{navigator.onLine ? "" : ": it is not saved on this device yet"}.</p>
       ) : items.length === 0 ? (
         <p className="text-sm text-muted-foreground">No flights, trains or hotels yet.</p>
       ) : (
@@ -251,7 +253,10 @@ function TravelDialog({
 
   const save = async () => {
     setError(null);
-    const startsAt = fromZonedInput(start, startTz);
+    // A blank zone means the booking's, and an arrival's means the departure's, as on the server.
+    const fromZone = startTz.trim() || bookingZone;
+    const toZone = endTz.trim() || fromZone;
+    const startsAt = fromZonedInput(start, fromZone);
     if (!startsAt) {
       setError(hotel ? "Give the check-in time." : "Give the departure time.");
       return;
@@ -262,14 +267,14 @@ function TravelDialog({
       carrier: carrier || null,
       number: moving ? number || null : null,
       reference: reference || null,
-      from_code: moving ? fromCode || null : null,
+      from_code: kind === "flight" ? fromCode || null : null,
       from_place: moving ? fromPlace || null : null,
-      to_code: moving ? toCode || null : null,
+      to_code: kind === "flight" ? toCode || null : null,
       to_place: toPlace || null,
       starts_at: startsAt,
-      start_tz: startTz,
-      ends_at: end ? fromZonedInput(end, endTz) : null,
-      end_tz: end ? endTz : null,
+      start_tz: fromZone,
+      ends_at: end ? fromZonedInput(end, toZone) : null,
+      end_tz: end ? toZone : null,
       travellers: travellers
         .split(",")
         .map((t) => t.trim())
@@ -558,6 +563,13 @@ export function MoneySummary({ check: m, onRemove }: { check: MoneyCheck; onRemo
             })}
           </div>
         ))}
+        {m.lines
+          .filter((l) => ![...m.income, ...m.costs].some((i) => i.source_id === l.id))
+          .map((l) => (
+            <div key={l.id} className="text-muted-foreground">
+              {row(l.description, l.amount, { minus: l.direction === "cost", note: "Left out: no exchange rate for this currency", removable: l })}
+            </div>
+          ))}
         <div className={cn(loss && "text-destructive")}>{row("Left after costs and commission", m.net, { strong: true })}</div>
       </div>
     </div>
@@ -583,12 +595,15 @@ function MoneyLineDialog({
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState<Money | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const save = async () => {
+    if (busy) return;
     setError(null);
     if (!amount) {
       setError("Give the amount.");
       return;
     }
+    setBusy(true);
     try {
       await ok(
         api.POST("/api/v1/bookings/{id}/money", {
@@ -599,6 +614,8 @@ function MoneyLineDialog({
       onSaved();
     } catch (e) {
       setError(failure(e));
+    } finally {
+      setBusy(false);
     }
   };
   return (
@@ -635,7 +652,9 @@ function MoneyLineDialog({
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit">Add</Button>
+          <Button type="submit" disabled={busy}>
+            {busy && <Spinner />} Add
+          </Button>
         </div>
       </form>
     </Dialog>
