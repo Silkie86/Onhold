@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO calendar_push_events (id, workspace_id, push_id, booking_id, remote_id, content_hash)\n           SELECT $1, app_workspace_id(), $2, $3, $4, $5\n           WHERE EXISTS (SELECT 1 FROM calendar_pushes\n                         WHERE workspace_id = app_workspace_id() AND id = $2 AND disconnected_at IS NULL)\n           ON CONFLICT (push_id, booking_id)\n           DO UPDATE SET remote_id = EXCLUDED.remote_id, content_hash = EXCLUDED.content_hash,\n                         written_at = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b7ce81ba59eec41fa1305a69f9bddebde937863e8121ae9f66306b8668acaf7f"
+}

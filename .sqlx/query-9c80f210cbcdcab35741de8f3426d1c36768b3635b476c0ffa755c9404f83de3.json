@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE calendar_pushes SET secret = '\\x'::bytea, revoke_at = NULL\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9c80f210cbcdcab35741de8f3426d1c36768b3635b476c0ffa755c9404f83de3"
+}

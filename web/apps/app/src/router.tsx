@@ -132,6 +132,13 @@ const pipelines = createRoute({
 const calendarSettings = createRoute({
   getParentRoute: () => app,
   path: "/settings/calendar",
+  // Google and Microsoft send the member back here with these.
+  validateSearch: (s: Record<string, unknown>): { code?: string; state?: string; error?: string; error_description?: string } => ({
+    code: str(s.code),
+    state: str(s.state),
+    error: str(s.error),
+    error_description: str(s.error_description),
+  }),
   component: lazyRouteComponent(() => import("./pages/calendar-settings.tsx"), "CalendarSettingsPage"),
 });
 

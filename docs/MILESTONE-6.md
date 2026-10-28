@@ -6,7 +6,8 @@ M6 comes in several PRs. This page grows with each.
 
 1. **Email inbox**: Gmail, Outlook and Microsoft 365, and any other mailbox by IMAP and SMTP.
 2. **Own-domain sending**: verified sender domains (SPF, DKIM), with automatic DNS setup through Domain Connect and a guided manual fallback.
-3. **Talent's own calendars**: busy times read from the calendars talent connect through a link (Google, Microsoft or a private iCal link), counted by clash checks. Pushing bookings into Google and Microsoft calendars follows in its own PR.
+3. **Talent's own calendars**: busy times read from the calendars talent connect through a link (Google, Microsoft or a private iCal link), counted by clash checks.
+3b. **Bookings in members' own calendars**: a member connects Google Calendar or Outlook and OnHold keeps the bookings in a calendar of its own there.
 4. Xero and QuickBooks, including importing past invoices.
 5. SMS, WhatsApp and follow-up rules.
 
@@ -89,9 +90,34 @@ Runs end to end in `crates/core-worker/tests/talent_calendars.rs`, against stand
 
 ### Not yet
 
-- Bookings and holds written into members' and talent's Google and Microsoft calendars (the next M6 PR).
 - Google's `calendar.freebusy` is a sensitive scope: until Google verifies the app (no security assessment needed), people outside the operator's own domain see an "unverified app" warning.
 - Push notifications from Google and Microsoft instead of reading on a timer.
+
+## Bookings in members' own calendars
+
+Runs end to end in `crates/core-worker/tests/calendar_push.rs`, against stand-ins for Google (OAuth and the Calendar API) and Microsoft (OAuth and Graph):
+
+- The owner connects Google Calendar from Settings → Calendar, asking only for `calendar.app.created` (OnHold may make calendars and change only those). OnHold makes "OnHold · <workspace>" in the account and fills it: holds and pending bookings tentative, confirmed ones busy, with the talent, venue and a link back, never the fee. Bookings from a month back to two years ahead go in; older ones stay as they were.
+- A booking that changes is written straight away; one cancelled or deleted is removed. A daily comparison writes nothing when nothing changed. If the owner deletes OnHold's calendar in Google, it is made again and filled.
+- An agent connects Outlook for one talent only ("OnHold · <workspace> · <talent>"). Each member sees and manages only their own connections; another workspace sees nothing.
+- A grant that also carries the mailbox is refused. An answer lost after Google added an event does not lead to a second copy; an event the owner already deleted counts as removed (Google answers 410). If OnHold loses track of its Outlook calendar, the one there is taken over rather than refused as a duplicate name.
+- A withdrawn grant turns the connection "needs connecting again"; connecting again revives it and catches up. A member leaving has their calendars removed from their accounts and the grants forgotten; disconnecting does the same, and asks Google to forget the grant unless another connection still uses the account.
+
+### Built
+
+- **Settings → Calendar → Your own calendar.** Connect Google Calendar or Outlook, for every booking or one talent's (up to 5 per member); each shows its account, whether it is working, when it was last brought up to date, with "update now", "connect again" and "disconnect".
+- **Writing.** The event dispatcher queues a write of the one booking for every connected calendar when a booking changes; every connection is also compared in full each day, up to 200 calls a run with the rest following 30 seconds later. What was written is remembered as a hash, so unchanged bookings cost no calls. One write runs at a time per connection, holding a lease it renews at each step and checks before recording anything, so a write that loses its connection (disconnected, connected again) stops; a change that arrives meanwhile is picked up straight after. Failures wait 5 minutes doubling to 6 hours; Google's rate limits (429, or 403 with a rate reason) wait as told.
+- **No doubles.** Each booking's event has an id derived from the connection and booking (Google) or a transaction id (Outlook), so trying again after a lost answer writes over the event rather than adding another. An event already deleted in the calendar (404, or Google's 410) counts as removed. If Outlook already has a calendar of OnHold's name (a clean-up that did not finish), it is taken over. A booking missing from a full read is looked up on its own before its event is removed.
+- **Disconnecting.** The worker removes OnHold's calendar, then forgets the grant and revokes it unless another connection uses the account; while the provider is unavailable it tries again every 10 minutes for up to 3 days, keeping the grant until then.
+- **Only what its owner may see.** A connection writes only while its member can read bookings; a member who leaves or loses that permission has theirs disconnected.
+- **Small.** OnHold keeps one small row per written booking (the event's id and a hash), removed with the event, or once the booking is more than a month past (its event stays in the calendar as a record); nothing is kept on devices. A disconnected calendar keeps no grant once cleaned up.
+- **Configuration.** The same Google and Microsoft apps as the inbox, with the redirect URI `<PUBLIC_BASE_URL>/settings/calendar` added. Microsoft has no narrower grant than `Calendars.ReadWrite`; OnHold writes only to the calendar it made.
+- Talent who want their bookings in their own calendar subscribe to the talent's iCal link (Settings → Calendar → Calendar links).
+
+### Not yet
+
+- Writing into a talent's own calendar through the connect link (the link reads busy times only).
+- `calendar.app.created` is a sensitive scope: until Google verifies the app, people outside the operator's own domain see an "unverified app" warning.
 
 ## Email inbox: not yet
 

@@ -1,0 +1,208 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT p.id, p.user_id AS \"user_id: UserId\", p.talent_id, t.name AS \"talent_name?\",\n                      p.provider, p.account, p.secret, p.remote_calendar, p.status, p.failures,\n                      p.last_error, p.last_error_at, p.last_synced_at, p.connected_at,\n                      p.disconnected_at, p.version\n               FROM calendar_pushes p LEFT JOIN talent t ON t.id = p.talent_id\n               WHERE p.workspace_id = app_workspace_id() AND p.id = $1 FOR UPDATE OF p",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "talent_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "talent_name?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "provider",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "account",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "account"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "secret",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "secret"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "remote_calendar",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "remote_calendar"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "failures",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "failures"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "last_error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "last_error"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "last_error_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "last_error_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "last_synced_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "last_synced_at"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "connected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "connected_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "disconnected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "disconnected_at"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "cdfc37b724f62b8335e0942635418459fd5a45a169930cb3b364ed31765e0fe5"
+}

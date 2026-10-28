@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE calendar_pushes SET sync_lease_until = NULL, sync_token = NULL\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "abddd3940a93dda7f8af0efc03e55b48eaf1e7ee527b0b40ddaf384cfb2242f3"
+}

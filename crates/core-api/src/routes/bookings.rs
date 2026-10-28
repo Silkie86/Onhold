@@ -22,6 +22,10 @@ use crate::services::bookings::{
     ClashQuery, ClashReport, NewBooking, StatusRequest,
 };
 use crate::services::calendar_feeds::{self, CreatedFeed, FeedView, NewFeed};
+use crate::services::calendar_push::{
+    self, CalendarPushStart, CalendarPushView, CalendarPushes, FinishCalendarPush,
+    StartCalendarPush,
+};
 use crate::services::crm::ListQuery;
 use crate::services::enquiries::{
     self, EnquiryFilter, EnquiryPage, EnquiryPatch, EnquiryView, NewEnquiry,
@@ -47,6 +51,11 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(calendar))
         .routes(routes!(list_feeds, create_feed))
         .routes(routes!(revoke_feed))
+        .routes(routes!(list_pushes))
+        .routes(routes!(start_push))
+        .routes(routes!(finish_push))
+        .routes(routes!(sync_push))
+        .routes(routes!(disconnect_push))
         .routes(routes!(list_availability, create_availability))
         .routes(routes!(update_availability, delete_availability))
         .routes(routes!(list_quotes))
@@ -361,6 +370,71 @@ async fn revoke_feed(
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     calendar_feeds::revoke(&state, &ctx, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// Bookings in your own calendar ----------------------------------------------------------
+
+/// Your Google or Microsoft calendars that bookings are written into.
+#[utoipa::path(get, path = "/calendar/pushes", tag = "calendar", params(WorkspaceHeader),
+    responses((status = 200, body = CalendarPushes), (status = 403, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn list_pushes(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<CalendarPushes>> {
+    Ok(Json(calendar_push::list(&state, &ctx).await?))
+}
+
+/// Start connecting your Google or Microsoft calendar: OnHold makes a
+/// calendar of its own there and keeps the bookings in it.
+#[utoipa::path(post, path = "/calendar/pushes/start", tag = "calendar", params(WorkspaceHeader),
+    request_body = StartCalendarPush,
+    responses((status = 200, body = CalendarPushStart), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody), (status = 409, body = ErrorBody)),
+    security(("session" = [])))]
+async fn start_push(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Json(b): Json<StartCalendarPush>,
+) -> ApiResult<Json<CalendarPushStart>> {
+    Ok(Json(calendar_push::start(&state, &ctx, b).await?))
+}
+
+/// Finish connecting with what the provider sent back.
+#[utoipa::path(post, path = "/calendar/pushes/finish", tag = "calendar", params(WorkspaceHeader),
+    request_body = FinishCalendarPush,
+    responses((status = 200, body = CalendarPushView), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody), (status = 409, body = ErrorBody), (status = 502, body = ErrorBody)),
+    security(("session" = [])))]
+async fn finish_push(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Json(b): Json<FinishCalendarPush>,
+) -> ApiResult<Json<CalendarPushView>> {
+    Ok(Json(calendar_push::finish(&state, &ctx, b).await?))
+}
+
+/// Write the bookings into the calendar now.
+#[utoipa::path(post, path = "/calendar/pushes/{id}/sync", tag = "calendar", params(WorkspaceHeader, ("id" = Uuid, Path)),
+    responses((status = 200, body = CalendarPushView), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
+    security(("session" = [])))]
+async fn sync_push(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<CalendarPushView>> {
+    Ok(Json(calendar_push::sync_now(&state, &ctx, id).await?))
+}
+
+/// Stop writing bookings, and remove OnHold's calendar from the account.
+#[utoipa::path(delete, path = "/calendar/pushes/{id}", tag = "calendar", params(WorkspaceHeader, ("id" = Uuid, Path)),
+    responses((status = 204), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
+    security(("session" = [])))]
+async fn disconnect_push(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    calendar_push::disconnect(&state, &ctx, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

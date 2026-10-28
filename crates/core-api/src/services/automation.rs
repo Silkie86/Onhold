@@ -754,6 +754,16 @@ pub async fn dispatch_event(
         }
     }
 
+    // Bookings written into members' own calendars.
+    super::calendar_push::booking_changed(
+        &mut tx,
+        workspace,
+        &event.topic,
+        &event.payload,
+        event.id,
+    )
+    .await?;
+
     let rules = if rules_wanted(&event) {
         core_db::rules::for_event(&mut tx, &event.topic).await?
     } else {

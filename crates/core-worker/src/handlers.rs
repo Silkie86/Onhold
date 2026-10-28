@@ -9,8 +9,8 @@ use core_api::services::automation::{
 use core_api::services::bookings::{self, JOB_COMPLETE, JOB_EXPIRE_HOLD};
 use core_api::services::quotes::{self, JOB_EXPIRE as JOB_EXPIRE_QUOTE};
 use core_api::services::{
-    documents, files, imports, inbox, integrations, invoices, mail, sender_domains, stripe,
-    talent_calendars, webhooks,
+    calendar_push, documents, files, imports, inbox, integrations, invoices, mail, sender_domains,
+    stripe, talent_calendars, webhooks,
 };
 use core_db::jobs::{Claimed, LogLine};
 use core_domain::WorkspaceId;
@@ -237,6 +237,22 @@ impl Worker {
             talent_calendars::JOB_REVOKE => {
                 let id = uuid_field(&job.payload, "calendar_id")?;
                 let outcome = talent_calendars::revoke(&self.app, workspace(job)?, id).await?;
+                note(log, outcome);
+                Ok(())
+            }
+            calendar_push::JOB_WRITE => {
+                let id = uuid_field(&job.payload, "push_id")?;
+                let booking = match job.payload.get("booking_id") {
+                    Some(_) => Some(uuid_field(&job.payload, "booking_id")?),
+                    None => None,
+                };
+                let outcome = calendar_push::write(&self.app, workspace(job)?, id, booking).await?;
+                note(log, outcome.to_string());
+                Ok(())
+            }
+            calendar_push::JOB_REVOKE => {
+                let id = uuid_field(&job.payload, "push_id")?;
+                let outcome = calendar_push::revoke(&self.app, workspace(job)?, id).await?;
                 note(log, outcome);
                 Ok(())
             }

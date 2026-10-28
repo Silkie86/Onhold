@@ -325,6 +325,7 @@ struct Work {
     quote: uuid::Uuid,
     task: uuid::Uuid,
     feed: uuid::Uuid,
+    push: uuid::Uuid,
 }
 
 async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
@@ -372,6 +373,20 @@ async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
     )
     .await
     .id("/feed/id");
+    // A member's calendar that bookings are written into, as connecting
+    // would leave it.
+    let push = core_domain::ids::new_id();
+    sqlx::query(
+        "INSERT INTO calendar_pushes (id, workspace_id, user_id, provider, account, secret, remote_calendar)
+         SELECT $1, workspace_id, user_id, 'google', $2, '\\x00', 'cal' FROM memberships
+         WHERE workspace_id = (SELECT workspace_id FROM bookings WHERE id = $3) AND role = 'owner' LIMIT 1",
+    )
+    .bind(push)
+    .bind(format!("{slug}.push.test"))
+    .bind(booking)
+    .execute(&app.owner)
+    .await
+    .unwrap();
     Work {
         enquiry,
         booking,
@@ -379,6 +394,7 @@ async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
         quote,
         task,
         feed,
+        push,
     }
 }
 
@@ -579,6 +595,8 @@ async fn world(app: &TestApp) -> World {
             b_work.quote.to_string(),
             b_work.task.to_string(),
             b_work.feed.to_string(),
+            b_work.push.to_string(),
+            "bravo.push.test".into(),
             b_money.tax_code.to_string(),
             b_money.invoice.to_string(),
             b_money.payment.to_string(),
@@ -675,6 +693,8 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
             json!({ "starts_at": "2031-08-01T00:00:00Z", "ends_at": "2031-08-02T00:00:00Z" })
         }
         ("POST", "/api/v1/calendar/feeds") => json!({ "name": "Intruder" }),
+        ("POST", "/api/v1/calendar/pushes/start") => json!({ "provider": "google" }),
+        ("POST", "/api/v1/calendar/pushes/finish") => json!({ "code": "x", "state": "x" }),
         ("POST", "/api/v1/quotes/{id}/send" | "/api/v1/invoices/{id}/send") => {
             json!({ "to": "intruder@alpha.test" })
         }
@@ -750,6 +770,8 @@ fn fill_path(path: &str, w: &World) -> String {
         w.b_money.pdf_import
     } else if path.contains("/calendar/feeds/") {
         w.b_work.feed
+    } else if path.contains("/calendar/pushes/") {
+        w.b_work.push
     } else if path.contains("/talent/") {
         w.b_crm.talent
     } else if path.contains("/organisations/") {
