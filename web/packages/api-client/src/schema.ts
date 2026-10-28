@@ -5207,7 +5207,7 @@ export interface components {
         /** @description One tick box or choice. */
         Choice: {
             /** @description A fuller explanation of what it lets them do, behind an info button. */
-            details?: string | null;
+            details: string;
             hint?: string | null;
             key: string;
             label: string;

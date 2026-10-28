@@ -29,7 +29,7 @@ const FEATURES: &[Feature] = &[
         key: "bookings",
         label: "Take enquiries, hold dates and confirm bookings",
         hint: None,
-        details: "Take enquiries by email, a web form or by hand and move them from first contact to confirmed. Put dates on hold (first, second and so on) so nothing is double-booked, get warned about clashes, and keep each booking's times, fee, venue, contacts, travel and notes in one place, with tasks and reminders.",
+        details: "Take enquiries from email or add them by hand, and move them from first contact to confirmed. Put dates on hold (first, second and so on) so nothing is double-booked, get warned about clashes, and keep each booking's times, fee, venue, contacts, travel and notes in one place, with tasks and reminders.",
         effect: Effect::Module("bookings"),
     },
     Feature {
@@ -50,7 +50,7 @@ const FEATURES: &[Feature] = &[
         key: "invoicing",
         label: "Send quotes and invoices, and get paid",
         hint: Some("Card payments and reports included"),
-        details: "Send quotes that turn into bookings when accepted, raise invoices with VAT, take card payments online, record what's been paid and chase what's late. Reports show what you're owed and earned by month, client and talent, and your books can sync to Xero or QuickBooks.",
+        details: "Send quotes that turn into bookings when accepted, raise invoices with VAT, take card payments online, record what's been paid and see what's late. Reports show what you're owed and earned by month, client and talent, and your books can sync to Xero or QuickBooks.",
         effect: Effect::Module("finance"),
     },
     Feature {
@@ -64,7 +64,7 @@ const FEATURES: &[Feature] = &[
         key: "events",
         label: "Plan events, tours and line-ups",
         hint: Some("Tours and runs of dates, with budget, crew and day sheets"),
-        details: "Run tours and other projects: a run of dates with travel and hotels, a budget against the fees and buyouts, crew, and a day-by-day itinerary, with a profit and loss per date and for the whole run. Promoters and venues plan events and line-ups the same way.",
+        details: "Run tours and other projects: a run of dates with travel and hotels, a budget against the fees and buyouts, crew, and a day-by-day itinerary, showing whether each date and the whole run pays. Promoters and venues can run their events as projects the same way.",
         effect: Effect::Module("events"),
     },
     Feature {
@@ -175,24 +175,29 @@ const KINDS: &[Kind] = &[
     },
 ];
 
-const TEAM: &[(&str, &str, &str)] = &[
-    (
-        "just_me",
-        "Just me",
-        "The app stays simple for one person: no assigning work to others, and tasks are all yours.",
-    ),
-    (
-        "small",
-        "2 to 5 people",
-        "Invite your team, assign tasks and enquiries to each other and filter to what's yours. Each person can connect their own email and calendar.",
-    ),
-    (
-        "large",
-        "6 or more",
-        "Everything a small team gets, set up for a bigger one: roles with different permissions, two-step sign-in for staff and work shared across agents.",
-    ),
-];
+struct Team {
+    key: &'static str,
+    label: &'static str,
+    details: &'static str,
+}
 
+const TEAM: &[Team] = &[
+    Team {
+        key: "just_me",
+        label: "Just me",
+        details: "The app stays simple for one person: no assigning work to others, and every task is yours.",
+    },
+    Team {
+        key: "small",
+        label: "2 to 5 people",
+        details: "Work as a team: assign tasks to each other and filter to what's yours, and each person can have their bookings in their own Google or Outlook calendar.",
+    },
+    Team {
+        key: "large",
+        label: "6 or more",
+        details: "The same team features as 2 to 5 people, priced for a bigger team.",
+    },
+];
 /// One tick box or choice.
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct Choice {
@@ -200,7 +205,7 @@ pub struct Choice {
     pub label: String,
     pub hint: Option<String>,
     /// A fuller explanation of what it lets them do, behind an info button.
-    pub details: Option<String>,
+    pub details: String,
     /// Features worth ticking when this is ticked (a role's usual setup).
     pub suggests: Vec<String>,
 }
@@ -220,7 +225,7 @@ fn choice(
     key: &str,
     label: &str,
     hint: Option<&str>,
-    details: Option<String>,
+    details: String,
     suggests: Vec<String>,
 ) -> Choice {
     Choice {
@@ -235,7 +240,7 @@ fn choice(
 /// What ticking a kind of talent does to the workspace's words.
 fn kind_details(k: &Kind) -> String {
     format!(
-        "Your list of who you book is called {many}, and each one {one}, through the menus and forms. Tick more than one and a general word is used instead. It only changes words: nothing is switched on or off.",
+        "Names your list of who you book {many}, and each one {one}, in the menus and forms. If you tick several kinds, or you run your own bookings, the word that suits your role is kept instead. It only changes words: nothing is switched on or off.",
         many = k.many,
         one = article(k.one),
     )
@@ -276,7 +281,7 @@ pub fn questions() -> Vec<Question> {
                         p.key,
                         &p.name,
                         None,
-                        Some(p.description.clone()),
+                        p.description.clone(),
                         suggested_features(p),
                     )
                 })
@@ -292,7 +297,7 @@ pub fn questions() -> Vec<Question> {
             multiple: true,
             choices: FEATURES
                 .iter()
-                .map(|f| choice(f.key, f.label, f.hint, Some(f.details.into()), Vec::new()))
+                .map(|f| choice(f.key, f.label, f.hint, f.details.into(), Vec::new()))
                 .collect(),
         },
         Question {
@@ -302,7 +307,7 @@ pub fn questions() -> Vec<Question> {
             multiple: true,
             choices: KINDS
                 .iter()
-                .map(|k| choice(k.key, k.label, None, Some(kind_details(k)), Vec::new()))
+                .map(|k| choice(k.key, k.label, None, kind_details(k), Vec::new()))
                 .collect(),
         },
         Question {
@@ -312,7 +317,7 @@ pub fn questions() -> Vec<Question> {
             multiple: false,
             choices: TEAM
                 .iter()
-                .map(|(k, l, d)| choice(k, l, None, Some((*d).into()), Vec::new()))
+                .map(|t| choice(t.key, t.label, None, t.details.into(), Vec::new()))
                 .collect(),
         },
     ]
@@ -397,7 +402,7 @@ pub fn plan(a: &Answers) -> Result<Plan, BadAnswer> {
         check(
             "team",
             std::slice::from_ref(t),
-            &TEAM.iter().map(|(k, _, _)| *k).collect::<Vec<_>>(),
+            &TEAM.iter().map(|t| t.key).collect::<Vec<_>>(),
         )?;
     }
     let combined = presets::combine(&a.roles).map_err(|e| BadAnswer {
@@ -562,14 +567,14 @@ mod tests {
         );
         assert!(q[0].choices.iter().all(|c| !c.suggests.is_empty()));
         // Every choice explains itself behind its info button.
-        assert!(q.iter().flat_map(|q| &q.choices).all(|c| {
-            c.details
-                .as_deref()
-                .is_some_and(|d| d.len() > 40 && d.len() < 600)
-        }));
+        assert!(
+            q.iter()
+                .flat_map(|q| &q.choices)
+                .all(|c| (40..600).contains(&c.details.len()))
+        );
         assert_eq!(
             kind_details(&KINDS[9]),
-            "Your list of who you book is called Crew, and each one a Crew member, through the menus and forms. Tick more than one and a general word is used instead. It only changes words: nothing is switched on or off."
+            "Names your list of who you book Crew, and each one a Crew member, in the menus and forms. If you tick several kinds, or you run your own bookings, the word that suits your role is kept instead. It only changes words: nothing is switched on or off."
         );
         let a = answers_for(&["solo".into()]);
         assert!(a.features.contains(&"invoicing".to_owned()));

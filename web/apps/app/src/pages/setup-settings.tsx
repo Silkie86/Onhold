@@ -154,32 +154,30 @@ export function SetupSettingsPage() {
                               />
                             )}
                             <span className="flex flex-col gap-0.5">
-                              <span id={`${id}-label`}>{c.label}</span>
+                              <span>{c.label}</span>
                               {c.hint && <span className="text-xs text-muted-foreground">{c.hint}</span>}
                             </span>
                           </label>
-                          {c.details && (
-                            <button
-                              type="button"
-                              className="m-1 grid size-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-                              aria-expanded={more}
-                              aria-controls={`${id}-details`}
-                              aria-label="More about this"
-                              aria-describedby={`${id}-label`}
-                              onClick={() =>
-                                setOpen((o) => {
-                                  const next = new Set(o);
-                                  if (more) next.delete(id);
-                                  else next.add(id);
-                                  return next;
-                                })
-                              }
-                            >
-                              <Info className="size-4" />
-                            </button>
-                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="m-1 shrink-0 text-muted-foreground"
+                            aria-expanded={more}
+                            aria-controls={`${id}-details`}
+                            aria-label={`More about ${c.label}`}
+                            onClick={() =>
+                              setOpen((o) => {
+                                const next = new Set(o);
+                                if (o.has(id)) next.delete(id);
+                                else next.add(id);
+                                return next;
+                              })
+                            }
+                          >
+                            <Info className="size-4" />
+                          </Button>
                         </div>
-                        {more && c.details && (
+                        {more && (
                           <p id={`${id}-details`} className="border-t px-3 py-2 text-sm text-muted-foreground">
                             {c.details}
                           </p>
