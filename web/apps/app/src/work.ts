@@ -26,7 +26,7 @@ export const STATUS_LABEL: Record<BookingStatus, string> = {
 export const STATUS_STYLE: Record<BookingStatus, string> = {
   hold: "border-dashed border-amber-500 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
   pending: "border-sky-500 bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200",
-  confirmed: "border-emerald-600 bg-emerald-600 text-white",
+  confirmed: "border-emerald-700 bg-emerald-700 text-white",
   cancelled: "border-muted bg-muted text-muted-foreground line-through",
   completed: "border-muted bg-muted text-foreground",
   expired: "border-dashed border-muted text-muted-foreground line-through",

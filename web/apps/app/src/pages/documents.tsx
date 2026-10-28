@@ -76,7 +76,7 @@ function downloadDocument(id: string, title: string, version?: number) {
 function SignatureBadge({ status }: { status: string }) {
   if (!SIGNATURE_LABEL[status]) return null;
   return (
-    <Badge className={cn("border", status === "signed" && "border-emerald-600 bg-emerald-600 text-white", status === "declined" && "border-destructive text-destructive")}>
+    <Badge className={cn("border", status === "signed" && "border-emerald-700 bg-emerald-700 text-white", status === "declined" && "border-destructive text-destructive")}>
       {SIGNATURE_LABEL[status]}
     </Badge>
   );

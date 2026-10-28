@@ -107,7 +107,7 @@ export function PaymentsSettingsPage() {
             <span className="font-medium">{s.display_name ?? s.account_id}</span>
             {!s.livemode && <Badge className="border">Test mode</Badge>}
             {s.charges_enabled ? (
-              <Badge className="border-emerald-600 bg-emerald-600 text-white">Taking payments</Badge>
+              <Badge className="border-emerald-700 bg-emerald-700 text-white">Taking payments</Badge>
             ) : (
               <Badge className="border border-amber-500 text-amber-800 dark:text-amber-300">
                 Not taking payments yet

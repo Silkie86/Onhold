@@ -50,6 +50,7 @@
     --accent: oklch(0.28 0.03 265);
     --accent-foreground: oklch(0.95 0.02 265);
     --destructive: oklch(0.65 0.19 27);
+    --destructive-foreground: oklch(0.15 0.02 27);
     color-scheme: dark;
   }
 }
@@ -70,6 +71,7 @@
   --accent: oklch(0.28 0.03 265);
   --accent-foreground: oklch(0.95 0.02 265);
   --destructive: oklch(0.65 0.19 27);
+  --destructive-foreground: oklch(0.15 0.02 27);
   color-scheme: dark;
 }
 
