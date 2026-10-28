@@ -4,6 +4,7 @@
 //! definitions from the database and hand them here.
 
 pub mod conditions;
+pub mod countries;
 pub mod documents;
 pub mod fields;
 pub mod import;

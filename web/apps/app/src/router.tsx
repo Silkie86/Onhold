@@ -309,6 +309,11 @@ const followUpsSettings = createRoute({
   path: "/settings/follow-ups",
   component: lazyRouteComponent(() => import("./pages/follow-ups-settings.tsx"), "FollowUpsSettingsPage"),
 });
+const pitchingSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/pitching",
+  component: lazyRouteComponent(() => import("./pages/pitching.tsx"), "PitchingSettingsPage"),
+});
 const financeSettings = createRoute({
   getParentRoute: () => app,
   path: "/settings/finance",
@@ -349,6 +354,7 @@ const tree = root.addChildren([
     accountingSettings,
     textsSettings,
     followUpsSettings,
+    pitchingSettings,
     sendingDomain,
     brandingSettings,
     setupSettings,

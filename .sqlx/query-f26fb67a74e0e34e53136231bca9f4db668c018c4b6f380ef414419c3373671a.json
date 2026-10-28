@@ -1,10 +1,21 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT extras, hidden, vocabulary FROM workspaces WHERE id = $1",
+  "query": "SELECT enabled_modules, extras, hidden, vocabulary FROM workspaces WHERE id = $1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
+        "name": "enabled_modules",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "enabled_modules"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
         "name": "extras",
         "type_info": "TextArray",
         "origin": {
@@ -15,7 +26,7 @@
         }
       },
       {
-        "ordinal": 1,
+        "ordinal": 2,
         "name": "hidden",
         "type_info": "TextArray",
         "origin": {
@@ -26,7 +37,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "vocabulary",
         "type_info": "Jsonb",
         "origin": {
@@ -45,8 +56,9 @@
     "nullable": [
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "55c61442d2df8941bb5de3b36605f1080d527d34f8fc762cdf6285defc6884dc"
+  "hash": "f26fb67a74e0e34e53136231bca9f4db668c018c4b6f380ef414419c3373671a"
 }

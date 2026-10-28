@@ -37,6 +37,7 @@ use uuid::Uuid;
 
 use super::contacts::{self, Channel, ContactPatch, NewContact};
 use super::organisations::{self, Address, NewOrganisation, OrganisationPatch};
+use super::pitching::PitchingSettings;
 use super::talent::{self, NewTalent, TalentPatch, TalentStatus};
 use super::{begin, crm};
 use crate::AppState;
@@ -998,6 +999,7 @@ impl Reader<'_> {
                     notes: lines("notes"),
                     tags,
                     custom,
+                    ..Default::default()
                 })
             }
             _ => {
@@ -1027,6 +1029,7 @@ impl Reader<'_> {
                         notes: lines("notes"),
                         tags,
                         custom,
+                        links: Vec::new(),
                     },
                     text("organisation"),
                 )
@@ -1268,7 +1271,10 @@ impl Setup {
         let mut issues = read.issues;
         let check = match &read.record {
             Record::Talent(n) => talent::check_new(n, &self.defs).1,
-            Record::Organisation(n) => organisations::check_new(n, &self.defs).1,
+            // Imports set no region or status, so the settings that check them do not matter.
+            Record::Organisation(n) => {
+                organisations::check_new(n, &self.defs, &PitchingSettings::default()).1
+            }
             Record::Contact(n, org) => {
                 let mut c = contacts::check_new(n, &self.defs).1;
                 if let Some(org) = org
@@ -1679,6 +1685,7 @@ async fn update(
                 notes: given(present, "notes", &n.notes),
                 tags: Some(merged(&current.tags, &n.tags)),
                 custom: custom(&n.custom),
+                ..Default::default()
             };
             organisations::update_in_tx(tx, ctx, id, patch, None, Some(extra.clone())).await?;
         }
@@ -1702,6 +1709,7 @@ async fn update(
                 notes: given(present, "notes", &n.notes),
                 tags: Some(merged(&current.tags, &n.tags)),
                 custom: custom(&n.custom),
+                ..Default::default()
             };
             contacts::update_in_tx(tx, ctx, id, patch, None, Some(extra.clone())).await?;
         }

@@ -816,6 +816,9 @@ pub(crate) async fn create_in_tx(
     core_db::bookings::set_talent(tx, id, &talent)
         .await
         .map_err(refused)?;
+    if let Some(o) = new.organisation_id {
+        super::organisations::advance_in_tx(tx, ctx, o, deal(status)).await?;
+    }
     let view = load(tx, id).await?.ok_or(ApiError::NotFound)?;
     record(
         tx,
@@ -1066,6 +1069,11 @@ pub(crate) async fn update_in_tx(
             .await
             .map_err(refused)?;
     }
+    if let Some(o) = organisation_id
+        && organisation_id != current.organisation_id
+    {
+        super::organisations::advance_in_tx(tx, ctx, o, deal(current.status)).await?;
+    }
     // An override that no longer has a clash to excuse ends, which puts the
     // booking back under the double-booking constraint. Only once it is at
     // its new time and talent: at the old ones it still clashes.
@@ -1116,6 +1124,17 @@ pub struct StatusRequest {
     pub reason: Option<String>,
     /// Confirm despite a clash (needs `booking:override`).
     pub override_reason: Option<String>,
+}
+
+/// What a booking in this status says about its buyer: a client once
+/// confirmed (or done), still a prospect before.
+fn deal(status: BookingStatus) -> super::organisations::Deal {
+    match status {
+        BookingStatus::Confirmed | BookingStatus::Completed => {
+            super::organisations::Deal::Confirmed
+        }
+        _ => super::organisations::Deal::Enquiry,
+    }
 }
 
 pub async fn change_status(
@@ -1215,6 +1234,11 @@ pub(crate) async fn change_status_in_tx(
     .map_err(refused)?;
     if matches!(to, BookingStatus::Cancelled | BookingStatus::Expired) {
         super::quotes::withdraw_open(tx, ctx, id).await?;
+    }
+    if to == BookingStatus::Confirmed
+        && let Some(o) = before.organisation_id
+    {
+        super::organisations::advance_in_tx(tx, ctx, o, deal(to)).await?;
     }
     let after = load(tx, id).await?.ok_or(ApiError::NotFound)?;
     record(

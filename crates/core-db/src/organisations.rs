@@ -1,6 +1,6 @@
 //! Organisations: venues, promoters, brands, festivals, agencies.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use core_domain::UserId;
 use serde_json::Value;
 use sqlx::PgConnection;
@@ -21,6 +21,14 @@ pub struct Organisation {
     pub notes: Option<String>,
     pub tags: Vec<String>,
     pub custom: Value,
+    pub country_code: Option<String>,
+    pub city: Option<String>,
+    pub region_key: Option<String>,
+    pub relationship: Option<String>,
+    pub status_key: Option<String>,
+    pub follow_up_on: Option<NaiveDate>,
+    pub do_not_contact: bool,
+    pub buys_from_others: Vec<String>,
     pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -38,6 +46,11 @@ pub const SORTS: &[&str] = &[
     "default_currency",
     "payment_terms_days",
     "contact_count",
+    "country_code",
+    "city",
+    "relationship",
+    "status_key",
+    "follow_up_on",
     "created_at",
     "updated_at",
 ];
@@ -46,7 +59,8 @@ pub const SORTS: &[&str] = &[
 pub async fn list(conn: &mut PgConnection, p: ListParams<'_>) -> Result<(Vec<Organisation>, i64)> {
     let rows = sqlx::query!(
         r#"SELECT id, name, org_type, addresses, tax_id, default_currency, payment_terms_days, notes, tags,
-                  custom, version, created_at, updated_at, created_by AS "created_by: UserId",
+                  custom, country_code, city, region_key, relationship, status_key, follow_up_on, do_not_contact,
+                  buys_from_others, version, created_at, updated_at, created_by AS "created_by: UserId",
                   updated_by AS "updated_by: UserId",
                   (SELECT count(*) FROM contacts c
                    WHERE c.organisation_id = o.id AND c.deleted_at IS NULL) AS "contact_count!",
@@ -62,9 +76,13 @@ pub async fn list(conn: &mut PgConnection, p: ListParams<'_>) -> Result<(Vec<Org
              CASE WHEN $6 = 'relevance' THEN search_text NOT LIKE $2 END ASC,
              CASE WHEN $6 = 'relevance' THEN word_similarity($1, search_text) END DESC NULLS LAST,
              CASE WHEN NOT $7 THEN CASE $6 WHEN 'name' THEN lower(name) WHEN 'org_type' THEN lower(org_type)
-                 WHEN 'tax_id' THEN tax_id WHEN 'default_currency' THEN default_currency::text END END ASC,
+                 WHEN 'tax_id' THEN tax_id WHEN 'default_currency' THEN default_currency::text
+                 WHEN 'country_code' THEN country_code::text WHEN 'city' THEN lower(city)
+                 WHEN 'relationship' THEN relationship WHEN 'status_key' THEN status_key END END ASC,
              CASE WHEN $7 THEN CASE $6 WHEN 'name' THEN lower(name) WHEN 'org_type' THEN lower(org_type)
-                 WHEN 'tax_id' THEN tax_id WHEN 'default_currency' THEN default_currency::text END END DESC NULLS LAST,
+                 WHEN 'tax_id' THEN tax_id WHEN 'default_currency' THEN default_currency::text
+                 WHEN 'country_code' THEN country_code::text WHEN 'city' THEN lower(city)
+                 WHEN 'relationship' THEN relationship WHEN 'status_key' THEN status_key END END DESC NULLS LAST,
              CASE WHEN NOT $7 THEN CASE $6 WHEN 'payment_terms_days' THEN payment_terms_days::bigint
                  WHEN 'contact_count' THEN (SELECT count(*) FROM contacts c
                      WHERE c.organisation_id = o.id AND c.deleted_at IS NULL) END END ASC,
@@ -75,6 +93,8 @@ pub async fn list(conn: &mut PgConnection, p: ListParams<'_>) -> Result<(Vec<Org
                  WHEN 'updated_at' THEN updated_at END END ASC,
              CASE WHEN $7 THEN CASE $6 WHEN 'created_at' THEN created_at
                  WHEN 'updated_at' THEN updated_at END END DESC NULLS LAST,
+             CASE WHEN $6 = 'follow_up_on' AND NOT $7 THEN follow_up_on END ASC,
+             CASE WHEN $6 = 'follow_up_on' AND $7 THEN follow_up_on END DESC NULLS LAST,
              CASE WHEN $6 = 'custom' AND NOT $7 THEN custom -> $8 END ASC,
              CASE WHEN $6 = 'custom' AND $7 THEN custom -> $8 END DESC NULLS LAST,
              lower(name), id
@@ -106,6 +126,14 @@ pub async fn list(conn: &mut PgConnection, p: ListParams<'_>) -> Result<(Vec<Org
             notes: r.notes,
             tags: r.tags,
             custom: r.custom,
+            country_code: r.country_code,
+            city: r.city,
+            region_key: r.region_key,
+            relationship: r.relationship,
+            status_key: r.status_key,
+            follow_up_on: r.follow_up_on,
+            do_not_contact: r.do_not_contact,
+            buys_from_others: r.buys_from_others,
             version: r.version,
             created_at: r.created_at,
             updated_at: r.updated_at,
@@ -121,7 +149,8 @@ pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<Organisatio
     Ok(sqlx::query_as!(
         Organisation,
         r#"SELECT id, name, org_type, addresses, tax_id, default_currency, payment_terms_days, notes, tags,
-                  custom, version, created_at, updated_at, created_by AS "created_by: UserId",
+                  custom, country_code, city, region_key, relationship, status_key, follow_up_on, do_not_contact,
+                  buys_from_others, version, created_at, updated_at, created_by AS "created_by: UserId",
                   updated_by AS "updated_by: UserId",
                   (SELECT count(*) FROM contacts c
                    WHERE c.organisation_id = o.id AND c.deleted_at IS NULL) AS "contact_count!"
@@ -138,7 +167,8 @@ pub async fn get_for_update(conn: &mut PgConnection, id: Uuid) -> Result<Option<
     Ok(sqlx::query_as!(
         Organisation,
         r#"SELECT id, name, org_type, addresses, tax_id, default_currency, payment_terms_days, notes, tags,
-                  custom, version, created_at, updated_at, created_by AS "created_by: UserId",
+                  custom, country_code, city, region_key, relationship, status_key, follow_up_on, do_not_contact,
+                  buys_from_others, version, created_at, updated_at, created_by AS "created_by: UserId",
                   updated_by AS "updated_by: UserId", 0::bigint AS "contact_count!"
            FROM organisations
            WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL
@@ -172,6 +202,14 @@ pub struct Values<'a> {
     pub notes: Option<&'a str>,
     pub tags: &'a [String],
     pub custom: &'a Value,
+    pub country_code: Option<&'a str>,
+    pub city: Option<&'a str>,
+    pub region_key: Option<&'a str>,
+    pub relationship: Option<&'a str>,
+    pub status_key: Option<&'a str>,
+    pub follow_up_on: Option<NaiveDate>,
+    pub do_not_contact: bool,
+    pub buys_from_others: &'a [String],
 }
 
 pub async fn insert(
@@ -182,8 +220,11 @@ pub async fn insert(
 ) -> Result<()> {
     sqlx::query!(
         r#"INSERT INTO organisations (id, workspace_id, name, org_type, addresses, tax_id, default_currency,
-                                      payment_terms_days, notes, tags, custom, created_by, updated_by)
-           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)"#,
+                                      payment_terms_days, notes, tags, custom, created_by, updated_by,
+                                      country_code, city, region_key, relationship, status_key,
+                                      follow_up_on, do_not_contact, buys_from_others)
+           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
+                   $12, $13, $14, $15, $16, $17, $18, $19)"#,
         id,
         v.name,
         v.org_type,
@@ -194,7 +235,15 @@ pub async fn insert(
         v.notes,
         v.tags,
         v.custom,
-        by.map(|u| u.0)
+        by.map(|u| u.0),
+        v.country_code,
+        v.city,
+        v.region_key,
+        v.relationship,
+        v.status_key,
+        v.follow_up_on,
+        v.do_not_contact,
+        v.buys_from_others
     )
     .execute(conn)
     .await?;
@@ -212,7 +261,8 @@ pub async fn update(
     sqlx::query!(
         r#"UPDATE organisations SET name = $2, org_type = $3, addresses = $4, tax_id = $5,
                   default_currency = $6, payment_terms_days = $7, notes = $8, tags = $9, custom = $10,
-                  updated_by = $11
+                  updated_by = $11, country_code = $12, city = $13, region_key = $14, relationship = $15,
+                  status_key = $16, follow_up_on = $17, do_not_contact = $18, buys_from_others = $19
            WHERE workspace_id = app_workspace_id() AND id = $1"#,
         id,
         v.name,
@@ -224,7 +274,15 @@ pub async fn update(
         v.notes,
         v.tags,
         v.custom,
-        by.map(|u| u.0)
+        by.map(|u| u.0),
+        v.country_code,
+        v.city,
+        v.region_key,
+        v.relationship,
+        v.status_key,
+        v.follow_up_on,
+        v.do_not_contact,
+        v.buys_from_others
     )
     .execute(conn)
     .await?;
@@ -297,4 +355,121 @@ pub async fn names(conn: &mut PgConnection) -> Result<Vec<(Uuid, String)>> {
     .into_iter()
     .map(|r| (r.id, r.name))
     .collect())
+}
+
+/// One entry of an organisation's interested or potential match list.
+#[derive(Debug, Clone)]
+pub struct Item {
+    pub organisation_id: Uuid,
+    /// `interested` or `match`.
+    pub list: String,
+    pub talent_id: Option<Uuid>,
+    pub project_id: Option<Uuid>,
+    /// The talent's or project's name.
+    pub name: String,
+}
+
+/// The lists of these organisations, in order. Deleted talent and projects
+/// are left out.
+pub async fn items_of(conn: &mut PgConnection, ids: &[Uuid]) -> Result<Vec<Item>> {
+    Ok(sqlx::query_as!(
+        Item,
+        r#"SELECT i.organisation_id, i.list, i.talent_id, i.project_id,
+                  coalesce(t.name, p.name) AS "name!"
+           FROM organisation_items i
+           LEFT JOIN talent t ON t.id = i.talent_id AND t.deleted_at IS NULL
+           LEFT JOIN projects p ON p.id = i.project_id AND p.deleted_at IS NULL
+           WHERE i.workspace_id = app_workspace_id() AND i.organisation_id = ANY($1)
+             AND (t.id IS NOT NULL OR p.id IS NOT NULL)
+           ORDER BY i.organisation_id, i.list, i.position"#,
+        ids
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
+/// Replaces one of an organisation's lists: (talent id, project id) pairs,
+/// one of each set, in order.
+pub async fn set_items(
+    conn: &mut PgConnection,
+    organisation_id: Uuid,
+    list: &str,
+    items: &[(Option<Uuid>, Option<Uuid>)],
+) -> Result<()> {
+    sqlx::query!(
+        r#"DELETE FROM organisation_items
+           WHERE workspace_id = app_workspace_id() AND organisation_id = $1 AND list = $2"#,
+        organisation_id,
+        list
+    )
+    .execute(&mut *conn)
+    .await?;
+    let talent: Vec<Option<Uuid>> = items.iter().map(|i| i.0).collect();
+    let projects: Vec<Option<Uuid>> = items.iter().map(|i| i.1).collect();
+    sqlx::query!(
+        r#"INSERT INTO organisation_items (workspace_id, organisation_id, list, talent_id, project_id, position)
+           SELECT app_workspace_id(), $1, $2, i.talent_id, i.project_id, (i.n - 1)::integer
+           FROM unnest($3::uuid[], $4::uuid[]) WITH ORDINALITY AS i (talent_id, project_id, n)"#,
+        organisation_id,
+        list,
+        &talent as &[Option<Uuid>],
+        &projects as &[Option<Uuid>]
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Moves an organisation along as deals come in, without going back: an
+/// enquiry makes it a prospect unless it is a client already, and a
+/// confirmed booking makes it a client. The status follows when it is
+/// unset (enquiry) or not booked yet (confirmed), to the given keys. Says
+/// whether anything changed.
+pub async fn advance(
+    conn: &mut PgConnection,
+    id: Uuid,
+    relationship: &str,
+    status_key: Option<&str>,
+    replace_statuses: &[String],
+    by: Option<UserId>,
+) -> Result<bool> {
+    let done = sqlx::query!(
+        r#"UPDATE organisations
+           SET relationship = CASE WHEN relationship = 'client' THEN relationship ELSE $2 END,
+               status_key = CASE WHEN $3::text IS NOT NULL
+                                  AND (status_key IS NULL OR status_key = ANY($4)) THEN $3 ELSE status_key END,
+               updated_by = $5
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL
+             AND (relationship IS DISTINCT FROM (CASE WHEN relationship = 'client' THEN relationship ELSE $2 END)
+                  OR ($3::text IS NOT NULL AND status_key IS DISTINCT FROM $3
+                      AND (status_key IS NULL OR status_key = ANY($4))))"#,
+        id,
+        relationship,
+        status_key,
+        replace_statuses,
+        by.map(|u| u.0)
+    )
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
+
+/// Which of these talent exist (and are not deleted).
+pub async fn live_talent(conn: &mut PgConnection, ids: &[Uuid]) -> Result<Vec<Uuid>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT id FROM talent WHERE workspace_id = app_workspace_id() AND id = ANY($1) AND deleted_at IS NULL"#,
+        ids
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
+/// Which of these projects exist (and are not deleted).
+pub async fn live_projects(conn: &mut PgConnection, ids: &[Uuid]) -> Result<Vec<Uuid>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT id FROM projects WHERE workspace_id = app_workspace_id() AND id = ANY($1) AND deleted_at IS NULL"#,
+        ids
+    )
+    .fetch_all(conn)
+    .await?)
 }

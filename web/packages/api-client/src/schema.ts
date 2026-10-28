@@ -2775,6 +2775,28 @@ export interface paths {
         patch: operations["update_pipeline"];
         trace?: never;
     };
+    "/api/v1/pitching/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's regions, statuses and what it pitches (OnHold's
+         *     defaults until it saves its own), with every country to place in a
+         *     region.
+         */
+        get: operations["get_settings"];
+        /** Replace the settings. Each country may be in one region at most. */
+        put: operations["update_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal": {
         parameters: {
             query?: never;
@@ -4784,7 +4806,7 @@ export interface components {
             line1?: string | null;
             line2?: string | null;
             postcode?: string | null;
-            /** @description State, county or province. */
+            /** @description County, state or province (the world region is the organisation's own). */
             region?: string | null;
         };
         AdminSetupRequestView: {
@@ -5294,6 +5316,12 @@ export interface components {
             /** @description The workspace's slug, typed again to confirm. */
             confirm_slug: string;
         };
+        /**
+         * @description The colours a status dot can take, drawn from the theme so they read in
+         *     light and dark.
+         * @enum {string}
+         */
+        Colour: "green" | "amber" | "red" | "grey" | "blue" | "purple";
         Compose: {
             attachments?: string[];
             body?: string | null;
@@ -5395,6 +5423,8 @@ export interface components {
             email_opt_in?: boolean | null;
             /** @description Replaces the addresses. */
             emails?: string[] | null;
+            /** @description Replaces the links. */
+            links?: string[] | null;
             name?: string | null;
             notes?: string | null;
             /**
@@ -5425,6 +5455,8 @@ export interface components {
             emails: string[];
             /** Format: uuid */
             id: string;
+            /** @description Web pages and social profiles, as full addresses. */
+            links: string[];
             name: string;
             notes?: string | null;
             /** Format: uuid */
@@ -5434,6 +5466,11 @@ export interface components {
             phone?: string | null;
             /** @description As entered; the first is the primary number. */
             phones: string[];
+            /**
+             * @description The numbers with their country code (+44…), where it can be told
+             *     from the number or the organisation's country; as entered otherwise.
+             */
+            phones_international: string[];
             preferred_channel?: components["schemas"]["Channel"] | null;
             /** @description Job title or role at the organisation. */
             role?: string | null;
@@ -5445,6 +5482,12 @@ export interface components {
             /** Format: int64 */
             version: number;
             whatsapp_opt_in: boolean;
+        };
+        CountryView: {
+            code: string;
+            /** @description The region OnHold's own split puts it in. */
+            default_region: string;
+            name: string;
         };
         CreateApiKeyRequest: {
             /** Format: date-time */
@@ -6603,6 +6646,24 @@ export interface components {
              */
             issue_date?: string | null;
         };
+        /** @description Talent or a project to put on one of an organisation's lists. */
+        ItemInput: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["ItemKind"];
+        };
+        /**
+         * @description What a workspace pitches.
+         * @enum {string}
+         */
+        ItemKind: "talent" | "project";
+        /** @description Talent or a project on one of an organisation's lists. */
+        ItemRef: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["ItemKind"];
+            name: string;
+        };
         Itinerary: {
             crew: components["schemas"]["CrewView"][];
             days: components["schemas"]["ItineraryDay"][];
@@ -7037,6 +7098,8 @@ export interface components {
             custom?: Record<string, never>;
             email_opt_in?: boolean;
             emails?: string[];
+            /** @description Web pages and social profiles. A bare address gets `https://`. */
+            links?: string[];
             name: string;
             notes?: string | null;
             /** Format: uuid */
@@ -7155,14 +7218,25 @@ export interface components {
         };
         NewOrganisation: {
             addresses?: components["schemas"]["Address"][];
+            buys_from_others?: string[];
             /** @description Custom field values by key. Missing fields take their defaults. */
             custom?: Record<string, never>;
             default_currency?: string | null;
+            do_not_contact?: boolean;
+            /** Format: date */
+            follow_up_on?: string | null;
+            interested_in?: components["schemas"]["ItemInput"][];
             name: string;
             notes?: string | null;
             org_type?: string | null;
             /** Format: int32 */
             payment_terms_days?: number | null;
+            potential_matches?: components["schemas"]["ItemInput"][];
+            /** @description A region key, to override the one its country gives. */
+            region?: string | null;
+            relationship?: components["schemas"]["Relationship"] | null;
+            /** @description A key of the workspace's pitching statuses. */
+            status?: string | null;
             tags?: string[];
             tax_id?: string | null;
         };
@@ -7308,40 +7382,79 @@ export interface components {
         OrganisationPatch: {
             /** @description Replaces the addresses. */
             addresses?: components["schemas"]["Address"][] | null;
+            /** @description Replaces the list. */
+            buys_from_others?: string[] | null;
             /** @description Only the keys sent change; `null` clears a value. */
             custom?: Record<string, never> | null;
             default_currency?: string | null;
+            do_not_contact?: boolean | null;
+            /** Format: date */
+            follow_up_on?: string | null;
+            /** @description Replaces the list. */
+            interested_in?: components["schemas"]["ItemInput"][] | null;
             name?: string | null;
             notes?: string | null;
             /** @description `null` clears it; likewise for the other optional fields. */
             org_type?: string | null;
             /** Format: int32 */
             payment_terms_days?: number | null;
+            /** @description Replaces the list. */
+            potential_matches?: components["schemas"]["ItemInput"][] | null;
+            /** @description `null` goes back to the country's region. */
+            region?: string | null;
+            relationship?: components["schemas"]["Relationship"] | null;
+            status?: string | null;
             /** @description Replaces the tags. */
             tags?: string[] | null;
             tax_id?: string | null;
         };
         OrganisationView: {
             addresses: components["schemas"]["Address"][];
+            /** @description Similar acts or things they buy from others. */
+            buys_from_others: string[];
+            /** @description The main address's city. */
+            city?: string | null;
             /**
              * Format: int64
              * @description Contacts at the organisation.
              */
             contact_count: number;
+            /** @description The country's name. */
+            country?: string | null;
+            /**
+             * @description The country's ISO code, worked out from the main address however it
+             *     was typed ("UK", "England", "Melbourne").
+             */
+            country_code?: string | null;
             /** Format: date-time */
             created_at: string;
             created_by?: components["schemas"]["UserId"] | null;
             /** @description Custom field values by key. */
             custom: Record<string, never>;
             default_currency?: string | null;
+            /** @description Never offered for pitching. */
+            do_not_contact: boolean;
+            /** Format: date */
+            follow_up_on?: string | null;
             /** Format: uuid */
             id: string;
+            /** @description What they asked about. */
+            interested_in: components["schemas"]["ItemRef"][];
             name: string;
             notes?: string | null;
             /** @description Free text: venue, promoter, brand, festival, agency… */
             org_type?: string | null;
             /** Format: int32 */
             payment_terms_days?: number | null;
+            /** @description What the workspace thinks would suit them. */
+            potential_matches: components["schemas"]["ItemRef"][];
+            /** @description The key of its world region: the one picked for it, or its country's. */
+            region?: string | null;
+            /** @description Whether the region was picked by hand rather than taken from the country. */
+            region_picked: boolean;
+            relationship?: components["schemas"]["Relationship"] | null;
+            /** @description A key of the workspace's pitching statuses; absent when not set. */
+            status?: string | null;
             tags: string[];
             /** @description VAT or other tax registration number. */
             tax_id?: string | null;
@@ -7521,6 +7634,23 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
             /** Format: int64 */
+            version: number;
+        };
+        PitchingSettings: {
+            items?: components["schemas"]["ItemKind"][];
+            regions?: components["schemas"]["Region"][];
+            statuses?: components["schemas"]["Status"][];
+        };
+        PitchingSettingsView: components["schemas"]["PitchingSettings"] & {
+            /** @description Every country, for choosing which region each is in. */
+            countries: components["schemas"]["CountryView"][];
+            /** Format: date-time */
+            updated_at?: string | null;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /**
+             * Format: int64
+             * @description 0 until the workspace first saves its own.
+             */
             version: number;
         };
         /** @description What the answers set up. */
@@ -8173,6 +8303,21 @@ export interface components {
             /** @description Shown once. Each works once if the authenticator app is lost. */
             recovery_codes: string[];
         };
+        /** @description A part of the world, by the countries in it. */
+        Region: {
+            /** @description ISO country codes, upper case. Each country is in one region at most. */
+            countries: string[];
+            /** @description Lower case letters, digits and underscores: `europe`. */
+            key: string;
+            name: string;
+        };
+        /**
+         * @description Whether an organisation has worked with the workspace: a client has, a
+         *     prospect has not yet. It moves by itself as enquiries and confirmed
+         *     bookings come in, and never back.
+         * @enum {string}
+         */
+        Relationship: "client" | "prospect";
         ReplayRequest: {
             /** Format: uuid */
             event_id: string;
@@ -8352,7 +8497,7 @@ export interface components {
          *     the core fields' own shapes.
          * @enum {string}
          */
-        SchemaFieldType: "text" | "long_text" | "number" | "money" | "date" | "datetime" | "boolean" | "select" | "multi_select" | "url" | "email" | "phone" | "file" | "relation" | "percent" | "tags" | "email_list" | "phone_list" | "address_list" | "currency";
+        SchemaFieldType: "text" | "long_text" | "number" | "money" | "date" | "datetime" | "boolean" | "select" | "multi_select" | "url" | "email" | "phone" | "file" | "relation" | "percent" | "tags" | "email_list" | "phone_list" | "address_list" | "url_list" | "currency";
         SearchHit: {
             /** @description A second line to tell similar names apart. */
             detail?: string | null;
@@ -8368,6 +8513,8 @@ export interface components {
         };
         /** @description One choice of a select or multi-select field. */
         SelectOption: {
+            /** @description A colour for the choice's dot: green, amber, red, grey, blue or purple. */
+            colour?: string | null;
             label: string;
             value: string;
         };
@@ -8693,6 +8840,19 @@ export interface components {
             template_key?: string | null;
             to?: string | null;
         };
+        Status: {
+            colour: components["schemas"]["Colour"];
+            key: string;
+            label: string;
+            meaning: components["schemas"]["StatusMeaning"];
+        };
+        /**
+         * @description What a status says about where things stand, so OnHold can move it by
+         *     itself: an enquiry sets a `talking` one, a confirmed booking a `booked`
+         *     one.
+         * @enum {string}
+         */
+        StatusMeaning: "booked" | "talking" | "inactive" | "other";
         StatusRequest: {
             /** @description Confirm despite a clash (needs `booking:override`). */
             override_reason?: string | null;
@@ -17488,6 +17648,85 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchingSettingsView"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PitchingSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchingSettingsView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -68,6 +68,12 @@ const FEATURES: &[Feature] = &[
         effect: Effect::Module("events"),
     },
     Feature {
+        key: "pitching",
+        label: "Find new clients: who to pitch next, and follow-ups",
+        hint: Some("A ranked list of venues, brands or buyers to approach, with reasons"),
+        effect: Effect::Module("pitching"),
+    },
+    Feature {
         key: "portal",
         label: "Give my artists or clients their own login",
         hint: Some("Free for them; they see their dates and documents"),

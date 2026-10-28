@@ -60,12 +60,12 @@ const ADDRESS_PARTS: [keyof Address, string][] = [
   ["line1", "Address line 1"],
   ["line2", "Address line 2"],
   ["city", "City"],
-  ["region", "Region"],
+  ["region", "County / state"],
   ["postcode", "Postcode"],
   ["country", "Country"],
 ];
 
-const LIST_TYPES = new Set(["tags", "email_list", "phone_list", "multi_select", "address_list"]);
+const LIST_TYPES = new Set(["tags", "email_list", "phone_list", "url_list", "multi_select", "address_list"]);
 
 function emptyValue(field: SchemaField): unknown {
   if (LIST_TYPES.has(field.field_type)) return [];
@@ -256,6 +256,7 @@ export function EntityForm(props: EntityFormProps) {
       case "tags":
       case "email_list":
       case "phone_list":
+      case "url_list":
         return <ListInput {...common} value={value} onChange={(list) => set(f.key, list)} />;
       case "address_list":
         return (

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT c.id, c.organisation_id, NULL::text AS \"organisation_name?\", c.name, c.emails, c.phones,\n                  c.role, c.preferred_channel, c.email_opt_in, c.sms_opt_in, c.whatsapp_opt_in, c.notes,\n                  c.tags, c.custom, c.version, c.created_at, c.updated_at,\n                  c.created_by AS \"created_by: UserId\", c.updated_by AS \"updated_by: UserId\"\n           FROM contacts c\n           WHERE c.workspace_id = app_workspace_id() AND c.id = $1 AND c.deleted_at IS NULL\n           FOR UPDATE",
+  "query": "SELECT c.id, c.organisation_id, NULL::text AS \"organisation_name?\",\n                  NULL::text AS \"organisation_country?\", c.name, c.emails, c.phones,\n                  c.role, c.preferred_channel, c.email_opt_in, c.sms_opt_in, c.whatsapp_opt_in, c.notes,\n                  c.tags, c.custom, c.links, c.version, c.created_at, c.updated_at,\n                  c.created_by AS \"created_by: UserId\", c.updated_by AS \"updated_by: UserId\"\n           FROM contacts c\n           WHERE c.workspace_id = app_workspace_id() AND c.id = $1 AND c.deleted_at IS NULL\n           FOR UPDATE",
   "describe": {
     "columns": [
       {
@@ -33,6 +33,12 @@
       },
       {
         "ordinal": 3,
+        "name": "organisation_country?",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
         "name": "name",
         "type_info": "Text",
         "origin": {
@@ -43,7 +49,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "emails",
         "type_info": "TextArray",
         "origin": {
@@ -54,7 +60,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "phones",
         "type_info": "TextArray",
         "origin": {
@@ -65,7 +71,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "role",
         "type_info": "Text",
         "origin": {
@@ -76,7 +82,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "preferred_channel",
         "type_info": "Text",
         "origin": {
@@ -87,7 +93,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "email_opt_in",
         "type_info": "Bool",
         "origin": {
@@ -98,7 +104,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "sms_opt_in",
         "type_info": "Bool",
         "origin": {
@@ -109,7 +115,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "whatsapp_opt_in",
         "type_info": "Bool",
         "origin": {
@@ -120,7 +126,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "notes",
         "type_info": "Text",
         "origin": {
@@ -131,7 +137,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "tags",
         "type_info": "TextArray",
         "origin": {
@@ -142,7 +148,7 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "custom",
         "type_info": "Jsonb",
         "origin": {
@@ -153,7 +159,18 @@
         }
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
+        "name": "links",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "links"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
         "name": "version",
         "type_info": "Int8",
         "origin": {
@@ -164,7 +181,7 @@
         }
       },
       {
-        "ordinal": 15,
+        "ordinal": 17,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -175,7 +192,7 @@
         }
       },
       {
-        "ordinal": 16,
+        "ordinal": 18,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -186,7 +203,7 @@
         }
       },
       {
-        "ordinal": 17,
+        "ordinal": 19,
         "name": "created_by: UserId",
         "type_info": "Uuid",
         "origin": {
@@ -197,7 +214,7 @@
         }
       },
       {
-        "ordinal": 18,
+        "ordinal": 20,
         "name": "updated_by: UserId",
         "type_info": "Uuid",
         "origin": {
@@ -217,6 +234,7 @@
       false,
       true,
       null,
+      null,
       false,
       false,
       false,
@@ -226,6 +244,7 @@
       false,
       false,
       true,
+      false,
       false,
       false,
       false,
@@ -235,5 +254,5 @@
       true
     ]
   },
-  "hash": "83d5abbdc96b0d472518bd76c0889e3150ce4ac095e4476d499bfd227f178ab3"
+  "hash": "e1ec4aedc8528835106fb6a32110c7e4a9fa40c413efe8082e8915f56d97525d"
 }

@@ -1,0 +1,71 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT i.organisation_id, i.list, i.talent_id, i.project_id,\n                  coalesce(t.name, p.name) AS \"name!\"\n           FROM organisation_items i\n           LEFT JOIN talent t ON t.id = i.talent_id AND t.deleted_at IS NULL\n           LEFT JOIN projects p ON p.id = i.project_id AND p.deleted_at IS NULL\n           WHERE i.workspace_id = app_workspace_id() AND i.organisation_id = ANY($1)\n             AND (t.id IS NOT NULL OR p.id IS NOT NULL)\n           ORDER BY i.organisation_id, i.list, i.position",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "organisation_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "organisation_items",
+            "name": "organisation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "list",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisation_items",
+            "name": "list"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "organisation_items",
+            "name": "talent_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "project_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "organisation_items",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "name!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "1dc4d274a25e3df15b669f0b3647ee9a19fe0d4dc0f8ec6e844f195a0876ace3"
+}

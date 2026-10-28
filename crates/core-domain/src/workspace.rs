@@ -39,6 +39,7 @@ pub const MODULES: &[&str] = &[
     "events",
     "portal",
     "finance",
+    "pitching",
 ];
 
 /// Finer switches inside the modules, so a one-person setup stays simple:

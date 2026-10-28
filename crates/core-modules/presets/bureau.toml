@@ -3,6 +3,6 @@
 name = "Speaker or model bureau"
 description = "For a speaker, presenter or model bureau. The full agency setup: enquiries and holds for everyone you represent, contracts and invoices, commission, a team of bookers and a free login for your talent."
 perspective = "sells"
-modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "portal"]
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "pitching", "portal"]
 extras = ["team", "commission", "advanced"]
 

@@ -1,5 +1,5 @@
-import { LoaderCircle } from "lucide-react";
-import type { ComponentProps, ReactNode } from "react";
+import { Check, Copy, LoaderCircle } from "lucide-react";
+import { type ComponentProps, type ReactNode, useEffect, useState } from "react";
 import { cn } from "../lib.ts";
 
 export function Badge({ className, ...props }: ComponentProps<"span">) {
@@ -53,5 +53,49 @@ export function EmptyState({ title, children }: { title: string; children?: Reac
       <p className="font-medium">{title}</p>
       {children && <div className="text-sm text-muted-foreground">{children}</div>}
     </div>
+  );
+}
+
+/** The colours a status dot can take, drawn from the theme. */
+const DOT: Record<string, string> = {
+  green: "bg-success",
+  amber: "bg-warning",
+  red: "bg-destructive",
+  grey: "bg-muted-foreground",
+  blue: "bg-info",
+  purple: "bg-violet-500",
+};
+
+/** A coloured dot before a label, e.g. a status. Unknown colours draw grey. */
+export function StatusDot({ colour, label, className }: { colour?: string | null; label?: ReactNode; className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-1.5", className)}>
+      <span aria-hidden className={cn("inline-block size-2.5 shrink-0 rounded-full", DOT[colour ?? ""] ?? DOT.grey)} />
+      {label}
+    </span>
+  );
+}
+
+/** A small button that copies `value`, and says so for a moment. */
+export function CopyButton({ value, label, className }: { value: string; label: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
+  return (
+    <button
+      type="button"
+      className={cn(
+        "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-ring",
+        className,
+      )}
+      aria-label={copied ? `Copied ${label}` : `Copy ${label}`}
+      title={copied ? "Copied" : "Copy"}
+      onClick={() => void navigator.clipboard?.writeText(value).then(() => setCopied(true), () => undefined)}
+    >
+      {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+    </button>
   );
 }

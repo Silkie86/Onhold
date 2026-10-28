@@ -643,10 +643,12 @@ mod tests {
                     SelectOption {
                         value: "jazz".into(),
                         label: "Jazz".into(),
+                        colour: None,
                     },
                     SelectOption {
                         value: "hip_hop".into(),
                         label: "Hip hop".into(),
+                        colour: None,
                     },
                 ],
                 ..Validation::default()

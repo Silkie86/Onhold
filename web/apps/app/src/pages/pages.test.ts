@@ -1,6 +1,7 @@
 import { safeRedirect } from "./auth.tsx";
 import { decodeFile, isWorkbook, needsResaving, stripCardAttachments } from "./imports.tsx";
 import { validateListSearch } from "./crm.tsx";
+import { keyFor } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
 
 test("after signing in, only paths on this site are followed", () => {
@@ -15,6 +16,13 @@ test("field keys are made from labels", () => {
   expect(keyFrom("Café / bar?")).toBe("cafe_bar");
   expect(keyFrom("2nd phone")).toBe("f_2nd_phone");
   expect(keyFrom("!!!")).toBe("");
+});
+
+test("pitching keys are made from names and never repeat", () => {
+  expect(keyFor("North America", [])).toBe("north_america");
+  expect(keyFor("UK", ["uk"])).toBe("uk_2");
+  expect(keyFor("UK", ["uk", "uk_2"])).toBe("uk_3");
+  expect(keyFor("", [])).toBe("item");
 });
 
 test("list addresses keep only what they understand", () => {

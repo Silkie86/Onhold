@@ -15,6 +15,8 @@ pub struct Contact {
     pub organisation_id: Option<Uuid>,
     /// The organisation's name, for showing beside the contact.
     pub organisation_name: Option<String>,
+    /// The organisation's country (ISO code), for writing phones internationally.
+    pub organisation_country: Option<String>,
     pub name: String,
     pub emails: Vec<String>,
     pub phones: Vec<String>,
@@ -26,6 +28,7 @@ pub struct Contact {
     pub notes: Option<String>,
     pub tags: Vec<String>,
     pub custom: Value,
+    pub links: Vec<String>,
     pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -54,9 +57,10 @@ pub struct Filter<'a> {
 pub async fn list(conn: &mut PgConnection, f: Filter<'_>) -> Result<(Vec<Contact>, i64)> {
     let p = &f.list;
     let rows = sqlx::query!(
-        r#"SELECT c.id, c.organisation_id, o.name AS "organisation_name?", c.name, c.emails, c.phones, c.role,
+        r#"SELECT c.id, c.organisation_id, o.name AS "organisation_name?",
+                  o.country_code::text AS "organisation_country?", c.name, c.emails, c.phones, c.role,
                   c.preferred_channel, c.email_opt_in, c.sms_opt_in, c.whatsapp_opt_in, c.notes, c.tags,
-                  c.custom, c.version, c.created_at, c.updated_at, c.created_by AS "created_by: UserId",
+                  c.custom, c.links, c.version, c.created_at, c.updated_at, c.created_by AS "created_by: UserId",
                   c.updated_by AS "updated_by: UserId", count(*) OVER () AS "total!"
            FROM contacts c LEFT JOIN organisations o ON o.id = c.organisation_id
            WHERE c.workspace_id = app_workspace_id() AND c.deleted_at IS NULL
@@ -107,6 +111,7 @@ pub async fn list(conn: &mut PgConnection, f: Filter<'_>) -> Result<(Vec<Contact
             id: r.id,
             organisation_id: r.organisation_id,
             organisation_name: r.organisation_name,
+            organisation_country: r.organisation_country,
             name: r.name,
             emails: r.emails,
             phones: r.phones,
@@ -118,6 +123,7 @@ pub async fn list(conn: &mut PgConnection, f: Filter<'_>) -> Result<(Vec<Contact
             notes: r.notes,
             tags: r.tags,
             custom: r.custom,
+            links: r.links,
             version: r.version,
             created_at: r.created_at,
             updated_at: r.updated_at,
@@ -131,9 +137,10 @@ pub async fn list(conn: &mut PgConnection, f: Filter<'_>) -> Result<(Vec<Contact
 pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<Contact>> {
     Ok(sqlx::query_as!(
         Contact,
-        r#"SELECT c.id, c.organisation_id, o.name AS "organisation_name?", c.name, c.emails, c.phones, c.role,
+        r#"SELECT c.id, c.organisation_id, o.name AS "organisation_name?",
+                  o.country_code::text AS "organisation_country?", c.name, c.emails, c.phones, c.role,
                   c.preferred_channel, c.email_opt_in, c.sms_opt_in, c.whatsapp_opt_in, c.notes, c.tags,
-                  c.custom, c.version, c.created_at, c.updated_at, c.created_by AS "created_by: UserId",
+                  c.custom, c.links, c.version, c.created_at, c.updated_at, c.created_by AS "created_by: UserId",
                   c.updated_by AS "updated_by: UserId"
            FROM contacts c LEFT JOIN organisations o ON o.id = c.organisation_id
            WHERE c.workspace_id = app_workspace_id() AND c.id = $1 AND c.deleted_at IS NULL"#,
@@ -147,9 +154,10 @@ pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<Contact>> {
 pub async fn get_for_update(conn: &mut PgConnection, id: Uuid) -> Result<Option<Contact>> {
     Ok(sqlx::query_as!(
         Contact,
-        r#"SELECT c.id, c.organisation_id, NULL::text AS "organisation_name?", c.name, c.emails, c.phones,
+        r#"SELECT c.id, c.organisation_id, NULL::text AS "organisation_name?",
+                  NULL::text AS "organisation_country?", c.name, c.emails, c.phones,
                   c.role, c.preferred_channel, c.email_opt_in, c.sms_opt_in, c.whatsapp_opt_in, c.notes,
-                  c.tags, c.custom, c.version, c.created_at, c.updated_at,
+                  c.tags, c.custom, c.links, c.version, c.created_at, c.updated_at,
                   c.created_by AS "created_by: UserId", c.updated_by AS "updated_by: UserId"
            FROM contacts c
            WHERE c.workspace_id = app_workspace_id() AND c.id = $1 AND c.deleted_at IS NULL
@@ -174,6 +182,7 @@ pub struct Values<'a> {
     pub notes: Option<&'a str>,
     pub tags: &'a [String],
     pub custom: &'a Value,
+    pub links: &'a [String],
 }
 
 pub async fn insert(
@@ -185,8 +194,9 @@ pub async fn insert(
     sqlx::query!(
         r#"INSERT INTO contacts (id, workspace_id, organisation_id, name, emails, phones, phone_keys, role,
                                  preferred_channel, email_opt_in, sms_opt_in, whatsapp_opt_in, notes, tags,
-                                 custom, created_by, updated_by)
-           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)"#,
+                                 custom, created_by, updated_by, links)
+           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15,
+                   $16)"#,
         id,
         v.organisation_id,
         v.name,
@@ -201,7 +211,8 @@ pub async fn insert(
         v.notes,
         v.tags,
         v.custom,
-        by.map(|u| u.0)
+        by.map(|u| u.0),
+        v.links
     )
     .execute(conn)
     .await?;
@@ -219,7 +230,8 @@ pub async fn update(
     sqlx::query!(
         r#"UPDATE contacts SET organisation_id = $2, name = $3, emails = $4, phones = $5, phone_keys = $6,
                   role = $7, preferred_channel = $8, email_opt_in = $9, sms_opt_in = $10,
-                  whatsapp_opt_in = $11, notes = $12, tags = $13, custom = $14, updated_by = $15
+                  whatsapp_opt_in = $11, notes = $12, tags = $13, custom = $14, updated_by = $15,
+                  links = $16
            WHERE workspace_id = app_workspace_id() AND id = $1"#,
         id,
         v.organisation_id,
@@ -235,7 +247,8 @@ pub async fn update(
         v.notes,
         v.tags,
         v.custom,
-        by.map(|u| u.0)
+        by.map(|u| u.0),
+        v.links
     )
     .execute(conn)
     .await?;
