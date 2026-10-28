@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, thread_id, direction, message_id, in_reply_to, \"references\" AS \"references!\",\n                      from_address, from_name, to_addresses, cc_addresses, subject, body_text, body_html,\n                      sent_at, status, error, automatic, bulk, author_id, template_key\n               FROM thread_messages WHERE workspace_id = app_workspace_id() AND id = $1",
+  "query": "SELECT id, thread_id, direction, message_id, in_reply_to, \"references\" AS \"references!\",\n                      from_address, from_name, reply_to, to_addresses, cc_addresses, subject, body_text, body_html,\n                      sent_at, status, error, automatic, bulk, author_id, template_key\n               FROM thread_messages WHERE workspace_id = app_workspace_id() AND thread_id = $1 ORDER BY sent_at, id",
   "describe": {
     "columns": [
       {
@@ -93,6 +93,17 @@
       },
       {
         "ordinal": 8,
+        "name": "reply_to",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "reply_to"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
         "name": "to_addresses",
         "type_info": "TextArray",
         "origin": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "cc_addresses",
         "type_info": "TextArray",
         "origin": {
@@ -114,7 +125,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "subject",
         "type_info": "Text",
         "origin": {
@@ -125,7 +136,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "body_text",
         "type_info": "Text",
         "origin": {
@@ -136,7 +147,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "body_html",
         "type_info": "Text",
         "origin": {
@@ -147,7 +158,7 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "sent_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -158,7 +169,7 @@
         }
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "status",
         "type_info": "Text",
         "origin": {
@@ -169,7 +180,7 @@
         }
       },
       {
-        "ordinal": 15,
+        "ordinal": 16,
         "name": "error",
         "type_info": "Text",
         "origin": {
@@ -180,7 +191,7 @@
         }
       },
       {
-        "ordinal": 16,
+        "ordinal": 17,
         "name": "automatic",
         "type_info": "Bool",
         "origin": {
@@ -191,7 +202,7 @@
         }
       },
       {
-        "ordinal": 17,
+        "ordinal": 18,
         "name": "bulk",
         "type_info": "Bool",
         "origin": {
@@ -202,7 +213,7 @@
         }
       },
       {
-        "ordinal": 18,
+        "ordinal": 19,
         "name": "author_id",
         "type_info": "Uuid",
         "origin": {
@@ -213,7 +224,7 @@
         }
       },
       {
-        "ordinal": 19,
+        "ordinal": 20,
         "name": "template_key",
         "type_info": "Text",
         "origin": {
@@ -238,6 +249,7 @@
       false,
       true,
       true,
+      true,
       false,
       false,
       true,
@@ -252,5 +264,5 @@
       true
     ]
   },
-  "hash": "9eab345a44951faece0bbd5df1c301188af0077418f7944261b9dc281d2739ec"
+  "hash": "fb11a8d2c350d74bc87ac87cfb7e0d7cc71525609bc7386dfcf21031d87ed171"
 }

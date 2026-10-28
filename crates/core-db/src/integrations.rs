@@ -125,6 +125,69 @@ pub async fn live_for(
     .await?)
 }
 
+/// The member's own last connection to a mailbox that was disconnected,
+/// so connecting it again carries on where it stopped.
+pub async fn last_disconnected_for(
+    conn: &mut PgConnection,
+    provider: &str,
+    mailbox: &str,
+    owner: UserId,
+) -> Result<Option<Integration>> {
+    Ok(select_integration!(
+        "provider = $1 AND coalesce(shared_mailbox, account) = $2 AND owner_id = $3
+         AND disconnected_at IS NOT NULL ORDER BY disconnected_at DESC LIMIT 1 FOR UPDATE",
+        provider,
+        mailbox,
+        owner.0
+    )
+    .fetch_optional(conn)
+    .await?)
+}
+
+/// Makes a disconnected connection live again (its grant is set apart).
+pub async fn reconnect(conn: &mut PgConnection, id: Uuid) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE integrations SET disconnected_at = NULL, connected_at = now()
+           WHERE workspace_id = app_workspace_id() AND id = $1"#,
+        id
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Whether another live connection, in any workspace, uses the same account.
+pub async fn account_in_use(
+    conn: &mut PgConnection,
+    provider: &str,
+    account: &str,
+    except: Uuid,
+) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT integration_account_in_use($1, $2, $3) AS "used!""#,
+        provider,
+        account,
+        except
+    )
+    .fetch_one(conn)
+    .await?)
+}
+
+/// Whether a connection is still live, holding it so a disconnect waits
+/// for this transaction to finish.
+pub async fn hold_live(conn: &mut PgConnection, id: Uuid) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT EXISTS (
+               SELECT 1 FROM integrations
+               WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL
+               FOR SHARE
+           ) AS "live!""#,
+        id
+    )
+    .fetch_one(conn)
+    .await?)
+}
+
 /// Live connections, oldest first: every one when `viewer` is `None`,
 /// else the viewer's own and the shared ones.
 pub async fn list(conn: &mut PgConnection, viewer: Option<UserId>) -> Result<Vec<Integration>> {
@@ -201,12 +264,30 @@ pub async fn set_preferences(
 }
 
 /// Starts a read: `false` when another is under way. The lease runs out on
-/// its own if the worker stops part way.
+/// its own if the worker stops part way; the next read is then due when it
+/// does, under a new time (so a new job), unless the read records another.
 pub async fn claim_poll(conn: &mut PgConnection, id: Uuid, lease_secs: f64) -> Result<bool> {
     let done = sqlx::query!(
-        r#"UPDATE integrations SET poll_lease_until = now() + make_interval(secs => $2)
+        r#"UPDATE integrations SET poll_lease_until = now() + make_interval(secs => $2),
+               next_poll_at = now() + make_interval(secs => $2)
            WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL
              AND status <> 'reconnect' AND (poll_lease_until IS NULL OR poll_lease_until < now())"#,
+        id,
+        lease_secs
+    )
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
+
+/// Keeps a read's lease while it goes on: `false` once the connection was
+/// disconnected or needs connecting again, and the read must stop.
+pub async fn renew_poll(conn: &mut PgConnection, id: Uuid, lease_secs: f64) -> Result<bool> {
+    let done = sqlx::query!(
+        r#"UPDATE integrations SET poll_lease_until = now() + make_interval(secs => $2),
+               next_poll_at = now() + make_interval(secs => $2)
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL
+             AND status <> 'reconnect'"#,
         id,
         lease_secs
     )
@@ -298,6 +379,17 @@ pub async fn disconnect(conn: &mut PgConnection, id: Uuid) -> Result<()> {
     Ok(())
 }
 
+/// Disconnects every live connection of the workspace (when it closes).
+pub async fn disconnect_all(conn: &mut PgConnection) -> Result<Vec<Uuid>> {
+    Ok(sqlx::query_scalar!(
+        r#"UPDATE integrations SET disconnected_at = now(), next_poll_at = NULL, secret = '\x'::bytea
+           WHERE workspace_id = app_workspace_id() AND disconnected_at IS NULL
+           RETURNING id"#
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
 /// Every live connection a member owns, so leaving a workspace can stop them.
 pub async fn owned_by(conn: &mut PgConnection, owner: UserId) -> Result<Vec<Uuid>> {
     Ok(sqlx::query_scalar!(
@@ -320,11 +412,12 @@ pub struct Due {
 pub async fn due(conn: &mut PgConnection, now: DateTime<Utc>, limit: i64) -> Result<Vec<Due>> {
     Ok(sqlx::query_as!(
         Due,
-        r#"SELECT id, workspace_id AS "workspace_id: WorkspaceId", next_poll_at AS "at!"
-           FROM integrations
-           WHERE disconnected_at IS NULL AND next_poll_at <= $1
-             AND (poll_lease_until IS NULL OR poll_lease_until < $1)
-           ORDER BY next_poll_at LIMIT $2"#,
+        r#"SELECT i.id, i.workspace_id AS "workspace_id: WorkspaceId", i.next_poll_at AS "at!"
+           FROM integrations i JOIN workspaces w ON w.id = i.workspace_id
+           WHERE i.disconnected_at IS NULL AND i.next_poll_at <= $1
+             AND (i.poll_lease_until IS NULL OR i.poll_lease_until < $1)
+             AND w.status IN ('trial', 'active')
+           ORDER BY i.next_poll_at LIMIT $2"#,
         now,
         limit
     )

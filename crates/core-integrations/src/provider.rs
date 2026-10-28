@@ -48,6 +48,8 @@ impl ProviderError {
 
 /// How long one provider call may take.
 pub const TIMEOUT: Duration = Duration::from_secs(30);
+/// How long a call carrying a whole message (reading or sending one) may take.
+pub const BODY_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A client for providers' APIs: no redirects, a timeout, and OnHold's
 /// user agent.

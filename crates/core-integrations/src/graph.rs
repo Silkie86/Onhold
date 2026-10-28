@@ -17,6 +17,15 @@ pub const API_BASE: &str = "https://graph.microsoft.com";
 /// The folders read, by their well-known names.
 const FOLDERS: [&str; 2] = ["inbox", "sentitems"];
 
+/// Attachments a message sent through Graph may carry in all. Graph takes
+/// at most 4 MB in one request and the message goes base64-encoded twice;
+/// larger files would need an upload session.
+pub const MAX_SEND_ATTACHMENTS: usize = 2 * 1024 * 1024;
+
+/// Ids that stay the same when a message moves to another folder, so a
+/// message can be read again (to open an attachment) after it is filed.
+const IMMUTABLE_IDS: &str = "IdType=\"ImmutableId\"";
+
 pub struct Graph {
     http: reqwest::Client,
     base: Url,
@@ -85,7 +94,13 @@ impl Graph {
 
     async fn mime(&self, id: &str) -> Result<Option<Vec<u8>>, ProviderError> {
         let url = self.url(&format!("/messages/{}/$value", segment(id)));
-        match provider::send_raw(self.http.get(url).bearer_auth(&self.token)).await {
+        let req = self
+            .http
+            .get(url)
+            .bearer_auth(&self.token)
+            .header("prefer", IMMUTABLE_IDS)
+            .timeout(provider::BODY_TIMEOUT);
+        match provider::send_raw(req).await {
             Ok((_, body)) => Ok(Some(body)),
             Err(ProviderError::Refused { status: 404, .. }) => Ok(None),
             Err(e) => Err(e),
@@ -167,24 +182,22 @@ impl MailProvider for Graph {
                     ))
                 }
             };
-            let page: DeltaPage = provider::send_json(
-                self.http
-                    .get(url)
-                    .bearer_auth(&self.token)
-                    .header("prefer", format!("odata.maxpagesize={max}")),
-            )
-            .await?;
+            let page: DeltaPage =
+                provider::send_json(self.http.get(url).bearer_auth(&self.token).header(
+                    "prefer",
+                    format!("odata.maxpagesize={max}, {IMMUTABLE_IDS}"),
+                ))
+                .await?;
             for item in page.value {
                 if item.removed.is_some() || item.is_draft == Some(true) {
                     continue;
                 }
-                let Some(raw) = self.mime(&item.id).await? else {
-                    continue;
-                };
+                // A change to a message already read (read state, flags)
+                // lists it again: its body is read only if it is new.
                 messages.push(FetchedMail {
                     external_id: item.id,
                     thread_id: item.conversation_id,
-                    raw,
+                    raw: None,
                     sent: folder == "sentitems",
                 });
             }
@@ -221,6 +234,7 @@ impl MailProvider for Graph {
             self.http
                 .post(self.url("/sendMail"))
                 .bearer_auth(&self.token)
+                .timeout(provider::BODY_TIMEOUT)
                 .header("content-type", "text/plain")
                 .body(BASE64.encode(&raw)),
         )

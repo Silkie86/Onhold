@@ -516,6 +516,53 @@ fn outgoing(
     }
 }
 
+/// Refuses wording for a system email that uses its private link anywhere
+/// it would be removed when sent (added to, inside another address, in an
+/// attribute other than a link's `href`), so the problem shows when the
+/// template is saved rather than in a sent email.
+pub(crate) async fn check_link_use(
+    state: &AppState,
+    tx: &mut core_db::Tx,
+    key: &str,
+    subject: Option<&str>,
+    body: &str,
+) -> ApiResult<()> {
+    if ![
+        SYSTEM_INVITATION,
+        SYSTEM_QUOTE,
+        SYSTEM_INVOICE,
+        SYSTEM_SIGNATURE,
+    ]
+    .contains(&key)
+    {
+        return Ok(());
+    }
+    let (workspace, options) = context::workspace(tx, state).await?;
+    let link = json!({ "url": LINK_PLACEHOLDER });
+    let sample = json!({
+        "workspace": workspace,
+        "invitation": link,
+        "quote": link,
+        "invoice": link,
+        "link": link,
+    });
+    let rendered =
+        super::templates::render_in(tx, Kind::Email, subject, body, &sample, &options).await?;
+    let placed = place_link(rendered, "https://example.test/link");
+    let removed = |s: &str| s.contains(REDACTED);
+    if placed.subject.as_deref().is_some_and(removed)
+        || removed(&placed.body)
+        || removed(&placed.text)
+    {
+        return Err(ApiError::invalid(
+            "body",
+            "use the link only on its own: as a link's whole address (href=\"{{ quote.url }}\") or \
+             as a word in the text, never inside other text or another address",
+        ));
+    }
+    Ok(())
+}
+
 /// Puts `link` where the template placed [`LINK_PLACEHOLDER`] on its own: as
 /// the whole `href` of an `a` tag or as text (see [`link_spots`]). Anywhere
 /// else (inside another address, say) it becomes [`REDACTED`].

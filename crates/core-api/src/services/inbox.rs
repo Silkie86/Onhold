@@ -299,7 +299,7 @@ pub async fn download(
 ) -> ApiResult<super::files::Download> {
     ctx.authorize(Permission::InboxRead)?;
     let mut tx = begin(state, ctx).await?;
-    load(&mut tx, ctx, thread_id).await?;
+    let thread = load(&mut tx, ctx, thread_id).await?;
     let found = core_db::inbox::file(&mut tx, thread_id, id)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -316,11 +316,16 @@ pub async fn download(
         });
     }
     tx.commit().await?;
+    // Only through the mailbox the thread belongs to, which is the one the
+    // reader was allowed to see.
     let (Some(integration_id), Some(external_id), Some(part)) =
         (found.integration_id, found.external_id, found.file.part)
     else {
         return Err(ApiError::NotFound);
     };
+    if thread.integration_id != Some(integration_id) {
+        return Err(ApiError::NotFound);
+    }
     let raw = super::integrations::fetch_raw(state, ctx, integration_id, &external_id).await?;
     let attachment = mailbox::parse(&raw)
         .and_then(|m| m.attachments.into_iter().nth(part as usize))
@@ -446,6 +451,11 @@ pub async fn update(
     };
     if p.links() {
         check_links(&mut tx, ctx, &mut check, &p, &mut links).await?;
+    }
+    // Unlinking the contact also unlinks the organisation that came with
+    // it, unless an organisation is given.
+    if p.contact_id == Some(None) && p.organisation_id.is_none() {
+        links.organisation_id = None;
     }
     check.finish()?;
 
@@ -614,6 +624,10 @@ pub struct Reply {
 pub struct Compose {
     /// The mailbox to send from; default the sender's own, if connected.
     pub integration_id: Option<Uuid>,
+    /// Send through OnHold, in the workspace's name, rather than from a
+    /// mailbox (`integration_id` must then be left out).
+    #[serde(default)]
+    pub from_onhold: bool,
     pub to: Vec<String>,
     #[serde(default)]
     pub cc: Vec<String>,
@@ -758,7 +772,8 @@ async fn sending_mailbox(
     let Some(i) = core_db::integrations::get(tx, id).await? else {
         return Ok(None);
     };
-    if i.disconnected_at.is_some() {
+    // A mailbox that needs connecting again cannot send either.
+    if i.disconnected_at.is_some() || i.status == "reconnect" {
         return Ok(None);
     }
     if !(i.shared || viewer(ctx).is_none_or(|v| v == i.owner_id)) {
@@ -813,6 +828,14 @@ fn new_message_id(state: &AppState) -> String {
 /// Attachments sent with mail may be 20 MB together, what most providers take.
 const MAX_SEND_BYTES: usize = 20 * 1024 * 1024;
 
+/// What a message may carry, by the mailbox it goes from.
+fn send_limit(mailbox: Option<&Integration>) -> usize {
+    match mailbox.map(|m| m.provider.as_str()) {
+        Some("microsoft") => core_integrations::graph::MAX_SEND_ATTACHMENTS,
+        _ => MAX_SEND_BYTES,
+    }
+}
+
 /// Writes a reply in a thread; the worker sends it.
 pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult<MessageView> {
     ctx.authorize(Permission::InboxWrite)?;
@@ -824,6 +847,15 @@ pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult
         Some(i) => sending_mailbox(&mut tx, ctx, i).await?,
         None => None,
     };
+    // A mailbox that needs connecting again cannot send, but answers still
+    // go to it, to be read in once it is connected.
+    let answer_to = match (thread.integration_id, &mailbox) {
+        (Some(i), None) => core_db::integrations::get(&mut tx, i)
+            .await?
+            .filter(|i| i.disconnected_at.is_none())
+            .map(|i| i.mailbox().to_owned()),
+        _ => None,
+    };
     let own: Vec<String> = mailbox.iter().map(|m| m.mailbox().to_owned()).collect();
     let mut check = Check::default();
     // Answer whoever wrote last from outside; else whoever we last wrote to.
@@ -831,7 +863,7 @@ pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult
         .iter()
         .rev()
         .find(|m| m.direction == "inbound" && !m.automatic)
-        .and_then(|m| m.from_address.clone())
+        .and_then(|m| m.reply_to.clone().or_else(|| m.from_address.clone()))
         .map(|a| vec![a])
         .or_else(|| {
             messages
@@ -850,8 +882,15 @@ pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult
     if mailbox.is_none() && !cc.is_empty() {
         check.issue("cc", "copies need a connected mailbox to send from");
     }
+    if mailbox.is_none() && to.len() > 1 {
+        check.issue(
+            "to",
+            "without a connected mailbox, a message goes to one person",
+        );
+    }
     check.finish()?;
-    let attachments = check_attachments(&mut tx, ctx, &r.attachments, MAX_SEND_BYTES).await?;
+    let attachments =
+        check_attachments(&mut tx, ctx, &r.attachments, send_limit(mailbox.as_ref())).await?;
     let links = Links {
         contact_id: thread.contact_id,
         organisation_id: thread.organisation_id,
@@ -897,6 +936,7 @@ pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult
             in_reply_to,
             references,
             attachments,
+            answer_to,
         },
     )
     .await?;
@@ -908,23 +948,34 @@ pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult
 pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<ThreadDetail> {
     ctx.authorize(Permission::InboxWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let mailbox =
-        match c.integration_id {
-            Some(id) => Some(sending_mailbox(&mut tx, ctx, id).await?.ok_or_else(|| {
-                ApiError::invalid("integration_id", "that mailbox is not connected")
-            })?),
-            // The sender's own mailbox, if they connected exactly one.
-            None => {
-                let own: Vec<Integration> = core_db::integrations::list(&mut tx, viewer(ctx))
-                    .await?
-                    .into_iter()
-                    .filter(|i| {
-                        Some(i.owner_id) == ctx.user_id() && i.purposes.iter().any(|p| p == "mail")
-                    })
-                    .collect();
-                (own.len() == 1).then(|| own.into_iter().next()).flatten()
-            }
-        };
+    let mailbox = match (c.integration_id, c.from_onhold) {
+        (Some(_), true) => {
+            return Err(ApiError::invalid(
+                "from_onhold",
+                "choose a mailbox or OnHold, not both",
+            ));
+        }
+        (Some(id), false) => Some(sending_mailbox(&mut tx, ctx, id).await?.ok_or_else(|| {
+            ApiError::invalid(
+                "integration_id",
+                "that mailbox is not connected, or needs connecting again",
+            )
+        })?),
+        (None, true) => None,
+        // The sender's own mailbox, if they connected exactly one that works.
+        (None, false) => {
+            let own: Vec<Integration> = core_db::integrations::list(&mut tx, viewer(ctx))
+                .await?
+                .into_iter()
+                .filter(|i| {
+                    Some(i.owner_id) == ctx.user_id()
+                        && i.status != "reconnect"
+                        && i.purposes.iter().any(|p| p == "mail")
+                })
+                .collect();
+            (own.len() == 1).then(|| own.into_iter().next()).flatten()
+        }
+    };
     let mut check = Check::default();
     let to = clean_addresses("to", &c.to, &mut check);
     if to.is_empty() {
@@ -960,7 +1011,8 @@ pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<Threa
         links.organisation_id = org;
     }
     check.finish()?;
-    let attachments = check_attachments(&mut tx, ctx, &c.attachments, MAX_SEND_BYTES).await?;
+    let attachments =
+        check_attachments(&mut tx, ctx, &c.attachments, send_limit(mailbox.as_ref())).await?;
     let written = write_body(
         state,
         &mut tx,
@@ -1032,6 +1084,7 @@ pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<Threa
             in_reply_to: None,
             references: Vec::new(),
             attachments,
+            answer_to: None,
         },
     )
     .await?;
@@ -1049,6 +1102,8 @@ struct Outbound {
     in_reply_to: Option<String>,
     references: Vec<String>,
     attachments: Vec<Uuid>,
+    /// Where answers go when there is no mailbox to send from.
+    answer_to: Option<String>,
 }
 
 async fn queue_outbound(
@@ -1063,10 +1118,11 @@ async fn queue_outbound(
         Some(u) => core_db::users::get(tx, u).await?,
         None => None,
     };
-    let from_address = match (mailbox, &author) {
-        (Some(m), _) => Some(m.mailbox().to_owned()),
-        (None, Some(a)) => Some(a.email.to_string()),
-        (None, None) => None,
+    let from_address = match (mailbox, o.answer_to, &author) {
+        (Some(m), _, _) => Some(m.mailbox().to_owned()),
+        (None, Some(a), _) => Some(a),
+        (None, None, Some(a)) => Some(a.email.to_string()),
+        (None, None, None) => None,
     };
     let from_name = mailbox
         .and_then(|m| m.display_name.clone())
@@ -1086,6 +1142,7 @@ async fn queue_outbound(
             references: &o.references,
             from_address: from_address.as_deref(),
             from_name: from_name.as_deref(),
+            reply_to: None,
             to_addresses: &o.to,
             cc_addresses: &o.cc,
             subject: Some(&o.subject),
@@ -1170,9 +1227,26 @@ pub async fn send(
 ) -> ApiResult<SendOutcome> {
     let ctx = Ctx::system(ws);
     let mut tx = begin(state, &ctx).await?;
-    let Some(m) = core_db::inbox::message(&mut tx, message_id).await? else {
+    let Some(m) = core_db::inbox::lock_message(&mut tx, message_id).await? else {
         return Ok(SendOutcome::AlreadyDone);
     };
+    if m.status == "sending" {
+        // An earlier attempt handed it over and stopped before recording
+        // what happened. Sending again could send it twice; if it did go,
+        // reading the mailbox's copy back marks it sent.
+        tx.commit().await?;
+        return finish(
+            state,
+            &ctx,
+            &m,
+            Err(
+                "sending was interrupted and it may not have gone out; check the Sent folder \
+                 before sending it again"
+                    .into(),
+            ),
+        )
+        .await;
+    }
     if m.status != "queued" {
         return Ok(SendOutcome::AlreadyDone);
     }
@@ -1203,6 +1277,7 @@ pub async fn send(
         });
     }
     let (workspace, _) = super::context::workspace(&mut tx, state).await?;
+    core_db::inbox::start_sending(&mut tx, m.id).await?;
     tx.commit().await?;
 
     let wrap = |id: &str| format!("<{id}>");
@@ -1243,8 +1318,28 @@ pub async fn send(
                 .and_then(Value::as_str)
                 .unwrap_or("OnHold")
                 .to_owned();
-            let Some(to) = m.to_addresses.first() else {
-                return finish(state, &ctx, &m, Err("there is no one to send it to".into())).await;
+            // It sends to one person, without copies: a message written
+            // for a mailbox that stopped working fails rather than going
+            // to only some of the people it names.
+            let to = match m.to_addresses.as_slice() {
+                [to] if m.cc_addresses.is_empty() => to,
+                [] => {
+                    return finish(state, &ctx, &m, Err("there is no one to send it to".into()))
+                        .await;
+                }
+                _ => {
+                    return finish(
+                        state,
+                        &ctx,
+                        &m,
+                        Err(
+                            "its mailbox is no longer connected, and without one a message \
+                             goes to one person only"
+                                .into(),
+                        ),
+                    )
+                    .await;
+                }
             };
             let email = Email {
                 to: to.clone(),
@@ -1271,34 +1366,47 @@ pub async fn send(
     };
     match result {
         Ok((external, provider_thread, via)) => {
-            let mut tx = begin(state, &ctx).await?;
-            core_db::inbox::set_outcome(&mut tx, m.id, "sent", external.as_deref(), None).await?;
-            if let (Some(pt), Some(i)) = (&provider_thread, thread.integration_id)
-                && thread.external_id.is_none()
-            {
-                core_db::inbox::adopt_external(&mut tx, thread.id, i, pt).await?;
+            // It has gone: a failure from here on is logged, never retried,
+            // since a retry would send it again.
+            let record_sent = async {
+                let mut tx = begin(state, &ctx).await?;
+                core_db::inbox::set_outcome(&mut tx, m.id, "sent", external.as_deref(), None)
+                    .await?;
+                if let (Some(pt), Some(i)) = (&provider_thread, thread.integration_id) {
+                    core_db::inbox::adopt_external(&mut tx, thread.id, i, pt).await?;
+                }
+                core_db::inbox::refresh(&mut tx, thread.id, false).await?;
+                record(
+                    &mut tx,
+                    &ctx,
+                    Change {
+                        topic: "thread.message_sent",
+                        resource: ENTITY,
+                        object_id: Some(thread.id),
+                        before: None,
+                        after: Some(json!({ "message_id": m.id })),
+                        event_extra: None,
+                    },
+                )
+                .await?;
+                tx.commit().await?;
+                Ok::<_, ApiError>(())
+            };
+            if let Err(e) = record_sent.await {
+                tracing::error!(message_id = %m.id, error = %e, "a message was sent but could not be recorded as sent");
             }
-            core_db::inbox::refresh(&mut tx, thread.id, false).await?;
-            record(
-                &mut tx,
-                &ctx,
-                Change {
-                    topic: "thread.message_sent",
-                    resource: ENTITY,
-                    object_id: Some(thread.id),
-                    before: None,
-                    after: Some(json!({ "message_id": m.id })),
-                    event_extra: None,
-                },
-            )
-            .await?;
-            tx.commit().await?;
             Ok(SendOutcome::Sent { via })
         }
         Err((permanent, why)) if permanent || last_attempt => {
             finish(state, &ctx, &m, Err(why)).await
         }
-        Err((_, why)) => Err(ApiError::unavailable("mail_unavailable", why)),
+        Err((_, why)) => {
+            // Not handed over: back in the queue for the next attempt.
+            let mut tx = begin(state, &ctx).await?;
+            core_db::inbox::set_outcome(&mut tx, m.id, "queued", None, None).await?;
+            tx.commit().await?;
+            Err(ApiError::unavailable("mail_unavailable", why))
+        }
     }
 }
 
@@ -1322,7 +1430,8 @@ async fn finish(
             resource: ENTITY,
             object_id: Some(m.thread_id),
             before: None,
-            after: Some(json!({ "message_id": m.id, "error": why })),
+            // Why stays on the message: a provider's words can name people.
+            after: Some(json!({ "message_id": m.id })),
             event_extra: None,
         },
     )
@@ -1343,7 +1452,7 @@ pub async fn abandon(
     let mut tx = begin(state, &ctx).await?;
     let m = core_db::inbox::lock_message(&mut tx, message_id).await?;
     tx.commit().await?;
-    if let Some(m) = m.filter(|m| m.status == "queued") {
+    if let Some(m) = m.filter(|m| m.status == "queued" || m.status == "sending") {
         finish(state, &ctx, &m, Err(format!("sending stopped: {error}"))).await?;
     }
     Ok(())
@@ -1403,26 +1512,56 @@ fn strip_subject(s: &str) -> &str {
     }
 }
 
-/// Reads one message into the inbox. Returns whether it was new.
+/// What reading one message did.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct Ingested {
+    /// It was new and kept.
+    pub added: bool,
+    /// It started a thread.
+    pub new_thread: bool,
+}
+
+/// Whether this mailbox's message is in the inbox already, so its body
+/// need not be read.
+pub(crate) async fn holds(
+    state: &AppState,
+    ws: WorkspaceId,
+    integration_id: Uuid,
+    external_id: &str,
+) -> ApiResult<bool> {
+    let ctx = Ctx::system(ws);
+    let mut tx = begin(state, &ctx).await?;
+    let known = core_db::inbox::known(&mut tx, integration_id, external_id, None).await?;
+    tx.commit().await?;
+    Ok(known.is_some())
+}
+
+/// Reads one message into the inbox.
 pub(crate) async fn ingest(
     state: &AppState,
     ws: WorkspaceId,
     i: &Integration,
     m: &FetchedMail,
-) -> ApiResult<bool> {
-    let Some(parsed) = mailbox::parse(&m.raw) else {
+    raw: &[u8],
+) -> ApiResult<Ingested> {
+    let Some(parsed) = mailbox::parse(raw) else {
         tracing::warn!(integration_id = %i.id, external_id = %m.external_id, "a message could not be read");
-        return Ok(false);
+        return Ok(Ingested::default());
     };
     let ctx = Ctx::system(ws);
     let mut tx = begin(state, &ctx).await?;
+    // Nothing more is read in once the mailbox is disconnected; a
+    // disconnect waits for a message being read in to finish.
+    if !core_db::integrations::hold_live(&mut tx, i.id).await? {
+        return Ok(Ingested::default());
+    }
     if let Some(existing) =
         core_db::inbox::known(&mut tx, i.id, &m.external_id, parsed.message_id.as_deref()).await?
     {
         // A message sent from here, now read back from the mailbox.
         core_db::inbox::set_external(&mut tx, existing, &m.external_id).await?;
         tx.commit().await?;
-        return Ok(false);
+        return Ok(Ingested::default());
     }
     let own = i.mailbox();
     let from = parsed.from.as_ref().map(|f| f.email.as_str());
@@ -1475,7 +1614,7 @@ pub(crate) async fn ingest(
     let keep = thread_id.is_some() || contact.is_some() || (!outbound && person);
     if !keep {
         tx.rollback().await?;
-        return Ok(false);
+        return Ok(Ingested::default());
     }
     let subject = parsed
         .subject
@@ -1566,6 +1705,11 @@ pub(crate) async fn ingest(
                 .collect::<Vec<_>>(),
             from_address: from,
             from_name: parsed.from.as_ref().and_then(|f| f.name.as_deref()),
+            reply_to: parsed
+                .reply_to
+                .as_ref()
+                .map(|a| a.email.as_str())
+                .filter(|r| Some(*r) != from),
             to_addresses: &addresses(&parsed.to),
             cc_addresses: &addresses(&parsed.cc),
             subject: parsed.subject.as_deref(),
@@ -1583,7 +1727,7 @@ pub(crate) async fn ingest(
     if !inserted {
         // Read in by a read running at the same time.
         tx.rollback().await?;
-        return Ok(false);
+        return Ok(Ingested::default());
     }
     // Attachments stay in the mailbox; shown inside the message (`cid:`)
     // ones are not shown at all.
@@ -1633,7 +1777,10 @@ pub(crate) async fn ingest(
         .await?;
     }
     tx.commit().await?;
-    Ok(true)
+    Ok(Ingested {
+        added: true,
+        new_thread: created,
+    })
 }
 
 // Turning a thread into an enquiry ------------------------------------------------------

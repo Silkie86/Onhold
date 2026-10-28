@@ -197,11 +197,17 @@ async fn gmail_list(
         return unauthorized();
     }
     assert!(q["q"].contains("after:"), "{q:?}");
-    // Newest first, as Gmail lists; the client keeps out what it must.
+    assert!(q["q"].contains("-in:spam"), "{q:?}");
+    // Newest first, as Gmail lists, without what the search leaves out.
     let messages: Vec<Value> = s
         .gmail
         .iter()
         .rev()
+        .filter(|m| {
+            !m.labels
+                .iter()
+                .any(|l| l == "SPAM" || l.starts_with("CATEGORY_"))
+        })
         .map(|m| json!({ "id": m.id, "threadId": m.thread }))
         .collect();
     axum::Json(json!({ "messages": messages, "resultSizeEstimate": messages.len() }))
@@ -238,6 +244,24 @@ async fn gmail_message(
         "raw": BASE64URL.encode(&m.raw),
     }))
     .into_response()
+}
+
+async fn gmail_thread(
+    State(fake): State<Shared>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let s = fake.lock().unwrap();
+    if refused(&s, &headers) {
+        return unauthorized();
+    }
+    let messages: Vec<Value> = s
+        .gmail
+        .iter()
+        .filter(|m| m.thread == id)
+        .map(|m| json!({ "id": m.id, "threadId": m.thread, "labelIds": m.labels }))
+        .collect();
+    axum::Json(json!({ "id": id, "messages": messages })).into_response()
 }
 
 async fn gmail_history(
@@ -377,6 +401,7 @@ async fn fake_providers() -> (Url, Shared) {
         .route("/gmail/v1/users/me/messages/send", post(gmail_send))
         .route("/gmail/v1/users/me/messages/{id}", get(gmail_message))
         .route("/gmail/v1/users/me/history", get(gmail_history))
+        .route("/gmail/v1/users/me/threads/{id}", get(gmail_thread))
         .route("/v1.0/me", get(graph_me))
         .route(
             "/v1.0/me/mailFolders/{folder}/messages/delta",
@@ -817,6 +842,53 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
     assert_eq!(again["id"], mailbox_id.as_str());
     assert_eq!(again["status"], "active");
 
+    // Ana writes to someone new from Gmail itself: that stays in Gmail. When
+    // they answer (through a booking site, asking for answers elsewhere),
+    // the conversation comes in whole, and a reply goes where they asked.
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.add_gmail(
+            "g-out",
+            "t-cleo",
+            &["SENT"],
+            "From: Ana <ana@owls.test>\nTo: bookings@stages.test\nSubject: Owls in May\n\
+             Date: Mon, 26 Oct 2026 09:00:00 +0000\nMessage-ID: <out1@owls.test>\n\n\
+             Are you booking for May?\n",
+        );
+        f.add_gmail(
+            "g-in",
+            "t-cleo",
+            &["INBOX"],
+            "From: Stages <bookings@stages.test>\nReply-To: Cleo <cleo@client.test>\n\
+             To: ana@owls.test\nSubject: Re: Owls in May\nDate: Mon, 26 Oct 2026 10:00:00 +0000\n\
+             Message-ID: <in1@stages.test>\nIn-Reply-To: <out1@owls.test>\n\n\
+             Yes, 14 May please.\n",
+        );
+    }
+    h.drain().await;
+    let page = h.threads(&owner).await;
+    let cleo = find(&page, "Owls in May");
+    assert_eq!(cleo["message_count"], 2, "{cleo}");
+    let cleo_id = cleo["id"].as_str().unwrap().to_owned();
+    h.post(
+        &owner,
+        &format!("/api/v1/inbox/threads/{cleo_id}/reply"),
+        json!({ "body": "Booked." }),
+    )
+    .await
+    .ok();
+    h.drain().await;
+    let sent = h.fake.lock().unwrap().gmail_sent.last().cloned().unwrap();
+    let raw = BASE64URL
+        .decode(sent["raw"].as_str().unwrap().as_bytes())
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&raw).contains("To: Cleo <cleo@client.test>")
+            || String::from_utf8_lossy(&raw).contains("To: cleo@client.test"),
+        "{}",
+        String::from_utf8_lossy(&raw)
+    );
+
     // Disconnecting forgets the grant and tells Google; the threads stay.
     let gone = h
         .app
@@ -829,7 +901,7 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
         h.fake.lock().unwrap().revoked,
         vec!["1//0gtest-owls-refresh".to_owned()]
     );
-    assert_eq!(h.threads(&owner).await["total"], 1);
+    assert_eq!(h.threads(&owner).await["total"], 2);
     // Its attachments stayed in the mailbox, so they cannot be opened now.
     let detail = h.thread(&owner, &thread_id).await;
     let file_id = detail["messages"][0]["files"][0]["id"].as_str().unwrap();
@@ -848,6 +920,13 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
     ] {
         assert!(actions.iter().any(|a| a == action), "{action}: {actions:?}");
     }
+
+    // Connected again after disconnecting, it is the same mailbox: what it
+    // read before is recognised rather than read in twice.
+    let back = h.connect(&owner, "google", "good-code").await.ok().body;
+    assert_eq!(back["id"], mailbox_id.as_str());
+    h.drain().await;
+    assert_eq!(h.threads(&owner).await["total"], 2);
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -1249,4 +1328,84 @@ async fn an_imap_mailbox_is_read_and_replies_go_out_by_smtp(pool: PgPool) {
     let detail = h.thread(&owner, &thread_id).await;
     assert_eq!(detail["messages"].as_array().unwrap().len(), 3, "{detail}");
     assert_eq!(h.threads(&owner).await["total"], 1);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_answer_copied_to_two_private_mailboxes_stays_in_each(pool: PgPool) {
+    let h = harness(pool).await;
+    let (_ws, owner) = h.app.workspace_with_owner("owls").await;
+    let ana = h.app.add_member(&owner, "ana@owls.test", "agent").await;
+    let cy = h.app.add_member(&owner, "cy@owls.test", "agent").await;
+    // Ana reads her Gmail here, Cy his own mailbox by IMAP; both private.
+    let ana_box = h.connect(&ana, "google", "good-code").await.ok().body;
+    let server: Server = Arc::default();
+    let imap = fake_imap(server.clone()).await;
+    let smtp = fake_smtp(server.clone()).await;
+    let cy_box = h
+        .post(
+            &cy,
+            "/api/v1/inbox/mailboxes/imap",
+            json!({
+                "address": "cy@owls.test",
+                "imap": { "host": "127.0.0.1", "port": imap, "security": "none" },
+                "smtp": { "host": "127.0.0.1", "port": smtp, "security": "none" },
+                "password": IMAP_PASSWORD,
+            }),
+        )
+        .await
+        .ok()
+        .body;
+    h.drain().await;
+
+    // The owner, with no mailbox, writes to a client through OnHold.
+    h.post(
+        &owner,
+        "/api/v1/inbox/threads",
+        json!({ "to": ["dee@client.test"], "subject": "Summer dates", "body": "Which dates?",
+                "from_onhold": true }),
+    )
+    .await
+    .ok();
+    h.drain().await;
+    let first: String = sqlx::query_scalar("SELECT message_id FROM thread_messages")
+        .fetch_one(&h.app.owner)
+        .await
+        .unwrap();
+
+    // The client answers, copying Ana and Cy: each mailbox gets a copy.
+    let answer = format!(
+        "From: Dee <dee@client.test>\r\nTo: owner@owls.test\r\nCc: ana@owls.test, cy@owls.test\r\n\
+         Subject: Re: Summer dates\r\nDate: Tue, 27 Oct 2026 10:00:00 +0000\r\n\
+         Message-ID: <dee1@client.test>\r\nIn-Reply-To: <{first}>\r\n\r\nPrivate: 3 July.\r\n"
+    );
+    h.fake
+        .lock()
+        .unwrap()
+        .add_gmail("g-dee", "t-dee", &["INBOX"], &answer);
+    server.lock().unwrap().inbox.push((50, answer.clone()));
+    for (who, mailbox) in [(&ana, &ana_box), (&cy, &cy_box)] {
+        let id = mailbox["id"].as_str().unwrap();
+        h.post(
+            who,
+            &format!("/api/v1/inbox/mailboxes/{id}/sync"),
+            json!({}),
+        )
+        .await
+        .ok();
+    }
+    h.drain().await;
+
+    // Ana's copy joins the conversation; Cy's stays in a thread of his own
+    // mailbox, never in Ana's private one (and the reverse).
+    let ana_page = h.threads(&ana).await;
+    let cy_page = h.threads(&cy).await;
+    let ana_thread = find(&ana_page, "Summer dates");
+    let cy_thread = find(&cy_page, "Summer dates");
+    assert_ne!(ana_thread["id"], cy_thread["id"], "{ana_page} {cy_page}");
+    assert_ne!(ana_thread["integration_id"], cy_thread["integration_id"]);
+    assert_eq!(cy_thread["message_count"], 1, "{cy_thread}");
+    let cy_id = cy_thread["id"].as_str().unwrap();
+    h.get(&ana, &format!("/api/v1/inbox/threads/{cy_id}"))
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
 }

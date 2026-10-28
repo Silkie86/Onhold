@@ -186,11 +186,25 @@ impl Worker {
             }
             inbox::JOB_SEND => {
                 let id = uuid_field(&job.payload, "message_id")?;
+                let ws = workspace(job)?;
                 let last = job.attempt >= job.max_attempts;
-                let outcome =
-                    inbox::send(&self.app, workspace(job)?, id, self.mailer.as_ref(), last).await?;
-                note(log, outcome.to_string());
-                Ok(())
+                match inbox::send(&self.app, ws, id, self.mailer.as_ref(), last).await {
+                    Ok(outcome) => {
+                        note(log, outcome.to_string());
+                        Ok(())
+                    }
+                    Err(e) => {
+                        let err = JobError::from(e);
+                        // Not tried again: the message shows as failed
+                        // rather than as sending for good.
+                        if (err.permanent || last)
+                            && let Err(e) = inbox::abandon(&self.app, ws, id, &err.message).await
+                        {
+                            tracing::error!(message_id = %id, error = %e, "could not mark a message failed");
+                        }
+                        Err(err)
+                    }
+                }
             }
             inbox::JOB_WAKE => {
                 let id = uuid_field(&job.payload, "thread_id")?;

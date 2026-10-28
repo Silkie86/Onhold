@@ -14,8 +14,6 @@ use crate::provider::ProviderError;
 
 /// The most messages one fetch returns; the rest come on the next call.
 pub const FETCH_BATCH: usize = 25;
-/// Messages larger than this are recorded without their attachments.
-pub const MAX_ATTACHMENTS_BYTES: usize = 20 * 1024 * 1024;
 
 /// One message as the provider holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,8 +22,10 @@ pub struct FetchedMail {
     pub external_id: String,
     /// The provider's conversation, when it has one.
     pub thread_id: Option<String>,
-    /// The whole message, headers and MIME body.
-    pub raw: Vec<u8>,
+    /// The whole message, headers and MIME body, when the provider sends it
+    /// with the listing (IMAP). Otherwise it is read with
+    /// [`MailProvider::raw`], and only if the inbox does not hold it yet.
+    pub raw: Option<Vec<u8>>,
     /// Sent from this mailbox (Gmail's SENT label, Outlook's Sent Items).
     pub sent: bool,
 }
@@ -78,9 +78,17 @@ pub trait MailProvider: Send + Sync {
 
     async fn send(&self, mail: &OutgoingMail) -> Result<SentMail, ProviderError>;
 
-    /// One message, whole, read again (to open an attachment OnHold left in
-    /// the mailbox). `None` when it is no longer there.
+    /// One message, whole: one listed without its body, or read again to
+    /// open an attachment OnHold left in the mailbox. `None` when it is no
+    /// longer there.
     async fn raw(&self, external_id: &str) -> Result<Option<Vec<u8>>, ProviderError>;
+
+    /// The other messages of a provider conversation, for when the inbox
+    /// starts a thread part way through one (a first read goes newest
+    /// first, so an answer can come before what it answers).
+    async fn conversation(&self, _thread_id: &str) -> Result<Vec<FetchedMail>, ProviderError> {
+        Ok(Vec::new())
+    }
 }
 
 /// Builds the RFC 5322 message for `mail`.
@@ -205,7 +213,7 @@ fn addresses(list: Option<mail_parser::AddressList<'_>>) -> Vec<Address> {
                     email,
                     name: m
                         .name()
-                        .map(|n| n.trim().chars().take(200).collect::<String>())
+                        .map(|n| clean(n.trim()).chars().take(200).collect::<String>())
                         .filter(|n| !n.is_empty()),
                 })
             })
@@ -225,8 +233,14 @@ fn id_list(list: Option<mail_parser::TextList<'_>>) -> Vec<String> {
     .unwrap_or_default()
 }
 
+/// Text as Postgres can keep it: without NUL characters, which some
+/// messages carry in encoded headers or bodies.
+fn clean(s: &str) -> String {
+    s.replace('\0', "")
+}
+
 /// Parses a whole message. `None` when there is nothing recognisable as
-/// one. Attachments past [`MAX_ATTACHMENTS_BYTES`] in all are left out.
+/// one. Every attachment is listed, in order, whatever its size.
 pub fn parse(raw: &[u8]) -> Option<ParsedMail> {
     let msg = MessageParser::default().parse(raw)?;
     let header = |name: &str| {
@@ -257,13 +271,8 @@ pub fn parse(raw: &[u8]) -> Option<ParsedMail> {
     let bulk = msg.list_id().is_some() || msg.headers().contains("list-unsubscribe");
 
     let mut attachments = Vec::new();
-    let mut total = 0usize;
     for part in msg.attachments() {
         let bytes = part.decoded().into_owned();
-        total = total.saturating_add(bytes.len());
-        if total > MAX_ATTACHMENTS_BYTES {
-            break;
-        }
         let content_type = part
             .content_type()
             .map(|c| match c.subtype() {
@@ -274,7 +283,7 @@ pub fn parse(raw: &[u8]) -> Option<ParsedMail> {
             .to_ascii_lowercase();
         let filename = part
             .attachment_name()
-            .map(str::to_owned)
+            .map(clean)
             .unwrap_or_else(|| "attachment".into());
         attachments.push(ParsedAttachment {
             filename,
@@ -295,15 +304,17 @@ pub fn parse(raw: &[u8]) -> Option<ParsedMail> {
         reply_to: addresses(msg.reply_to()).into_iter().next(),
         to: addresses(msg.to()),
         cc: addresses(msg.cc()),
-        subject: msg.subject().map(|s| s.trim().to_owned()),
+        subject: msg
+            .subject()
+            .map(|s| clean(s.trim()).chars().take(1000).collect()),
         date: msg
             .date()
             .and_then(|d| Utc.timestamp_opt(d.to_timestamp(), 0).single()),
-        text: msg.body_text(0).map(|t| t.into_owned()),
+        text: msg.body_text(0).map(|t| clean(&t)),
         html: msg
             .html_body()
             .next()
-            .and_then(|_| msg.body_html(0).map(|h| h.into_owned())),
+            .and_then(|_| msg.body_html(0).map(|h| clean(&h))),
         attachments,
         automatic,
         bulk,
@@ -313,6 +324,18 @@ pub fn parse(raw: &[u8]) -> Option<ParsedMail> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_postgres_cannot_keep_is_cleaned() {
+        let long = "x".repeat(1500);
+        let raw = format!(
+            "From: Bea <bea@grand.test>\r\nSubject: {long}\r\nContent-Type: text/plain\r\n\
+             Content-Transfer-Encoding: quoted-printable\r\n\r\nHello=00 there\r\n"
+        );
+        let m = parse(raw.as_bytes()).expect("a message");
+        assert_eq!(m.subject.expect("a subject").chars().count(), 1000);
+        assert_eq!(m.text.expect("a body").trim(), "Hello there");
+    }
 
     const RAW: &[u8] = b"From: Bea Booker <Bea@Grand.test>\r\n\
 To: Ana Agent <ana@agency.test>, ops@agency.test\r\n\

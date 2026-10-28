@@ -147,6 +147,9 @@ CREATE TABLE thread_messages (
     "references"   text[] NOT NULL DEFAULT '{}' CHECK (cardinality("references") <= 100),
     from_address   text CHECK (length(from_address) <= 320),
     from_name      text CHECK (length(from_name) <= 200),
+    -- Where an answer goes, when the sender asked for somewhere else (web
+    -- forms and booking sites send from their own address).
+    reply_to       text CHECK (length(reply_to) <= 320),
     to_addresses   text[] NOT NULL DEFAULT '{}' CHECK (cardinality(to_addresses) <= 100),
     cc_addresses   text[] NOT NULL DEFAULT '{}' CHECK (cardinality(cc_addresses) <= 100),
     subject        text CHECK (length(subject) <= 1000),
@@ -154,8 +157,9 @@ CREATE TABLE thread_messages (
     -- Sanitised before it is stored: no scripts, styles, forms or remote content.
     body_html      text CHECK (length(body_html) <= 500000),
     sent_at        timestamptz NOT NULL,
-    -- received: read from a mailbox. queued, sent, failed: written here.
-    status         text NOT NULL CHECK (status IN ('received', 'queued', 'sent', 'failed')),
+    -- received: read from a mailbox. queued, sending (handed to the
+    -- provider, answer not yet recorded), sent, failed: written here.
+    status         text NOT NULL CHECK (status IN ('received', 'queued', 'sending', 'sent', 'failed')),
     error          text CHECK (length(error) <= 1000),
     -- An auto-reply, bounce or other machine-sent message.
     automatic      boolean NOT NULL DEFAULT false,
@@ -222,6 +226,22 @@ CREATE POLICY integrations_worker ON integrations FOR SELECT TO onhold_worker
     USING (disconnected_at IS NULL);
 CREATE POLICY threads_worker ON threads FOR SELECT TO onhold_worker
     USING (status = 'snoozed');
+
+-- Whether another live connection, in any workspace, holds a grant for the
+-- same account: revoking a Google grant ends them all, so disconnecting one
+-- leaves the grant alone while others still use it.
+CREATE FUNCTION integration_account_in_use(p_provider text, p_account text, p_except uuid)
+    RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+    AS $$
+        SELECT EXISTS (
+            SELECT 1 FROM integrations
+            WHERE provider = p_provider AND account = p_account AND id <> p_except
+              AND disconnected_at IS NULL
+        )
+    $$;
+REVOKE ALL ON FUNCTION integration_account_in_use(text, text, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION integration_account_in_use(text, text, uuid) TO onhold_app;
 
 GRANT SELECT, INSERT, UPDATE ON integrations, threads, thread_messages TO onhold_app;
 GRANT SELECT, INSERT ON thread_message_files TO onhold_app;

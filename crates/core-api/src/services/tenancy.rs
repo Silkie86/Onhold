@@ -375,6 +375,9 @@ pub async fn close_workspace(state: &AppState, ctx: &Ctx, confirm_slug: &str) ->
         ctx.user_id(),
     )
     .await?;
+    // Nobody can reach a closed workspace to disconnect a mailbox, so they
+    // are all disconnected now.
+    super::integrations::disconnect_all(&mut tx, ctx).await?;
     record(
         &mut tx,
         ctx,

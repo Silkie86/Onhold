@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, workspace_id AS \"workspace_id: WorkspaceId\", next_poll_at AS \"at!\"\n           FROM integrations\n           WHERE disconnected_at IS NULL AND next_poll_at <= $1\n             AND (poll_lease_until IS NULL OR poll_lease_until < $1)\n           ORDER BY next_poll_at LIMIT $2",
+  "query": "SELECT i.id, i.workspace_id AS \"workspace_id: WorkspaceId\", i.next_poll_at AS \"at!\"\n           FROM integrations i JOIN workspaces w ON w.id = i.workspace_id\n           WHERE i.disconnected_at IS NULL AND i.next_poll_at <= $1\n             AND (i.poll_lease_until IS NULL OR i.poll_lease_until < $1)\n             AND w.status IN ('trial', 'active')\n           ORDER BY i.next_poll_at LIMIT $2",
   "describe": {
     "columns": [
       {
@@ -49,5 +49,5 @@
       true
     ]
   },
-  "hash": "7a6303c35a534e24f38b5dbc7c0b957503b7c2cafea38e75253d9408dd4e6e71"
+  "hash": "ecbc31beb4d7448a481891ce8037743448de789a6c90560495a3d2fa2fbffdba"
 }

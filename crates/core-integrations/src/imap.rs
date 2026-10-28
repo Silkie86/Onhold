@@ -31,6 +31,11 @@ use crate::provider::ProviderError;
 pub const IMAP_PORTS: &[u16] = &[143, 993];
 pub const SMTP_PORTS: &[u16] = &[25, 465, 587, 2525];
 const TIMEOUT: Duration = Duration::from_secs(60);
+/// A fetch starts reading no more messages after this long, so it ends
+/// (with what it has) well inside [`FETCH_TIMEOUT`].
+const READ_BUDGET: Duration = Duration::from_secs(20);
+/// The most one fetch may take, under the worker's two-minute job limit.
+const FETCH_TIMEOUT: Duration = Duration::from_secs(100);
 
 /// How a connection is protected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -191,11 +196,7 @@ impl Imap {
             .login(&self.settings.username, &self.password)
             .await
             .map_err(|(e, _)| match e {
-                async_imap::error::Error::No(_) | async_imap::error::Error::Bad(_) => {
-                    ProviderError::Revoked(
-                        "the mail server refused the username or password".into(),
-                    )
-                }
+                async_imap::error::Error::No(text) => login_refused(&text),
                 other => imap_error(other),
             })
     }
@@ -230,6 +231,29 @@ impl Imap {
                 .timeout(Some(TIMEOUT))
                 .build(),
         )
+    }
+}
+
+/// A refused login: the password is wrong (connect again), or the server
+/// says it cannot sign anyone in just now (try again later, RFC 5530).
+fn login_refused(text: &str) -> ProviderError {
+    let lower = text.to_ascii_lowercase();
+    let temporary = [
+        "[unavailable]",
+        "[limit]",
+        "[inuse]",
+        "[serverbug]",
+        "temporar",
+        "try again",
+    ]
+    .iter()
+    .any(|m| lower.contains(m));
+    if temporary {
+        ProviderError::Unavailable(format!(
+            "the mail server could not sign in just now: {text}"
+        ))
+    } else {
+        ProviderError::Revoked("the mail server refused the username or password".into())
     }
 }
 
@@ -337,36 +361,57 @@ impl MailProvider for Imap {
                 .filter(|u| after.is_none_or(|last| *u > last))
                 .collect();
             uids.sort_unstable();
-            let more = uids.len() > max;
+            let mut more = uids.len() > max;
             uids.truncate(max.max(1));
+            // One message at a time, each with its own time: a slow server
+            // or a large message still leaves the ones before it read, and
+            // the next fetch carries on from there.
             let mut messages = Vec::with_capacity(uids.len());
-            if !uids.is_empty() {
-                let set = uids
+            let mut read_to = after;
+            let started = tokio::time::Instant::now();
+            for uid in &uids {
+                if started.elapsed() > READ_BUDGET && !messages.is_empty() {
+                    more = true;
+                    break;
+                }
+                let fetched = tokio::time::timeout(crate::provider::BODY_TIMEOUT, async {
+                    session
+                        .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
+                        .await
+                        .map_err(imap_error)?
+                        .try_collect::<Vec<async_imap::types::Fetch>>()
+                        .await
+                        .map_err(imap_error)
+                })
+                .await;
+                let fetches = match fetched {
+                    Ok(f) => f?,
+                    Err(_) if !messages.is_empty() => {
+                        more = true;
+                        break;
+                    }
+                    Err(_) => {
+                        return Err(ProviderError::Unavailable(
+                            "the mail server was too slow".into(),
+                        ));
+                    }
+                };
+                if let Some(body) = fetches
                     .iter()
-                    .map(u32::to_string)
-                    .collect::<Vec<_>>()
-                    .join(",");
-                let fetches: Vec<async_imap::types::Fetch> = session
-                    .uid_fetch(&set, "(UID BODY.PEEK[])")
-                    .await
-                    .map_err(imap_error)?
-                    .try_collect()
-                    .await
-                    .map_err(imap_error)?;
-                for f in &fetches {
-                    let (Some(uid), Some(body)) = (f.uid, f.body()) else {
-                        continue;
-                    };
+                    .find(|f| f.uid == Some(*uid))
+                    .and_then(|f| f.body())
+                {
                     messages.push(FetchedMail {
                         external_id: format!("{validity}:{uid}"),
                         thread_id: None,
-                        raw: body.to_vec(),
+                        raw: Some(body.to_vec()),
                         sent: false,
                     });
                 }
+                read_to = Some(*uid);
             }
             let _ = session.logout().await;
-            let last_uid = uids.last().copied().or(after).unwrap_or(0);
+            let last_uid = read_to.unwrap_or(0);
             let next = Cursor {
                 uidvalidity: validity,
                 last_uid,
@@ -378,7 +423,7 @@ impl MailProvider for Imap {
                 more,
             })
         };
-        tokio::time::timeout(TIMEOUT * 3, work)
+        tokio::time::timeout(FETCH_TIMEOUT, work)
             .await
             .map_err(|_| ProviderError::Unavailable("the mail server was too slow".into()))?
     }

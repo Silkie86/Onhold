@@ -175,17 +175,20 @@ pub async fn by_external(
 }
 
 /// The thread holding any of these messages (by Message-ID): one in this
-/// mailbox, or one sent through OnHold's own sender, which has none.
+/// mailbox, or one that belongs to no mailbox (written through OnHold's
+/// own sender). Never a thread of another mailbox, which may be private.
 pub async fn by_message_ids(
     conn: &mut PgConnection,
     integration_id: Uuid,
     message_ids: &[String],
 ) -> Result<Option<Uuid>> {
     Ok(sqlx::query_scalar!(
-        r#"SELECT thread_id FROM thread_messages
-           WHERE workspace_id = app_workspace_id() AND message_id = ANY($2)
-             AND (integration_id = $1 OR integration_id IS NULL)
-           ORDER BY integration_id IS NULL, sent_at DESC LIMIT 1"#,
+        r#"SELECT m.thread_id FROM thread_messages m
+           JOIN threads t ON t.workspace_id = m.workspace_id AND t.id = m.thread_id
+           WHERE m.workspace_id = app_workspace_id() AND m.message_id = ANY($2)
+             AND (m.integration_id = $1 OR m.integration_id IS NULL)
+             AND (t.integration_id = $1 OR t.integration_id IS NULL)
+           ORDER BY t.integration_id IS NULL, m.sent_at DESC LIMIT 1"#,
         integration_id,
         message_ids
     )
@@ -249,8 +252,9 @@ pub async fn adopt(
     Ok(())
 }
 
-/// The provider's own thread id for a thread first sent from its mailbox,
-/// so replies read later land in the same thread.
+/// The provider's own thread id for a thread sent from its mailbox (first,
+/// or again after the provider's conversation was deleted), so replies
+/// read later land in the same thread.
 pub async fn adopt_external(
     conn: &mut PgConnection,
     id: Uuid,
@@ -260,7 +264,7 @@ pub async fn adopt_external(
     sqlx::query!(
         r#"UPDATE threads SET external_id = $3
            WHERE workspace_id = app_workspace_id() AND id = $1 AND integration_id = $2
-             AND external_id IS NULL"#,
+             AND external_id IS DISTINCT FROM $3"#,
         id,
         integration_id,
         external_id
@@ -338,7 +342,7 @@ pub async fn refresh(conn: &mut PgConnection, id: Uuid, reopen: bool) -> Result<
                       (SELECT btrim(left(regexp_replace(m2.body_text, '\s+', ' ', 'g'), 300)) FROM thread_messages m2
                        WHERE m2.thread_id = $1 AND m2.workspace_id = app_workspace_id()
                        ORDER BY m2.automatic, m2.sent_at DESC, m2.id DESC LIMIT 1) AS preview,
-                      (SELECT coalesce(array_agg(DISTINCT a ORDER BY a), '{}') FROM (
+                      (SELECT coalesce((array_agg(DISTINCT a ORDER BY a))[1:100], '{}') FROM (
                            SELECT unnest(ARRAY[m3.from_address] || m3.to_addresses || m3.cc_addresses) AS a
                            FROM thread_messages m3
                            WHERE m3.thread_id = $1 AND m3.workspace_id = app_workspace_id()
@@ -368,6 +372,7 @@ pub struct Message {
     pub references: Vec<String>,
     pub from_address: Option<String>,
     pub from_name: Option<String>,
+    pub reply_to: Option<String>,
     pub to_addresses: Vec<String>,
     pub cc_addresses: Vec<String>,
     pub subject: Option<String>,
@@ -393,6 +398,7 @@ pub struct NewMessage<'a> {
     pub references: &'a [String],
     pub from_address: Option<&'a str>,
     pub from_name: Option<&'a str>,
+    pub reply_to: Option<&'a str>,
     pub to_addresses: &'a [String],
     pub cc_addresses: &'a [String],
     pub subject: Option<&'a str>,
@@ -412,9 +418,9 @@ pub async fn insert_message(conn: &mut PgConnection, m: NewMessage<'_>) -> Resul
         r#"INSERT INTO thread_messages (id, workspace_id, thread_id, direction, integration_id, external_id,
                                         message_id, in_reply_to, "references", from_address, from_name,
                                         to_addresses, cc_addresses, subject, body_text, body_html, sent_at,
-                                        status, automatic, bulk, author_id, template_key)
+                                        status, automatic, bulk, author_id, template_key, reply_to)
            VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, left($10, 200), $11, $12,
-                   left($13, 1000), left($14, 1000000), $15, $16, $17, $18, $19, $20, $21)
+                   left($13, 1000), left($14, 200000), $15, $16, $17, $18, $19, $20, $21, $22)
            ON CONFLICT DO NOTHING"#,
         m.id,
         m.thread_id,
@@ -436,7 +442,8 @@ pub async fn insert_message(conn: &mut PgConnection, m: NewMessage<'_>) -> Resul
         m.automatic,
         m.bulk,
         m.author_id.map(|a| a.0),
-        m.template_key
+        m.template_key,
+        m.reply_to
     )
     .execute(conn)
     .await?;
@@ -464,10 +471,14 @@ pub async fn known(
     .await?)
 }
 
-/// Gives a sent message the provider's id once its own copy is read back.
+/// Gives a message the provider's current id when its copy is read (again):
+/// a sent one read back, or one the server renumbered. A message written
+/// here whose copy is in the mailbox was sent, whatever was recorded.
 pub async fn set_external(conn: &mut PgConnection, id: Uuid, external_id: &str) -> Result<()> {
     sqlx::query!(
-        r#"UPDATE thread_messages SET external_id = coalesce(external_id, $2)
+        r#"UPDATE thread_messages SET external_id = $2,
+               status = CASE WHEN direction = 'outbound' THEN 'sent' ELSE status END,
+               error = CASE WHEN direction = 'outbound' THEN NULL ELSE error END
            WHERE workspace_id = app_workspace_id() AND id = $1"#,
         id,
         external_id
@@ -482,7 +493,7 @@ macro_rules! select_message {
         sqlx::query_as!(
             Message,
             r#"SELECT id, thread_id, direction, message_id, in_reply_to, "references" AS "references!",
-                      from_address, from_name, to_addresses, cc_addresses, subject, body_text, body_html,
+                      from_address, from_name, reply_to, to_addresses, cc_addresses, subject, body_text, body_html,
                       sent_at, status, error, automatic, bulk, author_id, template_key
                FROM thread_messages WHERE workspace_id = app_workspace_id() AND "# + $tail
             $(, $arg)*
@@ -508,6 +519,19 @@ pub async fn lock_message(conn: &mut PgConnection, id: Uuid) -> Result<Option<Me
     Ok(select_message!("id = $1 FOR UPDATE", id)
         .fetch_optional(conn)
         .await?)
+}
+
+/// Marks a queued message as being handed to the provider. `false` when it
+/// is no longer queued (sent, failed, or a send already under way).
+pub async fn start_sending(conn: &mut PgConnection, id: Uuid) -> Result<bool> {
+    let done = sqlx::query!(
+        r#"UPDATE thread_messages SET status = 'sending'
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND status = 'queued'"#,
+        id
+    )
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected() == 1)
 }
 
 /// What became of an outgoing message.

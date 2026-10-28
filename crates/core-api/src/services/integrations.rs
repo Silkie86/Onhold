@@ -35,6 +35,9 @@ const CONNECT_TTL_SECS: i64 = 30 * 60;
 const POLL_LEASE_SECS: f64 = 10.0 * 60.0;
 /// Batches one read takes before letting other mailboxes have a turn.
 const BATCHES_PER_POLL: usize = 4;
+/// No further batch is started after this long, keeping a read well inside
+/// the worker's two-minute limit for a job.
+const POLL_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
 /// Failures in a row before a mailbox shows as failing rather than being
 /// retried quietly: a provider's brief outage should not alarm anyone.
 const QUIET_FAILURES: i32 = 3;
@@ -481,44 +484,77 @@ async fn save_connection(
             existing.id
         }
         None => {
-            let id = core_domain::ids::new_id();
-            let secret = seal(state, id, grant)?;
-            core_db::integrations::insert(
-                &mut tx,
-                core_db::integrations::NewIntegration {
-                    id,
-                    provider,
-                    purposes: &["mail".to_owned()],
-                    owner_id: owner,
-                    account,
-                    shared_mailbox,
-                    shared: shared_mailbox.is_some(),
-                    display_name,
-                    settings,
-                    secret: &secret,
-                    scopes,
-                    mail_since: now - Duration::days(state.config.mailboxes.first_read_days),
-                    next_poll_at: Some(now),
-                },
-            )
-            .await?;
-            let saved = core_db::integrations::get(&mut tx, id)
+            match core_db::integrations::last_disconnected_for(&mut tx, provider, mailbox, owner)
                 .await?
-                .ok_or(ApiError::NotFound)?;
-            record(
-                &mut tx,
-                ctx,
-                Change {
-                    topic: "integration.connected",
-                    resource: ENTITY,
-                    object_id: Some(id),
-                    before: None,
-                    after: Some(audit_json(&saved)),
-                    event_extra: None,
-                },
-            )
-            .await?;
-            id
+            {
+                // Connected again by the member who disconnected it: the same
+                // connection carries on, so what it read is recognised and its
+                // conversations continue.
+                Some(old) => {
+                    let secret = seal(state, old.id, grant)?;
+                    core_db::integrations::reconnect(&mut tx, old.id).await?;
+                    core_db::integrations::set_secret(&mut tx, old.id, &secret, scopes).await?;
+                    core_db::integrations::revive(&mut tx, old.id, now).await?;
+                    if provider == "imap" {
+                        core_db::integrations::set_settings(&mut tx, old.id, settings).await?;
+                    }
+                    record(
+                        &mut tx,
+                        ctx,
+                        Change {
+                            topic: "integration.reconnected",
+                            resource: ENTITY,
+                            object_id: Some(old.id),
+                            before: Some(audit_json(&old)),
+                            after: None,
+                            event_extra: None,
+                        },
+                    )
+                    .await?;
+                    old.id
+                }
+                None => {
+                    let id = core_domain::ids::new_id();
+                    let secret = seal(state, id, grant)?;
+                    core_db::integrations::insert(
+                        &mut tx,
+                        core_db::integrations::NewIntegration {
+                            id,
+                            provider,
+                            purposes: &["mail".to_owned()],
+                            owner_id: owner,
+                            account,
+                            shared_mailbox,
+                            shared: shared_mailbox.is_some(),
+                            display_name,
+                            settings,
+                            secret: &secret,
+                            scopes,
+                            mail_since: now
+                                - Duration::days(state.config.mailboxes.first_read_days),
+                            next_poll_at: Some(now),
+                        },
+                    )
+                    .await?;
+                    let saved = core_db::integrations::get(&mut tx, id)
+                        .await?
+                        .ok_or(ApiError::NotFound)?;
+                    record(
+                        &mut tx,
+                        ctx,
+                        Change {
+                            topic: "integration.connected",
+                            resource: ENTITY,
+                            object_id: Some(id),
+                            before: None,
+                            after: Some(audit_json(&saved)),
+                            event_extra: None,
+                        },
+                    )
+                    .await?;
+                    id
+                }
+            }
         }
     };
     queue_poll(&mut tx, ctx.workspace_id, id, now).await?;
@@ -734,6 +770,12 @@ pub async fn disconnect(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> 
     let before = load_own(&mut tx, ctx, id, true).await?;
     let grant = open(state, &before).ok();
     core_db::integrations::disconnect(&mut tx, id).await?;
+    // Revoking a Google grant ends every grant OnHold holds for that
+    // account, so it is left alone while another connection (here or in
+    // another workspace) still uses it.
+    let in_use =
+        core_db::integrations::account_in_use(&mut tx, &before.provider, &before.account, id)
+            .await?;
     record(
         &mut tx,
         ctx,
@@ -749,8 +791,8 @@ pub async fn disconnect(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> 
     .await?;
     tx.commit().await?;
     // Best effort, after the fact: OnHold has already forgotten the grant.
-    if let (Some(Grant::OAuth { refresh_token, .. }), Ok(app)) =
-        (grant, app(state, &before.provider))
+    if let (Some(Grant::OAuth { refresh_token, .. }), Ok(app), false) =
+        (grant, app(state, &before.provider), in_use)
         && let Err(e) = app
             .revoke(&state.config.mailboxes.http, &refresh_token)
             .await
@@ -779,6 +821,26 @@ pub(crate) async fn disconnect_owned(
                 before: before.as_ref().map(audit_json),
                 after: None,
                 event_extra: Some(json!({ "reason": "member_removed" })),
+            },
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Disconnects every mailbox of a workspace that is closing.
+pub(crate) async fn disconnect_all(tx: &mut core_db::Tx, ctx: &Ctx) -> ApiResult<()> {
+    for id in core_db::integrations::disconnect_all(tx).await? {
+        record(
+            tx,
+            ctx,
+            Change {
+                topic: "integration.disconnected",
+                resource: ENTITY,
+                object_id: Some(id),
+                before: None,
+                after: None,
+                event_extra: Some(json!({ "reason": "workspace_closed" })),
             },
         )
         .await?;
@@ -930,7 +992,9 @@ impl std::fmt::Display for PollOutcome {
 
 /// Reads new mail from one mailbox into the inbox (the worker's `mail.poll`).
 /// Failures are recorded on the connection and retried with growing waits;
-/// the job itself only fails when OnHold's own database does.
+/// the job itself only fails when OnHold's own database does. A read that
+/// stops part way (an error, the worker stopping) leaves its lease to run
+/// out, and the mailbox is due again when it does.
 pub async fn poll(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<PollOutcome> {
     let ctx = Ctx::system(ws);
     let mut tx = begin(state, &ctx).await?;
@@ -945,6 +1009,7 @@ pub async fn poll(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<Poll
         .ok_or(ApiError::NotFound)?;
     tx.commit().await?;
 
+    let started = std::time::Instant::now();
     let mut outcome = PollOutcome::default();
     let mut refreshed = false;
     let mut restarted = false;
@@ -982,13 +1047,15 @@ pub async fn poll(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<Poll
             Err(e) => return failed(state, &ctx, &i, e).await.map(|()| outcome),
         };
         for m in &batch.messages {
-            outcome.read += 1;
-            if super::inbox::ingest(state, ws, &i, m).await? {
-                outcome.added += 1;
+            if let Err(e) = read_one(state, ws, &i, provider.as_ref(), m, &mut outcome).await {
+                return failed(state, &ctx, &i, e).await.map(|()| outcome);
             }
         }
         batches += 1;
-        let keep_going = batch.more && batches < BATCHES_PER_POLL;
+        // Stop for now when the time is up, well inside the job's limit;
+        // the rest is read straight after.
+        let keep_going =
+            batch.more && batches < BATCHES_PER_POLL && started.elapsed() < POLL_BUDGET;
         let next = if batch.more {
             Utc::now()
         } else {
@@ -1007,12 +1074,82 @@ pub async fn poll(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<Poll
             tx.commit().await?;
             break;
         }
-        // Keep the lease while reading on.
-        core_db::integrations::claim_poll(&mut tx, id, POLL_LEASE_SECS).await?;
+        // Keep the lease while reading on, and stop if the mailbox was
+        // disconnected meanwhile.
+        if !core_db::integrations::renew_poll(&mut tx, id, POLL_LEASE_SECS).await? {
+            tx.commit().await?;
+            break;
+        }
         tx.commit().await?;
         i.mail_cursor = Some(batch.cursor);
     }
     Ok(outcome)
+}
+
+/// Reads one listed message into the inbox: its body first, unless the
+/// provider sent it or the inbox already holds the message. A message the
+/// inbox cannot take (twice in a row) is logged and passed over, so one
+/// odd message never holds the mailbox back.
+async fn read_one(
+    state: &AppState,
+    ws: WorkspaceId,
+    i: &Integration,
+    provider: &dyn MailProvider,
+    m: &core_integrations::mailbox::FetchedMail,
+    outcome: &mut PollOutcome,
+) -> Result<(), ProviderError> {
+    outcome.read += 1;
+    let fetched;
+    let raw = match &m.raw {
+        Some(r) => r,
+        None => {
+            match super::inbox::holds(state, ws, i.id, &m.external_id).await {
+                Ok(true) => return Ok(()),
+                Ok(false) => {}
+                Err(e) => return Err(ProviderError::Unavailable(e.to_string())),
+            }
+            fetched = match provider.raw(&m.external_id).await {
+                Ok(Some(r)) => r,
+                // Gone since it was listed.
+                Ok(None) => return Ok(()),
+                Err(e) if !e.is_temporary() => {
+                    tracing::warn!(integration_id = %i.id, external_id = %m.external_id, error = %e, "a message could not be read, passed over");
+                    return Ok(());
+                }
+                Err(e) => return Err(e),
+            };
+            &fetched
+        }
+    };
+    let mut tries = 0;
+    let read = loop {
+        tries += 1;
+        match super::inbox::ingest(state, ws, i, m, raw).await {
+            Ok(r) => break r,
+            Err(e) if tries < 2 => {
+                tracing::warn!(integration_id = %i.id, error = %e, "reading a message failed, trying again");
+            }
+            Err(e) => {
+                tracing::error!(integration_id = %i.id, external_id = %m.external_id, error = %e, "a message could not be read into the inbox, passed over");
+                return Ok(());
+            }
+        }
+    };
+    if read.added {
+        outcome.added += 1;
+    }
+    // A new thread part way through a provider conversation: read the rest
+    // of it, so an answer read before what it answers is not lost.
+    if read.new_thread
+        && let Some(t) = &m.thread_id
+    {
+        for other in provider.conversation(t).await? {
+            if other.external_id != m.external_id {
+                Box::pin(read_one(state, ws, i, provider, &other, outcome)).await?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Records a failed read and when to try again: soon at first, then less
@@ -1054,7 +1191,9 @@ async fn failed(state: &AppState, ctx: &Ctx, i: &Integration, err: ProviderError
                 resource: ENTITY,
                 object_id: Some(i.id),
                 before: Some(json!({ "status": i.status })),
-                after: Some(json!({ "status": status, "error": message })),
+                // The provider's own words stay on the connection: they
+                // can name people, and events leave OnHold.
+                after: Some(json!({ "status": status })),
                 event_extra: None,
             },
         )

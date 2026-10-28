@@ -53,35 +53,29 @@ impl Gmail {
 
     async fn message(&self, id: &str) -> Result<Option<RawMessage>, ProviderError> {
         let url = self.url(&format!("/messages/{}?format=raw", segment(id)));
-        match provider::send_json(self.http.get(url).bearer_auth(&self.token)).await {
+        // A whole message can be large: allow it longer than a plain call.
+        let req = self
+            .http
+            .get(url)
+            .bearer_auth(&self.token)
+            .timeout(provider::BODY_TIMEOUT);
+        match provider::send_json(req).await {
             Ok(m) => Ok(Some(m)),
             // Deleted between being listed and being read.
             Err(ProviderError::Refused { status: 404, .. }) => Ok(None),
             Err(e) => Err(e),
         }
     }
+}
 
-    async fn read_all(&self, ids: Vec<String>) -> Result<Vec<FetchedMail>, ProviderError> {
-        let mut out = Vec::with_capacity(ids.len());
-        for id in ids {
-            let Some(m) = self.message(&id).await? else {
-                continue;
-            };
-            if m.label_ids
-                .iter()
-                .any(|l| SKIPPED_LABELS.contains(&l.as_str()))
-            {
-                continue;
-            }
-            let raw = decode(&m.raw)?;
-            out.push(FetchedMail {
-                external_id: m.id,
-                thread_id: m.thread_id,
-                raw,
-                sent: m.label_ids.iter().any(|l| l == "SENT"),
-            });
-        }
-        Ok(out)
+/// A message as a list, history or thread names it: read later, and only if
+/// the inbox does not hold it yet.
+fn listed(m: Listed) -> FetchedMail {
+    FetchedMail {
+        sent: m.label_ids.iter().any(|l| l == "SENT"),
+        external_id: m.id,
+        thread_id: m.thread_id,
+        raw: None,
     }
 }
 
@@ -100,12 +94,7 @@ pub struct Profile {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct RawMessage {
-    id: String,
-    thread_id: Option<String>,
-    #[serde(default)]
-    label_ids: Vec<String>,
     raw: String,
 }
 
@@ -113,13 +102,8 @@ struct RawMessage {
 #[serde(rename_all = "camelCase")]
 struct MessageList {
     #[serde(default)]
-    messages: Vec<MessageRef>,
+    messages: Vec<Listed>,
     next_page_token: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct MessageRef {
-    id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,11 +120,45 @@ struct HistoryList {
 struct History {
     #[serde(default)]
     messages_added: Vec<Added>,
+    #[serde(default)]
+    labels_added: Vec<Labelled>,
+    #[serde(default)]
+    labels_removed: Vec<Labelled>,
 }
 
 #[derive(Debug, Deserialize)]
 struct Added {
-    message: MessageRef,
+    message: Listed,
+}
+
+/// A message as a list, history or thread names it, with its labels at the
+/// time (a list gives none).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Listed {
+    id: String,
+    thread_id: Option<String>,
+    #[serde(default)]
+    label_ids: Vec<String>,
+}
+
+/// A change to a message's labels: which message, and which labels.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Labelled {
+    message: Listed,
+    #[serde(default)]
+    label_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ThreadMessages {
+    #[serde(default)]
+    messages: Vec<Listed>,
+}
+
+fn skipped(labels: &[String]) -> bool {
+    labels.iter().any(|l| SKIPPED_LABELS.contains(&l.as_str()))
 }
 
 /// Where the mailbox has been read to.
@@ -198,8 +216,7 @@ impl MailProvider for Gmail {
                 provider::send_json(self.http.get(self.url(&path)).bearer_auth(&self.token))
                     .await?;
             // Gmail lists newest first; keep arrival order.
-            let ids: Vec<String> = list.messages.into_iter().rev().map(|m| m.id).collect();
-            let messages = self.read_all(ids).await?;
+            let messages = list.messages.into_iter().rev().map(listed).collect();
             let more = list.next_page_token.is_some();
             let next = Cursor {
                 history: c.history,
@@ -214,8 +231,11 @@ impl MailProvider for Gmail {
             });
         }
 
+        // New messages, and ones moved into the inbox or out of spam or
+        // promotions (a label change, not a new message).
         let mut path = format!(
-            "/history?startHistoryId={}&historyTypes=messageAdded&maxResults={max}",
+            "/history?startHistoryId={}&historyTypes=messageAdded&historyTypes=labelAdded\
+             &historyTypes=labelRemoved&maxResults={max}",
             segment(&c.history)
         );
         if let Some(p) = &c.page {
@@ -232,15 +252,30 @@ impl MailProvider for Gmail {
             }
             other => other?,
         };
-        let mut ids: Vec<String> = Vec::new();
+        let mut messages: Vec<FetchedMail> = Vec::new();
+        let mut add = |m: Listed| {
+            if !messages.iter().any(|f| f.external_id == m.id) {
+                messages.push(listed(m));
+            }
+        };
         for h in list.history {
             for a in h.messages_added {
-                if !ids.contains(&a.message.id) {
-                    ids.push(a.message.id);
+                // Spam, drafts and promotions are not even downloaded.
+                if !skipped(&a.message.label_ids) {
+                    add(a.message);
+                }
+            }
+            for l in h.labels_added {
+                if l.label_ids.iter().any(|x| x == "INBOX") && !skipped(&l.message.label_ids) {
+                    add(l.message);
+                }
+            }
+            for l in h.labels_removed {
+                if skipped(&l.label_ids) && !skipped(&l.message.label_ids) {
+                    add(l.message);
                 }
             }
         }
-        let messages = self.read_all(ids).await?;
         let more = list.next_page_token.is_some();
         let next = if more {
             Cursor {
@@ -268,19 +303,47 @@ impl MailProvider for Gmail {
         }
     }
 
+    async fn conversation(&self, thread_id: &str) -> Result<Vec<FetchedMail>, ProviderError> {
+        let url = self.url(&format!("/threads/{}?format=minimal", segment(thread_id)));
+        let thread: ThreadMessages =
+            match provider::send_json(self.http.get(url).bearer_auth(&self.token)).await {
+                Ok(t) => t,
+                Err(ProviderError::Refused { status: 404, .. }) => return Ok(Vec::new()),
+                Err(e) => return Err(e),
+            };
+        Ok(thread
+            .messages
+            .into_iter()
+            .filter(|m| !skipped(&m.label_ids))
+            .map(listed)
+            .collect())
+    }
+
     async fn send(&self, mail: &OutgoingMail) -> Result<SentMail, ProviderError> {
         let raw = build(mail)?.formatted();
-        let mut body = serde_json::json!({ "raw": BASE64URL.encode(&raw) });
-        if let Some(t) = &mail.thread_id {
-            body["threadId"] = serde_json::Value::String(t.clone());
-        }
-        let sent: Sent = provider::send_json(
-            self.http
-                .post(self.url("/messages/send"))
-                .bearer_auth(&self.token)
-                .json(&body),
-        )
-        .await?;
+        let body = serde_json::json!({ "raw": BASE64URL.encode(&raw) });
+        let post = |body: &serde_json::Value| {
+            provider::send_json::<Sent>(
+                self.http
+                    .post(self.url("/messages/send"))
+                    .bearer_auth(&self.token)
+                    .timeout(provider::BODY_TIMEOUT)
+                    .json(body),
+            )
+        };
+        let sent = match &mail.thread_id {
+            Some(t) => {
+                let mut threaded = body.clone();
+                threaded["threadId"] = serde_json::Value::String(t.clone());
+                match post(&threaded).await {
+                    // The conversation was deleted in Gmail: send it on its
+                    // own; its headers still thread it for the recipient.
+                    Err(ProviderError::Refused { status: 404, .. }) => post(&body).await?,
+                    other => other?,
+                }
+            }
+            None => post(&body).await?,
+        };
         Ok(SentMail {
             external_id: Some(sent.id),
             thread_id: sent.thread_id,

@@ -20756,6 +20756,10 @@
             ],
             "format": "uuid"
           },
+          "from_onhold": {
+            "type": "boolean",
+            "description": "Send through OnHold, in the workspace's name, rather than from a\nmailbox (`integration_id` must then be left out)."
+          },
           "integration_id": {
             "type": [
               "string",

@@ -3690,6 +3690,11 @@ export interface components {
             /** Format: uuid */
             enquiry_id?: string | null;
             /**
+             * @description Send through OnHold, in the workspace's name, rather than from a
+             *     mailbox (`integration_id` must then be left out).
+             */
+            from_onhold?: boolean;
+            /**
              * Format: uuid
              * @description The mailbox to send from; default the sender's own, if connected.
              */

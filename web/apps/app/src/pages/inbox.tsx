@@ -74,6 +74,12 @@ function useCanWrite(): boolean {
   return useSession().workspace.role !== "viewer";
 }
 
+/** Whether the signed-in member's role may make enquiries (finance may not). */
+function useCanMakeEnquiry(): boolean {
+  const role = useSession().workspace.role;
+  return role === "owner" || role === "admin" || role === "agent";
+}
+
 export function useMailSetup() {
   return useQuery({ queryKey: ["mailboxes"], queryFn: () => ok(api.GET("/api/v1/inbox/mailboxes")) });
 }
@@ -271,7 +277,7 @@ function useThread(id: string) {
     queryKey: ["thread", id],
     queryFn: () => ok(api.GET("/api/v1/inbox/threads/{id}", { params: { path: { id } } })),
     // Replies are sent in the background: look again while one is on its way.
-    refetchInterval: (q) => (q.state.data?.messages.some((m) => m.status === "queued") ? 3000 : 60_000),
+    refetchInterval: (q) => (q.state.data?.messages.some((m) => m.status === "queued" || m.status === "sending") ? 3000 : 60_000),
   });
 }
 
@@ -296,6 +302,7 @@ export function ThreadPane({ id, onBack }: { id: string; onBack?: () => void }) 
   const detail = useThread(id);
   const members = useMembers();
   const canWrite = useCanWrite();
+  const canMakeEnquiry = useCanMakeEnquiry();
   const [error, setError] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
   const marked = useRef(false);
@@ -386,7 +393,7 @@ export function ThreadPane({ id, onBack }: { id: string; onBack?: () => void }) 
                 </option>
               ))}
             </NativeSelect>
-            {!thread.enquiry_id && !thread.booking_id && (
+            {canMakeEnquiry && !thread.enquiry_id && !thread.booking_id && (
               <Button size="sm" onClick={() => setMaking(true)}>
                 <Sparkles /> Make an enquiry
               </Button>
@@ -593,7 +600,7 @@ function MessageCard({ threadId, message: m }: { threadId: string; message: Mess
         {m.cc.length > 0 && ` · Copy ${m.cc.join(", ")}`}
       </div>
       <div className="flex flex-wrap gap-1">
-        {m.status === "queued" && <Badge className="border">Sending…</Badge>}
+        {(m.status === "queued" || m.status === "sending") && <Badge className="border">Sending…</Badge>}
         {m.status === "failed" && <Badge className="border-destructive text-destructive">Not sent</Badge>}
         {m.automatic && <Badge className="border">Automatic reply</Badge>}
         {m.bulk && <Badge className="border">Mailing list</Badge>}
@@ -754,6 +761,7 @@ export function ComposeDialog({
               api.POST("/api/v1/inbox/threads", {
                 body: {
                   integration_id: from || null,
+                  from_onhold: !from,
                   to: addresses(to),
                   cc: addresses(cc),
                   subject,
