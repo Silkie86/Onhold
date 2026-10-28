@@ -138,8 +138,21 @@ pub fn classify(status: u16, retry_after: Option<u64>, body: &[u8]) -> ProviderE
         .and_then(Value::as_str)
         .or_else(|| v.pointer("/error/code").and_then(Value::as_str))
         .unwrap_or_default();
+    // Google answers some rate and quota limits with 403 and a reason.
+    let rate_reason = v
+        .pointer("/error/errors")
+        .and_then(Value::as_array)
+        .is_some_and(|errors| {
+            errors.iter().any(|e| {
+                matches!(
+                    e.get("reason").and_then(Value::as_str),
+                    Some("rateLimitExceeded" | "userRateLimitExceeded" | "quotaExceeded")
+                )
+            })
+        });
     match status {
         429 => ProviderError::RateLimited { retry_after },
+        403 if rate_reason => ProviderError::RateLimited { retry_after },
         500..=599 => ProviderError::Unavailable(format!("status {status}")),
         // OAuth token endpoints answer 400 `invalid_grant` for a revoked
         // or expired refresh token.
@@ -153,6 +166,23 @@ pub fn classify(status: u16, retry_after: Option<u64>, body: &[u8]) -> ProviderE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn googles_rate_limits_by_403_are_rate_limits() {
+        let body = br#"{"error":{"errors":[{"domain":"usageLimits","reason":"rateLimitExceeded"}],"code":403,"message":"Rate Limit Exceeded"}}"#;
+        assert_eq!(
+            classify(403, None, body),
+            ProviderError::RateLimited { retry_after: None }
+        );
+        assert!(matches!(
+            classify(
+                403,
+                None,
+                br#"{"error":{"code":403,"message":"Forbidden"}}"#
+            ),
+            ProviderError::Refused { status: 403, .. }
+        ));
+    }
 
     #[test]
     fn endpoints_keep_the_base_path() {

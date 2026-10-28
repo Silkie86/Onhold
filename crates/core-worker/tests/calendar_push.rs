@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
@@ -51,6 +51,12 @@ struct World {
     /// The Google grant was withdrawn.
     withdrawn: bool,
     revoked: Vec<String>,
+    /// The next event added is kept but its answer is lost.
+    lose_next_answer: bool,
+    /// Outlook events by transaction id.
+    transactions: HashMap<String, String>,
+    /// Grants also carry mailbox access given to the same app before.
+    wide: bool,
 }
 
 type Shared = Arc<Mutex<World>>;
@@ -81,11 +87,19 @@ async fn token(State(w): State<Shared>, body: String) -> Response {
                 .into_response();
         }
     }
-    let scope = if microsoft {
+    let mut scope = if microsoft {
         "Calendars.ReadWrite User.Read profile openid email"
     } else {
         "openid https://www.googleapis.com/auth/calendar.app.created https://www.googleapis.com/auth/userinfo.email"
-    };
+    }
+    .to_owned();
+    if w.wide {
+        scope.push_str(if microsoft {
+            " Mail.ReadWrite"
+        } else {
+            " https://www.googleapis.com/auth/gmail.readonly"
+        });
+    }
     axum::Json(json!({
         "access_token": if microsoft { "ms-access" } else { "google-access" },
         "refresh_token": if microsoft { "ms-refresh" } else { "google-refresh" },
@@ -133,25 +147,61 @@ fn make_calendar(w: &mut World, name: &str) -> String {
     id
 }
 
-fn add_event(w: &mut World, cal: &str, body: Value) -> Response {
-    let Some(c) = w.calendars.get_mut(cal) else {
-        return gone();
-    };
-    let id = format!("ev-{}", w.event_calendar.len() + 1);
-    c.events.insert(id.clone(), body);
-    w.event_calendar.insert(id.clone(), cal.to_owned());
-    w.writes += 1;
+fn answer(w: &mut World, id: &str) -> Response {
+    if std::mem::take(&mut w.lose_next_answer) {
+        return (StatusCode::BAD_GATEWAY, "lost").into_response();
+    }
     axum::Json(json!({ "id": id })).into_response()
 }
 
-fn change_event(w: &mut World, id: &str, body: Value) -> Response {
+/// Adds an event. Google takes the id OnHold gives, and refuses one used
+/// before in that calendar, even if since deleted, as Google does.
+fn add_event(w: &mut World, cal: &str, mut body: Value) -> Response {
+    if !w.calendars.contains_key(cal) {
+        return gone();
+    }
+    let id = match body.get("id").and_then(Value::as_str) {
+        Some(given) => {
+            if w.event_calendar.get(given).is_some_and(|c| c == cal) {
+                return (
+                    StatusCode::CONFLICT,
+                    axum::Json(json!({ "error": { "code": 409, "message": "The requested identifier already exists." } })),
+                )
+                    .into_response();
+            }
+            given.to_owned()
+        }
+        None => format!("ev-{}", w.event_calendar.len() + 1),
+    };
+    // Outlook answers a repeated transaction with the event already added.
+    if let Some(txn) = body.get("transactionId").and_then(Value::as_str) {
+        if let Some(known) = w.transactions.get(txn).cloned()
+            && w.calendars[cal].events.contains_key(&known)
+        {
+            return answer(w, &known);
+        }
+        w.transactions.insert(txn.to_owned(), id.clone());
+    }
+    body.as_object_mut().unwrap().remove("transactionId");
+    w.calendars
+        .get_mut(cal)
+        .unwrap()
+        .events
+        .insert(id.clone(), body);
+    w.event_calendar.insert(id.clone(), cal.to_owned());
+    w.writes += 1;
+    answer(w, &id)
+}
+
+/// Changes an event; Google also brings back one deleted (`revive`).
+fn change_event(w: &mut World, id: &str, body: Value, revive: bool) -> Response {
     let Some(cal) = w.event_calendar.get(id).cloned() else {
         return gone();
     };
     let Some(c) = w.calendars.get_mut(&cal) else {
         return gone();
     };
-    if !c.events.contains_key(id) {
+    if !revive && !c.events.contains_key(id) {
         return gone();
     }
     c.events.insert(id.to_owned(), body);
@@ -159,16 +209,18 @@ fn change_event(w: &mut World, id: &str, body: Value) -> Response {
     axum::Json(json!({ "id": id })).into_response()
 }
 
-fn remove_event(w: &mut World, id: &str) -> StatusCode {
+/// Removes an event; one already deleted is 404 for Outlook and 410 for
+/// Google.
+fn remove_event(w: &mut World, id: &str, google: bool) -> StatusCode {
     let removed = w
         .event_calendar
         .get(id)
         .and_then(|cal| w.calendars.get_mut(cal))
         .and_then(|c| c.events.remove(id));
-    if removed.is_some() {
-        StatusCode::NO_CONTENT
-    } else {
-        StatusCode::NOT_FOUND
+    match (removed, google && w.event_calendar.contains_key(id)) {
+        (Some(_), _) => StatusCode::NO_CONTENT,
+        (None, true) => StatusCode::GONE,
+        (None, false) => StatusCode::NOT_FOUND,
     }
 }
 
@@ -249,12 +301,12 @@ async fn stand_ins() -> (Url, Shared) {
                     if !w.calendars.contains_key(&cal) {
                         return gone();
                     }
-                    change_event(&mut w, &id, body.0)
+                    change_event(&mut w, &id, body.0, true)
                 },
             )
             .delete(
                 |State(w): State<Shared>, Path((_cal, id)): Path<(String, String)>| async move {
-                    remove_event(&mut w.lock().unwrap(), &id)
+                    remove_event(&mut w.lock().unwrap(), &id, true)
                 },
             ),
         )
@@ -267,8 +319,34 @@ async fn stand_ins() -> (Url, Shared) {
                     if let Some(r) = refused(&w, &headers) {
                         return r;
                     }
-                    let id = make_calendar(&mut w, body["name"].as_str().unwrap());
+                    let name = body["name"].as_str().unwrap();
+                    if w.calendars.values().any(|c| c.name == name) {
+                        return (
+                            StatusCode::CONFLICT,
+                            axum::Json(json!({ "error": { "code": "ErrorFolderExists", "message": "A folder with the specified name already exists." } })),
+                        )
+                            .into_response();
+                    }
+                    let id = make_calendar(&mut w, name);
                     axum::Json(json!({ "id": id })).into_response()
+                },
+            )
+            .get(
+                |State(w): State<Shared>, Query(q): Query<HashMap<String, String>>| async move {
+                    let w = w.lock().unwrap();
+                    let filter = &q["$filter"];
+                    let name = filter
+                        .strip_prefix("name eq '")
+                        .and_then(|f| f.strip_suffix('\''))
+                        .unwrap()
+                        .replace("''", "'");
+                    let value: Vec<Value> = w
+                        .calendars
+                        .iter()
+                        .filter(|(_, c)| c.name == name)
+                        .map(|(id, _)| json!({ "id": id }))
+                        .collect();
+                    axum::Json(json!({ "value": value }))
                 },
             ),
         )
@@ -295,12 +373,12 @@ async fn stand_ins() -> (Url, Shared) {
             "/v1.0/me/events/{id}",
             patch(
                 |State(w): State<Shared>, Path(id): Path<String>, body: axum::Json<Value>| async move {
-                    change_event(&mut w.lock().unwrap(), &id, body.0)
+                    change_event(&mut w.lock().unwrap(), &id, body.0, false)
                 },
             )
             .delete(
                 |State(w): State<Shared>, Path(id): Path<String>| async move {
-                    remove_event(&mut w.lock().unwrap(), &id)
+                    remove_event(&mut w.lock().unwrap(), &id, false)
                 },
             ),
         )
@@ -382,6 +460,15 @@ impl Harness {
 
     /// Connects through Google or Microsoft as a member would.
     async fn connect(&self, who: &Client, provider: &str, talent: Option<&str>) -> Value {
+        self.try_connect(who, provider, talent).await.ok().body
+    }
+
+    async fn try_connect(
+        &self,
+        who: &Client,
+        provider: &str,
+        talent: Option<&str>,
+    ) -> common::Resp {
         let start = self
             .app
             .post("/api/v1/calendar/pushes/start")
@@ -405,8 +492,6 @@ impl Harness {
             .json(json!({ "code": "good-code", "state": q["state"] }))
             .send()
             .await
-            .ok()
-            .body
     }
 
     async fn sync(&self, who: &Client, id: &str) {
@@ -513,6 +598,13 @@ async fn bookings_are_kept_in_members_own_calendars(pool: PgPool) {
     assert_eq!(empty["calendars"], json!([]));
     assert_eq!(empty["google"], true);
 
+    // A grant that also carries the mailbox is refused.
+    h.world.lock().unwrap().wide = true;
+    h.try_connect(&owner, "google", None)
+        .await
+        .expect(StatusCode::BAD_REQUEST, "scopes_too_wide");
+    h.world.lock().unwrap().wide = false;
+
     // The owner connects Google: OnHold makes its calendar and fills it.
     let g = h.connect(&owner, "google", None).await;
     assert_eq!(g["account"], "owner@gmail.test");
@@ -554,7 +646,38 @@ async fn bookings_are_kept_in_members_own_calendars(pool: PgPool) {
     h.sync(&owner, &gid).await;
     assert_eq!(h.world.lock().unwrap().writes, writes + 1);
 
-    // A booking cancelled or removed: its event goes.
+    // An answer lost after Google added the event: trying again writes
+    // over that event rather than adding a second.
+    h.world.lock().unwrap().lose_next_answer = true;
+    let lost = h.booking(&owner, "Lost Answer", &owls, 6).await;
+    h.drain().await;
+    h.sync(&owner, &gid).await;
+    let events = h.events(&gcal);
+    assert_eq!(events.len(), 4, "{events:?}");
+    assert!(title_with(&events, "Lost Answer").is_object());
+    // Counted by id, not title: no second copy.
+    assert_eq!(h.world.lock().unwrap().calendars[&gcal].events.len(), 4);
+    h.set_status(&owner, &lost, "cancelled").await;
+
+    // A booking cancelled or removed: its event goes, even one already
+    // deleted in Google (which answers 410).
+    let gala_event = {
+        let w = h.world.lock().unwrap();
+        w.calendars[&gcal]
+            .events
+            .iter()
+            .find(|(_, e)| e["summary"].as_str().unwrap().contains("Charity Gala"))
+            .map(|(id, _)| id.clone())
+            .unwrap()
+    };
+    h.world
+        .lock()
+        .unwrap()
+        .calendars
+        .get_mut(&gcal)
+        .unwrap()
+        .events
+        .remove(&gala_event);
     h.set_status(&owner, &gala, "cancelled").await;
     h.app
         .delete(&format!("/api/v1/bookings/{fete}"))
@@ -566,6 +689,12 @@ async fn bookings_are_kept_in_members_own_calendars(pool: PgPool) {
     let events = h.events(&gcal);
     assert_eq!(events.len(), 1, "{events:?}");
     assert!(events.keys().next().unwrap().contains("Summer Ball"));
+    let tracked: i64 = sqlx::query_scalar("SELECT count(*) FROM calendar_push_events")
+        .fetch_one(&h.app.owner)
+        .await
+        .unwrap();
+    assert_eq!(tracked, 1, "nothing left failing to be removed");
+    assert_eq!(h.pushes(&owner).await["calendars"][0]["status"], "active");
     let _ = old;
 
     // The owner deletes OnHold's calendar in Google: it is made again.
@@ -610,6 +739,24 @@ async fn bookings_are_kept_in_members_own_calendars(pool: PgPool) {
         .send()
         .await
         .expect(StatusCode::NOT_FOUND, "not_found");
+
+    // OnHold loses track of its Outlook calendar (as after a clean-up that
+    // did not finish): Outlook refuses a second of the same name, so the
+    // one there is taken over, and its event is not added twice.
+    sqlx::query("UPDATE calendar_pushes SET remote_calendar = NULL WHERE id = $1::uuid")
+        .bind(&mid)
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM calendar_push_events WHERE push_id = $1::uuid")
+        .bind(&mid)
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    h.sync(&ana, &mid).await;
+    assert_eq!(h.calendar_named("The Larks"), Some(mcal.clone()));
+    assert_eq!(h.world.lock().unwrap().calendars[&mcal].events.len(), 1);
+    assert_eq!(h.pushes(&ana).await["calendars"][0]["status"], "active");
 
     // The Google grant is withdrawn: the calendar needs connecting again.
     h.world.lock().unwrap().withdrawn = true;
@@ -661,6 +808,7 @@ async fn bookings_are_kept_in_members_own_calendars(pool: PgPool) {
         .send()
         .await
         .ok();
+    h.drain().await;
     assert!(!h.world.lock().unwrap().calendars.contains_key(&again));
     assert!(
         h.world

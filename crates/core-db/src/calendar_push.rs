@@ -136,29 +136,34 @@ pub async fn set_secret(conn: &mut PgConnection, id: Uuid, secret: &[u8]) -> Res
     Ok(())
 }
 
-/// The calendar OnHold made in the account (`None`: make it again).
+/// The calendar OnHold made in the account (`None`: make it again), by
+/// the write holding `token`: `false` when that write no longer holds it.
 pub async fn set_remote_calendar(
     conn: &mut PgConnection,
     id: Uuid,
+    token: Uuid,
     calendar: Option<&str>,
-) -> Result<()> {
-    sqlx::query!(
-        r#"UPDATE calendar_pushes SET remote_calendar = $2
-           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL"#,
+) -> Result<bool> {
+    let done = sqlx::query!(
+        r#"UPDATE calendar_pushes SET remote_calendar = $3
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2
+             AND disconnected_at IS NULL"#,
         id,
+        token,
         calendar
     )
     .execute(conn)
     .await?;
-    Ok(())
+    Ok(done.rows_affected() == 1)
 }
 
-/// Connected again: healthy, and written in full straight away.
+/// Connected again: healthy, and written in full as soon as any write
+/// under way is done.
 pub async fn revive(conn: &mut PgConnection, id: Uuid) -> Result<()> {
     sqlx::query!(
         r#"UPDATE calendar_pushes
            SET status = 'active', failures = 0, last_error = NULL, last_error_at = NULL,
-               next_sync_at = now(), sync_lease_until = NULL
+               next_sync_at = now()
            WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL"#,
         id
     )
@@ -167,14 +172,38 @@ pub async fn revive(conn: &mut PgConnection, id: Uuid) -> Result<()> {
     Ok(())
 }
 
-/// Takes a connection for one write: `false` when it is disconnected,
-/// needs connecting again, or another write holds it.
-pub async fn claim(conn: &mut PgConnection, id: Uuid, lease_secs: f64) -> Result<bool> {
-    let done = sqlx::query!(
-        r#"UPDATE calendar_pushes SET sync_lease_until = now() + make_interval(secs => $2)
+/// Takes a connection for one write, returning the token its steps
+/// carry: `None` when it is disconnected, needs connecting again, or
+/// another write holds it.
+pub async fn claim(conn: &mut PgConnection, id: Uuid, lease_secs: f64) -> Result<Option<Uuid>> {
+    Ok(sqlx::query_scalar!(
+        r#"UPDATE calendar_pushes
+           SET sync_lease_until = now() + make_interval(secs => $3), sync_token = $2
            WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL
-             AND status <> 'reconnect' AND (sync_lease_until IS NULL OR sync_lease_until < now())"#,
+             AND status <> 'reconnect' AND (sync_lease_until IS NULL OR sync_lease_until < now())
+           RETURNING sync_token AS "token!""#,
         id,
+        core_domain::ids::new_id(),
+        lease_secs
+    )
+    .fetch_optional(conn)
+    .await?)
+}
+
+/// Keeps the write holding `token` going for another `lease_secs`:
+/// `false` when it no longer holds the connection.
+pub async fn renew(
+    conn: &mut PgConnection,
+    id: Uuid,
+    token: Uuid,
+    lease_secs: f64,
+) -> Result<bool> {
+    let done = sqlx::query!(
+        r#"UPDATE calendar_pushes SET sync_lease_until = now() + make_interval(secs => $3)
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2
+             AND disconnected_at IS NULL"#,
+        id,
+        token,
         lease_secs
     )
     .execute(conn)
@@ -182,13 +211,14 @@ pub async fn claim(conn: &mut PgConnection, id: Uuid, lease_secs: f64) -> Result
     Ok(done.rows_affected() == 1)
 }
 
-/// Lets go of a connection after a write of one booking.
-pub async fn release(conn: &mut PgConnection, id: Uuid) -> Result<()> {
+/// Lets go of a connection after a write of one booking. Its health is
+/// left to the full writes.
+pub async fn release(conn: &mut PgConnection, id: Uuid, token: Uuid) -> Result<()> {
     sqlx::query!(
-        r#"UPDATE calendar_pushes SET sync_lease_until = NULL, status = 'active', failures = 0,
-               last_error = NULL, last_error_at = NULL
-           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL"#,
-        id
+        r#"UPDATE calendar_pushes SET sync_lease_until = NULL, sync_token = NULL
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2"#,
+        id,
+        token
     )
     .execute(conn)
     .await?;
@@ -201,18 +231,21 @@ pub async fn release(conn: &mut PgConnection, id: Uuid) -> Result<()> {
 pub async fn synced(
     conn: &mut PgConnection,
     id: Uuid,
+    token: Uuid,
     next: DateTime<Utc>,
     lease_secs: f64,
 ) -> Result<()> {
     sqlx::query!(
         r#"UPDATE calendar_pushes
            SET last_synced_at = now(), status = 'active', failures = 0, last_error = NULL,
-               last_error_at = NULL, sync_lease_until = NULL,
+               last_error_at = NULL, sync_lease_until = NULL, sync_token = NULL,
                next_sync_at = CASE
-                   WHEN next_sync_at > sync_lease_until - make_interval(secs => $3)
-                   THEN least(next_sync_at, $2) ELSE $2 END
-           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL"#,
+                   WHEN next_sync_at > sync_lease_until - make_interval(secs => $4)
+                   THEN least(next_sync_at, $3) ELSE $3 END
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2
+             AND disconnected_at IS NULL"#,
         id,
+        token,
         next,
         lease_secs
     )
@@ -226,16 +259,19 @@ pub async fn synced(
 pub async fn failed(
     conn: &mut PgConnection,
     id: Uuid,
+    token: Uuid,
     status: &str,
     error: &str,
     next: Option<DateTime<Utc>>,
 ) -> Result<()> {
     sqlx::query!(
         r#"UPDATE calendar_pushes
-           SET status = $2, last_error = left($3, 1000), last_error_at = now(), failures = failures + 1,
-               next_sync_at = $4, sync_lease_until = NULL
-           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL"#,
+           SET status = $3, last_error = left($4, 1000), last_error_at = now(), failures = failures + 1,
+               next_sync_at = $5, sync_lease_until = NULL, sync_token = NULL
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2
+             AND disconnected_at IS NULL"#,
         id,
+        token,
         status,
         error,
         next
@@ -243,6 +279,17 @@ pub async fn failed(
     .execute(conn)
     .await?;
     Ok(())
+}
+
+/// When the connection is next due a full write.
+pub async fn next_sync_at(conn: &mut PgConnection, id: Uuid) -> Result<Option<DateTime<Utc>>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT next_sync_at FROM calendar_pushes WHERE workspace_id = app_workspace_id() AND id = $1"#,
+        id
+    )
+    .fetch_optional(conn)
+    .await?
+    .flatten())
 }
 
 /// Asks for a full write as soon as the worker can.
@@ -258,12 +305,14 @@ pub async fn sync_now(conn: &mut PgConnection, id: Uuid) -> Result<Option<DateTi
     .await?)
 }
 
-/// Stops writing, forgets the grant and which event was which booking.
+/// Stops writing and forgets which event was which booking. The grant is
+/// kept for the worker, which removes OnHold's calendar, revokes, then
+/// forgets it.
 pub async fn disconnect(conn: &mut PgConnection, id: Uuid) -> Result<()> {
     sqlx::query!(
         r#"UPDATE calendar_pushes
            SET disconnected_at = now(), next_sync_at = NULL, sync_lease_until = NULL,
-               secret = '\x'::bytea
+               sync_token = NULL, revoke_at = now()
            WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL"#,
         id
     )
@@ -278,7 +327,8 @@ pub async fn disconnect(conn: &mut PgConnection, id: Uuid) -> Result<()> {
 pub async fn disconnect_all(conn: &mut PgConnection, user: Option<UserId>) -> Result<Vec<Uuid>> {
     let ids = sqlx::query_scalar!(
         r#"UPDATE calendar_pushes
-           SET disconnected_at = now(), next_sync_at = NULL, sync_lease_until = NULL, revoke_at = now()
+           SET disconnected_at = now(), next_sync_at = NULL, sync_lease_until = NULL,
+               sync_token = NULL, revoke_at = now()
            WHERE workspace_id = app_workspace_id() AND disconnected_at IS NULL
              AND ($1::uuid IS NULL OR user_id = $1)
            RETURNING id"#,
@@ -297,14 +347,43 @@ pub async fn disconnect_all(conn: &mut PgConnection, user: Option<UserId>) -> Re
     Ok(ids)
 }
 
-/// A disconnected connection whose grant is still to be revoked, locked.
+/// A disconnected connection whose grant is still to be revoked.
 pub async fn to_revoke(conn: &mut PgConnection, id: Uuid) -> Result<Option<Push>> {
-    Ok(select_push!(
-        "AND p.id = $1 AND p.revoke_at IS NOT NULL FOR UPDATE OF p",
-        id
+    Ok(
+        select_push!("AND p.id = $1 AND p.revoke_at IS NOT NULL", id)
+            .fetch_optional(conn)
+            .await?,
     )
-    .fetch_optional(conn)
-    .await?)
+}
+
+/// Locks this workspace's connections to an account still waiting to be
+/// revoked, in one order, so that of several revoked together the last
+/// sees the others forgotten (and revokes the account's grant).
+pub async fn lock_revokes(conn: &mut PgConnection, provider: &str, account: &str) -> Result<()> {
+    sqlx::query!(
+        r#"SELECT id FROM calendar_pushes
+           WHERE workspace_id = app_workspace_id() AND provider = $1 AND account = $2
+             AND revoke_at IS NOT NULL
+           ORDER BY id FOR UPDATE"#,
+        provider,
+        account
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(())
+}
+
+/// Removing OnHold's calendar failed for now: try again at `at`.
+pub async fn revoke_later(conn: &mut PgConnection, id: Uuid, at: DateTime<Utc>) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE calendar_pushes SET revoke_at = $2
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND revoke_at IS NOT NULL"#,
+        id,
+        at
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
 }
 
 /// The grant has been revoked (or need not be): forget it.
@@ -361,7 +440,7 @@ pub async fn revokes_due(conn: &mut PgConnection, limit: i64) -> Result<Vec<Due>
     Ok(sqlx::query_as!(
         Due,
         r#"SELECT id, workspace_id AS "workspace_id: WorkspaceId", revoke_at AS "at!"
-           FROM calendar_pushes WHERE revoke_at IS NOT NULL
+           FROM calendar_pushes WHERE revoke_at <= now()
            ORDER BY revoke_at LIMIT $1"#,
         limit
     )
@@ -406,7 +485,9 @@ pub async fn record_written(
 ) -> Result<()> {
     sqlx::query!(
         r#"INSERT INTO calendar_push_events (id, workspace_id, push_id, booking_id, remote_id, content_hash)
-           VALUES ($1, app_workspace_id(), $2, $3, $4, $5)
+           SELECT $1, app_workspace_id(), $2, $3, $4, $5
+           WHERE EXISTS (SELECT 1 FROM calendar_pushes
+                         WHERE workspace_id = app_workspace_id() AND id = $2 AND disconnected_at IS NULL)
            ON CONFLICT (push_id, booking_id)
            DO UPDATE SET remote_id = EXCLUDED.remote_id, content_hash = EXCLUDED.content_hash,
                          written_at = now()"#,

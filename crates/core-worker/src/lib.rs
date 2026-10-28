@@ -418,7 +418,7 @@ impl Worker {
             queued += 1;
         }
         for c in core_db::calendar_push::revokes_due(tx, DUE_BATCH).await? {
-            let key = format!("revoke:{}", c.id);
+            let key = calendar_push::revoke_key(c.id, c.at);
             let payload = json!({ "push_id": c.id });
             core_db::jobs::enqueue(
                 tx,

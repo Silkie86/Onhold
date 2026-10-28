@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE calendar_pushes\n           SET status = $3, last_error = left($4, 1000), last_error_at = now(), failures = failures + 1,\n               next_sync_at = $5, sync_lease_until = NULL, sync_token = NULL\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2\n             AND disconnected_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5f0957e1ffa75af41e7ea9cc21bcb6462c7c928b12fa1937422ba274fff095ec"
+}

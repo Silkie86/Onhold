@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE calendar_pushes SET remote_calendar = $3\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2\n             AND disconnected_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7f6f3ed4d1c4a02843eed78edc8efed24240843c210803dbb1f2b5194271d5c1"
+}

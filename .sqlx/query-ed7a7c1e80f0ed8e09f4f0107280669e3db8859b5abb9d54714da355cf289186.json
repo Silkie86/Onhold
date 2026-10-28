@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, workspace_id AS \"workspace_id: WorkspaceId\", revoke_at AS \"at!\"\n           FROM calendar_pushes WHERE revoke_at IS NOT NULL\n           ORDER BY revoke_at LIMIT $1",
+  "query": "SELECT id, workspace_id AS \"workspace_id: WorkspaceId\", revoke_at AS \"at!\"\n           FROM calendar_pushes WHERE revoke_at <= now()\n           ORDER BY revoke_at LIMIT $1",
   "describe": {
     "columns": [
       {
@@ -48,5 +48,5 @@
       true
     ]
   },
-  "hash": "0f3beaa7c2c71372d558fa93fe48e44e08acc7eaeb7398e191ad349e647d78cb"
+  "hash": "ed7a7c1e80f0ed8e09f4f0107280669e3db8859b5abb9d54714da355cf289186"
 }

@@ -3205,6 +3205,9 @@
         "security": [
           {
             "session": []
+          },
+          {
+            "api_key": []
           }
         ]
       }

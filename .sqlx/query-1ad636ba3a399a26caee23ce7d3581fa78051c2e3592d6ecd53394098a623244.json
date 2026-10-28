@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id FROM calendar_pushes\n           WHERE workspace_id = app_workspace_id() AND provider = $1 AND account = $2\n             AND revoke_at IS NOT NULL\n           ORDER BY id FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1ad636ba3a399a26caee23ce7d3581fa78051c2e3592d6ecd53394098a623244"
+}

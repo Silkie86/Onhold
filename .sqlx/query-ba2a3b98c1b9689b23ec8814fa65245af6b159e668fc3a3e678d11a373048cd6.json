@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT p.id, p.user_id AS \"user_id: UserId\", p.talent_id, t.name AS \"talent_name?\",\n                      p.provider, p.account, p.secret, p.remote_calendar, p.status, p.failures,\n                      p.last_error, p.last_error_at, p.last_synced_at, p.connected_at,\n                      p.disconnected_at, p.version\n               FROM calendar_pushes p LEFT JOIN talent t ON t.id = p.talent_id\n               WHERE p.workspace_id = app_workspace_id() AND p.id = $1 AND p.revoke_at IS NOT NULL FOR UPDATE OF p",
+  "query": "SELECT p.id, p.user_id AS \"user_id: UserId\", p.talent_id, t.name AS \"talent_name?\",\n                      p.provider, p.account, p.secret, p.remote_calendar, p.status, p.failures,\n                      p.last_error, p.last_error_at, p.last_synced_at, p.connected_at,\n                      p.disconnected_at, p.version\n               FROM calendar_pushes p LEFT JOIN talent t ON t.id = p.talent_id\n               WHERE p.workspace_id = app_workspace_id() AND p.id = $1 AND p.revoke_at IS NOT NULL",
   "describe": {
     "columns": [
       {
@@ -189,7 +189,7 @@
       false,
       false,
       true,
-      false,
+      true,
       false,
       false,
       false,
@@ -204,5 +204,5 @@
       false
     ]
   },
-  "hash": "98415ad65c5cd0b2135252b457b4e6d9d9bc0c6a4b1de5c63adfd141bb178f6d"
+  "hash": "ba2a3b98c1b9689b23ec8814fa65245af6b159e668fc3a3e678d11a373048cd6"
 }

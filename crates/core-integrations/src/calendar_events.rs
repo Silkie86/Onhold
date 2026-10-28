@@ -106,28 +106,30 @@ impl EventBody {
 /// OnHold's calendar in the account is gone (deleted by its owner): make it
 /// again and write everything afresh.
 pub fn calendar_gone(e: &ProviderError) -> bool {
-    matches!(
-        e,
-        ProviderError::Refused {
-            status: 404 | 410,
-            ..
-        }
-    )
+    event_gone(e)
 }
 
+/// 404, or 410 (Google's "Resource has been deleted"), which arrives as
+/// [`ProviderError::CursorExpired`].
 fn event_gone(e: &ProviderError) -> bool {
     matches!(
         e,
-        ProviderError::Refused {
-            status: 404 | 410,
-            ..
-        }
+        ProviderError::Refused { status: 404, .. } | ProviderError::CursorExpired
     )
+}
+
+fn conflict(e: &ProviderError) -> bool {
+    matches!(e, ProviderError::Refused { status: 409, .. })
 }
 
 #[derive(Deserialize)]
 struct Created {
     id: String,
+}
+
+#[derive(Deserialize)]
+struct Calendars {
+    value: Vec<Created>,
 }
 
 /// Writes events into a calendar OnHold made in someone's account.
@@ -165,12 +167,30 @@ impl CalendarWriter {
                 .await?
             }
             Self::Microsoft { http, base, token } => {
-                provider::send_json(
+                let made = provider::send_json(
                     http.post(endpoint(base, "/v1.0/me/calendars"))
                         .bearer_auth(token)
                         .json(&json!({ "name": name })),
                 )
-                .await?
+                .await;
+                match made {
+                    // Outlook refuses a second calendar of the same name: one
+                    // left from before (a clean-up that did not finish) is
+                    // taken over.
+                    Err(e) if conflict(&e) => {
+                        let mut url = endpoint(base, "/v1.0/me/calendars");
+                        url.query_pairs_mut()
+                            .append_pair(
+                                "$filter",
+                                &format!("name eq '{}'", name.replace('\'', "''")),
+                            )
+                            .append_pair("$select", "id");
+                        let found: Calendars =
+                            provider::send_json(http.get(url).bearer_auth(token)).await?;
+                        found.value.into_iter().next().ok_or(e)?
+                    }
+                    other => other?,
+                }
             }
         };
         Ok(made.id)
@@ -200,52 +220,86 @@ impl CalendarWriter {
     }
 
     /// Writes an event: replaces `existing` when given and still there,
-    /// otherwise adds one. Returns the event's id. Fails with
+    /// otherwise adds one. `key` names the booking in this connection, the
+    /// same every time, so adding again after an answer was lost does not
+    /// make a second event. Returns the event's id. Fails with
     /// [`calendar_gone`] when the calendar itself is gone.
     pub async fn put(
         &self,
         calendar: &str,
         existing: Option<&str>,
+        key: &str,
         event: &EventBody,
     ) -> Result<String, ProviderError> {
         if let Some(id) = existing {
-            let req = match self {
-                Self::Google { http, base, token } => http
-                    .put(endpoint(
-                        base,
-                        &format!(
-                            "/calendar/v3/calendars/{}/events/{}",
-                            segment(calendar),
-                            segment(id)
-                        ),
-                    ))
-                    .bearer_auth(token)
-                    .json(&event.google()),
-                Self::Microsoft { http, base, token } => http
-                    .patch(endpoint(base, &format!("/v1.0/me/events/{}", segment(id))))
-                    .bearer_auth(token)
-                    .json(&event.graph()),
-            };
-            match provider::send_json::<Created>(req).await {
-                Ok(done) => return Ok(done.id),
+            match self.replace(calendar, id, event).await {
+                Ok(done) => return Ok(done),
                 // Removed in the calendar: added again below.
                 Err(e) if event_gone(&e) => {}
                 Err(e) => return Err(e),
             }
         }
+        match self {
+            Self::Google { http, base, token } => {
+                // Google takes the event's id from OnHold: an id already
+                // used (an earlier add whose answer was lost, or an event
+                // since deleted) is written over instead.
+                let mut body = event.google();
+                body["id"] = json!(key);
+                let added = provider::send_json::<Created>(
+                    http.post(endpoint(
+                        base,
+                        &format!("/calendar/v3/calendars/{}/events", segment(calendar)),
+                    ))
+                    .bearer_auth(token)
+                    .json(&body),
+                )
+                .await;
+                match added {
+                    Ok(done) => Ok(done.id),
+                    Err(e) if conflict(&e) => self.replace(calendar, key, event).await,
+                    Err(e) => Err(e),
+                }
+            }
+            Self::Microsoft { http, base, token } => {
+                // Outlook returns the event already added under the same
+                // transaction id rather than adding another.
+                let mut body = event.graph();
+                body["transactionId"] = json!(key);
+                Ok(provider::send_json::<Created>(
+                    http.post(endpoint(
+                        base,
+                        &format!("/v1.0/me/calendars/{}/events", segment(calendar)),
+                    ))
+                    .bearer_auth(token)
+                    .json(&body),
+                )
+                .await?
+                .id)
+            }
+        }
+    }
+
+    async fn replace(
+        &self,
+        calendar: &str,
+        id: &str,
+        event: &EventBody,
+    ) -> Result<String, ProviderError> {
         let req = match self {
             Self::Google { http, base, token } => http
-                .post(endpoint(
+                .put(endpoint(
                     base,
-                    &format!("/calendar/v3/calendars/{}/events", segment(calendar)),
+                    &format!(
+                        "/calendar/v3/calendars/{}/events/{}",
+                        segment(calendar),
+                        segment(id)
+                    ),
                 ))
                 .bearer_auth(token)
                 .json(&event.google()),
             Self::Microsoft { http, base, token } => http
-                .post(endpoint(
-                    base,
-                    &format!("/v1.0/me/calendars/{}/events", segment(calendar)),
-                ))
+                .patch(endpoint(base, &format!("/v1.0/me/events/{}", segment(id))))
                 .bearer_auth(token)
                 .json(&event.graph()),
         };

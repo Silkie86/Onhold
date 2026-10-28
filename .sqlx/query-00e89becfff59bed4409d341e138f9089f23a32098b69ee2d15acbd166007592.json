@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE calendar_pushes\n           SET disconnected_at = now(), next_sync_at = NULL, sync_lease_until = NULL,\n               sync_token = NULL, revoke_at = now()\n           WHERE workspace_id = app_workspace_id() AND disconnected_at IS NULL\n             AND ($1::uuid IS NULL OR user_id = $1)\n           RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "00e89becfff59bed4409d341e138f9089f23a32098b69ee2d15acbd166007592"
+}

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE calendar_pushes SET sync_lease_until = now() + make_interval(secs => $3)\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND sync_token = $2\n             AND disconnected_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "822174baecc8506b14b2875323b6c8afdd33ea8bd34f771e4456c4121bf7f8c4"
+}

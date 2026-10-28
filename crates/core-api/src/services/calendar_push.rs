@@ -34,6 +34,19 @@ pub const JOB_WRITE: &str = "calendar.write";
 /// others, revokes its grant and forgets it (`push_id`).
 pub const JOB_REVOKE: &str = "calendar.push_revoke";
 
+/// What a grant may carry: signing in, and OnHold's own calendars.
+const ALLOWED_SCOPES: &[&str] = &[
+    "openid",
+    "email",
+    "profile",
+    "offline_access",
+    "user.read",
+    "calendars.readwrite",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/calendar.app.created",
+];
+
 /// Connections one member may have.
 const MAX_PER_MEMBER: i64 = 5;
 const STATE_AAD: &[u8] = b"calendar_push_state";
@@ -300,12 +313,31 @@ pub async fn finish(
         .exchange(&cfg.http, req.code.trim(), &redirect_uri(state))
         .await
         .map_err(|e| provider_error(name, e))?;
-    if !tokens.scopes.is_empty()
-        && !core_integrations::oauth::granted(&tokens.scopes, scopes(app.provider))
-    {
+    // Providers leave sign-in scopes out of what they report.
+    let needed: Vec<&str> = scopes(app.provider)
+        .iter()
+        .copied()
+        .filter(|s| !matches!(*s, "openid" | "email" | "offline_access" | "User.Read"))
+        .collect();
+    if !tokens.scopes.is_empty() && !core_integrations::oauth::granted(&tokens.scopes, &needed) {
         return Err(ApiError::bad_request(
             "scopes_missing",
             "OnHold needs permission to add its own calendar; connect again and allow it",
+        ));
+    }
+    let allowed = |s: &String| {
+        let s = s.to_ascii_lowercase();
+        let short = s.strip_prefix("https://graph.microsoft.com/").unwrap_or(&s);
+        ALLOWED_SCOPES.contains(&short)
+    };
+    if let Some(extra) = tokens.scopes.iter().find(|s| !allowed(s)) {
+        // Not revoked: the grant is the account's, and may be a mailbox's.
+        tracing::info!(scope = %extra, "a calendar grant carried more than writing OnHold's calendar");
+        return Err(ApiError::bad_request(
+            "scopes_too_wide",
+            format!(
+                "this {name} account has given OnHold more than its own calendar (its mailbox, perhaps), so it cannot be used here; use another account, or remove OnHold from this account's connected apps and connect again"
+            ),
         ));
     }
     let Some(refresh_token) = tokens.refresh_token.clone() else {
@@ -453,17 +485,15 @@ pub async fn sync_now(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Calend
     Ok(CalendarPushView::from(&after))
 }
 
-/// Stops writing, removes OnHold's calendar from the account, and asks
-/// Google to forget the grant unless another connection uses the account.
+/// Stops writing. The worker then removes OnHold's calendar from the
+/// account, and asks Google to forget the grant unless another connection
+/// uses the account.
 pub async fn disconnect(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::BookingRead)?;
     let mut tx = begin(state, ctx).await?;
     let before = load_own(&mut tx, ctx, id).await?;
-    let grant = open(state, &before).ok();
     core_db::calendar_push::disconnect(&mut tx, id).await?;
-    let in_use =
-        core_db::integrations::account_in_use(&mut tx, &before.provider, &before.account, id)
-            .await?;
+    queue_revoke(&mut tx, ctx.workspace_id, id, Utc::now()).await?;
     record(
         &mut tx,
         ctx,
@@ -478,45 +508,44 @@ pub async fn disconnect(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> 
     )
     .await?;
     tx.commit().await?;
-    // Best effort, after the fact: OnHold has already forgotten the grant.
-    if let Some(grant) = grant {
-        clean_up(state, &before, grant, in_use).await;
-    }
     Ok(())
 }
 
-/// Removes OnHold's calendar from the account and revokes the grant unless
-/// it is still in use. Failures are logged: the grant is forgotten anyway.
-async fn clean_up(state: &AppState, p: &Push, grant: Grant, in_use: bool) -> &'static str {
+/// Removes OnHold's calendar from the account. Gone already, or no longer
+/// reachable for good (the grant withdrawn, the provider no longer
+/// configured), counts as done; a temporary failure is an error.
+async fn remove_calendar(
+    state: &AppState,
+    p: &Push,
+    grant: &Grant,
+) -> Result<&'static str, ProviderError> {
+    let Some(calendar) = p.remote_calendar.as_deref() else {
+        return Ok("no calendar to remove");
+    };
     let Ok(app) = oauth_app(state, &p.provider) else {
-        return "forgotten; this server no longer connects to that provider";
+        return Ok("this server no longer connects to that provider");
     };
     let http = &state.config.mailboxes.http;
     let token = if grant.expires_at - Duration::seconds(60) > Utc::now() {
-        Some(grant.access_token.clone())
+        grant.access_token.clone()
     } else {
-        app.refresh(http, &grant.refresh_token)
-            .await
-            .ok()
-            .map(|t| t.access_token)
+        match app.refresh(http, &grant.refresh_token).await {
+            Ok(t) => t.access_token,
+            Err(e) if e.is_temporary() => return Err(e),
+            Err(_) => return Ok("the grant no longer works; the calendar stays"),
+        }
     };
-    let mut outcome = "forgotten";
-    if let (Some(token), Some(calendar)) = (token, p.remote_calendar.as_deref()) {
-        match writer(state, &p.provider, token)
-            .delete_calendar(calendar)
-            .await
-        {
-            Ok(()) => outcome = "calendar removed",
-            Err(e) => {
-                tracing::warn!(push_id = %p.id, error = %e, "removing OnHold's calendar failed");
-                outcome = "removing the calendar failed";
-            }
+    match writer(state, &p.provider, token)
+        .delete_calendar(calendar)
+        .await
+    {
+        Ok(()) => Ok("calendar removed"),
+        Err(e) if e.is_temporary() => Err(e),
+        Err(e) => {
+            tracing::warn!(push_id = %p.id, error = %e, "removing OnHold's calendar failed");
+            Ok("removing the calendar failed")
         }
     }
-    if !in_use && let Err(e) = app.revoke(http, &grant.refresh_token).await {
-        tracing::warn!(push_id = %p.id, error = %e, "revoking a calendar grant failed");
-    }
-    outcome
 }
 
 /// Disconnects every calendar of a member leaving, or of a closing
@@ -546,8 +575,14 @@ pub(crate) async fn disconnect_all(
     Ok(())
 }
 
-/// The worker's `calendar.push_revoke`: cleans up a connection left by
-/// [`disconnect_all`].
+/// How long removing OnHold's calendar is tried before the grant is
+/// forgotten anyway.
+const REVOKE_FOR: Duration = Duration::days(3);
+
+/// The worker's `calendar.push_revoke`: removes OnHold's calendar from a
+/// disconnected connection's account, revokes the grant unless another
+/// connection uses the account, and forgets it. Removing is tried again
+/// later while the provider is unavailable.
 pub async fn revoke(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<&'static str> {
     let ctx = Ctx::system(ws);
     let mut tx = begin(state, &ctx).await?;
@@ -555,28 +590,85 @@ pub async fn revoke(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<&'
         tx.commit().await?;
         return Ok("nothing to revoke");
     };
+    tx.commit().await?;
     let grant = open(state, &p).ok();
+    let outcome = match &grant {
+        None => "forgotten",
+        Some(g) => match remove_calendar(state, &p, g).await {
+            Ok(done) => done,
+            Err(e) => {
+                let gave_up = p
+                    .disconnected_at
+                    .is_none_or(|at| Utc::now() - at > REVOKE_FOR);
+                if !gave_up {
+                    let wait = match e {
+                        ProviderError::RateLimited {
+                            retry_after: Some(s),
+                        } => Duration::seconds(s.clamp(30, 3600) as i64),
+                        _ => Duration::minutes(10),
+                    };
+                    let at = Utc::now() + wait;
+                    let mut tx = begin(state, &ctx).await?;
+                    core_db::calendar_push::revoke_later(&mut tx, id, at).await?;
+                    tx.commit().await?;
+                    return Ok("removing the calendar failed for now; trying again later");
+                }
+                "removing the calendar kept failing; forgotten"
+            }
+        },
+    };
+    let mut tx = begin(state, &ctx).await?;
+    core_db::calendar_push::lock_revokes(&mut tx, &p.provider, &p.account).await?;
+    if core_db::calendar_push::to_revoke(&mut tx, id)
+        .await?
+        .is_none()
+    {
+        tx.commit().await?;
+        return Ok(outcome);
+    }
+    core_db::calendar_push::forget_grant(&mut tx, id).await?;
     let in_use =
         core_db::integrations::account_in_use(&mut tx, &p.provider, &p.account, id).await?;
-    core_db::calendar_push::forget_grant(&mut tx, id).await?;
     tx.commit().await?;
-    Ok(match grant {
-        Some(g) => clean_up(state, &p, g, in_use).await,
-        None => "forgotten",
-    })
+    if let (false, Some(g), Ok(app)) = (in_use, &grant, oauth_app(state, &p.provider))
+        && let Err(e) = app
+            .revoke(&state.config.mailboxes.http, &g.refresh_token)
+            .await
+    {
+        tracing::warn!(push_id = %p.id, error = %e, "revoking a calendar grant failed");
+    }
+    Ok(outcome)
 }
 
 // Queueing --------------------------------------------------------------------------------
 
+/// Queues a full write for when the connection is next due.
 async fn queue_full(tx: &mut Tx, ws: WorkspaceId, id: Uuid) -> ApiResult<()> {
-    let now = Utc::now();
-    let payload = json!({ "push_id": id, "at": now });
+    let Some(at) = core_db::calendar_push::next_sync_at(tx, id).await? else {
+        return Ok(());
+    };
+    let payload = json!({ "push_id": id, "at": at });
     core_db::jobs::enqueue(
         tx,
-        core_db::jobs::NewJob::new(Some(ws), JOB_WRITE, &payload).dedupe(&full_key(id, now)),
+        core_db::jobs::NewJob::new(Some(ws), JOB_WRITE, &payload).dedupe(&full_key(id, at)),
     )
     .await?;
     Ok(())
+}
+
+async fn queue_revoke(tx: &mut Tx, ws: WorkspaceId, id: Uuid, at: DateTime<Utc>) -> ApiResult<()> {
+    let payload = json!({ "push_id": id });
+    core_db::jobs::enqueue(
+        tx,
+        core_db::jobs::NewJob::new(Some(ws), JOB_REVOKE, &payload).dedupe(&revoke_key(id, at)),
+    )
+    .await?;
+    Ok(())
+}
+
+/// One clean-up per connection and time it is due.
+pub fn revoke_key(id: Uuid, at: DateTime<Utc>) -> String {
+    format!("revoke:{id}@{}", at.to_rfc3339())
 }
 
 /// One full write per connection and due time.
@@ -717,14 +809,22 @@ fn content_hash(calendar: &str, e: &EventBody) -> Vec<u8> {
     h.finalize().to_vec()
 }
 
-/// Bookings as they should appear: all in the window, or one.
+/// The most bookings one full write reads; any beyond are written as they
+/// change, and none of their events are removed for being missed.
+const MAX_BOOKINGS: i64 = 20_000;
+const PAGE: i64 = 1_000;
+
+/// Bookings as they should appear: all in the window (one talent's, for a
+/// connection that is for one), or one.
 async fn bookings(
     tx: &mut Tx,
     one: Option<Uuid>,
+    talent: Option<Uuid>,
     now: DateTime<Utc>,
 ) -> ApiResult<Vec<super::bookings::BookingView>> {
-    let rows = match one {
-        Some(id) => core_db::bookings::get(tx, id).await?.into_iter().collect(),
+    let mut rows = Vec::new();
+    match one {
+        Some(id) => rows.extend(core_db::bookings::get(tx, id).await?),
         None => {
             let statuses = [
                 BookingStatus::Hold,
@@ -732,42 +832,70 @@ async fn bookings(
                 BookingStatus::Confirmed,
                 BookingStatus::Completed,
             ];
-            core_db::bookings::list(
-                tx,
-                core_db::bookings::Filter {
-                    list: core_db::crm::ListParams {
-                        q: None,
-                        searchable: &[],
-                        tag: None,
-                        custom: None,
-                        sort: "starts_at",
-                        sort_custom: None,
-                        desc: false,
-                        offset: 0,
-                        limit: 5000,
+            let mut offset = 0;
+            while offset < MAX_BOOKINGS {
+                let (page, _) = core_db::bookings::list(
+                    tx,
+                    core_db::bookings::Filter {
+                        list: core_db::crm::ListParams {
+                            q: None,
+                            searchable: &[],
+                            tag: None,
+                            custom: None,
+                            sort: "starts_at",
+                            sort_custom: None,
+                            desc: false,
+                            offset,
+                            limit: PAGE,
+                        },
+                        from: Some(now - PAST),
+                        to: Some(now + AHEAD),
+                        statuses: &statuses,
+                        talent_id: talent,
+                        organisation_id: None,
+                        contact_id: None,
+                        enquiry_id: None,
                     },
-                    from: Some(now - PAST),
-                    to: Some(now + AHEAD),
-                    statuses: &statuses,
-                    talent_id: None,
-                    organisation_id: None,
-                    contact_id: None,
-                    enquiry_id: None,
-                },
-            )
-            .await?
-            .0
+                )
+                .await?;
+                let n = page.len() as i64;
+                rows.extend(page);
+                if n < PAGE {
+                    break;
+                }
+                offset += PAGE;
+            }
         }
-    };
+    }
     let ids: Vec<Uuid> = rows.iter().map(|b| b.id).collect();
-    let talent = core_db::bookings::talent_of(tx, &ids).await?;
+    let mut talent_of: std::collections::HashMap<Uuid, Vec<super::links::Named>> =
+        std::collections::HashMap::new();
+    for (booking, id, name) in core_db::bookings::talent_of(tx, &ids).await? {
+        talent_of
+            .entry(booking)
+            .or_default()
+            .push(super::links::Named { id, name });
+    }
     Ok(rows
         .into_iter()
         .map(|b| {
-            let names = super::links::talent_by_owner(talent.clone(), b.id);
+            let names = talent_of.remove(&b.id).unwrap_or_default();
             super::bookings::view(b, names)
         })
         .collect())
+}
+
+/// Names a booking's event in one connection, the same every time:
+/// Google's event id, Outlook's transaction id.
+fn event_key(push: Uuid, booking: Uuid) -> String {
+    let mut h = Sha256::new();
+    h.update(push.as_bytes());
+    h.update(booking.as_bytes());
+    let hex: String = h.finalize()[..16]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    format!("onhold{hex}")
 }
 
 /// What a write did, for the job's log.
@@ -778,6 +906,8 @@ pub struct WriteOutcome {
     pub unchanged: usize,
     pub more: bool,
     pub skipped: Option<&'static str>,
+    /// The connection was disconnected, or taken over, part way.
+    pub lost: bool,
 }
 
 impl std::fmt::Display for WriteOutcome {
@@ -807,17 +937,16 @@ pub async fn write(
 ) -> ApiResult<WriteOutcome> {
     let ctx = Ctx::system(ws);
     let mut tx = begin(state, &ctx).await?;
-    if !core_db::calendar_push::claim(&mut tx, id, WRITE_LEASE_SECS).await? {
-        // Another write holds it: a full one soon picks this booking up.
-        if booking.is_some() {
-            core_db::calendar_push::sync_now(&mut tx, id).await?;
-        }
+    let Some(token) = core_db::calendar_push::claim(&mut tx, id, WRITE_LEASE_SECS).await? else {
+        // Another write holds it: a full one follows it, which picks
+        // this up. (Disconnected, or waiting to be connected again: nothing.)
+        core_db::calendar_push::sync_now(&mut tx, id).await?;
         tx.commit().await?;
         return Ok(WriteOutcome {
             skipped: Some("disconnected, waiting to be connected again, or being written"),
             ..WriteOutcome::default()
         });
-    }
+    };
     let p = core_db::calendar_push::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -836,10 +965,7 @@ pub async fn write(
             ..WriteOutcome::default()
         });
     }
-    let now = Utc::now();
-    let want = bookings(&mut tx, booking, now).await?;
-    let have = core_db::calendar_push::written(&mut tx, id, booking).await?;
-    let tz = core_db::workspaces::get(&mut tx, ws)
+    let workspace = core_db::workspaces::get(&mut tx, ws)
         .await?
         .map(|w| (w.name, w.default_timezone));
     tx.commit().await?;
@@ -851,8 +977,8 @@ pub async fn write(
                 state,
                 &ctx,
                 &p,
+                token,
                 ProviderError::Invalid(e.to_string()),
-                booking.is_none(),
             )
             .await?;
             return Ok(WriteOutcome::default());
@@ -860,27 +986,45 @@ pub async fn write(
     };
     let mut forced = false;
     loop {
+        // Read afresh on each try: a try cut short has recorded what it did.
+        let now = Utc::now();
+        let mut tx = begin(state, &ctx).await?;
+        let Some(p) = core_db::calendar_push::get(&mut tx, id).await? else {
+            return Err(ApiError::NotFound);
+        };
+        let want = bookings(&mut tx, booking, p.talent_id, now).await?;
+        let have = core_db::calendar_push::written(&mut tx, id, booking).await?;
+        tx.commit().await?;
         let result = async {
-            let token = access_token(state, ws, &p, &grant, forced).await?;
-            let w = writer(state, &p.provider, token);
-            apply(state, &ctx, &p, &w, &want, &have, booking, now, tz.clone()).await
+            let access = access_token(state, ws, &p, &grant, forced).await?;
+            let w = writer(state, &p.provider, access);
+            let run = Run {
+                state,
+                ctx: &ctx,
+                p: &p,
+                token,
+                w: &w,
+            };
+            run.apply(&want, &have, booking, now, workspace.clone())
+                .await
         }
         .await;
         match result {
+            Ok(outcome) if outcome.lost => return Ok(outcome),
             Ok(outcome) => {
                 let mut tx = begin(state, &ctx).await?;
                 if booking.is_none() {
+                    // More to write: the sweep picks it up after a pause,
+                    // which keeps within the provider's limits.
                     let next = if outcome.more {
-                        Utc::now()
+                        Utc::now() + Duration::seconds(30)
                     } else {
                         Utc::now() + FULL_EVERY
                     };
-                    core_db::calendar_push::synced(&mut tx, id, next, WRITE_LEASE_SECS).await?;
-                    if outcome.more {
-                        queue_full(&mut tx, ws, id).await?;
-                    }
+                    core_db::calendar_push::synced(&mut tx, id, token, next, WRITE_LEASE_SECS)
+                        .await?;
                 } else {
-                    core_db::calendar_push::release(&mut tx, id).await?;
+                    core_db::calendar_push::release(&mut tx, id, token).await?;
                 }
                 tx.commit().await?;
                 return Ok(outcome);
@@ -892,10 +1036,18 @@ pub async fn write(
                 // OnHold's calendar was deleted in the account: make it
                 // again and write everything afresh.
                 let mut tx = begin(state, &ctx).await?;
-                core_db::calendar_push::set_remote_calendar(&mut tx, id, None).await?;
-                core_db::calendar_push::clear_events(&mut tx, id).await?;
-                core_db::calendar_push::synced(&mut tx, id, Utc::now(), WRITE_LEASE_SECS).await?;
-                queue_full(&mut tx, ws, id).await?;
+                if core_db::calendar_push::set_remote_calendar(&mut tx, id, token, None).await? {
+                    core_db::calendar_push::clear_events(&mut tx, id).await?;
+                    core_db::calendar_push::synced(
+                        &mut tx,
+                        id,
+                        token,
+                        Utc::now(),
+                        WRITE_LEASE_SECS,
+                    )
+                    .await?;
+                    queue_full(&mut tx, ws, id).await?;
+                }
                 tx.commit().await?;
                 return Ok(WriteOutcome {
                     skipped: Some("OnHold's calendar was gone; it is made again"),
@@ -903,113 +1055,149 @@ pub async fn write(
                 });
             }
             Err(e) => {
-                failed(state, &ctx, &p, e, booking.is_none()).await?;
+                failed(state, &ctx, &p, token, e).await?;
                 return Ok(WriteOutcome::default());
             }
         }
     }
 }
 
-/// Writes the differences: events for bookings wanted, removed for those
-/// no longer wanted. Each write is recorded as it happens, so a failure
-/// part way loses nothing.
 /// A database failure part way through writing: tried again later.
 fn invalid(e: impl std::fmt::Display) -> ProviderError {
     ProviderError::Invalid(e.to_string())
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn apply(
-    state: &AppState,
-    ctx: &Ctx,
-    p: &Push,
-    w: &CalendarWriter,
-    list: &[super::bookings::BookingView],
-    have: &[core_db::calendar_push::Written],
-    one: Option<Uuid>,
-    now: DateTime<Utc>,
-    workspace: Option<(String, String)>,
-) -> Result<WriteOutcome, ProviderError> {
-    let mut out = WriteOutcome::default();
-    let (ws_name, tz) = workspace.unwrap_or_else(|| ("OnHold".into(), "UTC".into()));
-    let calendar = match &p.remote_calendar {
-        Some(c) => c.clone(),
-        None => {
-            let name = match &p.talent_name {
-                Some(t) => format!("OnHold · {ws_name} · {t}"),
-                None => format!("OnHold · {ws_name}"),
+/// One write holding a connection (`token`).
+struct Run<'a> {
+    state: &'a AppState,
+    ctx: &'a Ctx,
+    p: &'a Push,
+    token: Uuid,
+    w: &'a CalendarWriter,
+}
+
+impl Run<'_> {
+    /// Keeps the lease and checks it is still this write's: `false` when
+    /// the connection was disconnected or taken over.
+    async fn still_mine(&self, tx: &mut Tx) -> Result<bool, ProviderError> {
+        core_db::calendar_push::renew(tx, self.p.id, self.token, WRITE_LEASE_SECS)
+            .await
+            .map_err(invalid)
+    }
+
+    /// Makes the calendar if there is none, writes changed events, and
+    /// removes those no longer wanted. Each step is recorded as it
+    /// happens, so a failure part way loses nothing.
+    async fn apply(
+        &self,
+        list: &[super::bookings::BookingView],
+        have: &[core_db::calendar_push::Written],
+        one: Option<Uuid>,
+        now: DateTime<Utc>,
+        workspace: Option<(String, String)>,
+    ) -> Result<WriteOutcome, ProviderError> {
+        let (state, ctx, p, w) = (self.state, self.ctx, self.p, self.w);
+        let lost = || WriteOutcome {
+            lost: true,
+            skipped: Some("disconnected or taken over part way"),
+            ..WriteOutcome::default()
+        };
+        let mut out = WriteOutcome::default();
+        let (ws_name, tz) = workspace.unwrap_or_else(|| ("OnHold".into(), "UTC".into()));
+        let calendar = match &p.remote_calendar {
+            Some(c) => c.clone(),
+            None => {
+                let name = match &p.talent_name {
+                    Some(t) => format!("OnHold · {ws_name} · {t}"),
+                    None => format!("OnHold · {ws_name}"),
+                };
+                let made = w.create_calendar(&name, &tz).await?;
+                let mut tx = begin(state, ctx).await.map_err(invalid)?;
+                let kept = core_db::calendar_push::set_remote_calendar(
+                    &mut tx,
+                    p.id,
+                    self.token,
+                    Some(&made),
+                )
+                .await
+                .map_err(invalid)?;
+                tx.commit().await.map_err(invalid)?;
+                if !kept {
+                    // Disconnected meanwhile: nothing would remove it later.
+                    if let Err(e) = w.delete_calendar(&made).await {
+                        tracing::warn!(push_id = %p.id, error = %e, "removing a calendar made while disconnecting failed");
+                    }
+                    return Ok(lost());
+                }
+                made
+            }
+        };
+        let held: std::collections::HashMap<Uuid, &core_db::calendar_push::Written> =
+            have.iter().map(|h| (h.booking_id, h)).collect();
+        let mut seen = std::collections::HashSet::new();
+        let mut calls = 0;
+        for b in list {
+            let Some(event) = wanted(state, p, b, now) else {
+                continue;
             };
-            let made = w.create_calendar(&name, &tz).await?;
+            seen.insert(b.id);
+            let hash = content_hash(&calendar, &event);
+            let existing = held.get(&b.id);
+            if existing.is_some_and(|h| h.content_hash == hash) {
+                out.unchanged += 1;
+                continue;
+            }
+            if calls >= MAX_WRITES_PER_RUN {
+                out.more = true;
+                break;
+            }
+            calls += 1;
+            let remote = w
+                .put(
+                    &calendar,
+                    existing.map(|h| h.remote_id.as_str()),
+                    &event_key(p.id, b.id),
+                    &event,
+                )
+                .await?;
             let mut tx = begin(state, ctx).await.map_err(invalid)?;
-            core_db::calendar_push::set_remote_calendar(&mut tx, p.id, Some(&made))
+            if !self.still_mine(&mut tx).await? {
+                return Ok(lost());
+            }
+            core_db::calendar_push::record_written(&mut tx, p.id, b.id, &remote, &hash)
                 .await
                 .map_err(invalid)?;
             tx.commit().await.map_err(invalid)?;
-            made
+            out.written += 1;
         }
-    };
-    let held: std::collections::HashMap<Uuid, &core_db::calendar_push::Written> =
-        have.iter().map(|h| (h.booking_id, h)).collect();
-    let mut seen = std::collections::HashSet::new();
-    let mut calls = 0;
-    for b in list {
-        let Some(event) = wanted(state, p, b, now) else {
-            continue;
-        };
-        seen.insert(b.id);
-        let hash = content_hash(&calendar, &event);
-        let existing = held.get(&b.id);
-        if existing.is_some_and(|h| h.content_hash == hash) {
-            out.unchanged += 1;
-            continue;
-        }
-        if calls >= MAX_WRITES_PER_RUN {
-            out.more = true;
-            break;
-        }
-        calls += 1;
-        let remote = w
-            .put(&calendar, existing.map(|h| h.remote_id.as_str()), &event)
-            .await?;
-        let mut tx = begin(state, ctx).await.map_err(invalid)?;
-        core_db::calendar_push::record_written(&mut tx, p.id, b.id, &remote, &hash)
-            .await
-            .map_err(invalid)?;
-        tx.commit().await.map_err(invalid)?;
-        out.written += 1;
-    }
-    // Events whose bookings are no longer wanted: cancelled, removed,
-    // moved to another talent. Past bookings that only left the window
-    // stay, as a record.
-    let mut gone = Vec::new();
-    for h in have.iter().filter(|h| !seen.contains(&h.booking_id)) {
-        if one.is_none() || one == Some(h.booking_id) {
-            gone.push(h);
-        }
-    }
-    if !gone.is_empty() {
-        let mut tx = begin(state, ctx).await.map_err(invalid)?;
-        let ids: Vec<Uuid> = gone.iter().map(|h| h.booking_id).collect();
-        let mut still = Vec::new();
-        for id in &ids {
-            if let Some(b) = bookings(&mut tx, Some(*id), now)
+        // Events whose bookings are no longer wanted: cancelled, removed,
+        // moved to another talent. Each is looked at on its own, so one
+        // missed above (past the most read) is never removed by mistake.
+        for h in have.iter().filter(|h| !seen.contains(&h.booking_id)) {
+            if one.is_some_and(|b| b != h.booking_id) {
+                continue;
+            }
+            let mut tx = begin(state, ctx).await.map_err(invalid)?;
+            let current = bookings(&mut tx, Some(h.booking_id), None, now)
                 .await
                 .map_err(invalid)?
                 .into_iter()
-                .next()
-            {
-                still.push(b);
-            }
-        }
-        tx.commit().await.map_err(invalid)?;
-        for h in gone {
-            let past_but_kept = still.iter().any(|b| {
-                b.id == h.booking_id
-                    && b.ends_at < now - PAST
-                    && wanted(state, p, b, b.starts_at).is_some()
-            });
-            if past_but_kept {
-                continue;
+                .next();
+            tx.commit().await.map_err(invalid)?;
+            if let Some(b) = &current {
+                if wanted(state, p, b, now).is_some() {
+                    continue;
+                }
+                // Past, and only out of the window: its event stays as a
+                // record, and OnHold stops keeping track of it.
+                if b.ends_at < now - PAST && wanted(state, p, b, b.starts_at).is_some() {
+                    let mut tx = begin(state, ctx).await.map_err(invalid)?;
+                    core_db::calendar_push::forget_written(&mut tx, p.id, h.booking_id)
+                        .await
+                        .map_err(invalid)?;
+                    tx.commit().await.map_err(invalid)?;
+                    continue;
+                }
             }
             if calls >= MAX_WRITES_PER_RUN {
                 out.more = true;
@@ -1018,14 +1206,17 @@ async fn apply(
             calls += 1;
             w.delete(&calendar, &h.remote_id).await?;
             let mut tx = begin(state, ctx).await.map_err(invalid)?;
+            if !self.still_mine(&mut tx).await? {
+                return Ok(lost());
+            }
             core_db::calendar_push::forget_written(&mut tx, p.id, h.booking_id)
                 .await
                 .map_err(invalid)?;
             tx.commit().await.map_err(invalid)?;
             out.removed += 1;
         }
+        Ok(out)
     }
-    Ok(out)
 }
 
 /// Records a failed write and when to try in full again: soon at first,
@@ -1035,8 +1226,8 @@ async fn failed(
     state: &AppState,
     ctx: &Ctx,
     p: &Push,
+    token: Uuid,
     err: ProviderError,
-    _full: bool,
 ) -> ApiResult<()> {
     let wait = match &err {
         ProviderError::RateLimited {
@@ -1062,7 +1253,7 @@ async fn failed(
     let message = err.to_string();
     tracing::warn!(push_id = %p.id, provider = %p.provider, error = %message, "writing bookings into a calendar failed");
     let mut tx = begin(state, ctx).await?;
-    core_db::calendar_push::failed(&mut tx, p.id, status, &message, next).await?;
+    core_db::calendar_push::failed(&mut tx, p.id, token, status, &message, next).await?;
     if status != p.status {
         record(
             &mut tx,
@@ -1080,4 +1271,23 @@ async fn failed(
     }
     tx.commit().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_keys_are_stable_and_valid_google_ids() {
+        let (push, booking) = (Uuid::from_u128(1), Uuid::from_u128(2));
+        let key = event_key(push, booking);
+        assert_eq!(key, event_key(push, booking));
+        assert_ne!(key, event_key(push, Uuid::from_u128(3)));
+        // Google: 5 to 1024 characters from a to v and 0 to 9.
+        assert!((5..=1024).contains(&key.len()));
+        assert!(
+            key.chars().all(|c| matches!(c, 'a'..='v' | '0'..='9')),
+            "{key}"
+        );
+    }
 }

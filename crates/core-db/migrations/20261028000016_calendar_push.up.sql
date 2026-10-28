@@ -32,6 +32,10 @@ CREATE TABLE calendar_pushes (
     -- change are written straight away in between).
     next_sync_at    timestamptz,
     sync_lease_until timestamptz,
+    -- Names the write holding the lease; each of its steps checks it, so a
+    -- write that lost the connection (disconnected, or its lease taken
+    -- after running out) stops.
+    sync_token      uuid,
     -- Disconnected along with others (a member leaving, a workspace
     -- closing): the worker removes OnHold's calendar and revokes the grant,
     -- then empties it.
