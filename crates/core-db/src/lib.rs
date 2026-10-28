@@ -46,6 +46,7 @@ pub mod search;
 pub mod sender_domains;
 pub mod sessions;
 pub mod settlements;
+pub mod signatures;
 pub mod stripe;
 pub mod talent;
 pub mod talent_calendars;

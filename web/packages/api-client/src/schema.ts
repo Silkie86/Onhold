@@ -2986,6 +2986,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/signatures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your email signature and the workspace's. */
+        get: operations["get_signatures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/signatures/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set your email signature in this workspace: under what you send from
+         *     the inbox, and the quotes, invoices and signing requests you send.
+         */
+        put: operations["set_my_signature"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/signatures/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the workspace's email signature: used when a member has none, and
+         *     under emails rules send.
+         */
+        put: operations["set_workspace_signature"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tags": {
         parameters: {
             query?: never;
@@ -4180,6 +4237,8 @@ export interface components {
              * @description The mailbox to send from; default the sender's own, if connected.
              */
             integration_id?: string | null;
+            /** @description Add your signature (or the workspace's) under it. Default: yes. */
+            signature?: boolean;
             /** @description Required unless the template gives one. */
             subject?: string | null;
             template_key?: string | null;
@@ -6407,6 +6466,8 @@ export interface components {
             /** @description The message, as plain text. Give this or `template_key`. */
             body?: string | null;
             cc?: string[];
+            /** @description Add your signature (or the workspace's) under it. Default: yes. */
+            signature?: boolean;
             /**
              * @description An email template to write it from, filled in with the thread's
              *     contact, enquiry and booking.
@@ -6733,6 +6794,10 @@ export interface components {
             /** @description The signer's name, typed as their signature. Required to sign. */
             signed_name?: string | null;
         };
+        SignatureBody: {
+            /** @description Plain text; empty or absent removes it. */
+            signature?: string | null;
+        };
         SignatureView: {
             /** Format: date-time */
             decided_at?: string | null;
@@ -6752,6 +6817,19 @@ export interface components {
             version_number: number;
             /** Format: date-time */
             viewed_at?: string | null;
+        };
+        Signatures: {
+            /** @description You may change the workspace's. */
+            can_edit_workspace: boolean;
+            /**
+             * @description You are a member here, so may have your own (a visiting operator
+             *     or an API key has none).
+             */
+            is_member: boolean;
+            /** @description Yours, in this workspace. */
+            mine?: string | null;
+            /** @description The workspace's: used when a member has none, and on emails rules send. */
+            workspace?: string | null;
         };
         Signer: {
             email: string;
@@ -16236,6 +16314,117 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_signatures: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Signatures"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_my_signature: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignatureBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Signatures"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_workspace_signature: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignatureBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Signatures"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

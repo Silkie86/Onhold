@@ -15,6 +15,7 @@ import { useSession } from "../session.tsx";
 import { useMailSetup } from "./inbox.tsx";
 import { KeepMailCard } from "./mail-device.tsx";
 import { useSenderDomains } from "./sending-domain.tsx";
+import { SignatureCard } from "./signatures.tsx";
 
 type Mailbox = Schemas["IntegrationView"];
 type Security = "tls" | "starttls";
@@ -125,6 +126,7 @@ export function EmailSettingsPage() {
       </p>
       {error && <Alert>{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
+      <SignatureCard />
       <KeepMailCard />
       {manager && <SendingDomainCard />}
 

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE memberships SET email_signature = $2\n           WHERE workspace_id = app_workspace_id() AND user_id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e15552ad73d819f1c9f61e3d82e41122765aa9068684656f94bc8800954ac87d"
+}
