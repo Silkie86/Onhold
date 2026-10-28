@@ -13,9 +13,12 @@ import { useSession } from "../session.tsx";
 const DEFAULT_COLOUR = "#2747c7";
 /** The logo travels with the branding (16 kB in all), so it is kept small. */
 const MAX_LOGO_CHARS = 14_000;
+/** Bigger files are refused before the browser decodes them. */
+const MAX_UPLOAD_BYTES = 10_000_000;
 
 /** The image as a small WebP (or PNG) data URI that fits the branding. */
 export async function shrinkLogo(file: Blob): Promise<string> {
+  if (file.size > MAX_UPLOAD_BYTES) throw new Error("That file is over 10 MB. Use a smaller version of the logo.");
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -63,9 +66,10 @@ export function BrandingSettingsPage() {
   const saved = readBranding(ws.data.branding);
   const shownName = name ?? ws.data.name;
   const shownLogo = logo === undefined ? saved.logo : logo;
-  const shownColour = colour ?? saved.colours.primary ?? DEFAULT_COLOUR;
-  const validColour = hexColour(shownColour);
-  const preview = brandColours(validColour ?? DEFAULT_COLOUR);
+  // "" is no colour of their own: OnHold's blue, in its light and dark shades.
+  const shownColour = colour ?? saved.colour ?? "";
+  const validColour = shownColour === "" ? "" : hexColour(shownColour);
+  const preview = brandColours(validColour || DEFAULT_COLOUR);
   const changed = name !== null || logo !== undefined || colour !== null;
 
   const save = async () => {
@@ -73,7 +77,7 @@ export function BrandingSettingsPage() {
     setBusy(true);
     try {
       const branding: Record<string, unknown> = { ...(ws.data.branding as Record<string, unknown>) };
-      if (colour !== null) branding.primary_color = validColour;
+      if (colour !== null) branding.primary_color = validColour || null;
       if (logo !== undefined) {
         branding.logo = logo;
         // A logo chosen here replaces one uploaded another way.
@@ -137,6 +141,7 @@ export function BrandingSettingsPage() {
               ref={input}
               id="brand-logo"
               type="file"
+              tabIndex={-1}
               accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
               className="sr-only"
               onChange={async (e) => {
@@ -165,16 +170,29 @@ export function BrandingSettingsPage() {
               aria-label="Pick a brand colour"
               className="h-9 w-12 cursor-pointer rounded-md border bg-background p-1"
               value={validColour && validColour.length === 7 ? validColour : DEFAULT_COLOUR}
+              tabIndex={-1}
               onChange={(e) => setColour(e.target.value)}
             />
-            <Input id="brand-colour" className="w-32 font-mono" value={shownColour} onChange={(e) => setColour(e.target.value)} />
-            {colour !== null && validColour !== DEFAULT_COLOUR && (
-              <Button type="button" variant="ghost" size="sm" onClick={() => setColour(DEFAULT_COLOUR)}>
+            <Input
+              id="brand-colour"
+              className="w-32 font-mono"
+              placeholder="OnHold blue"
+              value={shownColour}
+              aria-invalid={validColour === null}
+              aria-describedby={validColour === null ? "brand-colour-error" : undefined}
+              onChange={(e) => setColour(e.target.value.trim())}
+            />
+            {shownColour !== "" && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setColour("")}>
                 Use OnHold blue
               </Button>
             )}
           </div>
-          {!validColour && <p className="text-sm text-destructive">Use a hex colour such as #2747c7.</p>}
+          {validColour === null && (
+            <p id="brand-colour-error" className="text-sm text-destructive">
+              Use a hex colour such as #2747c7.
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">Used for buttons, links and highlights. Text on it turns white or black, whichever reads better.</p>
         </div>
       </fieldset>
@@ -218,7 +236,7 @@ export function BrandingSettingsPage() {
               Undo changes
             </Button>
           )}
-          <Button type="button" disabled={!changed || !validColour || !shownName.trim() || busy} onClick={() => void save()}>
+          <Button type="button" disabled={!changed || validColour === null || !shownName.trim() || busy} onClick={() => void save()}>
             Save
           </Button>
         </div>

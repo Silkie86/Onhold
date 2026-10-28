@@ -167,10 +167,19 @@ pub async fn create_workspace(
 /// left out: audit readers need not hold `billing:read`, so an update records
 /// only that it changed.
 fn workspace_audit_view(w: &core_db::workspaces::Workspace) -> Value {
+    // The logo is an image of up to 14 kB: the log and events say only
+    // whether there is one, so every change does not copy it again.
+    let mut branding = w.branding.clone();
+    if let Some(b) = branding.as_object_mut()
+        && let Some(logo) = b.get_mut("logo")
+        && !logo.is_null()
+    {
+        *logo = json!("(image)");
+    }
     json!({
         "slug": w.slug, "name": w.name, "plan": w.plan, "status": w.status, "perspective": w.perspective,
         "country": w.country, "default_currency": w.default_currency, "default_timezone": w.default_timezone,
-        "locale": w.locale, "enabled_modules": w.enabled_modules, "branding": w.branding,
+        "locale": w.locale, "enabled_modules": w.enabled_modules, "branding": branding,
         "plugin_slug": w.plugin_slug,
         "require_staff_2fa": w.require_staff_2fa, "hold_days": w.hold_days,
     })

@@ -1,4 +1,4 @@
-import { brandColours, hexColour, logoSource, readBranding } from "./lib.ts";
+import { applyBrandColour, brandColours, darkBrandColour, hexColour, logoSource, readBranding } from "./lib.ts";
 
 test("brand colours are hex only, with readable text on them", () => {
   expect(hexColour(" #AA00ff ")).toBe("#aa00ff");
@@ -17,10 +17,29 @@ test("logos are image data URIs only", () => {
   expect(logoSource('data:image/png;base64,"><script>')).toBeNull();
 });
 
-test("stored branding reads as a logo and tokens", () => {
+test("stored branding reads as a logo and a colour", () => {
   expect(readBranding({ primary_color: "#C0392B", logo: "data:image/png;base64,iVBORw0KGgo=" })).toEqual({
     logo: "data:image/png;base64,iVBORw0KGgo=",
-    colours: { primary: "#c0392b", ring: "#c0392b", "primary-foreground": "#ffffff" },
+    colour: "#c0392b",
   });
-  expect(readBranding(null)).toEqual({ logo: null, colours: {} });
+  expect(readBranding({ primary_color: "red" })).toEqual({ logo: null, colour: null });
+  expect(readBranding(null)).toEqual({ logo: null, colour: null });
+});
+
+test("dark mode gets a lighter shade of a dark brand colour", () => {
+  const dark = darkBrandColour("#1e3a8a");
+  expect(dark).not.toBe("#1e3a8a");
+  expect(dark).toMatch(/^#[0-9a-f]{6}$/);
+  // Already light enough: kept.
+  expect(darkBrandColour("#ffd400")).toBe("#ffd400");
+});
+
+test("the brand colour is applied as a style with a dark-mode shade, and removed again", () => {
+  applyBrandColour("#1e3a8a");
+  const css = document.getElementById("onhold-brand")?.textContent ?? "";
+  expect(css).toContain("--primary: #1e3a8a;");
+  expect(css).toContain(":root.dark");
+  expect(css).toContain(`--primary: ${darkBrandColour("#1e3a8a")};`);
+  applyBrandColour(null);
+  expect(document.getElementById("onhold-brand")).toBeNull();
 });

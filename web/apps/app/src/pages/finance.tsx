@@ -21,7 +21,7 @@ import {
   NativeSelect,
   Spinner,
   Textarea,
-  applyBranding,
+  applyBrandColour,
   readBranding,
   cn,
   formatMoney,
@@ -293,9 +293,9 @@ function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
                 </Link>
                 {i.historical && <span className="ml-2 text-xs text-muted-foreground">past</span>}
                 {i.booking_title && <div className="text-xs text-muted-foreground">{i.booking_title}</div>}
-                {/* On a phone the payer and due date go under the number. */}
+                {/* On a phone the payer, due date and total go under the number. */}
                 <div className="text-xs text-muted-foreground sm:hidden">
-                  {[i.payer_name, i.due_date && `due ${day(i.due_date)}`].filter(Boolean).join(" · ")}
+                  {[i.payer_name, i.due_date && `due ${day(i.due_date)}`, formatMoney(i.total)].filter(Boolean).join(" · ")}
                 </div>
               </td>
               <td className="hidden px-3 py-2 sm:table-cell">{i.payer_name}</td>
@@ -1483,7 +1483,7 @@ export function PublicInvoicePage() {
     refetchInterval: (q) => (waiting && q.state.data && q.state.data.outstanding.minor > 0 ? 5000 : false),
   });
   useEffect(() => {
-    if (invoice.data) applyBranding(readBranding(invoice.data.branding).colours);
+    if (invoice.data) applyBrandColour(readBranding(invoice.data.branding).colour);
     if (invoice.data) document.title = `${invoice.data.kind === "credit_note" ? "Credit note" : "Invoice"} ${invoice.data.reference} · ${invoice.data.workspace_name}`;
   }, [invoice.data]);
   if (invoice.isPending) {

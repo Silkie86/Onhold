@@ -29,9 +29,11 @@ export * from "./format.ts";
 export {
   type Branding,
   type Theme,
+  applyBrandColour,
   applyBranding,
   applyTheme,
   brandColours,
+  darkBrandColour,
   clearBranding,
   cn,
   hexColour,

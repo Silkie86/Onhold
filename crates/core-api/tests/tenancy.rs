@@ -572,6 +572,12 @@ async fn branding_takes_a_colour_and_a_logo(pool: PgPool) {
     assert_eq!(res.body["branding"]["primary_color"], "#C0392B");
     assert_eq!(res.body["branding"]["logo"], logo);
 
+    // The audit log and events record that there is a logo, not the image.
+    let audit = app.get("/api/v1/audit").signed_in(&owner).send().await.ok();
+    let text = audit.body.to_string();
+    assert!(text.contains("(image)"), "{text}");
+    assert!(!text.contains("iVBORw0KGgo"), "{text}");
+
     // Cleared again with nulls.
     let res = app
         .patch("/api/v1/workspace")
