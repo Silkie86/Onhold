@@ -22,12 +22,16 @@ export type Setup = {
   done: boolean;
   has: (module: string) => boolean;
   hasExtra: (extra: string) => boolean;
+  /** Whether OnHold's team left this shown: `nav:<path>`, `section:<key>`. */
+  shows: (key: string) => boolean;
   /** The workspace's word for a term, e.g. `word("crm", "talent", true)` → "DJs". */
   word: (module: string, term: string, plural?: boolean) => string;
 };
 
 export function setupOf(
-  ws: { enabled_modules: string[]; extras: string[]; vocabulary: unknown; setup_at?: string | null } | undefined,
+  ws:
+    | { enabled_modules: string[]; extras: string[]; vocabulary: unknown; setup_at?: string | null; hidden?: string[] }
+    | undefined,
 ): Setup {
   const words = (ws?.vocabulary ?? {}) as Words;
   return {
@@ -35,6 +39,7 @@ export function setupOf(
     done: !!ws?.setup_at,
     has: (m) => !ws || ws.enabled_modules.includes(m),
     hasExtra: (e) => !ws || ws.extras.includes(e),
+    shows: (key) => !ws?.hidden?.includes(key),
     word: (module, term, plural = false) => {
       const own = words[module]?.[term]?.[plural ? "many" : "one"];
       if (typeof own === "string" && own) return own;
@@ -54,6 +59,18 @@ export function useSetup(engine?: OfflineSync | null): Setup {
   const ws = useQuery({ queryKey: ["workspace"], queryFn: async () => (await fetchWorkspace(sync)).data, staleTime: 5 * 60_000 });
   return setupOf(ws.data);
 }
+
+/** Parts of pages OnHold's team can hide to streamline a client's app. */
+export const SECTIONS: { key: string; label: string }[] = [
+  { key: "section:booking.quotes", label: "Quotes on a booking" },
+  { key: "section:booking.finance", label: "Invoices and payments on a booking" },
+  { key: "section:booking.settlements", label: "Settlements (what talent are owed) on a booking" },
+  { key: "section:tasks.assign", label: "Assigning tasks to people" },
+  { key: "section:talent.members", label: "Members of an act" },
+  { key: "section:talent.availability", label: "Availability on a talent" },
+  { key: "section:talent.calendars", label: "Connected calendars on a talent" },
+  { key: "section:records.conversations", label: "Email conversations on contacts and organisations" },
+];
 
 /** Formats an amount in minor units, e.g. 2900 GBP → "£29". */
 export function price(minor: number, currency: string): string {

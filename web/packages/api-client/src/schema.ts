@@ -3663,6 +3663,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspace/streamline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What OnHold's team hid in this workspace, and the fields that could be. */
+        get: operations["get_streamline"];
+        /**
+         * Hide menu items, page sections and optional fields to streamline the
+         *     app (OnHold's team only). Data is never deleted, and it survives the
+         *     client sending their setup form again.
+         */
+        put: operations["set_streamline"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -5053,6 +5075,12 @@ export interface components {
         };
         HealthBody: {
             status: string;
+        };
+        HideableFieldView: {
+            entity: string;
+            hidden: boolean;
+            key: string;
+            label: string;
         };
         HistoricalInvoice: {
             /** Format: uuid */
@@ -6902,6 +6930,18 @@ export interface components {
             reason?: string | null;
             status: components["schemas"]["BookingStatus"];
         };
+        StreamlineRequest: {
+            /** @description The full list of what to hide; anything left out shows again. */
+            hidden: string[];
+        };
+        StreamlineView: {
+            /** @description Every optional field that can be hidden; required ones always show. */
+            fields: components["schemas"]["HideableFieldView"][];
+            /** @description What is hidden now. */
+            hidden: string[];
+            /** Format: int64 */
+            version: number;
+        };
         StripeStatus: {
             account_id?: string | null;
             /** @description Whether this OnHold server takes card payments at all. */
@@ -7589,6 +7629,11 @@ export interface components {
             enabled_modules: string[];
             /** @description Finer switches inside modules: `team`, `commission`, `advanced`. */
             extras: string[];
+            /**
+             * @description What OnHold's team hid on top of the setup: `nav:<path>`,
+             *     `section:<key>` and `field:<entity>.<key>`.
+             */
+            hidden: string[];
             /**
              * Format: int32
              * @description How many days a new hold lasts before it lapses; 0 means never.
@@ -18442,6 +18487,86 @@ export interface operations {
                 };
             };
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_streamline: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamlineView"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_streamline: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamlineRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
                 headers: {
                     [name: string]: unknown;
                 };

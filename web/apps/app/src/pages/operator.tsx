@@ -18,6 +18,8 @@ export function OperatorPage() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [visiting, setVisiting] = useState<string | null>(null);
+  // Where a visit opens: the theme, or streamlining the client's app.
+  const [goTo, setGoTo] = useState<"/settings/theme" | "/settings/streamline">("/settings/theme");
   const [reason, setReason] = useState("Onboarding: setting up their theme");
   const [error, setError] = useState<string | null>(null);
   const list = useQuery({
@@ -65,9 +67,29 @@ export function OperatorPage() {
                 <Badge className="border">{w.plan}</Badge>
                 {w.open_requests > 0 && <Badge className="border bg-warning text-warning-foreground">{w.open_requests} new {w.open_requests === 1 ? "request" : "requests"}</Badge>}
                 {visiting !== w.id && (
-                  <Button size="sm" onClick={() => setVisiting(w.id)}>
-                    Visit
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setGoTo("/settings/streamline");
+                        setReason("Onboarding: streamlining their app");
+                        setVisiting(w.id);
+                      }}
+                    >
+                      Streamline
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setGoTo("/settings/theme");
+                        setReason("Onboarding: setting up their theme");
+                        setVisiting(w.id);
+                      }}
+                    >
+                      Visit
+                    </Button>
+                  </>
                 )}
               </div>
               <SetupLine w={w} />
@@ -82,7 +104,7 @@ export function OperatorPage() {
                       setWorkspace(w.id);
                       qc.removeQueries({ predicate: (x) => x.queryKey[0] !== "me" });
                       await qc.invalidateQueries({ queryKey: ["me"] });
-                      void navigate({ to: "/settings/theme" });
+                      void navigate({ to: goTo });
                     } catch (err) {
                       setError(err instanceof Error ? err.message : String(err));
                     }

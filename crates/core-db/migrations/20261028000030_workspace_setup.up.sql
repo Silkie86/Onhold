@@ -13,8 +13,12 @@ ALTER TABLE workspaces
     -- The answers, without comments; NULL until the form is first sent.
     ADD COLUMN setup      jsonb
         CHECK (setup IS NULL OR (jsonb_typeof(setup) = 'object' AND octet_length(setup::text) <= 8192)),
-    ADD COLUMN setup_at   timestamptz;
-GRANT UPDATE (presets, extras, vocabulary, setup, setup_at) ON workspaces TO onhold_app;
+    ADD COLUMN setup_at   timestamptz,
+    -- What OnHold's team hid to streamline the app on top of the setup:
+    -- `nav:<path>`, `section:<key>` and `field:<entity>.<key>`. Kept apart
+    -- from the answers, so sending the form again keeps it.
+    ADD COLUMN hidden     text[] NOT NULL DEFAULT '{}' CHECK (cardinality(hidden) <= 300);
+GRANT UPDATE (presets, extras, vocabulary, setup, setup_at, hidden) ON workspaces TO onhold_app;
 
 -- Workspaces made before this had every module and extra: keep them so.
 UPDATE workspaces SET enabled_modules = array_append(enabled_modules, 'finance')

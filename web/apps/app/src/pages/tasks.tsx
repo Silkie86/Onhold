@@ -89,7 +89,8 @@ function NewTaskDialog({
   const sync = useOffline();
   const members = useMembers();
   // Only a team hands work to each other.
-  const team = useSetup().hasExtra("team");
+  const setup = useSetup();
+  const team = setup.hasExtra("team") && setup.shows("section:tasks.assign");
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [dueAt, setDueAt] = useState("");
@@ -209,7 +210,8 @@ export function TasksPage() {
   const syncStatus = useSyncStatus();
   const { me } = useSession();
   const [adding, setAdding] = useState(false);
-  const team = useSetup().hasExtra("team");
+  const setup = useSetup();
+  const team = setup.hasExtra("team") && setup.shows("section:tasks.assign");
   const status = search.status ?? "open";
   const tasks = useQuery({
     queryKey: ["tasks", "page", status, !!search.mine],

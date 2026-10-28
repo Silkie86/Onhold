@@ -33,6 +33,7 @@ import {
   AtSign,
   CloudOff,
   Download,
+  EyeOff,
   Contact,
   ChartColumn,
   FileSearch,
@@ -80,7 +81,7 @@ type NavItem = {
   word?: [string, string];
 };
 
-const NAV: { group: string; items: NavItem[] }[] = [
+export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Bookings",
     items: [
@@ -135,6 +136,7 @@ const OPERATOR_NAV: { group: string; items: NavItem[] } = {
   group: "OnHold team",
   items: [
     { to: "/settings/theme", label: "Theme studio", icon: <Paintbrush /> },
+    { to: "/settings/streamline", label: "Streamline this app", icon: <EyeOff /> },
     { to: "/operator", label: "Client workspaces", icon: <ShieldCheck /> },
   ],
 };
@@ -314,11 +316,14 @@ function SignedIn({ me }: { me: Session["me"] }) {
   const setup = useSetup(sync);
   const shown = (items: NavItem[]) =>
     items
-      .filter((i) => (!i.module || setup.has(i.module)) && (!i.extra || setup.hasExtra(i.extra)))
+      .filter((i) => (!i.module || setup.has(i.module)) && (!i.extra || setup.hasExtra(i.extra)) && setup.shows(`nav:${i.to}`))
       .map((i) => (i.word ? { ...i, label: setup.word(i.word[0], i.word[1], true) } : i));
-  const menu = (me.user.is_superadmin ? [...NAV, OPERATOR_NAV] : NAV)
-    .map((g) => ({ ...g, items: shown(g.items) }))
-    .filter((g) => g.items.length > 0);
+  // OnHold's own tools are never hidden; streamlining shows while visiting.
+  const operatorNav = { ...OPERATOR_NAV, items: OPERATOR_NAV.items.filter((i) => visiting || i.to !== "/settings/streamline") };
+  const menu = [
+    ...NAV.map((g) => ({ ...g, items: shown(g.items) })).filter((g) => g.items.length > 0),
+    ...(me.user.is_superadmin ? [operatorNav] : []),
+  ];
   const actions: PaletteAction[] = menu.flatMap((g) =>
     g.items.map((i) => ({ id: i.to, title: `Go to ${i.label}`, group: "Pages", icon: i.icon })),
   );

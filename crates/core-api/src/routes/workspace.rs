@@ -29,6 +29,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_workspace, update_workspace))
         .routes(routes!(get_setup, save_setup))
         .routes(routes!(preview_setup))
+        .routes(routes!(get_streamline, set_streamline))
         .routes(routes!(close_workspace))
         .routes(routes!(roles))
         .routes(routes!(list_members))
@@ -93,6 +94,9 @@ pub struct WorkspaceView {
     pub vocabulary: Value,
     /// When the setup form was last sent; absent until it has been.
     pub setup_at: Option<DateTime<Utc>>,
+    /// What OnHold's team hid on top of the setup: `nav:<path>`,
+    /// `section:<key>` and `field:<entity>.<key>`.
+    pub hidden: Vec<String>,
     #[schema(value_type = Object)]
     pub branding: Value,
     /// Only shown to roles with `billing:read`.
@@ -125,6 +129,7 @@ fn workspace_view(w: core_db::workspaces::Workspace, show_billing: bool) -> Work
         extras: w.extras,
         vocabulary: w.vocabulary,
         setup_at: w.setup_at,
+        hidden: w.hidden,
         branding: w.branding,
         billing_contact: show_billing.then_some(w.billing_contact),
         plugin_slug: w.plugin_slug,
@@ -284,6 +289,72 @@ async fn save_setup(
 ) -> ApiResult<Response> {
     let w =
         crate::services::setup::save(&state, &ctx, body.answers, body.comment, if_match).await?;
+    let show = ctx.authorize(Permission::BillingRead).is_ok();
+    Ok(with_etag(w.version, workspace_view(w, show)))
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HideableFieldView {
+    pub entity: String,
+    pub key: String,
+    pub label: String,
+    pub hidden: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct StreamlineView {
+    /// What is hidden now.
+    pub hidden: Vec<String>,
+    /// Every optional field that can be hidden; required ones always show.
+    pub fields: Vec<HideableFieldView>,
+    pub version: i64,
+}
+
+/// What OnHold's team hid in this workspace, and the fields that could be.
+#[utoipa::path(get, path = "/workspace/streamline", tag = "workspace", params(WorkspaceHeader),
+    responses((status = 200, body = StreamlineView), (status = 403, body = ErrorBody)),
+    security(("session" = [])))]
+async fn get_streamline(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<StreamlineView>> {
+    let (hidden, fields) = crate::services::setup::streamline_options(&state, &ctx).await?;
+    let version = svc::get_workspace(&state, &ctx).await?.version;
+    Ok(Json(StreamlineView {
+        hidden,
+        fields: fields
+            .into_iter()
+            .map(|f| HideableFieldView {
+                entity: f.entity.to_owned(),
+                key: f.key,
+                label: f.label,
+                hidden: f.hidden,
+            })
+            .collect(),
+        version,
+    }))
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct StreamlineRequest {
+    /// The full list of what to hide; anything left out shows again.
+    pub hidden: Vec<String>,
+}
+
+/// Hide menu items, page sections and optional fields to streamline the
+/// app (OnHold's team only). Data is never deleted, and it survives the
+/// client sending their setup form again.
+#[utoipa::path(put, path = "/workspace/streamline", tag = "workspace", params(WorkspaceHeader, IfMatchHeader, IdempotencyHeader),
+    request_body = StreamlineRequest,
+    responses((status = 200, body = WorkspaceView), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody), (status = 412, body = ErrorBody)),
+    security(("session" = [])))]
+async fn set_streamline(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    IfMatch(if_match): IfMatch,
+    Json(body): Json<StreamlineRequest>,
+) -> ApiResult<Response> {
+    let w = crate::services::setup::set_hidden(&state, &ctx, body.hidden, if_match).await?;
     let show = ctx.authorize(Permission::BillingRead).is_ok();
     Ok(with_etag(w.version, workspace_view(w, show)))
 }

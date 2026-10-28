@@ -249,6 +249,170 @@ pub fn perspective_of(presets: &[String]) -> ApiResult<Option<Perspective>> {
         .map_err(|e| ApiError::invalid("presets", e.to_string()))
 }
 
+// Streamlining (OnHold's team) -------------------------------------------------------
+
+/// Entities whose fields can be hidden.
+pub const FIELD_ENTITIES: &[&str] = &["contact", "organisation", "talent", "enquiry", "booking"];
+const MAX_HIDDEN: usize = 300;
+
+/// A field OnHold's team may hide, and whether it is hidden.
+pub struct HideableField {
+    pub entity: &'static str,
+    pub key: String,
+    pub label: String,
+    pub hidden: bool,
+}
+
+/// Whether the actor is OnHold's team: visiting the workspace, or a
+/// superadmin signed in with two-factor authentication.
+async fn is_operator(tx: &mut core_db::Tx, ctx: &Ctx) -> ApiResult<bool> {
+    if ctx.impersonator().is_some() {
+        return Ok(true);
+    }
+    Ok(match ctx.user_id() {
+        Some(id) => core_db::users::get(tx, id)
+            .await?
+            .is_some_and(|u| u.is_superadmin && u.totp_enabled_at.is_some()),
+        None => false,
+    })
+}
+
+/// What is hidden, and every optional field that could be.
+pub async fn streamline_options(
+    state: &AppState,
+    ctx: &Ctx,
+) -> ApiResult<(Vec<String>, Vec<HideableField>)> {
+    ctx.authorize(Permission::WorkspaceRead)?;
+    let mut tx = core_db::begin(&state.db, Some(ctx.workspace_id), ctx.user_id()).await?;
+    let w = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    tx.commit().await?;
+    let mut fields = Vec::new();
+    for entity in FIELD_ENTITIES {
+        let schema = super::views::full_schema(state, ctx, entity).await?;
+        for f in schema.fields.into_iter().filter(|f| !f.required) {
+            fields.push(HideableField {
+                entity,
+                hidden: w.hidden.contains(&format!("field:{entity}.{}", f.key)),
+                key: f.key,
+                label: f.label,
+            });
+        }
+    }
+    Ok((w.hidden, fields))
+}
+
+/// Checks a hidden key's shape; fields must exist and be optional.
+async fn check_hidden(state: &AppState, ctx: &Ctx, hidden: &[String]) -> ApiResult<()> {
+    let bad = |m: String| ApiError::invalid("hidden", m);
+    if hidden.len() > MAX_HIDDEN {
+        return Err(bad(format!("at most {MAX_HIDDEN} items")));
+    }
+    let mut optional: Option<Vec<String>> = None;
+    for key in hidden {
+        let (kind, rest) = key
+            .split_once(':')
+            .ok_or_else(|| bad(format!("`{key}` must start with nav:, section: or field:")))?;
+        let shape_ok = (1..=100).contains(&rest.len())
+            && rest
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"_./-".contains(&b));
+        if !shape_ok {
+            return Err(bad(format!("`{key}` is not a valid key")));
+        }
+        match kind {
+            "nav" if rest.starts_with('/') => {}
+            "section" => {}
+            "field" => {
+                if optional.is_none() {
+                    let mut all = Vec::new();
+                    for entity in FIELD_ENTITIES {
+                        let schema = super::views::full_schema(state, ctx, entity).await?;
+                        all.extend(
+                            schema
+                                .fields
+                                .into_iter()
+                                .filter(|f| !f.required)
+                                .map(|f| format!("{entity}.{}", f.key)),
+                        );
+                    }
+                    optional = Some(all);
+                }
+                if !optional
+                    .as_ref()
+                    .is_some_and(|o| o.iter().any(|k| k == rest))
+                {
+                    return Err(bad(format!(
+                        "`{key}` is not an optional field; required fields always show"
+                    )));
+                }
+            }
+            _ => {
+                return Err(bad(format!(
+                    "`{key}` must start with nav:, section: or field:"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Sets what OnHold's team hides in the workspace. It is kept apart from
+/// the setup form's answers, so sending the form again keeps it.
+pub async fn set_hidden(
+    state: &AppState,
+    ctx: &Ctx,
+    mut hidden: Vec<String>,
+    if_match: Option<i64>,
+) -> ApiResult<core_db::workspaces::Workspace> {
+    ctx.authorize(Permission::WorkspaceUpdate)?;
+    hidden.sort();
+    hidden.dedup();
+    check_hidden(state, ctx, &hidden).await?;
+    let mut tx = core_db::begin(&state.db, Some(ctx.workspace_id), ctx.user_id()).await?;
+    if !is_operator(&mut tx, ctx).await? {
+        return Err(ApiError::forbidden(
+            "streamlining_is_operator_only",
+            "only OnHold's team can hide parts of the app; use Your setup instead",
+        ));
+    }
+    let before = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let expected = if_match.unwrap_or(before.version);
+    if expected != before.version
+        || !core_db::workspaces::set_hidden(
+            &mut tx,
+            ctx.workspace_id,
+            &hidden,
+            expected,
+            ctx.user_id(),
+        )
+        .await?
+    {
+        return Err(ApiError::version_conflict());
+    }
+    let after = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    record(
+        &mut tx,
+        ctx,
+        Change {
+            topic: "workspace.streamlined",
+            resource: "workspace",
+            object_id: Some(ctx.workspace_id.0),
+            before: Some(json!({ "hidden": before.hidden })),
+            after: Some(json!({ "hidden": after.hidden })),
+            event_extra: None,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(after)
+}
+
 // OnHold's team ---------------------------------------------------------------------
 
 pub async fn admin_requests(

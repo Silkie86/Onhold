@@ -27,5 +27,5 @@ DROP TABLE platform_settings;
 DROP TABLE setup_requests;
 ALTER TABLE workspaces
     DROP COLUMN presets, DROP COLUMN extras, DROP COLUMN vocabulary,
-    DROP COLUMN setup, DROP COLUMN setup_at;
+    DROP COLUMN setup, DROP COLUMN setup_at, DROP COLUMN hidden;
 UPDATE workspaces SET enabled_modules = array_remove(enabled_modules, 'finance');

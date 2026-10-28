@@ -21171,6 +21171,150 @@
         ]
       }
     },
+    "/api/v1/workspace/streamline": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "What OnHold's team hid in this workspace, and the fields that could be.",
+        "operationId": "get_streamline",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamlineView"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Hide menu items, page sections and optional fields to streamline the\napp (OnHold's team only). Data is never deleted, and it survives the\nclient sending their setup form again.",
+        "operationId": "set_streamline",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamlineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -25704,6 +25848,29 @@
         ],
         "properties": {
           "status": {
+            "type": "string"
+          }
+        }
+      },
+      "HideableFieldView": {
+        "type": "object",
+        "required": [
+          "entity",
+          "key",
+          "label",
+          "hidden"
+        ],
+        "properties": {
+          "entity": {
+            "type": "string"
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
             "type": "string"
           }
         }
@@ -31772,6 +31939,49 @@
           }
         }
       },
+      "StreamlineRequest": {
+        "type": "object",
+        "required": [
+          "hidden"
+        ],
+        "properties": {
+          "hidden": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The full list of what to hide; anything left out shows again."
+          }
+        }
+      },
+      "StreamlineView": {
+        "type": "object",
+        "required": [
+          "hidden",
+          "fields",
+          "version"
+        ],
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HideableFieldView"
+            },
+            "description": "Every optional field that can be hidden; required ones always show."
+          },
+          "hidden": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What is hidden now."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "StripeStatus": {
         "type": "object",
         "required": [
@@ -33973,6 +34183,7 @@
           "presets",
           "extras",
           "vocabulary",
+          "hidden",
           "branding",
           "require_staff_2fa",
           "hold_days",
@@ -34016,6 +34227,13 @@
               "type": "string"
             },
             "description": "Finer switches inside modules: `team`, `commission`, `advanced`."
+          },
+          "hidden": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What OnHold's team hid on top of the setup: `nav:<path>`,\n`section:<key>` and `field:<entity>.<key>`."
           },
           "hold_days": {
             "type": "integer",

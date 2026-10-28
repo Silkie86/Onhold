@@ -27,6 +27,8 @@ pub struct Workspace {
     /// The setup form's answers; `None` until it is first sent.
     pub setup: Option<Value>,
     pub setup_at: Option<DateTime<Utc>>,
+    /// What OnHold's team hid: `nav:<path>`, `section:<key>`, `field:<entity>.<key>`.
+    pub hidden: Vec<String>,
     pub branding: Value,
     pub billing_contact: Value,
     pub plugin_slug: Option<String>,
@@ -43,7 +45,7 @@ pub async fn get(conn: &mut PgConnection, id: WorkspaceId) -> Result<Option<Work
         Workspace,
         r#"SELECT id AS "id: WorkspaceId", slug, name, plan, status AS "status: WorkspaceStatus",
                   perspective AS "perspective: Perspective", country, default_currency, default_timezone,
-                  locale, enabled_modules, presets, extras, vocabulary, setup, setup_at,
+                  locale, enabled_modules, presets, extras, vocabulary, setup, setup_at, hidden,
                   branding, billing_contact, plugin_slug, require_staff_2fa,
                   hold_days, version, created_at, updated_at
            FROM workspaces WHERE id = $1"#,
@@ -191,6 +193,26 @@ pub async fn apply_setup(
         s.extras,
         s.vocabulary,
         s.answers,
+        by.map(|u| u.0),
+        expected_version
+    )
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
+
+/// Returns false when `expected_version` no longer matches.
+pub async fn set_hidden(
+    conn: &mut PgConnection,
+    id: WorkspaceId,
+    hidden: &[String],
+    expected_version: i64,
+    by: Option<UserId>,
+) -> Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE workspaces SET hidden = $2, updated_by = $3 WHERE id = $1 AND version = $4",
+        id.0,
+        hidden,
         by.map(|u| u.0),
         expected_version
     )

@@ -154,6 +154,12 @@ const operator = createRoute({
   component: lazyRouteComponent(() => import("./pages/operator.tsx"), "OperatorPage"),
 });
 
+const streamline = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/streamline",
+  component: lazyRouteComponent(() => import("./pages/streamline.tsx"), "StreamlinePage"),
+});
+
 const setupSettings = createRoute({
   getParentRoute: () => app,
   path: "/settings/setup",
@@ -267,6 +273,7 @@ const tree = root.addChildren([
     sendingDomain,
     brandingSettings,
     setupSettings,
+    streamline,
     themeStudio,
     sync,
     invoices,

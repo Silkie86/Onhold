@@ -1100,7 +1100,8 @@ function RevenueTable({ title, rows }: { title: string; rows: Schemas["RevenueRo
 export function BookingFinancePanel({ booking }: { booking: Booking }) {
   const sync = useOffline();
   // Commission is for those who represent talent; anything already worked out still shows.
-  const commission = useSetup().hasExtra("commission");
+  const setup = useSetup();
+  const commission = setup.hasExtra("commission") && setup.shows("section:booking.settlements");
   const online = useOnline();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);

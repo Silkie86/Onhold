@@ -1602,3 +1602,129 @@ async fn operators_create_workspaces_from_presets(pool: PgPool) {
         .await
         .expect(StatusCode::BAD_REQUEST, "invalid_input");
 }
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn operators_streamline_a_workspace_and_it_survives_the_form(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let hide = json!({ "hidden": ["nav:/finance/reports", "section:booking.quotes", "field:contact.role"] });
+
+    // Members cannot; OnHold's team can, on a visit.
+    app.put("/api/v1/workspace/streamline")
+        .signed_in(&owner)
+        .json(hide.clone())
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "streamlining_is_operator_only");
+    let ops = operator(&app).await;
+    app.post("/api/v1/admin/impersonation")
+        .signed_in(&ops)
+        .json(json!({ "workspace_id": ws, "reason": "onboarding: streamlining" }))
+        .send()
+        .await
+        .ok();
+    let visit = ops.clone().in_workspace(ws);
+    let options = app
+        .get("/api/v1/workspace/streamline")
+        .signed_in(&visit)
+        .send()
+        .await
+        .ok();
+    let fields = options.body["fields"].as_array().unwrap();
+    assert!(
+        fields
+            .iter()
+            .any(|f| f["entity"] == "contact" && f["key"] == "role")
+    );
+    assert!(
+        !fields
+            .iter()
+            .any(|f| f["entity"] == "contact" && f["key"] == "name"),
+        "required fields cannot be hidden"
+    );
+    let saved = app
+        .put("/api/v1/workspace/streamline")
+        .signed_in(&visit)
+        .json(hide)
+        .send()
+        .await
+        .ok();
+    assert_eq!(saved.body["hidden"].as_array().unwrap().len(), 3);
+    for bad in [
+        json!(["field:contact.name"]),
+        json!(["field:contact.nope"]),
+        json!(["menu:/x"]),
+        json!(["nav:no-slash"]),
+    ] {
+        let res = app
+            .put("/api/v1/workspace/streamline")
+            .signed_in(&visit)
+            .json(json!({ "hidden": bad }))
+            .send()
+            .await;
+        assert_eq!(res.status, StatusCode::BAD_REQUEST, "{bad} → {}", res.body);
+    }
+
+    // The client's forms lose the field, and sending the form again keeps it hidden.
+    let schema = app
+        .get("/api/v1/schema/contact")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    let keys: Vec<&str> = schema.body["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["key"].as_str().unwrap())
+        .collect();
+    assert!(!keys.contains(&"role") && keys.contains(&"name"));
+    let again = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": { "roles": ["agency"], "features": ["bookings", "invoicing", "commission"] } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(again.body["hidden"].as_array().unwrap().len(), 3);
+    assert!(
+        app.audit_actions(ws)
+            .await
+            .iter()
+            .any(|a| a == "workspace.streamlined")
+    );
+
+    // Talent's commission shows only where commission is taken.
+    let talent = app
+        .get("/api/v1/schema/talent")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert!(
+        talent.body["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["key"] == "commission_percent")
+    );
+    app.put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": { "roles": ["solo"], "features": ["bookings"] } }))
+        .send()
+        .await
+        .ok();
+    let talent = app
+        .get("/api/v1/schema/talent")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert!(
+        !talent.body["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["key"] == "commission_percent")
+    );
+}

@@ -543,7 +543,8 @@ function StatusActions({ booking: b, onChanged }: { booking: Booking; onChanged:
 export function BookingPage() {
   const { id } = useParams({ from: "/app/bookings/$id" });
   // Quotes and invoices show where the workspace uses them.
-  const finance = useSetup().has("finance");
+  const setup = useSetup();
+  const finance = setup.has("finance");
   const qc = useQueryClient();
   const navigate = useNavigate();
   const sync = useOffline();
@@ -705,8 +706,8 @@ export function BookingPage() {
           />
           {finance && (
             <>
-              <QuotesPanel booking={b} onBookingChanged={() => void booking.refetch()} />
-              <BookingFinancePanel booking={b} />
+              {setup.shows("section:booking.quotes") && <QuotesPanel booking={b} onBookingChanged={() => void booking.refetch()} />}
+              {setup.shows("section:booking.finance") && <BookingFinancePanel booking={b} />}
             </>
           )}
           <BookingDocumentsPanel booking={b} />

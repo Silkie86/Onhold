@@ -545,8 +545,27 @@ fn write_permission(entity: &str) -> Permission {
     }
 }
 
-/// An entity's fields, core and custom, as forms and lists draw them.
+/// An entity's fields, core and custom, as forms and lists draw them:
+/// without the ones OnHold's team hid for the workspace, nor commission
+/// where it takes none. Hiding a field never drops a required one.
 pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<EntitySchema> {
+    let mut schema = full_schema(state, ctx, entity).await?;
+    let mut tx = begin(state, ctx).await?;
+    let w = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    tx.commit().await?;
+    let commission = w.extras.iter().any(|e| e == "commission");
+    schema.fields.retain(|f| {
+        let hidden = w.hidden.contains(&format!("field:{entity}.{}", f.key))
+            || (f.key == "commission_percent" && !commission);
+        f.required || !hidden
+    });
+    Ok(schema)
+}
+
+/// Every field of an entity, hidden or not.
+pub async fn full_schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<EntitySchema> {
     authorize_read(ctx, entity)?;
     let (label, plural) = match entity {
         "talent" => ("Talent", "Talent"),

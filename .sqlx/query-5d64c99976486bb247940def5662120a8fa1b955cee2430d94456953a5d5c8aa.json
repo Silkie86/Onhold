@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE workspaces SET hidden = $2, updated_by = $3 WHERE id = $1 AND version = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5d64c99976486bb247940def5662120a8fa1b955cee2430d94456953a5d5c8aa"
+}
