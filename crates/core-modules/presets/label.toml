@@ -1,6 +1,7 @@
 # Record label. Seeds in this file: perspective, modules, extras and vocabulary.
 # Custom fields, pipeline stages, templates and rules arrive in M8.
 name = "Record label"
+description = "For a record label working with artists. Contacts and your artist roster, bookings and dates, contracts and invoices, a team that shares the work, and a free login for your artists. Releases and royalties come later."
 perspective = "sells"
 modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "portal"]
 extras = ["team", "advanced"]

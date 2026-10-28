@@ -1,6 +1,7 @@
 # Collective. Seeds in this file: perspective, modules, extras and vocabulary.
 # Custom fields, pipeline stages, templates and rules arrive in M8.
 name = "Collective"
+description = "For a collective whose members book and are booked. Members are your roster, the team shares the work, and each member gets a free login to see their dates."
 perspective = "both"
 modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "portal"]
 extras = ["team"]

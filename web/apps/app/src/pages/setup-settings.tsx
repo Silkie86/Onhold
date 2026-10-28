@@ -24,7 +24,7 @@ const ADDS: Record<string, string> = {
   finance: "Quotes, invoices, card payments and reports",
   documents: "Contracts, e-signatures and documents",
   events: "Events, tours and line-ups",
-  portal: "A login for your artists or clients (coming soon)",
+  portal: "A free login for your artists or clients",
   team: "Assigning work to each other",
   commission: "Commission and artist statements",
   advanced: "Custom fields, pipelines and imports",
@@ -37,6 +37,8 @@ export function SetupSettingsPage() {
   const form = useQuery({ queryKey: ["setup"], queryFn: () => ok(api.GET("/api/v1/workspace/setup")) });
   const [answers, setAnswers] = useState<Answers | null>(null);
   const [comment, setComment] = useState("");
+  // Choices whose fuller explanation is open.
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => {
@@ -117,39 +119,72 @@ export function SetupSettingsPage() {
         >
           {questions.map((q) => (
             <Card key={q.key} className="flex flex-col gap-3 p-4">
-              <fieldset className="flex flex-col gap-3" disabled={!canChange}>
+              <fieldset className="flex flex-col gap-3">
                 <legend className="font-semibold">{q.title}</legend>
                 {q.help && <p className="-mt-1 text-sm text-muted-foreground">{q.help}</p>}
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid items-start gap-2 sm:grid-cols-2">
                   {q.choices.map((c) => {
                     const id = `setup-${q.key}-${c.key}`;
                     const checked = q.multiple ? list(q.key).includes(c.key) : answers.team === c.key;
+                    const more = open.has(id);
                     return (
-                      <label
+                      <div
                         key={c.key}
-                        htmlFor={id}
-                        className={cn(
-                          "flex min-h-11 cursor-pointer items-start gap-3 rounded-md border p-3 text-sm hover:bg-accent",
-                          checked && "border-primary bg-accent",
-                        )}
+                        className={cn("flex flex-col rounded-md border text-sm", checked && "border-primary bg-accent")}
                       >
-                        {q.multiple ? (
-                          <Checkbox id={id} className="mt-0.5" checked={checked} onChange={(e) => toggle(q.key, c.key, e.target.checked, c.suggests)} />
-                        ) : (
-                          <input
-                            id={id}
-                            type="radio"
-                            name={`setup-${q.key}`}
-                            className="mt-0.5 size-4 accent-primary"
-                            checked={checked}
-                            onChange={() => toggle(q.key, c.key, true, [])}
-                          />
+                        <div className="flex items-start">
+                          <label htmlFor={id} className="flex min-h-11 flex-1 cursor-pointer items-start gap-3 rounded-md p-3 hover:bg-accent">
+                            {q.multiple ? (
+                              <Checkbox
+                                id={id}
+                                className="mt-0.5 shrink-0"
+                                disabled={!canChange}
+                                checked={checked}
+                                onChange={(e) => toggle(q.key, c.key, e.target.checked, c.suggests)}
+                              />
+                            ) : (
+                              <input
+                                id={id}
+                                type="radio"
+                                name={`setup-${q.key}`}
+                                className="mt-0.5 size-4 shrink-0 accent-primary"
+                                disabled={!canChange}
+                                checked={checked}
+                                onChange={() => toggle(q.key, c.key, true, [])}
+                              />
+                            )}
+                            <span className="flex flex-col gap-0.5">
+                              <span id={`${id}-label`}>{c.label}</span>
+                              {c.hint && <span className="text-xs text-muted-foreground">{c.hint}</span>}
+                            </span>
+                          </label>
+                          {c.details && (
+                            <button
+                              type="button"
+                              className="m-1 grid size-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                              aria-expanded={more}
+                              aria-controls={`${id}-details`}
+                              aria-label="More about this"
+                              aria-describedby={`${id}-label`}
+                              onClick={() =>
+                                setOpen((o) => {
+                                  const next = new Set(o);
+                                  if (more) next.delete(id);
+                                  else next.add(id);
+                                  return next;
+                                })
+                              }
+                            >
+                              <Info className="size-4" />
+                            </button>
+                          )}
+                        </div>
+                        {more && c.details && (
+                          <p id={`${id}-details`} className="border-t px-3 py-2 text-sm text-muted-foreground">
+                            {c.details}
+                          </p>
                         )}
-                        <span className="flex flex-col gap-0.5">
-                          <span>{c.label}</span>
-                          {c.hint && <span className="text-xs text-muted-foreground">{c.hint}</span>}
-                        </span>
-                      </label>
+                      </div>
                     );
                   })}
                 </div>

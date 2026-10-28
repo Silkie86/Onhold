@@ -1,6 +1,7 @@
 # Venue. Seeds in this file: perspective, modules, extras and vocabulary.
 # Custom fields, pipeline stages, templates and rules arrive in M8.
 name = "Venue"
+description = "For a venue booking acts into its rooms. Offers to agents, holds and confirmations on your calendar, events and line-ups, contracts and settlements with each act."
 perspective = "buys"
 modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "events"]
 extras = ["team"]

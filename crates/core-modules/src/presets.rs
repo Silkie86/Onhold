@@ -33,6 +33,8 @@ pub struct Preset {
     #[serde(skip)]
     pub key: &'static str,
     pub name: String,
+    /// What this setup gives, in a few plain sentences, for the setup form.
+    pub description: String,
     pub perspective: Perspective,
     pub modules: Vec<String>,
     #[serde(default)]

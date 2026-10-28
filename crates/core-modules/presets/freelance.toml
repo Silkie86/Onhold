@@ -1,6 +1,7 @@
 # Freelance agent. Seeds in this file: perspective, modules, extras and vocabulary.
 # Custom fields, pipeline stages, templates and rules arrive in M8.
 name = "Freelance agent"
+description = "For an independent agent booking artists on their own. Enquiries, holds and confirmed bookings for each artist, quotes and invoices, and commission with statements of what each artist is owed."
 perspective = "sells"
 modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents"]
 extras = ["commission"]

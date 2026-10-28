@@ -29,6 +29,12 @@ test("a solo artist sets up a simple app, then adds invoicing back", async ({ pa
   await page.getByRole("link", { name: "Set up OnHold" }).click();
   await expect(page.getByRole("heading", { name: "Your setup" })).toBeVisible();
 
+  // Each choice explains itself behind an info button.
+  const soloInfo = page.locator('button[aria-describedby="setup-roles-solo-label"]');
+  await soloInfo.click();
+  await expect(soloInfo).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText(/For an artist, DJ or producer running their own bookings\. A simple app/)).toBeVisible();
+
   // It starts from what the workspace has now, so saving as is changes nothing.
   await expect(page.getByLabel("Shape it to how I work: custom fields, pipelines and imports")).toBeChecked();
   await page.getByLabel("Shape it to how I work: custom fields, pipelines and imports").uncheck();

@@ -1,6 +1,7 @@
 # Artist, DJ or producer running their own bookings. Seeds in this file: perspective, modules, extras and vocabulary.
 # Custom fields, pipeline stages, templates and rules arrive in M8.
 name = "Artist, DJ or producer running their own bookings"
+description = "For an artist, DJ or producer running their own bookings. A simple app: requests and gigs in one calendar, quotes and invoices, contracts, and your email in one place. No team or commission features unless you add them."
 perspective = "sells"
 modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents"]
 extras = []
