@@ -971,7 +971,7 @@ pub async fn scan_rule(
     }
     let (workspace_json, options) = context::workspace(&mut tx, state).await?;
     let is_booking = entity == super::bookings::ENTITY;
-    let reached: Vec<(Uuid, DateTime<Utc>)> = if entity == super::enquiries::ENTITY {
+    let mut reached: Vec<(Uuid, DateTime<Utc>)> = if entity == super::enquiries::ENTITY {
         core_db::enquiries::date_between(
             &mut tx,
             field,
@@ -1071,8 +1071,16 @@ pub async fn scan_rule(
             .collect(),
         }
     };
-    let scanned_until = match reached.last() {
-        Some((_, at)) if reached.len() as i64 == SCAN_BATCH => *at,
+    let scanned_until = match (reached.first(), reached.last()) {
+        (Some(&(_, first)), Some(&(_, last))) if reached.len() as i64 == SCAN_BATCH => {
+            // A full batch may stop part way through records reaching the
+            // same moment (invoices due the same day): leave those for the
+            // next scan, unless the whole batch is that one moment.
+            if first < last {
+                reached.retain(|(_, at)| *at < last);
+            }
+            reached.last().map_or(last, |&(_, at)| at)
+        }
         _ => until,
     };
     let paused = core_db::workspaces::automations_paused(&mut tx).await?;

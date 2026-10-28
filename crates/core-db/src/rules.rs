@@ -312,3 +312,13 @@ pub async fn presets(conn: &mut PgConnection) -> Result<Vec<(String, Uuid, bool)
     .map(|r| (r.preset, r.id, r.enabled))
     .collect())
 }
+
+/// Holds the workspace's ready-made follow-ups until the transaction ends.
+pub async fn lock_presets(conn: &mut PgConnection) -> Result<()> {
+    sqlx::query!(
+        "SELECT pg_advisory_xact_lock(hashtextextended('rule-presets:' || app_workspace_id()::text, 0))"
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}

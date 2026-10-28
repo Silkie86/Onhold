@@ -196,7 +196,7 @@ export function InboxPage() {
         >
           <Input aria-label="Search conversations" placeholder="Search subject or people…" value={q} onChange={(e) => setQ(e.target.value)} />
         </form>
-        {(numbers.data?.length ?? 0) > 0 && (
+        {((numbers.data?.length ?? 0) > 0 || search.channel) && (
           <NativeSelect aria-label="Channel" className="w-auto" value={search.channel ?? ""} onChange={(e) => set({ channel: (e.target.value || undefined) as Channel | undefined })}>
             <option value="">Email and texts</option>
             {CHANNELS.map((c) => (
@@ -262,7 +262,7 @@ export function InboxPage() {
               <Alert className="m-3">{threads.error.message}</Alert>
             )
           ) : threads.data.data.items.length === 0 ? (
-            <EmptyInbox setup={setup.data} filtered={Boolean(search.q || search.unlinked || search.unread || search.mailbox) || status !== "open"} />
+            <EmptyInbox setup={setup.data} filtered={Boolean(search.q || search.unlinked || search.unread || search.mailbox || search.channel) || status !== "open"} />
           ) : (
             <ul className="divide-y">
               {threads.data.data.items.map((t) => (
@@ -284,7 +284,7 @@ export function InboxPage() {
                       {t.channel !== "email" && <Badge className="border text-xs">{CHANNEL_NAMES[t.channel]}</Badge>}
                       <span className="truncate">{t.channel === "email" ? (t.subject ?? "(no subject)") : t.preview}</span>
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">{t.preview}</span>
+                    {t.channel === "email" && <span className="truncate text-xs text-muted-foreground">{t.preview}</span>}
                     {!t.contact_id && !t.enquiry_id && !t.booking_id && (
                       <span className="text-xs text-warning">Not linked yet</span>
                     )}
@@ -832,6 +832,19 @@ function ReplyBox({ thread, mailbox, to }: { thread: ThreadView; mailbox: string
   );
 }
 
+/** The longest text the server takes on a channel. */
+function textLimit(channel: string): number {
+  return channel === "sms" ? 1600 : 4096;
+}
+
+/** How many texts an SMS is sent as: 160 plain characters (153 when split), 70 (67) with any other. */
+function smsParts(body: string): number {
+  // The GSM 7-bit alphabet's common characters; anything else sends the text as Unicode.
+  const plain = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\[~\]|€]*$/.test(body);
+  const [one, many] = plain ? [160, 153] : [70, 67];
+  return body.length <= one ? 1 : Math.ceil(body.length / many);
+}
+
 /** WhatsApp templates, for writing outside the 24-hour window. */
 function useWhatsappTemplates(enabled: boolean) {
   return useQuery({
@@ -896,7 +909,7 @@ function TextReplyBox({ thread }: { thread: ThreadView }) {
       {open ? (
         <>
           <Label htmlFor="reply">Reply</Label>
-          <Textarea id="reply" rows={3} maxLength={1600} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write a text…" />
+          <Textarea id="reply" rows={3} maxLength={textLimit(thread.channel)} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write a text…" />
         </>
       ) : (
         <>
@@ -925,7 +938,7 @@ function TextReplyBox({ thread }: { thread: ThreadView }) {
           <Send /> Send
         </Button>
         <span className="text-xs text-muted-foreground">
-          {open && body.length > 160 ? `${Math.ceil(body.length / 153)} texts long. ` : ""}
+          {thread.channel === "sms" && smsParts(body) > 1 ? `${smsParts(body)} texts long. ` : ""}
           Sends from your {CHANNEL_NAMES[thread.channel]} number.
         </span>
       </div>
@@ -1023,7 +1036,7 @@ function TextDialog({
         ) : (
           <>
             <Label htmlFor="text-body">Message</Label>
-            <Textarea id="text-body" required rows={4} maxLength={1600} value={body} onChange={(e) => setBody(e.target.value)} />
+            <Textarea id="text-body" required rows={4} maxLength={textLimit(channel)} value={body} onChange={(e) => setBody(e.target.value)} />
           </>
         )}
         {error && <Alert>{error}</Alert>}
@@ -1193,9 +1206,9 @@ export function RelatedConversations({ filter }: { filter: { contact_id?: string
   const [open, setOpen] = useState<string | null>(null);
   if (threads.isError) return null;
   return (
-    <section className="flex flex-col gap-3" aria-label="Email">
+    <section className="flex flex-col gap-3" aria-label="Conversations">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Email</h2>
+        <h2 className="font-semibold">Conversations</h2>
         <Link to="/inbox" search={{}} className="text-sm underline">
           Inbox
         </Link>
@@ -1210,7 +1223,7 @@ export function RelatedConversations({ filter }: { filter: { contact_id?: string
             <li key={t.id} className="text-sm">
               <button type="button" className="flex w-full flex-col px-3 py-2 text-left hover:bg-accent" onClick={() => setOpen(open === t.id ? null : t.id)}>
                 <span className="flex gap-2">
-                  <span className={cn("min-w-0 flex-1 truncate", t.unread && "font-semibold")}>{t.subject ?? "(no subject)"}</span>
+                  <span className={cn("min-w-0 flex-1 truncate", t.unread && "font-semibold")}>{heading(t)}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(t.last_message_at)}</span>
                 </span>
                 <span className="truncate text-xs text-muted-foreground">{t.preview}</span>

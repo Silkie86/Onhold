@@ -51,7 +51,7 @@ const PRESETS: &[Preset] = &[
         key: "enquiry_unanswered",
         name: "Unanswered enquiries",
         description: "Makes a task to reply when an enquiry is still new two days after it came in.",
-        module: "crm",
+        module: "bookings",
         templates: &[],
         steps: &[Step {
             part: "2",
@@ -87,7 +87,7 @@ const PRESETS: &[Preset] = &[
     Preset {
         key: "invoice_overdue",
         name: "Overdue invoice reminders",
-        description: "Emails the payer 1, 7 and 14 days after an unpaid invoice was due, and makes a task to call them at 14 days.",
+        description: "Emails whoever the invoice was sent to 1, 7 and 14 days after it was due and still unpaid, and makes a task to call at 14 days.",
         module: "finance",
         templates: &[
             Template {
@@ -144,10 +144,11 @@ const PRESETS: &[Preset] = &[
                 name: "Follow-up: invoice 14 days overdue",
                 trigger: || json!({ "kind": "date_offset", "entity": "invoice", "field": "due_date", "offset_minutes": 14 * DAY }),
                 conditions: || json!({ "all": [] }),
+                // The task first: an invoice never emailed still gets the call.
                 actions: || {
                     json!([
-                        { "type": "send_email", "template": "follow_up.invoice.final", "to": { "field": "invoice.sent_to" } },
-                        { "type": "create_task", "title": "Call about overdue invoice {{ invoice.reference }}", "due_in_minutes": 0 }
+                        { "type": "create_task", "title": "Call about overdue invoice {{ invoice.reference }}", "due_in_minutes": 0 },
+                        { "type": "send_email", "template": "follow_up.invoice.final", "to": { "field": "invoice.sent_to" } }
                     ])
                 },
             },
@@ -163,7 +164,7 @@ const PRESETS: &[Preset] = &[
             key: "follow_up.booking.reminder",
             name: "Booking reminder text",
             subject: None,
-            body: "Reminder from {{ workspace.name }}: {{ booking.title }} is tomorrow, {{ booking.starts_at | date }}.",
+            body: "Reminder from {{ workspace.name }}: {{ booking.title }} is tomorrow, {{ booking.starts_at | date(none, booking.timezone) }}.",
         }],
         steps: &[Step {
             part: "1",
@@ -235,6 +236,8 @@ pub async fn set(state: &AppState, ctx: &Ctx, key: &str, on: bool) -> ApiResult<
     ctx.authorize(Permission::ConfigWrite)?;
     let p = preset(key)?;
     let mut tx = begin(state, ctx).await?;
+    // One switch at a time per workspace, so two cannot both add the rules.
+    core_db::rules::lock_presets(&mut tx).await?;
     let installed = core_db::rules::presets(&mut tx).await?;
     let mine = |s: &Step| {
         let m = marker(p, s);

@@ -195,6 +195,29 @@ pub async fn country(conn: &mut PgConnection) -> Result<String> {
 }
 
 /// The thread with `phone` on this number, if there is one.
+/// Moves the conversations of earlier, disconnected channels with this
+/// kind and number to `channel`.
+pub async fn adopt_threads(
+    conn: &mut PgConnection,
+    channel: Uuid,
+    kind: &str,
+    sender: &str,
+) -> Result<u64> {
+    Ok(sqlx::query!(
+        r#"UPDATE threads SET messaging_channel_id = $1
+           WHERE workspace_id = app_workspace_id() AND messaging_channel_id IN (
+               SELECT id FROM messaging_channels
+               WHERE workspace_id = app_workspace_id() AND kind = $2 AND sender = $3
+                 AND disconnected_at IS NOT NULL)"#,
+        channel,
+        kind,
+        sender
+    )
+    .execute(conn)
+    .await?
+    .rows_affected())
+}
+
 pub async fn thread_for(
     conn: &mut PgConnection,
     channel: Uuid,

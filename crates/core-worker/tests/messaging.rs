@@ -410,6 +410,21 @@ async fn texts_come_in_and_go_out(pool: PgPool) {
         .expect(StatusCode::NOT_FOUND, "not_found");
     let numbers = h.get(&owner, "/api/v1/inbox/numbers").await;
     assert_eq!(numbers["channels"], json!([]));
+
+    // The same number connected again carries on its conversations.
+    let again = h
+        .post(
+            &owner,
+            "/api/v1/inbox/numbers/sms",
+            json!({ "account_sid": SID, "auth_token": TOKEN, "number": NUMBER }),
+        )
+        .await
+        .ok()
+        .body;
+    let t = h
+        .get(&owner, &format!("/api/v1/inbox/threads/{thread}"))
+        .await;
+    assert_eq!(t["thread"]["messaging_channel_id"], again["id"]);
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -471,7 +486,9 @@ async fn whatsapp_keeps_to_its_window(pool: PgPool) {
         &owner,
         "/api/v1/templates",
         json!({ "kind": "whatsapp", "key": "hold", "name": "Hold",
-                "subject": "hold_reminder", "body": "{{ contact.name }}\n{{ workspace.name }}" }),
+                "subject": "hold_reminder",
+                // A value with nothing in it (her role) keeps its place.
+                "body": "{{ contact.name }}\n{{ contact.role }}\n{{ workspace.name }}" }),
     )
     .await
     .ok();
@@ -493,6 +510,7 @@ async fn whatsapp_keeps_to_its_window(pool: PgPool) {
         assert_eq!(
             sent["template"]["components"][0]["parameters"],
             json!([{ "type": "text", "text": "Bea Booker" },
+                   { "type": "text", "text": "-" },
                    { "type": "text", "text": "owls agency" }])
         );
     }

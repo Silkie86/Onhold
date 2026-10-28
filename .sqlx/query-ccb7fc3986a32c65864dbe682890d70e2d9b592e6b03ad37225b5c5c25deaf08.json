@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE threads SET messaging_channel_id = $1\n           WHERE workspace_id = app_workspace_id() AND messaging_channel_id IN (\n               SELECT id FROM messaging_channels\n               WHERE workspace_id = app_workspace_id() AND kind = $2 AND sender = $3\n                 AND disconnected_at IS NOT NULL)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ccb7fc3986a32c65864dbe682890d70e2d9b592e6b03ad37225b5c5c25deaf08"
+}

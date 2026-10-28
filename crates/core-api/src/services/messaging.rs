@@ -240,6 +240,9 @@ async fn save(
     let c = core_db::messaging::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
+    // The same number connected again (a new token, say) carries on its
+    // conversations: they move to it, so replies and new texts join them.
+    core_db::messaging::adopt_threads(&mut tx, id, &c.kind, &c.sender).await?;
     record(
         &mut tx,
         ctx,
@@ -441,25 +444,55 @@ async fn from_template(
     } else {
         TemplateKind::Whatsapp
     };
-    let rendered =
-        super::templates::render_in(tx, engine_kind, None, &template.body, tree, options).await?;
-    let body = rendered.text.trim().to_owned();
-    let template_name = if kind == "whatsapp" {
-        let name = template
-            .subject
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| {
-                ApiError::invalid(
-                    "template_key",
-                    "a WhatsApp template's subject names the template approved in WhatsApp Manager",
-                )
-            })?;
-        Some(name.to_owned())
+    if kind != "whatsapp" {
+        let rendered =
+            super::templates::render_in(tx, engine_kind, None, &template.body, tree, options)
+                .await?;
+        return Ok(Text {
+            body: rendered.text.trim().to_owned(),
+            template_name: None,
+            template_key: Some(key.to_owned()),
+        });
+    }
+    let name = template
+        .subject
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            ApiError::invalid(
+                "template_key",
+                "a WhatsApp template's subject names the template approved in WhatsApp Manager",
+            )
+        })?;
+    // The language of the template found, made specific by the workspace's
+    // locale when that is the same language (`en` and `en-GB` → `en_GB`).
+    let same_language = options.locale.split('-').next() == template.locale.split('-').next();
+    let locale = if same_language {
+        &options.locale
     } else {
-        None
+        &template.locale
     };
+    let (name, lang) = template_language(name, locale);
+    // Each line of the template fills one value, rendered on its own so an
+    // empty value or one with line breaks keeps every value in its place.
+    let mut values = Vec::new();
+    for line in template.body.lines().filter(|l| !l.trim().is_empty()) {
+        let rendered =
+            super::templates::render_in(tx, engine_kind, None, line, tree, options).await?;
+        let value = rendered
+            .text
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        values.push(if value.is_empty() {
+            "-".to_owned()
+        } else {
+            value
+        });
+    }
+    let body = values.join("\n");
+    let template_name = Some(format!("{name} {lang}"));
     Ok(Text {
         body,
         template_name,
@@ -1159,7 +1192,7 @@ async fn receive(state: &AppState, ws: WorkspaceId, c: &Channel, r: Received) ->
             tx.commit().await?;
             return Ok(());
         }
-        if let Some(out) = texts::opt_keyword(&m.text) {
+        if let Some(out) = texts::opt_keyword(&c.kind, &m.text) {
             core_db::messaging::set_opt_out(&mut tx, &c.kind, &m.from, out).await?;
         }
         core_db::messaging::lock_number(&mut tx, c.id, &m.from).await?;

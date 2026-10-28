@@ -30,6 +30,8 @@ pub const MAX_WHATSAPP: usize = 4096;
 pub fn e164(raw: &str) -> Option<String> {
     let raw = raw.trim();
     let raw = raw.strip_prefix("whatsapp:").unwrap_or(raw);
+    // `+44 (0)7700 900123`: the 0 in brackets is dialled only from inside the country.
+    let raw = raw.replace("(0)", "");
     let digits: String = raw.chars().filter(char::is_ascii_digit).collect();
     let digits = digits.strip_prefix("00").unwrap_or(&digits);
     // A number without its country code (07700…) cannot be texted
@@ -50,9 +52,16 @@ pub fn international(raw: &str, country: &str) -> Option<String> {
     }
     let code = calling_code(country)?;
     let digits: String = t.chars().filter(char::is_ascii_digit).collect();
-    // Most countries dial a 0 before a national number; North America does not.
-    let national = digits.strip_prefix('0').unwrap_or(&digits);
-    if national.is_empty() || national.starts_with('0') {
+    let national = match code {
+        // North America writes its own 1 in front (`1-415-555-0100`).
+        "1" if digits.len() == 11 => digits.strip_prefix('1').unwrap_or(&digits),
+        "1" => &digits,
+        // Italy keeps the 0 of a landline in the international number.
+        "39" => &digits,
+        // Most countries dial a 0 before a national number.
+        _ => digits.strip_prefix('0').unwrap_or(&digits),
+    };
+    if national.is_empty() || (national.starts_with('0') && code != "39") {
         return None;
     }
     e164(&format!("+{code}{national}"))
@@ -580,12 +589,21 @@ pub fn meta_received(body: &Value, phone_number_id: &str) -> Received {
     out
 }
 
-/// Keywords a person texts to stop or start messages from a number.
-pub fn opt_keyword(text: &str) -> Option<bool> {
+/// Keywords a person texts to stop or start messages from a number. SMS
+/// takes the carriers' full list; on WhatsApp, where "Cancel" or "Yes" may
+/// be a reply button, only the plain words count.
+pub fn opt_keyword(kind: &str, text: &str) -> Option<bool> {
     let word = text
         .trim()
         .trim_end_matches(['.', '!'])
         .to_ascii_uppercase();
+    if kind != "sms" {
+        return match word.as_str() {
+            "STOP" | "UNSUBSCRIBE" => Some(true),
+            "START" => Some(false),
+            _ => None,
+        };
+    }
     match word.as_str() {
         "STOP" | "STOPALL" | "UNSUBSCRIBE" | "CANCEL" | "END" | "QUIT" | "OPTOUT" | "OPT OUT" => {
             Some(true)
@@ -614,6 +632,18 @@ mod tests {
             Some("+14155550100")
         );
         assert_eq!(international("07700 900123", "XX"), None);
+        assert_eq!(
+            international("+44 (0)7700 900123", "US").as_deref(),
+            Some("+447700900123")
+        );
+        assert_eq!(
+            international("1-415-555-0100", "US").as_deref(),
+            Some("+14155550100")
+        );
+        assert_eq!(
+            international("06 1234 5678", "IT").as_deref(),
+            Some("+390612345678")
+        );
     }
 
     #[test]
@@ -744,9 +774,14 @@ mod tests {
 
     #[test]
     fn stop_and_start() {
-        assert_eq!(opt_keyword(" stop "), Some(true));
-        assert_eq!(opt_keyword("Unsubscribe."), Some(true));
-        assert_eq!(opt_keyword("START"), Some(false));
-        assert_eq!(opt_keyword("stop the music"), None);
+        assert_eq!(opt_keyword("sms", " stop "), Some(true));
+        assert_eq!(opt_keyword("sms", "Unsubscribe."), Some(true));
+        assert_eq!(opt_keyword("sms", "START"), Some(false));
+        assert_eq!(opt_keyword("sms", "stop the music"), None);
+        assert_eq!(opt_keyword("sms", "Cancel"), Some(true));
+        // A WhatsApp reply button saying "Cancel" is an answer, not an opt-out.
+        assert_eq!(opt_keyword("whatsapp", "Cancel"), None);
+        assert_eq!(opt_keyword("whatsapp", "Yes"), None);
+        assert_eq!(opt_keyword("whatsapp", "STOP"), Some(true));
     }
 }
