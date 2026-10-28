@@ -167,10 +167,19 @@ pub async fn create_workspace(
 /// left out: audit readers need not hold `billing:read`, so an update records
 /// only that it changed.
 fn workspace_audit_view(w: &core_db::workspaces::Workspace) -> Value {
+    // The logo is an image of up to 14 kB: the log and events say only
+    // whether there is one, so every change does not copy it again.
+    let mut branding = w.branding.clone();
+    if let Some(b) = branding.as_object_mut()
+        && let Some(logo) = b.get_mut("logo")
+        && !logo.is_null()
+    {
+        *logo = json!("(image)");
+    }
     json!({
         "slug": w.slug, "name": w.name, "plan": w.plan, "status": w.status, "perspective": w.perspective,
         "country": w.country, "default_currency": w.default_currency, "default_timezone": w.default_timezone,
-        "locale": w.locale, "enabled_modules": w.enabled_modules, "branding": w.branding,
+        "locale": w.locale, "enabled_modules": w.enabled_modules, "branding": branding,
         "plugin_slug": w.plugin_slug,
         "require_staff_2fa": w.require_staff_2fa, "hold_days": w.hold_days,
     })
@@ -202,6 +211,79 @@ pub struct WorkspacePatch {
     pub billing_contact: Option<Value>,
     pub require_staff_2fa: Option<bool>,
     pub hold_days: Option<i32>,
+}
+
+/// Design tokens a theme may set, in light and dark mode.
+pub const THEME_TOKENS: &[&str] = &[
+    "background",
+    "foreground",
+    "card",
+    "muted",
+    "muted-foreground",
+    "border",
+    "input",
+    "ring",
+    "primary",
+    "primary-foreground",
+    "secondary",
+    "secondary-foreground",
+    "accent",
+    "accent-foreground",
+    "destructive",
+    "destructive-foreground",
+];
+
+/// Typefaces a theme may use: system font stacks, so nothing is downloaded.
+pub const THEME_FONTS: &[&str] = &[
+    "default",
+    "system",
+    "humanist",
+    "geometric",
+    "serif",
+    "rounded",
+    "mono",
+];
+
+/// A theme: `light` and `dark` maps of token → hex colour, `font` from
+/// [`THEME_FONTS`] and `radius` in pixels (0 to 24). Nothing else.
+fn validate_theme(theme: &Value) -> ApiResult<()> {
+    let bad = |m: &str| Err(ApiError::invalid("branding", format!("theme: {m}")));
+    let Some(t) = theme.as_object() else {
+        return bad("must be an object");
+    };
+    for (key, value) in t {
+        match key.as_str() {
+            "light" | "dark" => {
+                let Some(tokens) = value.as_object() else {
+                    return bad("light and dark must be objects of colours");
+                };
+                for (token, colour) in tokens {
+                    if !THEME_TOKENS.contains(&token.as_str()) {
+                        return bad(&format!("unknown colour {token}"));
+                    }
+                    if colour
+                        .as_str()
+                        .and_then(core_engines::documents::colour)
+                        .is_none()
+                    {
+                        return bad(&format!("{token} must be a hex colour"));
+                    }
+                }
+            }
+            "font" => {
+                if !value.as_str().is_some_and(|f| THEME_FONTS.contains(&f)) {
+                    return bad(&format!("font must be one of {}", THEME_FONTS.join(", ")));
+                }
+            }
+            "radius" => {
+                if !value.as_u64().is_some_and(|r| r <= 24) {
+                    return bad("radius must be 0 to 24 pixels");
+                }
+            }
+            other => return bad(&format!("unknown setting {other}")),
+        }
+    }
+    Ok(())
 }
 
 pub async fn update_workspace(
@@ -268,12 +350,59 @@ pub async fn update_workspace(
                 field: Some(field),
             });
         }
-        if value.to_string().len() > 16 * 1024 {
+        if value.to_string().len() > 24 * 1024 {
             return Err(ApiError::BadRequest {
                 code: "invalid_input",
-                message: "must be under 16 KiB".into(),
+                message: "must be under 24 KiB".into(),
                 field: Some(field),
             });
+        }
+    }
+    // The colour and logo print on documents and colour the app, so only a
+    // hex colour and an image data URI are taken.
+    if patch.branding.is_some() {
+        if let Some(c) = branding.get("primary_color")
+            && !c.is_null()
+            && c.as_str()
+                .and_then(core_engines::documents::colour)
+                .is_none()
+        {
+            return Err(ApiError::invalid(
+                "branding",
+                "primary_color must be a hex colour such as #2747c7",
+            ));
+        }
+        if let Some(l) = branding.get("logo")
+            && !l.is_null()
+            && l.as_str().and_then(core_engines::documents::logo).is_none()
+        {
+            return Err(ApiError::invalid(
+                "branding",
+                "logo must be a PNG, JPEG, GIF, WebP or SVG image as a base64 data URI",
+            ));
+        }
+    }
+    // The full theme is OnHold's to set (at onboarding, or visiting the
+    // workspace later); members keep it as it is.
+    if branding.get("theme") != before.branding.get("theme") {
+        let operator = match ctx.user_id() {
+            Some(id) if ctx.impersonator().is_some() => Some(id),
+            Some(id) => core_db::users::get(&mut tx, id)
+                .await?
+                .filter(|u| u.is_superadmin && u.totp_enabled_at.is_some())
+                .map(|u| u.id),
+            None => None,
+        };
+        if operator.is_none() {
+            return Err(ApiError::forbidden(
+                "theme_is_operator_only",
+                "only OnHold's team can change the full theme; use the logo, name and brand colour instead",
+            ));
+        }
+        if let Some(theme) = branding.get("theme")
+            && !theme.is_null()
+        {
+            validate_theme(theme)?;
         }
     }
     // An uploaded logo is kept for as long as the branding uses it.

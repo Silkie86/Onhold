@@ -46,19 +46,23 @@ import {
   Mic2,
   Monitor,
   Moon,
+  Paintbrush,
+  Palette,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
   Sun,
   Workflow,
   X,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { ENTITIES, entityByPath } from "./api.ts";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { ENTITIES, api, entityByPath, ok, setWorkspace } from "./api.ts";
 import { OfflineContext, searchEverything, useSyncStatus } from "./data.ts";
 import { claimFor, forgetMailExcept } from "./offline/store.ts";
 import { OfflineSync } from "./offline/sync.ts";
 import { IS_APP, KEEPS_OFFLINE_COPY, serverUrl } from "./platform.ts";
+import { useWorkspaceBranding } from "./branding.ts";
 import { GoTo } from "./go-to.tsx";
 import { useInstallOffer } from "./install.ts";
 import { type Session, SessionContext, useMe, useSessionActions } from "./session.tsx";
@@ -101,6 +105,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
   {
     group: "Settings",
     items: [
+      { to: "/settings/branding", label: "Branding", icon: <Palette /> },
       { to: "/settings/email", label: "Email accounts", icon: <AtSign /> },
       { to: "/settings/fields", label: "Custom fields", icon: <SlidersHorizontal /> },
       { to: "/settings/pipelines", label: "Pipelines", icon: <Workflow /> },
@@ -110,6 +115,15 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
     ],
   },
 ];
+
+/** OnHold's own team: the full theme, and visiting clients' workspaces. */
+const OPERATOR_NAV = {
+  group: "OnHold team",
+  items: [
+    { to: "/settings/theme", label: "Theme studio", icon: <Paintbrush /> },
+    { to: "/operator", label: "Client workspaces", icon: <ShieldCheck /> },
+  ],
+};
 
 /** Starts keeping the workspace on the device (apps only) for as long as it is open. */
 /** The queries that read the device's copy, refreshed when it changes. */
@@ -161,7 +175,7 @@ function useOfflineSync(workspaceId: string | undefined, userId: string): Offlin
 
 const THEME_KEY = "onhold.theme";
 
-function storedTheme(): Theme {
+export function storedTheme(): Theme {
   try {
     const t = localStorage.getItem(THEME_KEY);
     return t === "light" || t === "dark" ? t : "system";
@@ -193,6 +207,13 @@ export function AppShell() {
     return (
       <div className="mx-auto max-w-md p-6 text-sm">
         You are signed in as {me.data.user.email} but are not a member of any workspace yet. Ask for an invitation.
+        {me.data.user.is_superadmin && (
+          <p className="mt-3">
+            <Link to="/operator" className="underline">
+              Open OnHold&apos;s team tools
+            </Link>
+          </p>
+        )}
       </div>
     );
   }
@@ -208,15 +229,37 @@ export function AppShell() {
 }
 
 function SignedIn({ me }: { me: Session["me"] }) {
-  const { workspace, switchWorkspace, signOut } = useSessionActions(me);
+  const sessionActions = useSessionActions(me);
+  const { workspace, signOut } = sessionActions;
   const current = workspace ?? me.workspaces[0];
   // The plan switch is for the apps; the installed website is the website.
-  const sync = useOfflineSync(current && (!IS_APP || current.apps_allowed) ? current.id : undefined, me.user.id);
+  // A visit by OnHold's team keeps nothing of the client's workspace on the device.
+  const visiting = me.impersonation ?? null;
+  // Leaving a visit, by the switcher or when the server ends it at its
+  // time, reloads: nothing of the client's workspace stays in memory.
+  const switchWorkspace = (id: string) => {
+    if (!visiting) return sessionActions.switchWorkspace(id);
+    void ok(api.DELETE("/api/v1/admin/impersonation")).then(() => {
+      setWorkspace(id);
+      window.location.assign("/");
+    }, () => undefined);
+  };
+  const wasVisiting = useRef(false);
+  useEffect(() => {
+    if (visiting) {
+      wasVisiting.current = true;
+      const timer = setTimeout(endVisit, Math.max(0, new Date(visiting.expires_at).getTime() - Date.now()));
+      return () => clearTimeout(timer);
+    }
+    if (wasVisiting.current) endVisit();
+  }, [visiting]);
+  const sync = useOfflineSync(current && !visiting && (!IS_APP || current.apps_allowed) ? current.id : undefined, me.user.id);
   // Email kept for a workspace the person has left, or whose plan dropped the apps, goes.
   const keptFor = me.workspaces.filter((w) => !IS_APP || w.apps_allowed).map((w) => w.id).join(",");
   useEffect(() => {
     if (KEEPS_OFFLINE_COPY) void forgetMailExcept(keptFor.split(",")).catch(() => undefined);
   }, [keptFor]);
+  const logo = useWorkspaceBranding(current?.id ?? "", sync, !visiting);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(storedTheme);
@@ -266,15 +309,18 @@ function SignedIn({ me }: { me: Session["me"] }) {
     .slice(0, 2)
     .toUpperCase();
 
+  const groups = me.user.is_superadmin ? [...NAV, OPERATOR_NAV] : NAV;
   const nav = (
-    <nav aria-label="Main" className="flex flex-col gap-4 p-3">
-      {NAV.map((g) => (
+    <nav aria-label="Main" className="flex flex-col gap-4 overflow-y-auto p-3">
+      {groups.map((g) => (
         <div key={g.group} className="flex flex-col gap-0.5">
           <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">{g.group}</p>
           {g.items.map((i) => (
             <Link
               key={i.to}
               to={i.to}
+              // Also when the link is the page already open.
+              onClick={() => setNavOpen(false)}
               className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent [&_svg]:size-4"
               activeProps={{ className: "bg-accent font-medium text-accent-foreground" }}
             >
@@ -292,7 +338,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
       <OfflineContext.Provider value={sync}>
       <div className="flex h-dvh">
         <aside className="hidden w-56 shrink-0 flex-col border-r bg-muted/30 md:flex">
-          <WorkspaceSwitcher session={session} />
+          <WorkspaceSwitcher session={session} logo={logo} />
           {nav}
         </aside>
         {navOpen && (
@@ -300,7 +346,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
             <button type="button" aria-label="Close menu" className="absolute inset-0 bg-black/40" onClick={() => setNavOpen(false)} />
             <aside className="relative flex h-full w-64 flex-col border-r bg-background">
               <div className="flex items-center justify-between pr-2">
-                <WorkspaceSwitcher session={session} />
+                <WorkspaceSwitcher session={session} logo={logo} />
                 <Button variant="ghost" size="icon" aria-label="Close menu" onClick={() => setNavOpen(false)}>
                   <X />
                 </Button>
@@ -310,6 +356,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
           </div>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
+          {visiting && <VisitBanner name={current?.name ?? ""} expiresAt={visiting.expires_at} />}
           <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3 sm:px-4">
             <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu" onClick={() => setNavOpen(true)}>
               <MenuIcon />
@@ -404,12 +451,15 @@ function SignedIn({ me }: { me: Session["me"] }) {
   );
 }
 
-function WorkspaceSwitcher({ session }: { session: Session }) {
+function WorkspaceSwitcher({ session, logo }: { session: Session; logo: string | null }) {
   const { me, workspace, switchWorkspace } = session;
   const label = (
-    <span className="flex min-w-0 flex-col text-left">
-      <span className="truncate text-sm font-semibold">{workspace.name}</span>
-      <span className="truncate text-xs text-muted-foreground capitalize">{workspace.role}</span>
+    <span className="flex min-w-0 items-center gap-2">
+      {logo && <img src={logo} alt="" className="h-8 w-auto max-w-24 shrink-0 object-contain" />}
+      <span className="flex min-w-0 flex-col text-left">
+        <span className="truncate text-sm font-semibold">{workspace.name}</span>
+        <span className="truncate text-xs text-muted-foreground capitalize">{workspace.role}</span>
+      </span>
     </span>
   );
   if (me.workspaces.length < 2) {
@@ -463,4 +513,47 @@ function SyncIndicator() {
       <span className="sr-only sm:hidden">{label}</span>
     </Link>
   );
+}
+
+/** Shown on every page while OnHold's team is inside a client's workspace. */
+function VisitBanner({ name, expiresAt }: { name: string; expiresAt: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-2 bg-warning px-3 py-1.5 text-sm text-black sm:px-4">
+      <ShieldCheck className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1">
+        You are visiting <strong>{name}</strong> as OnHold&apos;s team, until{" "}
+        {new Date(expiresAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}. Everything you do is in their audit log.
+      </span>
+      <Button
+        size="sm"
+        variant="outline"
+        className="bg-white/70 text-black"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            await ok(api.DELETE("/api/v1/admin/impersonation"));
+          } catch (err) {
+            // Still visiting: say so rather than leave as if it had ended.
+            setError(`The visit has not ended: ${err instanceof Error ? err.message : String(err)}`);
+            setBusy(false);
+            return;
+          }
+          endVisit();
+        }}
+      >
+        End visit
+      </Button>
+      {error && <span className="basis-full font-medium">{error}</span>}
+    </div>
+  );
+}
+
+/** Leaves a visit with nothing of the client's workspace left in memory. */
+function endVisit() {
+  setWorkspace(undefined);
+  window.location.assign("/operator");
 }

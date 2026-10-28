@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext } from "react";
 import { ApiFailure, type Me, api, currentWorkspace, ok, setCsrfToken, setWorkspace } from "./api.ts";
+import { forgetBranding } from "./branding.ts";
 import { outbox, wipe, wipeAllButQueue } from "./offline/store.ts";
 import { isNetworkError } from "./offline/sync.ts";
 import { IS_APP, KEEPS_OFFLINE_COPY, appToken, saveAppToken } from "./platform.ts";
@@ -48,6 +49,23 @@ export const meQuery = {
     try {
       const me = await ok(api.GET("/api/v1/auth/me"));
       setCsrfToken(me.session.csrf_token);
+      const visit = me.impersonation;
+      if (visit) {
+        // OnHold's team visiting a client's workspace: it is the one shown,
+        // with every permission, for as long as the visit lasts. Nothing of
+        // it is kept on the device.
+        setWorkspace(visit.workspace_id);
+        const w = await ok(api.GET("/api/v1/workspace")).catch(() => null);
+        const visited = {
+          id: visit.workspace_id,
+          slug: w?.slug ?? "",
+          name: w?.name ?? "Client workspace",
+          status: w?.status ?? "active",
+          role: "owner" as const,
+          apps_allowed: true,
+        };
+        return { ...me, workspaces: [visited, ...me.workspaces.filter((x) => x.id !== visit.workspace_id)] };
+      }
       const ids = me.workspaces.map((w) => w.id);
       const stored = currentWorkspace();
       if (!stored || !ids.includes(stored)) setWorkspace(ids[0]);
@@ -57,6 +75,7 @@ export const meQuery = {
       if (e instanceof ApiFailure && e.status === 401) {
         setCsrfToken(undefined);
         if (IS_APP) await saveAppToken(null);
+        forgetBranding();
         if (KEEPS_OFFLINE_COPY) {
           // Expired, or signed out from another device: the workspace's data
           // leaves this one. Unsent changes wait for the same person's next sign-in.
@@ -120,6 +139,7 @@ export function useSessionActions(me: Me) {
       await api.POST("/api/v1/auth/logout").catch(() => undefined);
       setCsrfToken(undefined);
       if (IS_APP) await saveAppToken(null);
+      forgetBranding();
       if (KEEPS_OFFLINE_COPY) {
         remember(null);
         // Nothing of the workspace stays on the device.

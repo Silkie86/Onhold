@@ -134,6 +134,24 @@ const calendarSettings = createRoute({
   component: lazyRouteComponent(() => import("./pages/calendar-settings.tsx"), "CalendarSettingsPage"),
 });
 
+const themeStudio = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/theme",
+  component: lazyRouteComponent(() => import("./pages/theme-studio.tsx"), "ThemeStudioPage"),
+});
+// Outside the app's frame: OnHold's team may belong to no workspace themselves.
+const operator = createRoute({
+  getParentRoute: () => root,
+  path: "/operator",
+  component: lazyRouteComponent(() => import("./pages/operator.tsx"), "OperatorPage"),
+});
+
+const brandingSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/branding",
+  component: lazyRouteComponent(() => import("./pages/branding-settings.tsx"), "BrandingSettingsPage"),
+});
+
 const inbox = createRoute({ getParentRoute: () => app, path: "/inbox", validateSearch: validateInboxSearch, component: InboxPage });
 const emailSettings = createRoute({
   getParentRoute: () => app,
@@ -192,6 +210,7 @@ const tree = root.addChildren([
   mfa,
   invitation,
   linkApp,
+  operator,
   publicQuote,
   publicInvoice,
   publicSigning,
@@ -212,6 +231,8 @@ const tree = root.addChildren([
     pipelines,
     calendarSettings,
     sendingDomain,
+    brandingSettings,
+    themeStudio,
     sync,
     invoices,
     invoice,

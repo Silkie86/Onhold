@@ -21,8 +21,8 @@ import {
   NativeSelect,
   Spinner,
   Textarea,
-  applyBranding,
-  type Branding,
+  applyBrandTheme,
+  readBranding,
   cn,
   formatMoney,
 } from "@onhold/ui";
@@ -277,10 +277,10 @@ function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
         <thead className="bg-muted/50 text-left text-muted-foreground">
           <tr>
             <th className="px-3 py-2 font-normal">Number</th>
-            <th className="px-3 py-2 font-normal">Payer</th>
+            <th className="hidden px-3 py-2 font-normal sm:table-cell">Payer</th>
             <th className="px-3 py-2 font-normal">Status</th>
-            <th className="px-3 py-2 font-normal">Due</th>
-            <th className="px-3 py-2 text-right font-normal">Total</th>
+            <th className="hidden px-3 py-2 font-normal sm:table-cell">Due</th>
+            <th className="hidden px-3 py-2 text-right font-normal sm:table-cell">Total</th>
             <th className="px-3 py-2 text-right font-normal">Owed</th>
           </tr>
         </thead>
@@ -293,14 +293,18 @@ function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
                 </Link>
                 {i.historical && <span className="ml-2 text-xs text-muted-foreground">past</span>}
                 {i.booking_title && <div className="text-xs text-muted-foreground">{i.booking_title}</div>}
+                {/* On a phone the payer, due date and total go under the number. */}
+                <div className="text-xs text-muted-foreground sm:hidden">
+                  {[i.payer_name, i.due_date && `due ${day(i.due_date)}`, formatMoney(i.total)].filter(Boolean).join(" · ")}
+                </div>
               </td>
-              <td className="px-3 py-2">{i.payer_name}</td>
+              <td className="hidden px-3 py-2 sm:table-cell">{i.payer_name}</td>
               <td className="px-3 py-2">
                 <InvoiceBadge status={i.status} />
               </td>
-              <td className="px-3 py-2">{day(i.due_date)}</td>
-              <td className="px-3 py-2 text-right">{formatMoney(i.total)}</td>
-              <td className="px-3 py-2 text-right">{i.status === "draft" || i.status === "void" ? "" : formatMoney(i.outstanding)}</td>
+              <td className="hidden px-3 py-2 sm:table-cell">{day(i.due_date)}</td>
+              <td className="hidden px-3 py-2 text-right sm:table-cell">{formatMoney(i.total)}</td>
+              <td className="px-3 py-2 text-right whitespace-nowrap">{i.status === "draft" || i.status === "void" ? "" : formatMoney(i.outstanding)}</td>
             </tr>
           ))}
         </tbody>
@@ -1479,8 +1483,7 @@ export function PublicInvoicePage() {
     refetchInterval: (q) => (waiting && q.state.data && q.state.data.outstanding.minor > 0 ? 5000 : false),
   });
   useEffect(() => {
-    const b = invoice.data?.branding as { colours?: Branding } | undefined;
-    if (b?.colours) applyBranding(b.colours);
+    if (invoice.data) applyBrandTheme(readBranding(invoice.data.branding));
     if (invoice.data) document.title = `${invoice.data.kind === "credit_note" ? "Credit note" : "Invoice"} ${invoice.data.reference} · ${invoice.data.workspace_name}`;
   }, [invoice.data]);
   if (invoice.isPending) {
@@ -1502,14 +1505,14 @@ export function PublicInvoicePage() {
     );
   }
   const i = invoice.data;
-  const logo = (i.branding as { logo_url?: string } | null)?.logo_url;
+  const logo = readBranding(i.branding).logo;
   const bank = i.bank_account as { label?: string | null; details?: string } | null;
   const issuer = i.issuer as { name?: string } | null;
   const payer = i.payer as { name?: string } | null;
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 p-4 sm:p-8">
       <header className="flex items-center gap-3">
-        {logo && <img src={logo} alt="" className="size-10 rounded object-contain" />}
+        {logo && <img src={logo} alt="" className="h-10 w-auto max-w-40 rounded object-contain" />}
         <div>
           <p className="text-sm text-muted-foreground">{issuer?.name ?? i.workspace_name}</p>
           <h1 className="text-2xl font-semibold">
