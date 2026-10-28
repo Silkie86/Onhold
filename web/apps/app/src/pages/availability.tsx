@@ -1,5 +1,6 @@
 // A talent's marked time: holidays and other unavailable dates block
-// confirming bookings; tentative time only warns.
+// confirming bookings; tentative time only warns. Busy times read from the
+// talent's own calendars are listed too, and change only there.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Schemas } from "@onhold/api-client";
@@ -66,7 +67,8 @@ export function AvailabilityEditor({ talentId, canWrite }: { talentId: string; c
                 </span>
                 {a.note && <span className="text-muted-foreground">{a.note}</span>}
               </span>
-              {canWrite && (
+              {/* Busy time from their own calendar changes there. */}
+              {canWrite && a.source !== "external" && (
                 <Button
                   variant="ghost"
                   size="icon"

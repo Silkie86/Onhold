@@ -229,6 +229,8 @@ async fn money(app: &TestApp, owner: &Client, slug: &str, crm: &Crm, work: &Work
 struct Crm {
     talent: uuid::Uuid,
     member: uuid::Uuid,
+    calendar_link: uuid::Uuid,
+    calendar: uuid::Uuid,
     organisation: uuid::Uuid,
     contact: uuid::Uuid,
     view: uuid::Uuid,
@@ -258,6 +260,24 @@ async fn crm(app: &TestApp, owner: &Client, slug: &str) -> Crm {
     )
     .await
     .id("/id");
+    let calendar_link = post(
+        &format!("/api/v1/talent/{talent}/calendar-links"),
+        json!({}),
+    )
+    .await
+    .id("/link/id");
+    // A connected calendar, as the talent's link would leave it.
+    let calendar = core_domain::ids::new_id();
+    sqlx::query(
+        "INSERT INTO talent_calendars (id, workspace_id, talent_id, link_id, provider, account, secret, url_hash)
+         SELECT $1, workspace_id, talent_id, id, 'ical', $2, '\\x00', '\\x00' FROM calendar_connect_links WHERE id = $3",
+    )
+    .bind(calendar)
+    .bind(format!("{slug}.secret.test"))
+    .bind(calendar_link)
+    .execute(&app.owner)
+    .await
+    .unwrap();
     let organisation = post(
         "/api/v1/organisations",
         json!({ "name": format!("{slug} secret venue"), "tags": [format!("{slug}-secret-tag")] }),
@@ -288,6 +308,8 @@ async fn crm(app: &TestApp, owner: &Client, slug: &str) -> Crm {
     Crm {
         talent,
         member,
+        calendar_link,
+        calendar,
         organisation,
         contact,
         view,
@@ -545,6 +567,8 @@ async fn world(app: &TestApp) -> World {
             b_job.to_string(),
             b_crm.talent.to_string(),
             b_crm.member.to_string(),
+            b_crm.calendar.to_string(),
+            "bravo.secret.test".into(),
             b_crm.organisation.to_string(),
             b_crm.contact.to_string(),
             b_crm.view.to_string(),
@@ -762,6 +786,8 @@ fn fill_path(path: &str, w: &World) -> String {
     path.replace("{user_id}", &object.to_string())
         .replace("{id}", &object.to_string())
         .replace("{member_id}", &w.b_crm.member.to_string())
+        .replace("{link_id}", &w.b_crm.calendar_link.to_string())
+        .replace("{calendar_id}", &w.b_crm.calendar.to_string())
         .replace("{allocation_id}", &w.b_money.allocation.to_string())
         .replace("{file_id}", &w.b_money.file.to_string())
         // B's own email template: not a document template A can see.
@@ -1077,6 +1103,18 @@ async fn assert_untouched(app: &TestApp, w: &World) {
         .await
         .ok();
     assert_eq!(members.body[0]["name"], "bravo secret drummer");
+    let calendars = app
+        .get(&format!("/api/v1/talent/{}/calendars", w.b_crm.talent))
+        .signed_in(&w.b)
+        .send()
+        .await
+        .ok();
+    assert_eq!(
+        calendars.body["calendars"][0]["account"],
+        "bravo.secret.test"
+    );
+    assert_eq!(calendars.body["calendars"][0]["status"], "active");
+    assert_eq!(calendars.body["links"].as_array().map(Vec::len), Some(1));
     let import = app
         .get(&format!("/api/v1/imports/{}", w.b_crm.import))
         .signed_in(&w.b)

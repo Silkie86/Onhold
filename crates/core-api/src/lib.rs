@@ -57,10 +57,14 @@ fn body_limit(method: &axum::http::Method, path: &str) -> usize {
     }
 }
 
-/// Path segments that are bearer secrets: the buyer's quote link and
-/// calendar feeds. The database keeps only their hashes, so logs must not
+/// Path segments that are bearer secrets: the buyer's quote link, calendar
+/// feeds and talent's calendar-connect links. The database keeps only their hashes, so logs must not
 /// keep them either.
-const SECRET_SEGMENTS_AFTER: &[&str] = &["/public/quotes/", "/public/calendar/"];
+const SECRET_SEGMENTS_AFTER: &[&str] = &[
+    "/public/quotes/",
+    "/public/calendar/",
+    "/public/calendar-connect/",
+];
 
 /// The request path as it goes into logs, with secret segments replaced.
 fn log_path(path: &str) -> std::borrow::Cow<'_, str> {

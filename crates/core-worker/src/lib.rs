@@ -29,7 +29,7 @@ use core_api::services::events::CHANNEL as EVENTS_CHANNEL;
 use core_api::services::invoices::JOB_OVERDUE;
 use core_api::services::mail::SYSTEM_TOPICS;
 use core_api::services::quotes::JOB_EXPIRE as JOB_EXPIRE_QUOTE;
-use core_api::services::{inbox, integrations, sender_domains};
+use core_api::services::{inbox, integrations, sender_domains, talent_calendars};
 use core_db::DbError;
 use core_db::jobs::{Claimed, LogLine, NewJob, RunRecord};
 use core_integrations::http::WebhookClient;
@@ -381,6 +381,28 @@ impl Worker {
             core_db::jobs::enqueue(
                 tx,
                 NewJob::new(Some(d.workspace_id), sender_domains::JOB_CHECK, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for c in core_db::talent_calendars::due(tx, now, DUE_BATCH).await? {
+            let key = talent_calendars::read_key(c.id, c.at);
+            let payload = json!({ "calendar_id": c.id, "at": c.at });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(c.workspace_id), talent_calendars::JOB_READ, &payload)
+                    .dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for c in core_db::talent_calendars::revokes_due(tx, DUE_BATCH).await? {
+            let key = format!("revoke:{}", c.id);
+            let payload = json!({ "calendar_id": c.id });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(c.workspace_id), talent_calendars::JOB_REVOKE, &payload)
+                    .dedupe(&key),
             )
             .await?;
             queued += 1;

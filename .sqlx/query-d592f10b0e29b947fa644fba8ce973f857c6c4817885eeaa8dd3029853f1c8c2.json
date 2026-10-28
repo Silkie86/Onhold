@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE talent_calendars SET secret = '\\x'::bytea, revoke_at = NULL\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d592f10b0e29b947fa644fba8ce973f857c6c4817885eeaa8dd3029853f1c8c2"
+}

@@ -451,6 +451,7 @@ pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
 pub(crate) async fn delete_in_tx(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     let before = load(tx, id).await?.ok_or(ApiError::NotFound)?;
     core_db::talent::soft_delete(tx, id, ctx.user_id()).await?;
+    super::talent_calendars::disconnect_all(tx, ctx, Some(id), "talent_removed").await?;
     record(
         tx,
         ctx,

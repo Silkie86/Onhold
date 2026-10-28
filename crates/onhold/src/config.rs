@@ -174,6 +174,14 @@ pub struct ApiArgs {
     /// How often each connected mailbox is read, in seconds.
     #[arg(long, env = "MAIL_POLL_SECONDS", default_value_t = 120, global = true)]
     mail_poll_seconds: u64,
+    /// How often each talent's connected calendar is read, in seconds.
+    #[arg(
+        long,
+        env = "CALENDAR_POLL_SECONDS",
+        default_value_t = 900,
+        global = true
+    )]
+    calendar_poll_seconds: u64,
     /// How far back the first read of a newly connected mailbox goes, in days.
     #[arg(
         long,
@@ -191,6 +199,8 @@ pub struct ApiArgs {
     microsoft_login_base: Url,
     #[arg(long, env = "GRAPH_API_BASE", default_value = core_integrations::graph::API_BASE, global = true, hide = true)]
     graph_api_base: Url,
+    #[arg(long, env = "GOOGLE_API_BASE", default_value = core_integrations::calendars::GOOGLE_API, global = true, hide = true)]
+    google_api_base: Url,
 
     /// Resend's API key, so workspaces can send from their own domains.
     /// `SMTP_URL` must then be Resend's SMTP server with the same account.
@@ -323,7 +333,9 @@ impl ApiArgs {
         let mut mailboxes = MailboxConfig {
             gmail_api: self.gmail_api_base,
             graph_api: self.graph_api_base,
+            google_api: self.google_api_base,
             poll_every: Duration::from_secs(self.mail_poll_seconds.clamp(30, 3600)),
+            calendar_every: Duration::from_secs(self.calendar_poll_seconds.clamp(60, 6 * 3600)),
             first_read_days: self.mail_first_read_days.clamp(0, 365),
             ..MailboxConfig::default()
         };

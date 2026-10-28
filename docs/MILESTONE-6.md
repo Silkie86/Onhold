@@ -6,7 +6,7 @@ M6 comes in several PRs. This page grows with each.
 
 1. **Email inbox**: Gmail, Outlook and Microsoft 365, and any other mailbox by IMAP and SMTP.
 2. **Own-domain sending**: verified sender domains (SPF, DKIM), with automatic DNS setup through Domain Connect and a guided manual fallback.
-3. Calendar sync with Google and Microsoft.
+3. **Talent's own calendars**: busy times read from the calendars talent connect through a link (Google, Microsoft or a private iCal link), counted by clash checks. Pushing bookings into Google and Microsoft calendars follows in its own PR.
 4. Xero and QuickBooks, including importing past invoices.
 5. SMS, WhatsApp and follow-up rules.
 
@@ -63,6 +63,35 @@ Runs end to end in `crates/core-worker/tests/domains.rs`, against stand-ins for 
 
 - Resend's webhooks instead of checking on a timer.
 - OnHold's Domain Connect template is written but not yet submitted; until providers take it in, every domain is set up by hand.
+
+## Talent's own calendars
+
+Runs end to end in `crates/core-worker/tests/talent_calendars.rs`, against stand-ins for Google (OAuth and free/busy), Microsoft (OAuth and the calendar view) and a published iCal file:
+
+- On an act's page the agency gets a link and sends it on. Opening it needs no OnHold account; it names the agency and the act, and says that only busy times are seen.
+- One member connects Google (asking only for `calendar.freebusy`, never for what the app was given before), another Outlook (`Calendars.ReadBasic`, asking for times and "show as" only), a third pastes an iCal link. A page that is not a calendar is refused while they are there; pasting the same iCal link again renews that calendar. A grant that carries more than busy times (mailbox access given to the same app, say) is refused.
+- The worker reads a year ahead. Busy, out-of-office and tentative times arrive; free time does not. They show in the talent's availability, named by whose calendar they come from, and a booking over them is a blocking clash, unless they lie within that booking (most likely the booking itself, written into the calendar), when they only warn. They cannot be edited or removed in OnHold.
+- When a calendar changes, the next read follows it, and stretches that did not change are not rewritten.
+- A withdrawn Google grant turns the calendar "needs connecting again", and its busy times stop counting. Connecting again through the link revives the same calendar.
+- Viewers can see the calendars but not send links; another workspace sees nothing. Disconnecting forgets the grant and the busy times, and asks Google to forget the grant unless another connection (a mailbox, or the same calendar for another talent) still uses the account. A revoked or expired link stops working, even part way through connecting. Removing the talent disconnects their calendars, and the worker then revokes their grants.
+
+`e2e/bookings.spec.ts` gets a link from a talent's page and opens it as the talent.
+
+### Built
+
+- **Talent page → Their own calendars.** "Get a link to send" makes a link that works for two weeks, for as many people as need it (each member of an act can connect their own; up to 12 calendars per talent). Each calendar shows whose it is, when it was last read and whether it needs connecting again, with "read now" and "disconnect". Links can be stopped.
+- **The talent's page** (`/connect-calendar/<link>`), in the agency's branding: their name if they are one of several, then Google, Microsoft, or a private iCal link (Apple, Proton, Fastmail; `webcal://` is accepted).
+- **Busy only.** Google is asked through its free/busy query; Microsoft for each event's start, end and "show as"; an iCal file is read for times, with repeating events counted out (`rrule`), moved and cancelled occurrences, whole days in the calendar's zone (else the workspace's), free and cancelled events left out. Titles, places and people are never stored. Tentative time warns; busy and out-of-office time blocks, like dates marked unavailable.
+- **Reading.** Every 15 minutes (`CALENDAR_POLL_SECONDS`), from the start of yesterday to a year ahead in whole days, Google in 60-day windows. Failures are retried quietly at first, then shown, waiting 5 minutes doubling to 6 hours; a withdrawn grant or a link that stopped working waits for the talent to connect again, its busy times dropped meanwhile.
+- **Safe to read.** iCal files are at most 8 MB and 20,000 events; repeating events are counted out from just before the window, rules repeating by the second or minute count once, and a file needing more than 2 million steps or 50,000 stretches is refused. Files are read two at a time across the server, off the request threads, for at most 20 seconds. A link stops working after 200 uses.
+- **Small.** Busy times are a copy of the provider's answer, replaced as it changes, so a calendar holds only a year's stretches (at most 3,000) and never grows. A disconnected calendar keeps no grant. Busy times are not kept on devices: the calendar shows them when online, and offline clash checks go without them.
+- **Configuration.** The same Google and Microsoft apps as the inbox, with the redirect URI `<PUBLIC_BASE_URL>/connect-calendar` added, and Google's Calendar API switched on.
+
+### Not yet
+
+- Bookings and holds written into members' and talent's Google and Microsoft calendars (the next M6 PR).
+- Google's `calendar.freebusy` is a sensitive scope: until Google verifies the app (no security assessment needed), people outside the operator's own domain see an "unverified app" warning.
+- Push notifications from Google and Microsoft instead of reading on a timer.
 
 ## Email inbox: not yet
 

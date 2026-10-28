@@ -47,6 +47,7 @@ pub mod sessions;
 pub mod settlements;
 pub mod stripe;
 pub mod talent;
+pub mod talent_calendars;
 pub mod tasks;
 pub mod templates;
 pub mod things;

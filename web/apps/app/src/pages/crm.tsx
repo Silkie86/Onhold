@@ -45,6 +45,7 @@ import { useSession } from "../session.tsx";
 import { AvailabilityEditor } from "./availability.tsx";
 import { TalentMembers } from "./members.tsx";
 import { RelatedConversations } from "./inbox.tsx";
+import { TalentCalendarsCard } from "./talent-calendars.tsx";
 
 type Entity = (typeof ENTITIES)[keyof typeof ENTITIES];
 
@@ -550,6 +551,7 @@ export function EntityRecordPage() {
               <>
                 <TalentMembers talentId={id} canWrite={schema.data.can_write} />
                 <AvailabilityEditor talentId={id} canWrite={schema.data.can_write} />
+                <TalentCalendarsCard talentId={id} canWrite={schema.data.can_write} />
               </>
             ))}
           {entity.entity === "organisation" && <OrganisationContacts organisation={r} />}

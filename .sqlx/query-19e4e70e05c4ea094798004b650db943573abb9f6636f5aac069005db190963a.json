@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE talent_calendars\n           SET disconnected_at = now(), next_poll_at = NULL, poll_lease_until = NULL,\n               revoke_at = CASE WHEN provider = 'ical' THEN NULL ELSE now() END,\n               secret = CASE WHEN provider = 'ical' THEN '\\x'::bytea ELSE secret END\n           WHERE workspace_id = app_workspace_id() AND disconnected_at IS NULL\n             AND ($1::uuid IS NULL OR talent_id = $1)\n           RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "19e4e70e05c4ea094798004b650db943573abb9f6636f5aac069005db190963a"
+}

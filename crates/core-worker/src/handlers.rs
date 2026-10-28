@@ -10,7 +10,7 @@ use core_api::services::bookings::{self, JOB_COMPLETE, JOB_EXPIRE_HOLD};
 use core_api::services::quotes::{self, JOB_EXPIRE as JOB_EXPIRE_QUOTE};
 use core_api::services::{
     documents, files, imports, inbox, integrations, invoices, mail, sender_domains, stripe,
-    webhooks,
+    talent_calendars, webhooks,
 };
 use core_db::jobs::{Claimed, LogLine};
 use core_domain::WorkspaceId;
@@ -226,6 +226,18 @@ impl Worker {
                     .and_then(Value::as_str)
                     .ok_or_else(|| JobError::permanent("the job has no `provider_id`"))?;
                 sender_domains::forget(&self.app, id).await?;
+                Ok(())
+            }
+            talent_calendars::JOB_READ => {
+                let id = uuid_field(&job.payload, "calendar_id")?;
+                let outcome = talent_calendars::read(&self.app, workspace(job)?, id).await?;
+                note(log, outcome.to_string());
+                Ok(())
+            }
+            talent_calendars::JOB_REVOKE => {
+                let id = uuid_field(&job.payload, "calendar_id")?;
+                let outcome = talent_calendars::revoke(&self.app, workspace(job)?, id).await?;
+                note(log, outcome);
                 Ok(())
             }
             JOB_WEBHOOK => self.deliver_webhook(job, log).await,

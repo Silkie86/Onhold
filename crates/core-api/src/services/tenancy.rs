@@ -514,6 +514,7 @@ pub async fn close_workspace(state: &AppState, ctx: &Ctx, confirm_slug: &str) ->
     // release a domain, so that happens now.
     super::integrations::disconnect_all(&mut tx, ctx).await?;
     super::sender_domains::remove_all(&mut tx, ctx).await?;
+    super::talent_calendars::disconnect_all(&mut tx, ctx, None, "workspace_closed").await?;
     record(
         &mut tx,
         ctx,

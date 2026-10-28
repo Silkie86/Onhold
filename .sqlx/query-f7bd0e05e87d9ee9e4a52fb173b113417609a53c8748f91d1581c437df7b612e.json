@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (SELECT 1 FROM calendar_connect_links\n                          WHERE workspace_id = app_workspace_id() AND id = $1\n                            AND revoked_at IS NULL AND expires_at > now()) AS \"works!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "works!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "f7bd0e05e87d9ee9e4a52fb173b113417609a53c8748f91d1581c437df7b612e"
+}

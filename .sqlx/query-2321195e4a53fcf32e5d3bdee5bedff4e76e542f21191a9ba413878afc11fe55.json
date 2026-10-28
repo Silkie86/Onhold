@@ -1,0 +1,196 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, talent_id, link_id, provider, account, person, secret, status, failures,\n                      last_error, last_error_at, last_synced_at, connected_at, disconnected_at, version\n               FROM talent_calendars WHERE workspace_id = app_workspace_id() AND disconnected_at IS NULL AND ($1::uuid IS NULL OR talent_id = $1)\n         ORDER BY connected_at, id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "talent_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "link_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "link_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "provider",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "account",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "account"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "person",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "person"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "secret",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "secret"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "failures",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "failures"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "last_error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "last_error"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "last_error_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "last_error_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "last_synced_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "last_synced_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "connected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "connected_at"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "disconnected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "disconnected_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "2321195e4a53fcf32e5d3bdee5bedff4e76e542f21191a9ba413878afc11fe55"
+}

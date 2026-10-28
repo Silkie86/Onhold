@@ -337,7 +337,9 @@ export class OfflineSync {
     let items: RecordJson[] = [];
     try {
       const cal = await ok(api.GET("/api/v1/calendar", { ...this.req, params: { query: { from, to } } }));
-      items = cal.availability as unknown as RecordJson[];
+      // Busy times read from talent's own calendars stay on the server: they
+      // change on every read, and offline clash checks go without them.
+      items = cal.availability.filter((a) => a.source !== "external") as unknown as RecordJson[];
     } catch (e) {
       if (!forbidden(e)) throw e;
     }

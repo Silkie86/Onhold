@@ -400,6 +400,7 @@ async fn create_availability(
 #[utoipa::path(patch, path = "/availability/{id}", tag = "calendar",
     params(WorkspaceHeader, IfMatchHeader, IdempotencyHeader, ("id" = Uuid, Path)), request_body = AvailabilityPatch,
     responses((status = 200, body = AvailabilityView), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody),
+        (status = 409, body = ErrorBody, description = "busy time from the talent's own calendar (`from_their_calendar`)"),
         (status = 412, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
 async fn update_availability(
@@ -414,7 +415,9 @@ async fn update_availability(
 }
 
 #[utoipa::path(delete, path = "/availability/{id}", tag = "calendar", params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path)),
-    responses((status = 204), (status = 404, body = ErrorBody)), security(("session" = []), ("api_key" = [])))]
+    responses((status = 204), (status = 404, body = ErrorBody),
+        (status = 409, body = ErrorBody, description = "busy time from the talent's own calendar (`from_their_calendar`)")),
+    security(("session" = []), ("api_key" = [])))]
 async fn delete_availability(
     State(state): State<AppState>,
     WsCtx(ctx): WsCtx,
