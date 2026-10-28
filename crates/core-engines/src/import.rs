@@ -53,17 +53,63 @@ fn detect_delimiter(text: &str) -> u8 {
 }
 
 /// Parses a CSV export. The separator (comma, semicolon, tab or pipe) is
-/// detected from the header row; a byte-order mark is ignored; blank rows
-/// are skipped; blank headers become `Column N` and repeated ones get a
-/// number.
+/// detected from the header row; a byte-order mark is ignored; notes some
+/// apps put above the header (a line or two with one cell, as LinkedIn
+/// does) are passed over; blank rows are skipped; blank headers become
+/// `Column N` and repeated ones get a number.
 pub fn parse_csv(text: &str) -> Result<Table, String> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-    let delimiter = detect_delimiter(text);
+    let filled = |r: &csv::StringRecord| r.iter().filter(|c| !c.trim().is_empty()).count();
+    // The header is the first row naming two or more columns, if one of the
+    // first few does and nothing above it does; else the first row.
+    let first_delimiter = detect_delimiter(text);
+    let preamble = {
+        let mut reader = csv::ReaderBuilder::new()
+            .delimiter(first_delimiter)
+            .has_headers(false)
+            .flexible(true)
+            .from_reader(text.as_bytes());
+        let mut skip = 0;
+        for (i, record) in reader.records().take(10).enumerate() {
+            match record {
+                Ok(r) if filled(&r) >= 2 => {
+                    skip = i;
+                    break;
+                }
+                // Notes are a cell of text; a first row of empty cells is a
+                // missing header, not notes.
+                Ok(r) if i == 0 && filled(&r) == 0 => break,
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        skip
+    };
+    let body = if preamble == 0 {
+        text
+    } else {
+        // Cut at the start of the header row, as the reader saw it.
+        let mut reader = csv::ReaderBuilder::new()
+            .delimiter(first_delimiter)
+            .has_headers(false)
+            .flexible(true)
+            .from_reader(text.as_bytes());
+        let mut record = csv::StringRecord::new();
+        let mut offset = 0;
+        for _ in 0..preamble {
+            if !reader.read_record(&mut record).unwrap_or(false) {
+                break;
+            }
+            offset = usize::try_from(reader.position().byte()).unwrap_or(0);
+        }
+        text.get(offset..).unwrap_or(text)
+    };
+    let delimiter = detect_delimiter(body);
     let mut reader = csv::ReaderBuilder::new()
         .delimiter(delimiter)
         .has_headers(false)
         .flexible(true)
-        .from_reader(text.as_bytes());
+        .from_reader(body.as_bytes());
     let mut records = reader.records();
     let header = match records.next() {
         Some(Ok(h)) => h,
@@ -90,10 +136,12 @@ pub fn parse_csv(text: &str) -> Result<Table, String> {
     if headers.iter().all(|h| h.starts_with("Column ")) {
         return Err("the first row should name the columns".into());
     }
+    // Spreadsheet row numbers count the notes above the header too.
+    let first = preamble + 2;
     let mut rows = Vec::new();
     let mut row_numbers = Vec::new();
     for (i, record) in records.enumerate() {
-        let record = record.map_err(|e| format!("row {} could not be read: {e}", i + 2))?;
+        let record = record.map_err(|e| format!("row {} could not be read: {e}", i + first))?;
         if record.iter().all(|c| c.trim().is_empty()) {
             continue;
         }
@@ -107,7 +155,7 @@ pub fn parse_csv(text: &str) -> Result<Table, String> {
             .collect();
         row.resize(headers.len(), String::new());
         rows.push(row);
-        row_numbers.push(i + 2);
+        row_numbers.push(i + first);
     }
     Ok(Table {
         headers,
@@ -130,29 +178,73 @@ pub struct Target {
     pub key: String,
     pub label: String,
     pub synonyms: Vec<String>,
+    /// Several columns may feed it.
+    pub many: bool,
+}
+
+/// A header with its numbering taken out, so `E-mail 2 - Value` reads as
+/// `emailvalue` and `Phone 3` as `phone`.
+pub fn unnumbered_header(s: &str) -> String {
+    normalize_header(s)
+        .chars()
+        .filter(|c| !c.is_ascii_digit())
+        .collect()
 }
 
 /// The target each header most likely feeds, matching the key, the label
-/// or a synonym once punctuation and case are ignored.
+/// or a synonym once punctuation and case are ignored, then again with
+/// numbering ignored (`Email 2`). A field only one column may feed goes to
+/// the first column that suggests it.
 pub fn suggest_mapping(headers: &[String], targets: &[Target]) -> Vec<Option<String>> {
-    headers
+    let known = |h: &str| {
+        targets
+            .iter()
+            .find(|t| normalize_header(&t.key) == h || normalize_header(&t.label) == h)
+            .or_else(|| {
+                targets
+                    .iter()
+                    .find(|t| t.synonyms.iter().any(|s| normalize_header(s) == h))
+            })
+    };
+    let suggested = headers
         .iter()
         .map(|h| {
-            let h = normalize_header(h);
-            if h.is_empty() {
+            let exact = normalize_header(h);
+            if exact.is_empty() {
                 return None;
             }
-            targets
-                .iter()
-                .find(|t| normalize_header(&t.key) == h || normalize_header(&t.label) == h)
+            known(&exact)
                 .or_else(|| {
-                    targets
-                        .iter()
-                        .find(|t| t.synonyms.iter().any(|s| normalize_header(s) == h))
+                    let bare = unnumbered_header(h);
+                    (bare != exact && !bare.is_empty())
+                        .then(|| known(&bare))
+                        .flatten()
                 })
                 .map(|t| t.key.clone())
         })
-        .collect()
+        .collect();
+    once_each(suggested, targets)
+}
+
+/// Clears all but the first column feeding a field that takes one column.
+pub fn once_each(mut columns: Vec<Option<String>>, targets: &[Target]) -> Vec<Option<String>> {
+    let mut seen: Vec<String> = Vec::new();
+    for c in &mut columns {
+        let Some(key) = c else { continue };
+        let many = targets
+            .iter()
+            .find(|t| &t.key == key)
+            .is_some_and(|t| t.many);
+        if many {
+            continue;
+        }
+        if seen.contains(key) {
+            *c = None;
+        } else {
+            seen.push(key.clone());
+        }
+    }
+    columns
 }
 
 /// How to read day/month order in dates like `07/03/2027`.
@@ -379,8 +471,18 @@ pub fn parse_bool(s: &str) -> Option<bool> {
     }
 }
 
-/// Splits a cell holding several values: `a; b`, `a, b`, `a | b` or one per line.
+/// Splits a cell holding several values: `a; b`, `a, b`, `a | b`,
+/// `a ::: b` (as Google Contacts writes them) or one per line.
 pub fn split_list(s: &str) -> Vec<String> {
+    if s.contains(":::") {
+        return s
+            .split(":::")
+            .flat_map(|p| p.split('\n'))
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(str::to_owned)
+            .collect();
+    }
     let sep: &[char] = if s.contains(';') {
         &[';', '\n']
     } else if s.contains('|') {
@@ -393,6 +495,19 @@ pub fn split_list(s: &str) -> Vec<String> {
         .filter(|p| !p.is_empty())
         .map(str::to_owned)
         .collect()
+}
+
+/// A label or group from another app as a tag: Google's own groups
+/// (`* myContacts`, `* starred`) are dropped and the `* ` before its other
+/// built-in groups is taken off.
+pub fn clean_label(s: &str) -> Option<String> {
+    let s = s.trim();
+    let s = match s.strip_prefix("* ") {
+        Some(rest) if matches!(rest.trim(), "myContacts" | "starred") => return None,
+        Some(rest) => rest.trim(),
+        None => s,
+    };
+    (!s.is_empty()).then(|| s.to_owned())
 }
 
 /// Turns a cell into a custom field's value. Blank is `None` (no value).
@@ -527,16 +642,19 @@ mod tests {
                 key: "name".into(),
                 label: "Name".into(),
                 synonyms: vec!["Full name".into()],
+                many: true,
             },
             Target {
                 key: "emails".into(),
                 label: "Email".into(),
                 synonyms: vec!["E-mail address".into()],
+                many: true,
             },
             Target {
                 key: "custom.genre".into(),
                 label: "Genre".into(),
                 synonyms: vec![],
+                many: false,
             },
         ];
         let headers: Vec<String> = ["FULL NAME", "e-mail address", "Genre", "Shoe size"]
@@ -551,6 +669,25 @@ mod tests {
                 None
             ]
         );
+        // Numbered columns find their field; a one-column field goes to the
+        // first column only.
+        let headers: Vec<String> = ["Email 2", "Genre", "genre"].map(String::from).to_vec();
+        assert_eq!(
+            suggest_mapping(&headers, &targets),
+            [Some("emails".into()), Some("custom.genre".into()), None]
+        );
+    }
+
+    #[test]
+    fn notes_above_the_header_are_passed_over() {
+        let t = parse_csv("Notes:\n\"When exporting your connection data, you may notice...\"\n\nFirst Name,Last Name,Email Address\nAda,Okafor,ada@example.com\n")
+            .expect("parses");
+        assert_eq!(t.headers, ["First Name", "Last Name", "Email Address"]);
+        assert_eq!(t.rows, [["Ada", "Okafor", "ada@example.com"]]);
+        // One-column files keep their first row as the header.
+        let t = parse_csv("Email\na@example.com\nb@example.com").expect("one column");
+        assert_eq!(t.headers, ["Email"]);
+        assert_eq!(t.rows.len(), 2);
     }
 
     #[test]
@@ -653,5 +790,9 @@ mod tests {
         assert_eq!(split_list("a, b"), ["a", "b"]);
         assert_eq!(split_list("a | b"), ["a", "b"]);
         assert_eq!(split_list("a\nb"), ["a", "b"]);
+        assert_eq!(split_list("a@x.com ::: b@y.com"), ["a@x.com", "b@y.com"]);
+        assert_eq!(clean_label("* myContacts"), None);
+        assert_eq!(clean_label("* friends").as_deref(), Some("friends"));
+        assert_eq!(clean_label(" VIP ").as_deref(), Some("VIP"));
     }
 }

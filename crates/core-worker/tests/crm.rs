@@ -461,6 +461,45 @@ async fn rules_email_contacts_and_the_email_shows_on_their_timeline(pool: PgPool
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_outlook_export_imports_with_its_corrections(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let csv = "Title,First Name,Middle Name,Last Name,Company,Job Title,Business Phone,Mobile Phone,E-mail Address,E-mail 2 Address,Categories\n\
+               Ms,Priya,,Patel,Harbour Arts,Programmer,020 7946 0000,07700 900111,priya@harbour.example,,Festivals;VIP\n\
+               Mr,Tom,,Lee,,,,,tom-at-nowhere,,\n\
+               Mx,Sam,,Oak,,,,,sam@oak.example,,\n";
+    let view = h
+        .import(
+            &owner,
+            "auto",
+            csv,
+            json!({
+                "edits": [{ "row": 3, "column": 8, "value": "tom@nowhere.example" }],
+                "skip_rows": [4],
+            }),
+        )
+        .await;
+    assert_eq!(view["status"], "done", "{view}");
+    assert_eq!(
+        (
+            view["created"].as_i64(),
+            view["skipped"].as_i64(),
+            view["failed"].as_i64()
+        ),
+        (Some(2), Some(1), Some(0)),
+        "{view}"
+    );
+    let list = h.get(&owner, "/api/v1/contacts?sort=name").await;
+    assert_eq!(names(&list["items"]), ["Priya Patel", "Tom Lee"]);
+    let priya = &list["items"][0];
+    // Outlook's Title (Ms) is not a role; both phones and the categories come across.
+    assert_eq!(priya["role"], "Programmer");
+    assert_eq!(priya["phones"].as_array().map(Vec::len), Some(2));
+    assert_eq!(priya["tags"], json!(["festivals", "vip"]));
+    assert_eq!(list["items"][1]["emails"], json!(["tom@nowhere.example"]));
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn uploads_never_run_are_cleaned_up(pool: PgPool) {
     let h = harness(pool, Settings::default()).await;
     let (_, owner) = h.app.workspace_with_owner("acme").await;

@@ -28006,6 +28006,30 @@
           }
         }
       },
+      "CellEdit": {
+        "type": "object",
+        "description": "One cell corrected before importing.",
+        "required": [
+          "row",
+          "column",
+          "value"
+        ],
+        "properties": {
+          "column": {
+            "type": "integer",
+            "description": "The column, counting from 0.",
+            "minimum": 0
+          },
+          "row": {
+            "type": "integer",
+            "description": "The spreadsheet row (the header is row 1), as problems give it.",
+            "minimum": 0
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
       "Channel": {
         "type": "string",
         "enum": [
@@ -29940,7 +29964,8 @@
           "fail",
           "new_organisations",
           "issues",
-          "sample"
+          "sample",
+          "problem_rows"
         ],
         "properties": {
           "create": {
@@ -29964,6 +29989,13 @@
               "type": "string"
             },
             "description": "Organisations a contact import would create."
+          },
+          "problem_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProblemRow"
+            },
+            "description": "The first rows with problems (up to 100), corrections applied, to\ncorrect or leave out."
           },
           "sample": {
             "type": "array",
@@ -31548,6 +31580,13 @@
             ],
             "description": "For amounts with no currency; default the workspace's."
           },
+          "edits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CellEdit"
+            },
+            "description": "Corrections made while checking: cells read as these values instead."
+          },
           "on_match": {
             "$ref": "#/components/schemas/OnMatch",
             "description": "What to do with a row that matches an existing record."
@@ -31555,6 +31594,14 @@
           "run_rules": {
             "type": "boolean",
             "description": "Let automation rules react to the imported records (default false)."
+          },
+          "skip_rows": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Spreadsheet rows to leave out."
           },
           "tags": {
             "type": "array",
@@ -31608,6 +31655,17 @@
             },
             "description": "The first rows, as text."
           },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ImportSource",
+                "description": "The app the file was recognised as an export of, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "suggested": {
             "type": "array",
             "items": {
@@ -31624,6 +31682,23 @@
               "$ref": "#/components/schemas/ImportTarget"
             },
             "description": "The fields columns can feed."
+          }
+        }
+      },
+      "ImportSource": {
+        "type": "object",
+        "description": "An app whose export was recognised.",
+        "required": [
+          "key",
+          "label"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "`google`, `outlook`, `vcard`, `hubspot`, `salesforce`, `pipedrive`,\n`mailchimp` or `linkedin`."
+          },
+          "label": {
+            "type": "string"
           }
         }
       },
@@ -34146,11 +34221,11 @@
         "properties": {
           "csv": {
             "type": "string",
-            "description": "The file's text: CSV with a header row, separated by commas,\nsemicolons or tabs. Save spreadsheets as CSV (UTF-8)."
+            "description": "The file's text: CSV with a header row, separated by commas,\nsemicolons or tabs (save spreadsheets as CSV UTF-8), or contact\ncards (vCard, `.vcf`)."
           },
           "entity": {
             "type": "string",
-            "description": "`talent`, `organisation` or `contact`."
+            "description": "`talent`, `organisation` or `contact`, or `auto` to work it out\nfrom the file."
           },
           "filename": {
             "type": [
@@ -36498,6 +36573,27 @@
           }
         },
         "additionalProperties": false
+      },
+      "ProblemRow": {
+        "type": "object",
+        "required": [
+          "row",
+          "cells"
+        ],
+        "properties": {
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its cells, in column order."
+          },
+          "row": {
+            "type": "integer",
+            "description": "The spreadsheet row (the header is row 1).",
+            "minimum": 0
+          }
+        }
       },
       "ProjectOverview": {
         "type": "object",

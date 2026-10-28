@@ -5214,6 +5214,14 @@ export interface components {
             /** Format: int64 */
             refunded_minor: number;
         };
+        /** @description One cell corrected before importing. */
+        CellEdit: {
+            /** @description The column, counting from 0. */
+            column: number;
+            /** @description The spreadsheet row (the header is row 1), as problems give it. */
+            row: number;
+            value: string;
+        };
         /** @enum {string} */
         Channel: "email" | "phone" | "sms" | "whatsapp";
         /** @description One comparison as evaluated, for the dry-run explanation. */
@@ -5814,6 +5822,11 @@ export interface components {
             issues: components["schemas"]["ImportIssue"][];
             /** @description Organisations a contact import would create. */
             new_organisations: string[];
+            /**
+             * @description The first rows with problems (up to 100), corrections applied, to
+             *     correct or leave out.
+             */
+            problem_rows: components["schemas"]["ProblemRow"][];
             /** @description The first records as they would be saved. */
             sample: Record<string, never>[];
             skip: number;
@@ -6286,10 +6299,14 @@ export interface components {
             date_order?: components["schemas"]["DateOrder"] | null;
             /** @description For amounts with no currency; default the workspace's. */
             default_currency?: string | null;
+            /** @description Corrections made while checking: cells read as these values instead. */
+            edits?: components["schemas"]["CellEdit"][];
             /** @description What to do with a row that matches an existing record. */
             on_match?: components["schemas"]["OnMatch"];
             /** @description Let automation rules react to the imported records (default false). */
             run_rules?: boolean;
+            /** @description Spreadsheet rows to leave out. */
+            skip_rows?: number[];
             /** @description Tags added to every imported record. */
             tags?: string[];
         };
@@ -6306,10 +6323,20 @@ export interface components {
             import: components["schemas"]["ImportView"];
             /** @description The first rows, as text. */
             sample: string[][];
+            source?: components["schemas"]["ImportSource"] | null;
             /** @description The field each column most likely feeds (`null` when unsure). */
             suggested: (string | null)[];
             /** @description The fields columns can feed. */
             targets: components["schemas"]["ImportTarget"][];
+        };
+        /** @description An app whose export was recognised. */
+        ImportSource: {
+            /**
+             * @description `google`, `outlook`, `vcard`, `hubspot`, `salesforce`, `pipedrive`,
+             *     `mailchimp` or `linkedin`.
+             */
+            key: string;
+            label: string;
         };
         ImportTarget: {
             key: string;
@@ -7085,10 +7112,14 @@ export interface components {
         NewImport: {
             /**
              * @description The file's text: CSV with a header row, separated by commas,
-             *     semicolons or tabs. Save spreadsheets as CSV (UTF-8).
+             *     semicolons or tabs (save spreadsheets as CSV UTF-8), or contact
+             *     cards (vCard, `.vcf`).
              */
             csv: string;
-            /** @description `talent`, `organisation` or `contact`. */
+            /**
+             * @description `talent`, `organisation` or `contact`, or `auto` to work it out
+             *     from the file.
+             */
             entity: string;
             filename?: string | null;
         };
@@ -7842,6 +7873,12 @@ export interface components {
              *     release from before it existed.
              */
             upgrade_url?: string | null;
+        };
+        ProblemRow: {
+            /** @description Its cells, in column order. */
+            cells: string[];
+            /** @description The spreadsheet row (the header is row 1). */
+            row: number;
         };
         ProjectOverview: {
             budget: components["schemas"]["BudgetLine"][];
