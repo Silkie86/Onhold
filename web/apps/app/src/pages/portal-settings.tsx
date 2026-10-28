@@ -140,6 +140,11 @@ const SWITCHES: { key: keyof Settings; label: string; hint: string }[] = [
   { key: "show_documents", label: "Show documents", hint: "Contracts, advance sheets, riders and stage plots on their dates and record." },
   { key: "edit_availability", label: "Mark their own availability", hint: "Unavailable and tentative times, and connecting their own calendar." },
   { key: "show_money", label: "Show statements", hint: "What each settled date paid them, and what was paid out." },
+  {
+    key: "hide_locked",
+    label: "Hide locked features",
+    hint: "Their page shows padlocked extras from the full OnHold app and an Unlock features button. Tick to hide both.",
+  },
 ];
 
 export function PortalSettingsPage() {

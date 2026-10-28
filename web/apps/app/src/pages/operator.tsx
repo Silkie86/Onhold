@@ -258,6 +258,7 @@ function PriceListEditor() {
               base: minor("base"),
               features: Object.fromEntries(Object.keys(FEATURE_NAMES).map((k) => [k, minor(`feature-${k}`)])),
               team: Object.fromEntries(Object.keys(TEAM_NAMES).map((k) => [k, minor(`team-${k}`)])),
+              upgrade_url: String(f.get("upgrade_url") ?? "").trim() || null,
             };
             try {
               await ok(api.PUT("/api/v1/admin/price-list", { body }));
@@ -283,6 +284,11 @@ function PriceListEditor() {
             <legend className="mb-2 text-sm font-medium">Team size</legend>
             {Object.entries(TEAM_NAMES).map(([k, label]) => money(`team-${k}`, label, p.team[k]))}
           </fieldset>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="price-upgrade-url">Upgrade page on the website</Label>
+            <Input id="price-upgrade-url" name="upgrade_url" type="url" placeholder="https://" defaultValue={p.upgrade_url ?? ""} />
+            <span className="text-xs text-muted-foreground">Where an artist&apos;s Unlock features button sends them. Plans are sold there, never in the app.</span>
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox name="placeholder" defaultChecked={!!p.placeholder} />
             Show as example prices (pricing not final)

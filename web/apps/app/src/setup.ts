@@ -102,6 +102,7 @@ export type PriceList = {
   base: number;
   features: Record<string, number>;
   team: Record<string, number>;
+  upgrade_url?: string | null;
 };
 
 /** A monthly estimate for a set of answers. */

@@ -36,6 +36,12 @@ pub struct PriceList {
     pub features: BTreeMap<String, u32>,
     /// Per team size (`just_me`, `small`, `large`).
     pub team: BTreeMap<String, u32>,
+    /// The website page where people upgrade, e.g. from the talent portal's
+    /// "Unlock features". Plans are sold there, never inside the app.
+    /// Left out when unset, so a list saved without one still reads in a
+    /// release from before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upgrade_url: Option<String>,
 }
 
 pub fn default_price_list() -> PriceList {
@@ -56,6 +62,7 @@ pub fn default_price_list() -> PriceList {
             ("custom", 1000),
         ]),
         team: map(&[("just_me", 0), ("small", 2000), ("large", 6000)]),
+        upgrade_url: None,
     }
 }
 
@@ -68,6 +75,13 @@ pub fn validate_price_list(p: &PriceList) -> ApiResult<()> {
     ws::validate_currency(&p.currency).map_err(|e| bad(e.message))?;
     if p.base > MAX_AMOUNT {
         return Err(bad("base is too large".into()));
+    }
+    if let Some(u) = &p.upgrade_url {
+        let ok = u.len() <= 500
+            && url::Url::parse(u).is_ok_and(|u| u.scheme() == "https" && u.host().is_some());
+        if !ok {
+            return Err(bad("upgrade_url must be an https address".into()));
+        }
     }
     let questions = setup::questions();
     for (group, prices) in [("features", &p.features), ("team", &p.team)] {
@@ -86,6 +100,11 @@ pub fn validate_price_list(p: &PriceList) -> ApiResult<()> {
         }
     }
     Ok(())
+}
+
+/// Where people upgrade, if OnHold's team has set it.
+pub(crate) async fn upgrade_url(conn: &mut sqlx::PgConnection) -> ApiResult<Option<String>> {
+    Ok(read_price_list(core_db::platform_settings::get(conn, PRICE_LIST).await?).upgrade_url)
 }
 
 /// The stored list, or the example one; a stored list from an older
@@ -515,6 +534,11 @@ mod tests {
         let mut bad = default_price_list();
         bad.features.insert("teleport".into(), 100);
         assert!(validate_price_list(&bad).is_err());
+        let mut link = default_price_list();
+        link.upgrade_url = Some("https://onhold.example/plans".into());
+        validate_price_list(&link).expect("https link");
+        link.upgrade_url = Some("javascript:alert(1)".into());
+        assert!(validate_price_list(&link).is_err());
         let mut bad = default_price_list();
         bad.base = MAX_AMOUNT + 1;
         assert!(validate_price_list(&bad).is_err());

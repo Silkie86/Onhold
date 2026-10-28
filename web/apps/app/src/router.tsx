@@ -244,6 +244,11 @@ const portalDocuments = createRoute({
   component: lazyRouteComponent(portalPage, "PortalDocumentsPage"),
 });
 const portalMoney = createRoute({ getParentRoute: () => app, path: "/portal/money", component: lazyRouteComponent(portalPage, "PortalMoneyPage") });
+const portalUnlock = createRoute({
+  getParentRoute: () => app,
+  path: "/portal/unlock",
+  component: lazyRouteComponent(portalPage, "PortalUnlockPage"),
+});
 const portalSettings = createRoute({
   getParentRoute: () => app,
   path: "/settings/portal",
@@ -345,6 +350,7 @@ const tree = root.addChildren([
     portalAvailability,
     portalDocuments,
     portalMoney,
+    portalUnlock,
     portalSettings,
     invoices,
     invoice,

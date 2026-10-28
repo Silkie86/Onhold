@@ -91,7 +91,26 @@ test("a talent confirms a pending date and the agent is told", async ({ page, br
   // The staff app does not open for them.
   await phone.goto("/bookings");
   await expect(phone.getByRole("heading", { name: "Your dates" })).toBeVisible();
+
+  // Paid extras show padlocked, with a preview built from their own dates.
+  await phone.getByRole("link", { name: "Unlock features" }).first().click();
+  await expect(phone.getByRole("heading", { name: "Unlock the full app" })).toBeVisible();
+  const board = phone.getByLabel("Your bookings board");
+  await expect(board.getByText("Warehouse Project")).toBeVisible();
+  await expect(phone.getByRole("list", { name: "Locked features" }).getByRole("listitem")).toHaveCount(6);
+  await expect(phone.getByText(/Nothing is sold inside this app/)).toBeVisible();
+  if (isMobile) {
+    const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  }
+  await phone.screenshot({ path: info.outputPath("unlock.png"), fullPage: true });
   await talentContext.close();
+
+  // The agency can hide them.
+  await page.goto("/settings/portal");
+  await page.getByText("Hide locked features").click();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText(/Saved/)).toBeVisible();
 
   // The agent's task.
   await page.goto("/tasks");

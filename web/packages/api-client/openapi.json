@@ -35374,6 +35374,13 @@
             },
             "description": "The talent records opened for this person here (usually one; none\nonce the agency ends their access)."
           },
+          "upgrade_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The website page where they can upgrade to the full app; none until\nOnHold's team sets one, or when the agency hides locked features."
+          },
           "workspace_name": {
             "type": "string"
           }
@@ -35775,6 +35782,13 @@
             "propertyNames": {
               "type": "string"
             }
+          },
+          "upgrade_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The website page where people upgrade, e.g. from the talent portal's\n\"Unlock features\". Plans are sold there, never inside the app.\nLeft out when unset, so a list saved without one still reads in a\nrelease from before it existed."
           }
         },
         "additionalProperties": false
