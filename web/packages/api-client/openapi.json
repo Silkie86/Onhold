@@ -34215,13 +34215,12 @@
       "NewImport": {
         "type": "object",
         "required": [
-          "entity",
-          "csv"
+          "entity"
         ],
         "properties": {
           "csv": {
             "type": "string",
-            "description": "The file's text: CSV with a header row, separated by commas,\nsemicolons or tabs (save spreadsheets as CSV UTF-8), or contact\ncards (vCard, `.vcf`)."
+            "description": "The file's text: CSV with a header row, separated by commas,\nsemicolons or tabs, or contact cards (vCard, `.vcf`). Leave it out\nwhen sending `workbook`."
           },
           "entity": {
             "type": "string",
@@ -34232,6 +34231,13 @@
               "string",
               "null"
             ]
+          },
+          "workbook": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An Excel (`.xlsx`, `.xls`) or OpenDocument (`.ods`) file, base64:\nits first sheet with anything on it is imported. Up to 7 MB."
           }
         }
       },

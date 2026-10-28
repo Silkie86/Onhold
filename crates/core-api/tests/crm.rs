@@ -1022,6 +1022,29 @@ async fn imports_recognise_other_apps_and_take_corrections(pool: PgPool) {
         upload.body["suggested"],
         json!(["name", "tags", "base_location", "default_fee", null])
     );
+
+    // An Excel workbook, sent as base64, reads like its CSV would.
+    let xlsx = include_bytes!("../../core-engines/tests/fixtures/roster.xlsx");
+    let upload = post(
+        &app,
+        &owner,
+        "/api/v1/imports",
+        json!({ "entity": "auto", "filename": "roster.xlsx",
+                "workbook": data_encoding::BASE64.encode(xlsx) }),
+    )
+    .await;
+    assert_eq!(upload.status, StatusCode::CREATED, "{}", upload.body);
+    assert_eq!(upload.body["import"]["entity"], "talent");
+    assert_eq!(upload.body["import"]["row_count"], 3);
+    assert_eq!(upload.body["sample"][0][2], "2500");
+    post(
+        &app,
+        &owner,
+        "/api/v1/imports",
+        json!({ "entity": "talent", "workbook": data_encoding::BASE64.encode(b"Name\nAda") }),
+    )
+    .await
+    .expect(StatusCode::BAD_REQUEST, "invalid_input");
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]

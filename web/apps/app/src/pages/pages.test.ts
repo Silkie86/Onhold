@@ -1,5 +1,5 @@
 import { safeRedirect } from "./auth.tsx";
-import { decodeFile, stripCardAttachments } from "./imports.tsx";
+import { decodeFile, isWorkbook, stripCardAttachments } from "./imports.tsx";
 import { validateListSearch } from "./crm.tsx";
 import { keyFrom } from "./settings.tsx";
 
@@ -47,4 +47,10 @@ test("contact cards lose their photos before upload", () => {
   const qp = "BEGIN:VCARD\nNOTE;ENCODING=QUOTED-PRINTABLE:see=\nphoto: soon\nEND:VCARD";
   expect(stripCardAttachments(qp)).toBe(qp);
   expect(stripCardAttachments("Name,Photo\nAda,x")).toBe("Name,Photo\nAda,x");
+});
+
+test("Excel files are told apart from text", () => {
+  expect(isWorkbook(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14]))).toBe(true);
+  expect(isWorkbook(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1]))).toBe(true);
+  expect(isWorkbook(new TextEncoder().encode("PK,Name\n1,Ada"))).toBe(false);
 });
