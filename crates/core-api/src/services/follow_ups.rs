@@ -144,10 +144,12 @@ const PRESETS: &[Preset] = &[
                 name: "Follow-up: invoice 14 days overdue",
                 trigger: || json!({ "kind": "date_offset", "entity": "invoice", "field": "due_date", "offset_minutes": 14 * DAY }),
                 conditions: || json!({ "all": [] }),
-                actions: || json!([
-                    { "type": "send_email", "template": "follow_up.invoice.final", "to": { "field": "invoice.sent_to" } },
-                    { "type": "create_task", "title": "Call about overdue invoice {{ invoice.reference }}", "due_in_minutes": 0 }
-                ]),
+                actions: || {
+                    json!([
+                        { "type": "send_email", "template": "follow_up.invoice.final", "to": { "field": "invoice.sent_to" } },
+                        { "type": "create_task", "title": "Call about overdue invoice {{ invoice.reference }}", "due_in_minutes": 0 }
+                    ])
+                },
             },
         ],
     },
@@ -236,7 +238,10 @@ pub async fn set(state: &AppState, ctx: &Ctx, key: &str, on: bool) -> ApiResult<
     let installed = core_db::rules::presets(&mut tx).await?;
     let mine = |s: &Step| {
         let m = marker(p, s);
-        installed.iter().find(|(i, _, _)| *i == m).map(|(_, id, _)| *id)
+        installed
+            .iter()
+            .find(|(i, _, _)| *i == m)
+            .map(|(_, id, _)| *id)
     };
     if on {
         for t in p.templates {

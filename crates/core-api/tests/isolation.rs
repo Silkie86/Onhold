@@ -28,6 +28,10 @@ const NOT_WORKSPACE_SCOPED: &[(&str, &str)] = &[
          or a workspace's logo for its emails, which shows nothing else",
     ),
     (
+        "/api/v1/hooks/messaging/",
+        "signed by Twilio or Meta; the address's token names one number, so one workspace",
+    ),
+    (
         "/api/v1/webhooks/stripe",
         "signed by Stripe; the event's connected account names the one workspace",
     ),
@@ -115,6 +119,7 @@ struct World {
 struct Inbox {
     thread: uuid::Uuid,
     mailbox: uuid::Uuid,
+    number: uuid::Uuid,
 }
 
 async fn inbox(app: &TestApp, owner: &Client, slug: &str) -> Inbox {
@@ -141,7 +146,25 @@ async fn inbox(app: &TestApp, owner: &Client, slug: &str) -> Inbox {
     .execute(&app.owner)
     .await
     .unwrap();
-    Inbox { thread, mailbox }
+    // An SMS number, as connecting would leave it.
+    let number = uuid::Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO messaging_channels (id, workspace_id, kind, provider, sender, account_id, secret, hook_token)
+         VALUES ($1, $2, 'sms', 'twilio', $3, $4, '\\x00', $5)",
+    )
+    .bind(number)
+    .bind(owner.workspace.unwrap().0)
+    .bind(if slug == "alpha" { "+447700900101" } else { "+447700900202" })
+    .bind(format!("{slug}-sms-account"))
+    .bind(format!("{slug}-hook-token-0123456789"))
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    Inbox {
+        thread,
+        mailbox,
+        number,
+    }
 }
 
 /// One of everything M5 adds, in `owner`'s workspace, named after `slug`.
@@ -671,6 +694,9 @@ async fn world(app: &TestApp) -> World {
             b_inbox.thread.to_string(),
             b_inbox.mailbox.to_string(),
             "mail@bravo.test".into(),
+            b_inbox.number.to_string(),
+            "bravo-sms-account".into(),
+            "+447700900202".into(),
         ],
         b_crm,
         b_work,
@@ -806,6 +832,16 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
             "to": ["intruder@alpha.test"], "subject": "x", "body": "x", "contact_id": w.b_crm.contact
         }),
         ("POST", "/api/v1/inbox/threads/{id}/reply") => json!({ "body": "x" }),
+        ("POST", "/api/v1/inbox/texts") => json!({
+            "channel": "sms", "contact_id": w.b_crm.contact, "body": "x"
+        }),
+        ("POST", "/api/v1/inbox/numbers/sms") => json!({
+            "account_sid": "ACx", "auth_token": "x", "number": "+447700900303"
+        }),
+        ("POST", "/api/v1/inbox/numbers/whatsapp") => json!({
+            "phone_number_id": "1", "access_token": "x", "app_secret": "x"
+        }),
+        ("PUT", "/api/v1/follow-ups/{key}") => json!({ "on": true }),
         ("POST", "/api/v1/inbox/threads/{id}/enquiry") => json!({ "title": "Intruder" }),
         ("PATCH", "/api/v1/inbox/threads/{id}") => json!({ "status": "resolved" }),
         ("PATCH", "/api/v1/inbox/mailboxes/{id}") => json!({ "shared": true }),
@@ -829,6 +865,8 @@ fn fill_path(path: &str, w: &World) -> String {
         w.b_work.crew
     } else if path.starts_with("/api/v1/projects/") {
         w.b_work.project
+    } else if path.contains("/inbox/numbers/") {
+        w.b_inbox.number
     } else if path.contains("/inbox/threads/") {
         w.b_inbox.thread
     } else if path.contains("/inbox/mailboxes/") {

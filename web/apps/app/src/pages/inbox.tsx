@@ -1,7 +1,8 @@
 // The inbox: conversations read from the team's connected mailboxes (and
-// messages written here), linked to the contacts, enquiries and bookings
-// they are about. Replies go out from the mailbox the conversation is in,
-// or through OnHold's own sender when there is none.
+// messages written here), and texts on the workspace's SMS and WhatsApp
+// numbers, linked to the contacts, enquiries and bookings they are about.
+// Replies go out from the mailbox the conversation is in, or through
+// OnHold's own sender when there is none; texts go from the number.
 
 import type { Schemas } from "@onhold/api-client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,7 +27,7 @@ import {
   cn,
   relativeTime,
 } from "@onhold/ui";
-import { AlarmClock, ArrowLeft, CheckCheck, Mail, MailOpen, Paperclip, PenSquare, RotateCcw, Send, Settings, Sparkles } from "lucide-react";
+import { AlarmClock, ArrowLeft, CheckCheck, Mail, MailOpen, MessageSquare, Paperclip, PenSquare, RotateCcw, Send, Settings, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
 import {
@@ -71,8 +72,16 @@ function NotKept({ className }: { className?: string }) {
 const STATUSES = ["open", "snoozed", "resolved"] as const;
 type Status = (typeof STATUSES)[number];
 
+const CHANNELS = ["email", "sms", "whatsapp"] as const;
+type Channel = (typeof CHANNELS)[number];
+const CHANNEL_NAMES: Record<string, string> = { email: "Email", sms: "SMS", whatsapp: "WhatsApp" };
+
+/** How long after their last message WhatsApp lets a business write freely. */
+const WHATSAPP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export interface InboxSearch {
   status?: Status;
+  channel?: Channel;
   mailbox?: string;
   unlinked?: boolean;
   unread?: boolean;
@@ -86,6 +95,7 @@ const yes = (v: unknown) => (v === true || v === "true" ? true : undefined);
 export function validateInboxSearch(s: Record<string, unknown>): InboxSearch {
   return {
     status: STATUSES.includes(s.status as Status) ? (s.status as Status) : undefined,
+    channel: CHANNELS.includes(s.channel as Channel) ? (s.channel as Channel) : undefined,
     mailbox: str(s.mailbox),
     unlinked: yes(s.unlinked),
     unread: yes(s.unread),
@@ -109,6 +119,17 @@ export function useMailSetup() {
   return useQuery({ queryKey: ["mailboxes"], queryFn: () => ok(api.GET("/api/v1/inbox/mailboxes")) });
 }
 
+/** The workspace's SMS and WhatsApp numbers. */
+export function useNumbers() {
+  return useQuery({ queryKey: ["numbers"], queryFn: async () => (await ok(api.GET("/api/v1/inbox/numbers"))).channels });
+}
+
+/** A conversation's heading: its subject, or for a text, which kind. */
+function heading(t: ThreadView): string {
+  if (t.channel !== "email") return `${CHANNEL_NAMES[t.channel] ?? "Text"} with ${who(t)}`;
+  return t.subject ?? "(no subject)";
+}
+
 function useMembers() {
   const sync = useOffline();
   return useQuery({ queryKey: ["members"], queryFn: async () => (await fetchMembers(sync)).data });
@@ -127,13 +148,16 @@ export function InboxPage() {
   const setup = useMailSetup();
   const canWrite = useCanWrite();
   const [q, setQ] = useState(search.q ?? "");
+  const numbers = useNumbers();
   const [composing, setComposing] = useState(false);
+  const [texting, setTexting] = useState(false);
   const status = search.status ?? "open";
   const threads = useQuery({
-    queryKey: ["threads", status, search.mailbox, search.unlinked, search.unread, search.q],
+    queryKey: ["threads", status, search.channel, search.mailbox, search.unlinked, search.unread, search.q],
     queryFn: () =>
       fetchThreads(sync, {
         status,
+        channel: search.channel,
         integration_id: search.mailbox,
         unlinked: search.unlinked,
         unread: search.unread,
@@ -172,6 +196,16 @@ export function InboxPage() {
         >
           <Input aria-label="Search conversations" placeholder="Search subject or people…" value={q} onChange={(e) => setQ(e.target.value)} />
         </form>
+        {(numbers.data?.length ?? 0) > 0 && (
+          <NativeSelect aria-label="Channel" className="w-auto" value={search.channel ?? ""} onChange={(e) => set({ channel: (e.target.value || undefined) as Channel | undefined })}>
+            <option value="">Email and texts</option>
+            {CHANNELS.map((c) => (
+              <option key={c} value={c}>
+                {CHANNEL_NAMES[c]}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
         {(setup.data?.mailboxes.length ?? 0) > 1 && (
           <NativeSelect aria-label="Mailbox" className="w-auto" value={search.mailbox ?? ""} onChange={(e) => set({ mailbox: e.target.value || undefined })}>
             <option value="">All mailboxes</option>
@@ -191,6 +225,11 @@ export function InboxPage() {
         {canWrite && (
           <Button size="sm" onClick={() => setComposing(true)}>
             <PenSquare /> New message
+          </Button>
+        )}
+        {canWrite && (numbers.data?.length ?? 0) > 0 && (
+          <Button size="sm" variant="outline" onClick={() => setTexting(true)}>
+            <MessageSquare /> New text
           </Button>
         )}
       </div>
@@ -241,7 +280,10 @@ export function InboxPage() {
                       <span className={cn("min-w-0 flex-1 truncate", t.unread && "font-semibold")}>{who(t)}</span>
                       <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(t.last_message_at)}</span>
                     </span>
-                    <span className={cn("truncate", t.unread && "font-medium")}>{t.subject ?? "(no subject)"}</span>
+                    <span className={cn("flex items-center gap-1.5 truncate", t.unread && "font-medium")}>
+                      {t.channel !== "email" && <Badge className="border text-xs">{CHANNEL_NAMES[t.channel]}</Badge>}
+                      <span className="truncate">{t.channel === "email" ? (t.subject ?? "(no subject)") : t.preview}</span>
+                    </span>
                     <span className="truncate text-xs text-muted-foreground">{t.preview}</span>
                     {!t.contact_id && !t.enquiry_id && !t.booking_id && (
                       <span className="text-xs text-warning">Not linked yet</span>
@@ -271,6 +313,16 @@ export function InboxPage() {
           onClose={() => setComposing(false)}
           onSent={(d) => {
             setComposing(false);
+            set({ thread: d.thread.id, status: undefined });
+          }}
+        />
+      )}
+      {texting && numbers.data && (
+        <TextDialog
+          numbers={numbers.data}
+          onClose={() => setTexting(false)}
+          onSent={(d) => {
+            setTexting(false);
             set({ thread: d.thread.id, status: undefined });
           }}
         />
@@ -404,7 +456,7 @@ export function ThreadPane({ id, onBack }: { id: string; onBack?: () => void }) 
               <ArrowLeft />
             </Button>
           )}
-          <h2 className="min-w-0 flex-1 text-lg font-semibold break-words">{thread.subject ?? "(no subject)"}</h2>
+          <h2 className="min-w-0 flex-1 text-lg font-semibold break-words">{heading(thread)}</h2>
           {thread.status === "snoozed" && thread.snoozed_until && (
             <Badge className="border">Back {new Date(thread.snoozed_until).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</Badge>
           )}
@@ -500,7 +552,12 @@ export function ThreadPane({ id, onBack }: { id: string; onBack?: () => void }) 
           </li>
         ))}
       </ol>
-      {canWrite && <ReplyBox thread={thread} mailbox={mailbox ?? null} to={replyRecipients(messages)} />}
+      {canWrite &&
+        (thread.channel === "email" ? (
+          <ReplyBox thread={thread} mailbox={mailbox ?? null} to={replyRecipients(messages)} />
+        ) : (
+          <TextReplyBox thread={thread} />
+        ))}
       {making && (
         <MakeEnquiryDialog
           thread={thread}
@@ -772,6 +829,214 @@ function ReplyBox({ thread, mailbox, to }: { thread: ThreadView; mailbox: string
       {notice && <Alert tone="success">{notice}</Alert>}
       {error && <Alert>{error}</Alert>}
     </form>
+  );
+}
+
+/** WhatsApp templates, for writing outside the 24-hour window. */
+function useWhatsappTemplates(enabled: boolean) {
+  return useQuery({
+    queryKey: ["templates", "whatsapp"],
+    queryFn: () => ok(api.GET("/api/v1/templates", { params: { query: { kind: "whatsapp" } } })),
+    enabled,
+  });
+}
+
+/** Whether WhatsApp lets the business write freely now: within a day of their last message. */
+function windowOpen(thread: ThreadView): boolean {
+  if (thread.channel !== "whatsapp") return true;
+  return !!thread.last_inbound_at && Date.now() - Date.parse(thread.last_inbound_at) < WHATSAPP_WINDOW_MS;
+}
+
+function TextReplyBox({ thread }: { thread: ThreadView }) {
+  const qc = useQueryClient();
+  const sync = useOffline();
+  const open = windowOpen(thread);
+  const templates = useWhatsappTemplates(!open);
+  const [body, setBody] = useState("");
+  const [template, setTemplate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const keys = [...new Set(templates.data?.map((t) => t.key) ?? [])];
+  const done = () => {
+    void qc.invalidateQueries({ queryKey: ["thread", thread.id] });
+    void qc.invalidateQueries({ queryKey: ["threads"] });
+  };
+  const send = async () => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      if (open) {
+        const { queued } = await sendReply(sync, thread.id, body, heading(thread), []);
+        setBody("");
+        if (queued) {
+          setNotice("Saved on this device. It sends when you are back online.");
+          void qc.invalidateQueries({ queryKey: ["outbox", sync?.ws] });
+        } else done();
+      } else {
+        await ok(api.POST("/api/v1/inbox/threads/{id}/reply", { params: { path: { id: thread.id } }, body: { template_key: template } }));
+        setTemplate("");
+        done();
+      }
+    } catch (e) {
+      setError(failure(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (open ? body.trim() : template) void send();
+      }}
+    >
+      {open ? (
+        <>
+          <Label htmlFor="reply">Reply</Label>
+          <Textarea id="reply" rows={3} maxLength={1600} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write a text…" />
+        </>
+      ) : (
+        <>
+          <Alert tone="info">
+            WhatsApp lets you write freely only within 24 hours of their last message. Until they write again, send one of your approved WhatsApp
+            templates.
+          </Alert>
+          <Label htmlFor="reply-template">Template</Label>
+          <NativeSelect id="reply-template" value={template} onChange={(e) => setTemplate(e.target.value)}>
+            <option value="">Choose a template…</option>
+            {keys.map((k) => (
+              <option key={k} value={k}>
+                {templates.data?.find((t) => t.key === k)?.name ?? k}
+              </option>
+            ))}
+          </NativeSelect>
+          {templates.data && keys.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              No WhatsApp templates yet. Add one in Settings, Text messages, named after the template Meta approved.
+            </p>
+          )}
+        </>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" disabled={busy || (open ? !body.trim() : !template)}>
+          <Send /> Send
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {open && body.length > 160 ? `${Math.ceil(body.length / 153)} texts long. ` : ""}
+          Sends from your {CHANNEL_NAMES[thread.channel]} number.
+        </span>
+      </div>
+      {notice && <Alert tone="success">{notice}</Alert>}
+      {error && <Alert>{error}</Alert>}
+    </form>
+  );
+}
+
+/** Texting someone new: a contact (their first number that takes texts) or a number. */
+function TextDialog({
+  numbers,
+  onClose,
+  onSent,
+}: {
+  numbers: Schemas["MessagingChannel"][];
+  onClose: () => void;
+  onSent: (d: ThreadDetail) => void;
+}) {
+  const qc = useQueryClient();
+  const kinds = [...new Set(numbers.map((n) => n.kind))];
+  const [channel, setChannel] = useState(kinds[0] ?? "sms");
+  const [contact, setContact] = useState<{ id: string; name: string } | null>(null);
+  const [to, setTo] = useState("");
+  const [body, setBody] = useState("");
+  const [template, setTemplate] = useState("");
+  const whatsapp = channel === "whatsapp";
+  const templates = useWhatsappTemplates(whatsapp);
+  const keys = [...new Set(templates.data?.map((t) => t.key) ?? [])];
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title="New text">
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setError(null);
+          setBusy(true);
+          try {
+            const d = await ok(
+              api.POST("/api/v1/inbox/texts", {
+                body: {
+                  channel,
+                  contact_id: contact?.id ?? null,
+                  to: contact ? null : to.trim(),
+                  body: whatsapp ? null : body,
+                  template_key: whatsapp ? template : null,
+                },
+              }),
+            );
+            void qc.invalidateQueries({ queryKey: ["threads"] });
+            onSent(d);
+          } catch (err) {
+            setError(failure(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {kinds.length > 1 && (
+          <>
+            <Label htmlFor="text-channel">Send by</Label>
+            <NativeSelect id="text-channel" value={channel} onChange={(e) => setChannel(e.target.value)}>
+              {kinds.map((k) => (
+                <option key={k} value={k}>
+                  {CHANNEL_NAMES[k]}
+                </option>
+              ))}
+            </NativeSelect>
+          </>
+        )}
+        <Label htmlFor="text-contact">Contact</Label>
+        <RecordPicker id="text-contact" entity="contact" value={contact} onChange={setContact} />
+        {!contact && (
+          <>
+            <Label htmlFor="text-to">Or a number</Label>
+            <Input id="text-to" type="tel" required value={to} onChange={(e) => setTo(e.target.value)} placeholder="+44 7700 900123" />
+          </>
+        )}
+        <p className="text-xs text-muted-foreground">Someone who replied STOP cannot be texted until they reply START.</p>
+        {whatsapp ? (
+          <>
+            <Label htmlFor="text-template">Template</Label>
+            <NativeSelect id="text-template" required value={template} onChange={(e) => setTemplate(e.target.value)}>
+              <option value="">Choose a template…</option>
+              {keys.map((k) => (
+                <option key={k} value={k}>
+                  {templates.data?.find((t) => t.key === k)?.name ?? k}
+                </option>
+              ))}
+            </NativeSelect>
+            <p className="text-xs text-muted-foreground">WhatsApp conversations a business starts must open with a template Meta approved.</p>
+          </>
+        ) : (
+          <>
+            <Label htmlFor="text-body">Message</Label>
+            <Textarea id="text-body" required rows={4} maxLength={1600} value={body} onChange={(e) => setBody(e.target.value)} />
+          </>
+        )}
+        {error && <Alert>{error}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy}>
+            <Send /> Send
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

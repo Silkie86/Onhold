@@ -9,7 +9,7 @@ M6 comes in several PRs. This page grows with each.
 3. **Talent's own calendars**: busy times read from the calendars talent connect through a link (Google, Microsoft or a private iCal link), counted by clash checks.
 3b. **Bookings in members' own calendars**: a member connects Google Calendar or Outlook and OnHold keeps the bookings in a calendar of its own there.
 4. **The workspace's books**: Xero and QuickBooks Online, sent what OnHold issues and read back for what was paid, with past invoices imported.
-5. SMS, WhatsApp and follow-up rules.
+5. **Texts and follow-ups**: the workspace's own SMS (Twilio) and WhatsApp (Meta's Cloud API) numbers in the inbox, rules that text, and ready-made follow-ups.
 
 Alongside: **email signatures** for members and the workspace.
 
@@ -150,6 +150,31 @@ Runs end to end in `crates/core-worker/tests/accounting.rs`, against stand-ins f
 - Refunds are not sent.
 - Changes made to a sent invoice in the books are not read back, only what was paid.
 - QuickBooks outside the US needs each tax code mapped to one of the company's tax codes; Intuit gives production keys only after its app assessment.
+
+## Texts: SMS and WhatsApp
+
+Runs end to end in `crates/core-worker/tests/messaging.rs`, against stand-ins for Twilio and Meta's WhatsApp Cloud API:
+
+- An owner connects the workspace's Twilio number (account SID, auth token, number) and its WhatsApp number (phone number ID, a system user's access token, the app secret) in Settings → Text messages; each is checked with the provider first. The page shows the address to give each provider for what comes in (and Meta's verify token).
+- A text sent in, correctly signed, becomes a conversation in the inbox with that number, linked to the contact who has it (numbers are matched in international form, with the workspace's country for local ones). Unsigned or wrongly signed requests are refused. Replies are written in the inbox and sent by the worker; a failed delivery shows "Not sent" with the provider's reason.
+- STOP (and the usual words like it) stops anything more going to that number until START. Twilio's own "unsubscribed" refusal is recorded the same way.
+- WhatsApp: free text only within 24 hours of their last message; outside it, only a template Meta approved (the template's subject names it, with its language; each body line fills one value).
+- Rules can text (`send_sms`, `send_whatsapp`) the contact of what they are about, or a contact field, only if that contact agreed to texts (`sms_opt_in`, `whatsapp_opt_in`); the rule's log says who was left out and why.
+
+### Built
+
+- **Settings → Text messages** (owners and admins connect; the inbox module): numbers, their provider addresses, disconnect, and the SMS and WhatsApp templates.
+- **Inbox**: SMS and WhatsApp conversations alongside email, a channel filter, a text reply box (counting texts past 160 characters), the WhatsApp 24-hour notice with a template picker, and "New text" to a contact or a number.
+- **Follow-ups** (Settings → Follow-ups): ready-made chasers switched on in one click, each ordinary rules and templates underneath, editable like any other. An enquiry still new after 2 days makes a task; a quote not opened 3 days after sending is chased by email; an unpaid invoice gets emails 1, 7 and 14 days after it was due and a task to call at 14; a confirmed booking texts its contact the day before. Switching one off deletes its rules and keeps its (perhaps reworded) templates; switching on again adds only what is missing. Rules can now count from an enquiry's dates (`created_at`, `stage_entered_at`, `starts_on`; open enquiries only) and a quote's (`sent_at`, `valid_until`; sent and undecided only).
+- **API:** `GET /inbox/numbers`, `POST /inbox/numbers/sms`, `POST /inbox/numbers/whatsapp`, `DELETE /inbox/numbers/{id}`, `POST /inbox/texts`, `GET /follow-ups`, `PUT /follow-ups/{key}`; the providers post to `/hooks/messaging/{token}`.
+- **Small.** One row per number and one per opted-out number; texts are inbox messages. Pictures and files sent in are noted, not kept. Nothing new on devices beyond the inbox's own copy.
+- **Configuration.** Nothing on the server: each workspace brings its own Twilio and Meta accounts. `MESSAGING_HOOK_BASE` overrides the public address providers post to (it must end with `/hooks/messaging/`).
+
+### Not yet
+
+- Sending a WhatsApp template from Meta's list: templates are entered by name in OnHold.
+- MMS and WhatsApp media out; in, they are noted only.
+- Meta's business verification is needed before a WhatsApp number can message more than a small daily number of people; that is done by each client in Meta Business Manager.
 
 ## Email signatures
 

@@ -588,14 +588,15 @@ async fn rules_text_only_those_who_agreed(pool: PgPool) {
     .await
     .ok();
     h.drain().await;
-    let w = h.world.lock().unwrap();
-    assert_eq!(w.sms.len(), 1, "only the contact who agreed is texted");
-    assert_eq!(w.sms[0]["To"], "+447700900333");
-    assert_eq!(
-        w.sms[0]["Body"],
-        "Hi Keen Kim, thanks for getting in touch."
-    );
-    drop(w);
+    {
+        let w = h.world.lock().unwrap();
+        assert_eq!(w.sms.len(), 1, "only the contact who agreed is texted");
+        assert_eq!(w.sms[0]["To"], "+447700900333");
+        assert_eq!(
+            w.sms[0]["Body"],
+            "Hi Keen Kim, thanks for getting in touch."
+        );
+    }
     let runs = h.get(&owner, "/api/v1/rules").await;
     let rule = runs["items"]
         .as_array()
@@ -671,7 +672,8 @@ async fn follow_ups_switch_on_and_off(pool: PgPool) {
         .send()
         .await
         .expect(StatusCode::NOT_FOUND, "not_found");
-    h.get(&owner, &format!("/api/v1/templates/{template}")).await;
+    h.get(&owner, &format!("/api/v1/templates/{template}"))
+        .await;
     let again = set("invoice_overdue", true).await.ok().body;
     assert_eq!(again["rule_ids"].as_array().unwrap().len(), 3);
     assert_ne!(again["rule_ids"][0], ids[0]);

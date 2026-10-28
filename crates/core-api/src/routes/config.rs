@@ -24,8 +24,8 @@ use crate::error::{ApiError, ApiResult, ErrorBody};
 use crate::extract::{IfMatch, WsCtx};
 use crate::services::automation::{ActionResult, DryRun};
 use crate::services::context::Variable;
-use crate::services::templates::{Preview, PreviewWith};
 use crate::services::follow_ups::{FollowUp, SetFollowUp};
+use crate::services::templates::{Preview, PreviewWith};
 use crate::services::{automation, fields, follow_ups, pipelines, rules, templates};
 
 pub fn router() -> OpenApiRouter<AppState> {

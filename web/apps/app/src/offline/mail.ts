@@ -177,6 +177,7 @@ export function replyRecipients(messages: ThreadDetail["messages"]): string[] {
 
 export interface ThreadParams {
   status?: string;
+  channel?: string;
   integration_id?: string;
   contact_id?: string;
   organisation_id?: string;
@@ -197,6 +198,7 @@ export function localThreads(threads: ThreadView[], p: ThreadParams): { items: T
     .filter(
       (t) =>
         (!p.status || t.status === p.status) &&
+        (!p.channel || t.channel === p.channel) &&
         (!p.integration_id || t.integration_id === p.integration_id) &&
         (!p.contact_id || t.contact_id === p.contact_id) &&
         (!p.organisation_id || t.organisation_id === p.organisation_id) &&

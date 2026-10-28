@@ -20,7 +20,7 @@ type Plan = Schemas["Plan"];
 const ADDS: Record<string, string> = {
   crm: "Contacts, organisations and your roster",
   calendar: "Calendar, with Google and Outlook connected",
-  messaging: "Inbox for your email",
+  messaging: "Inbox for your email and texts",
   finance: "Quotes, invoices, card payments and reports",
   documents: "Contracts, e-signatures and documents",
   events: "Events, tours and line-ups",
