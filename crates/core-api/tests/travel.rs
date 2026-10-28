@@ -171,9 +171,9 @@ async fn the_money_check_weighs_costs_against_the_fee(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let (ws, owner) = app.workspace_with_owner("acme").await;
     let booking = gig(&app, &owner).await;
-    // A euro buys 85p on the day.
+    // A euro buys 85p; a date still to come uses the latest rate.
     sqlx::query(
-        "INSERT INTO fx_rates (rate_date, currency, per_eur) VALUES ('2031-06-13', 'GBP', 0.85)",
+        "INSERT INTO fx_rates (rate_date, currency, per_eur) VALUES (current_date, 'GBP', 0.85)",
     )
     .execute(&app.owner)
     .await
