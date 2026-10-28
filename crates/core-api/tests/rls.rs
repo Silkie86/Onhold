@@ -61,8 +61,15 @@ async fn the_app_role_cannot_bypass_policies(pool: PgPool) {
     // Link rows (which talent an enquiry or booking is for) are replaced
     // when the list changes; the parent's audit entry keeps the history.
     // Busy times copied from a talent's own calendar are replaced as the
-    // calendar changes; the calendar's row keeps the history.
-    let links = ["enquiry_talent", "booking_talent", "calendar_busy"];
+    // calendar changes; the calendar's row keeps the history. Which event
+    // stands for which booking in a member's own calendar goes with the
+    // event; the connection's row keeps the history.
+    let links = [
+        "enquiry_talent",
+        "booking_talent",
+        "calendar_busy",
+        "calendar_push_events",
+    ];
     let deletable: Vec<&String> = deletable
         .iter()
         .filter(|t| !links.contains(&t.as_str()))
@@ -280,6 +287,7 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "threads",
         "sender_domains",
         "talent_calendars",
+        "calendar_pushes",
     ];
     for table in tables(&app.owner).await {
         let read =
@@ -319,6 +327,11 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "SELECT account FROM talent_calendars",
         "UPDATE talent_calendars SET next_poll_at = now()",
         "SELECT starts_at FROM calendar_busy",
+        "SELECT secret FROM calendar_pushes",
+        "SELECT account FROM calendar_pushes",
+        "SELECT remote_calendar FROM calendar_pushes",
+        "UPDATE calendar_pushes SET next_sync_at = now()",
+        "SELECT remote_id FROM calendar_push_events",
         "SELECT total_minor FROM invoices",
         "UPDATE invoices SET status = 'paid'",
     ] {

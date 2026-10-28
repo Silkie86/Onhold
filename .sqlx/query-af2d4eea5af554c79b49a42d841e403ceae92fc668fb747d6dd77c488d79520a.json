@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id FROM calendar_pushes\n           WHERE workspace_id = app_workspace_id() AND disconnected_at IS NULL\n             AND status <> 'reconnect'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "calendar_pushes",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "af2d4eea5af554c79b49a42d841e403ceae92fc668fb747d6dd77c488d79520a"
+}

@@ -9,9 +9,11 @@
 //! and workspaces' own sender domains ([`domains`]: Resend), set up in their
 //! DNS through Domain Connect ([`dns`]).
 //! When people are busy comes from their own calendars ([`calendars`]:
-//! Google, Microsoft or an iCal link). Accounting and messaging providers
+//! Google, Microsoft or an iCal link), and bookings go into members' own
+//! calendars ([`calendar_events`]). Accounting and messaging providers
 //! follow.
 
+pub mod calendar_events;
 pub mod calendars;
 pub mod dns;
 pub mod domains;

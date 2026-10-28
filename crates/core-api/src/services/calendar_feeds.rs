@@ -239,7 +239,7 @@ pub struct Event {
 }
 
 impl Event {
-    fn from_booking(b: &BookingView, host: &str, url: String) -> Self {
+    pub(crate) fn from_booking(b: &BookingView, host: &str, url: String) -> Self {
         let (status, prefix) = match b.status {
             BookingStatus::Hold => ("TENTATIVE", "HOLD: "),
             BookingStatus::Pending => ("TENTATIVE", "PENDING: "),

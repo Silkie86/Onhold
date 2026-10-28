@@ -16,6 +16,7 @@ pub mod auth;
 pub mod availability;
 pub mod bookings;
 pub mod calendar_feeds;
+pub mod calendar_push;
 pub mod contacts;
 pub mod counters;
 pub mod crm;

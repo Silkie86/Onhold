@@ -3161,6 +3161,357 @@
         ]
       }
     },
+    "/api/v1/calendar/pushes": {
+      "get": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Your Google or Microsoft calendars that bookings are written into.",
+        "operationId": "list_pushes",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarPushes"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/calendar/pushes/finish": {
+      "post": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Finish connecting with what the provider sent back.",
+        "operationId": "finish_push",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinishCalendarPush"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarPushView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/calendar/pushes/start": {
+      "post": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Start connecting your Google or Microsoft calendar: OnHold makes a\ncalendar of its own there and keeps the bookings in it.",
+        "operationId": "start_push",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartCalendarPush"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarPushStart"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/calendar/pushes/{id}": {
+      "delete": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Stop writing bookings, and remove OnHold's calendar from the account.",
+        "operationId": "disconnect_push",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/calendar/pushes/{id}/sync": {
+      "post": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Write the bookings into the calendar now.",
+        "operationId": "sync_push",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarPushView"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/contacts": {
       "get": {
         "tags": [
@@ -21703,6 +22054,114 @@
           }
         }
       },
+      "CalendarPushStart": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Send the member here; the provider sends them back to\n`/settings/calendar` with `code` and `state`, which the page passes\nto the finish call."
+          }
+        }
+      },
+      "CalendarPushView": {
+        "type": "object",
+        "description": "A member's calendar that bookings go into. Never carries the grant.",
+        "required": [
+          "id",
+          "user_id",
+          "provider",
+          "account",
+          "status",
+          "connected_at"
+        ],
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "provider": {
+            "type": "string",
+            "description": "`google` or `microsoft`."
+          },
+          "status": {
+            "type": "string",
+            "description": "`active`, `failing` (being retried) or `reconnect`."
+          },
+          "talent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Only this talent's bookings, or every booking when absent."
+          },
+          "talent_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "CalendarPushes": {
+        "type": "object",
+        "required": [
+          "calendars",
+          "google",
+          "microsoft"
+        ],
+        "properties": {
+          "calendars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarPushView"
+            },
+            "description": "Your connected calendars."
+          },
+          "google": {
+            "type": "boolean",
+            "description": "Google calendars can be connected on this server."
+          },
+          "microsoft": {
+            "type": "boolean",
+            "description": "Microsoft calendars can be connected on this server."
+          }
+        }
+      },
       "CalendarView": {
         "type": "object",
         "required": [
@@ -24542,6 +25001,23 @@
         }
       },
       "FinishCalendarConnect": {
+        "type": "object",
+        "required": [
+          "code",
+          "state"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "From the provider's redirect."
+          },
+          "state": {
+            "type": "string",
+            "description": "From the provider's redirect, as the start call made it."
+          }
+        }
+      },
+      "FinishCalendarPush": {
         "type": "object",
         "required": [
           "code",
@@ -30446,6 +30922,26 @@
           "provider": {
             "type": "string",
             "description": "`google` or `microsoft`."
+          }
+        }
+      },
+      "StartCalendarPush": {
+        "type": "object",
+        "required": [
+          "provider"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "`google` or `microsoft`."
+          },
+          "talent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Only this talent's bookings; every booking when absent."
           }
         }
       },

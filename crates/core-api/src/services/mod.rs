@@ -9,6 +9,7 @@ pub mod automation;
 pub mod availability;
 pub mod bookings;
 pub mod calendar_feeds;
+pub mod calendar_push;
 pub mod contacts;
 pub mod context;
 pub mod crm;

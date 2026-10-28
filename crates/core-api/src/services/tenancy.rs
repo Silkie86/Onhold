@@ -515,6 +515,7 @@ pub async fn close_workspace(state: &AppState, ctx: &Ctx, confirm_slug: &str) ->
     super::integrations::disconnect_all(&mut tx, ctx).await?;
     super::sender_domains::remove_all(&mut tx, ctx).await?;
     super::talent_calendars::disconnect_all(&mut tx, ctx, None, "workspace_closed").await?;
+    super::calendar_push::disconnect_all(&mut tx, ctx, None, "workspace_closed").await?;
     record(
         &mut tx,
         ctx,
@@ -670,6 +671,7 @@ pub async fn remove_member(state: &AppState, ctx: &Ctx, user: UserId) -> ApiResu
     core_db::members::soft_delete(&mut tx, user, ctx.user_id()).await?;
     // Their mailboxes stop being read; the threads stay with the workspace.
     super::integrations::disconnect_owned(&mut tx, ctx, user).await?;
+    super::calendar_push::disconnect_all(&mut tx, ctx, Some(user), "member_removed").await?;
     record(
         &mut tx,
         ctx,

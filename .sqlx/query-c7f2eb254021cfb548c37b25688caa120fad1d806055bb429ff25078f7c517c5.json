@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT booking_id, remote_id, content_hash FROM calendar_push_events\n           WHERE workspace_id = app_workspace_id() AND push_id = $1\n             AND ($2::uuid IS NULL OR booking_id = $2)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "booking_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "calendar_push_events",
+            "name": "booking_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "remote_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "calendar_push_events",
+            "name": "remote_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "content_hash",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "calendar_push_events",
+            "name": "content_hash"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c7f2eb254021cfb548c37b25688caa120fad1d806055bb429ff25078f7c517c5"
+}
