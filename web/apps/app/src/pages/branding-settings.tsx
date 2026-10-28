@@ -2,7 +2,7 @@
 // app, on documents, and on the quotes, invoices and signing pages buyers open.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Input, Label, Spinner, brandColours, hexColour, readBranding } from "@onhold/ui";
+import { Alert, Button, Input, Label, Spinner, brandColours, darkBrandColour, hexColour, readBranding } from "@onhold/ui";
 import { ImageUp, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { api, ok } from "../api.ts";
@@ -69,7 +69,11 @@ export function BrandingSettingsPage() {
   // "" is no colour of their own: OnHold's blue, in its light and dark shades.
   const shownColour = colour ?? saved.colour ?? "";
   const validColour = shownColour === "" ? "" : hexColour(shownColour);
-  const preview = brandColours(validColour || DEFAULT_COLOUR);
+  // In dark mode the app uses a lighter shade of the colour; so does the preview.
+  const root = document.documentElement.classList;
+  const dark = root.contains("dark") || (!root.contains("light") && window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+  const previewColour = validColour || DEFAULT_COLOUR;
+  const preview = brandColours((dark && darkBrandColour(previewColour)) || previewColour);
   const changed = name !== null || logo !== undefined || colour !== null;
 
   const save = async () => {
@@ -124,7 +128,7 @@ export function BrandingSettingsPage() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex h-16 min-w-32 items-center justify-center rounded-md border bg-background px-3">
               {shownLogo ? (
-                <img src={shownLogo} alt="Your logo" className="h-12 w-auto max-w-56 object-contain" />
+                <img src={shownLogo} alt="Your logo" className="h-12 w-auto max-w-56 object-contain brand-logo" />
               ) : (
                 <span className="text-sm text-muted-foreground">No logo</span>
               )}
@@ -201,7 +205,7 @@ export function BrandingSettingsPage() {
         <h2 className="text-sm font-semibold">Preview</h2>
         <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
           <div className="flex items-center gap-3">
-            {shownLogo && <img src={shownLogo} alt="" className="h-10 w-auto max-w-40 object-contain" />}
+            {shownLogo && <img src={shownLogo} alt="" className="h-10 w-auto max-w-40 object-contain brand-logo" />}
             <span className="font-semibold">{shownName || "Your business"}</span>
           </div>
           <div className="flex flex-wrap items-center gap-3">

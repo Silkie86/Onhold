@@ -455,7 +455,7 @@ function WorkspaceSwitcher({ session, logo }: { session: Session; logo: string |
   const { me, workspace, switchWorkspace } = session;
   const label = (
     <span className="flex min-w-0 items-center gap-2">
-      {logo && <img src={logo} alt="" className="h-8 w-auto max-w-24 shrink-0 object-contain" />}
+      {logo && <img src={logo} alt="" className="h-8 w-auto max-w-24 shrink-0 object-contain brand-logo" />}
       <span className="flex min-w-0 flex-col text-left">
         <span className="truncate text-sm font-semibold">{workspace.name}</span>
         <span className="truncate text-xs text-muted-foreground capitalize">{workspace.role}</span>
@@ -505,7 +505,7 @@ function SyncIndicator() {
       to="/sync"
       className={cn(
         "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs [&_svg]:size-3.5",
-        warn ? "border-amber-500/50 text-amber-700 dark:text-amber-400" : "text-muted-foreground",
+        warn ? "border-warning/50 text-warning" : "text-muted-foreground",
       )}
     >
       {status.online ? <RefreshCw className={cn(status.syncing && "animate-spin")} /> : <CloudOff />}
@@ -520,7 +520,7 @@ function VisitBanner({ name, expiresAt }: { name: string; expiresAt: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <div role="status" className="flex flex-wrap items-center gap-2 bg-warning px-3 py-1.5 text-sm text-black sm:px-4">
+    <div role="status" className="flex flex-wrap items-center gap-2 bg-warning px-3 py-1.5 text-sm text-warning-foreground sm:px-4">
       <ShieldCheck className="size-4 shrink-0" />
       <span className="min-w-0 flex-1">
         You are visiting <strong>{name}</strong> as OnHold&apos;s team, until{" "}
@@ -529,7 +529,7 @@ function VisitBanner({ name, expiresAt }: { name: string; expiresAt: string }) {
       <Button
         size="sm"
         variant="outline"
-        className="bg-white/70 text-black"
+        className="bg-background/80 text-foreground"
         disabled={busy}
         onClick={async () => {
           setBusy(true);

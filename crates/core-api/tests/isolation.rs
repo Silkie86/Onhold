@@ -24,7 +24,8 @@ const NOT_WORKSPACE_SCOPED: &[(&str, &str)] = &[
     ("/api/v1/admin/", "superadmins only"),
     (
         "/api/v1/public/",
-        "secret-link holders only; the token names one quote, feed, invoice or signature",
+        "secret-link holders only; the token names one quote, feed, invoice or signature; \
+         or a workspace's logo for its emails, which shows nothing else",
     ),
     (
         "/api/v1/webhooks/stripe",

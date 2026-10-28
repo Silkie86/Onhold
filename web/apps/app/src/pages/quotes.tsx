@@ -44,9 +44,9 @@ const QUOTE_LABEL: Record<QuoteStatus, string> = {
 };
 
 const QUOTE_STYLE: Partial<Record<QuoteStatus, string>> = {
-  sent: "border-sky-500 text-sky-800 dark:text-sky-300",
-  viewed: "border-sky-500 bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200",
-  accepted: "border-emerald-700 bg-emerald-700 text-white",
+  sent: "border-info text-info",
+  viewed: "border-info bg-info/10 text-info",
+  accepted: "border-success bg-success text-success-foreground",
   declined: "border-destructive text-destructive",
 };
 
@@ -495,7 +495,7 @@ export function PublicQuotePage() {
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 p-4 sm:p-8">
       <header className="flex items-center gap-3">
-        {logo && <img src={logo} alt="" className="h-10 w-auto max-w-40 rounded object-contain" />}
+        {logo && <img src={logo} alt="" className="h-10 w-auto max-w-40 rounded object-contain brand-logo" />}
         <div>
           <p className="text-sm text-muted-foreground">{q.workspace_name}</p>
           <h1 className="text-2xl font-semibold">Quote {q.reference}</h1>

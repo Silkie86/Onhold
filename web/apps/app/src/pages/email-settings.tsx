@@ -35,8 +35,8 @@ export const PRESETS: { name: string; imap: string; imapPort: number; smtp: stri
 const PROVIDER_NAMES: Record<string, string> = { google: "Gmail", microsoft: "Outlook", imap: "IMAP" };
 
 function StatusBadge({ m }: { m: Mailbox }) {
-  if (m.status === "active") return <Badge className="border-emerald-700 bg-emerald-700 text-white">Working</Badge>;
-  if (m.status === "failing") return <Badge className="border border-amber-500 text-amber-800 dark:text-amber-300">Having trouble</Badge>;
+  if (m.status === "active") return <Badge className="border-success bg-success text-success-foreground">Working</Badge>;
+  if (m.status === "failing") return <Badge className="border border-warning text-warning">Having trouble</Badge>;
   return <Badge className="border-destructive bg-destructive text-destructive-foreground">Needs connecting again</Badge>;
 }
 

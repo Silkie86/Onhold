@@ -96,6 +96,12 @@ export const THEME_TOKENS = [
   "accent-foreground",
   "destructive",
   "destructive-foreground",
+  "success",
+  "success-foreground",
+  "warning",
+  "warning-foreground",
+  "info",
+  "info-foreground",
 ] as const;
 export type ThemeToken = (typeof THEME_TOKENS)[number];
 
@@ -176,7 +182,7 @@ export function applyBrandTheme(look: { colour: string | null; theme?: BrandThem
  */
 function withTextOn(colours: Partial<Record<ThemeToken, string>> | undefined): Record<string, string> {
   const out: Record<string, string> = { ...colours };
-  for (const bg of ["primary", "destructive"] as const) {
+  for (const bg of ["primary", "destructive", "success", "warning", "info"] as const) {
     const fg = `${bg}-foreground` as const;
     const c = colours?.[bg];
     if (c && !colours?.[fg]) out[fg] = brandColours(c)["primary-foreground"] ?? "#ffffff";

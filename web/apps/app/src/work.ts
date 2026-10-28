@@ -24,9 +24,9 @@ export const STATUS_LABEL: Record<BookingStatus, string> = {
 
 /** How each status looks on a chip or card. Holds are dashed: pencilled in, not inked. */
 export const STATUS_STYLE: Record<BookingStatus, string> = {
-  hold: "border-dashed border-amber-500 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
-  pending: "border-sky-500 bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200",
-  confirmed: "border-emerald-700 bg-emerald-700 text-white",
+  hold: "border-dashed border-warning bg-warning/10 text-warning",
+  pending: "border-info bg-info/10 text-info",
+  confirmed: "border-success bg-success text-success-foreground",
   cancelled: "border-muted bg-muted text-muted-foreground line-through",
   completed: "border-muted bg-muted text-foreground",
   expired: "border-dashed border-muted text-muted-foreground line-through",

@@ -32,6 +32,8 @@ async fn an_invitation_creates_the_account_and_membership(pool: PgPool) {
         .ok();
     assert_eq!(preview.body["workspace_name"], "acme agency");
     assert_eq!(preview.body["role"], "agent");
+    // The page wears the workspace's look, and nothing else of its settings.
+    assert!(preview.body["branding"].is_object());
 
     let agent = app.accept_new(&token, "Agent Smith").await.in_workspace(ws);
     let me = app
@@ -577,6 +579,28 @@ async fn branding_takes_a_colour_and_a_logo(pool: PgPool) {
     let text = audit.body.to_string();
     assert!(text.contains("(image)"), "{text}");
     assert!(!text.contains("iVBORw0KGgo"), "{text}");
+
+    // Emails fetch it from a public address, as an image.
+    let ws = res.body["id"].as_str().unwrap().to_owned();
+    let img = app
+        .get(&format!("/api/v1/public/workspaces/{ws}/logo"))
+        .send()
+        .await
+        .ok();
+    assert_eq!(img.headers["content-type"], "image/png");
+    assert_eq!(img.headers["x-content-type-options"], "nosniff");
+    // Never an SVG, which could run script at OnHold's address.
+    app.patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "logo": "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" } }))
+        .send()
+        .await
+        .ok();
+    let svg = app
+        .get(&format!("/api/v1/public/workspaces/{ws}/logo"))
+        .send()
+        .await;
+    assert_eq!(svg.status, StatusCode::NOT_FOUND);
 
     // Cleared again with nulls.
     let res = app

@@ -6,7 +6,7 @@ use core_db::Tx;
 use core_domain::authz::RequestMeta;
 use core_domain::crypto::{hash_token, new_token};
 use core_domain::{Actor, Ctx, Role, UserId, WorkspaceId};
-use serde_json::json;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::AppState;
@@ -449,6 +449,8 @@ pub struct InvitationPreview {
     pub workspace_name: String,
     pub email: String,
     pub role: Role,
+    /// The workspace's look (logo, colour, theme), so the page is theirs.
+    pub branding: Value,
 }
 
 pub async fn preview_invitation(state: &AppState, token: &str) -> ApiResult<InvitationPreview> {
@@ -456,11 +458,21 @@ pub async fn preview_invitation(state: &AppState, token: &str) -> ApiResult<Invi
     let inv = core_db::auth::find_invitation(&mut tx, &hash_token(token))
         .await?
         .ok_or_else(invitation_invalid)?;
+    core_db::set_context(&mut tx, Some(inv.workspace_id), None).await?;
+    let b = core_db::workspaces::get(&mut tx, inv.workspace_id)
+        .await?
+        .map(|w| w.branding)
+        .unwrap_or_default();
     tx.commit().await?;
+    let branding = ["logo", "primary_color", "theme"]
+        .into_iter()
+        .filter_map(|k| Some((k.to_owned(), b.get(k)?.clone())))
+        .collect::<serde_json::Map<_, _>>();
     Ok(InvitationPreview {
         workspace_name: inv.workspace_name,
         email: inv.email,
         role: inv.role,
+        branding: Value::Object(branding),
     })
 }
 
