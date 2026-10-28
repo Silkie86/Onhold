@@ -79,6 +79,7 @@ test("OnHold's team sets a client's full theme", async ({ page, isMobile }, info
 
   await page.getByRole("button", { name: "Save theme" }).click();
   await expect(page.getByText(/^Saved\./)).toBeVisible();
+  await expect.poll(() => token("background")).toBe("#fff8ee");
 
   // Saved for everyone, after a reload too; and the client's Branding page still saves.
   await page.reload();

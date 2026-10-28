@@ -162,7 +162,11 @@ export function applyBrandTheme(look: { colour: string | null; theme?: BrandThem
       .join(" ");
   const style = doc.createElement("style");
   style.id = STYLE_ID;
-  style.textContent = `:root { ${tokens({ ...light, ...shared })} } @media (prefers-color-scheme: dark) { :root:not(.light) { ${tokens(dark)} } } :root.dark { ${tokens(dark)} }`;
+  // Light colours only where the page is light, so a token set for light
+  // alone never shows in dark mode; dark ones as styles.css switches.
+  style.textContent =
+    `:root { ${tokens(shared)} } :root.light { ${tokens(light)} } @media (prefers-color-scheme: light) { :root:not(.dark) { ${tokens(light)} } } ` +
+    `@media (prefers-color-scheme: dark) { :root:not(.light) { ${tokens(dark)} } } :root.dark { ${tokens(dark)} }`;
   doc.head.appendChild(style);
 }
 

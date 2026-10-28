@@ -72,5 +72,12 @@ test("a full theme goes on top of the brand colour, per mode, with its font and 
   expect(css).toContain("Charter");
   expect(readTheme({ font: "Comic Sans", radius: 99 })).toEqual({ light: {}, dark: {} });
   expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 0);
+  // A colour set for light alone stays out of dark mode, whichever way it is chosen.
+  applyBrandTheme({ colour: null, theme: { light: { card: "#fff8ee" }, dark: {} } });
+  const light = document.getElementById("onhold-brand")?.textContent ?? "";
+  expect(light).toContain(":root.light { --card: #fff8ee; }");
+  expect(light).toContain(":root:not(.dark) { --card: #fff8ee; }");
+  expect(light).not.toMatch(/^:root \{[^}]*--card/);
+  expect(light).toContain(":root.dark {  }");
   applyBrandTheme({ colour: null });
 });

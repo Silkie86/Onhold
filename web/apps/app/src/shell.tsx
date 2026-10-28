@@ -56,8 +56,8 @@ import {
   X,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { ENTITIES, api, entityByPath, setWorkspace } from "./api.ts";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { ENTITIES, api, entityByPath, ok, setWorkspace } from "./api.ts";
 import { OfflineContext, searchEverything, useSyncStatus } from "./data.ts";
 import { claimFor, forgetMailExcept } from "./offline/store.ts";
 import { OfflineSync } from "./offline/sync.ts";
@@ -175,7 +175,7 @@ function useOfflineSync(workspaceId: string | undefined, userId: string): Offlin
 
 const THEME_KEY = "onhold.theme";
 
-function storedTheme(): Theme {
+export function storedTheme(): Theme {
   try {
     const t = localStorage.getItem(THEME_KEY);
     return t === "light" || t === "dark" ? t : "system";
@@ -229,18 +229,37 @@ export function AppShell() {
 }
 
 function SignedIn({ me }: { me: Session["me"] }) {
-  const { workspace, switchWorkspace, signOut } = useSessionActions(me);
+  const sessionActions = useSessionActions(me);
+  const { workspace, signOut } = sessionActions;
   const current = workspace ?? me.workspaces[0];
   // The plan switch is for the apps; the installed website is the website.
   // A visit by OnHold's team keeps nothing of the client's workspace on the device.
   const visiting = me.impersonation ?? null;
+  // Leaving a visit, by the switcher or when the server ends it at its
+  // time, reloads: nothing of the client's workspace stays in memory.
+  const switchWorkspace = (id: string) => {
+    if (!visiting) return sessionActions.switchWorkspace(id);
+    void ok(api.DELETE("/api/v1/admin/impersonation")).then(() => {
+      setWorkspace(id);
+      window.location.assign("/");
+    }, () => undefined);
+  };
+  const wasVisiting = useRef(false);
+  useEffect(() => {
+    if (visiting) {
+      wasVisiting.current = true;
+      const timer = setTimeout(endVisit, Math.max(0, new Date(visiting.expires_at).getTime() - Date.now()));
+      return () => clearTimeout(timer);
+    }
+    if (wasVisiting.current) endVisit();
+  }, [visiting]);
   const sync = useOfflineSync(current && !visiting && (!IS_APP || current.apps_allowed) ? current.id : undefined, me.user.id);
   // Email kept for a workspace the person has left, or whose plan dropped the apps, goes.
   const keptFor = me.workspaces.filter((w) => !IS_APP || w.apps_allowed).map((w) => w.id).join(",");
   useEffect(() => {
     if (KEEPS_OFFLINE_COPY) void forgetMailExcept(keptFor.split(",")).catch(() => undefined);
   }, [keptFor]);
-  const logo = useWorkspaceBranding(current?.id ?? "", sync);
+  const logo = useWorkspaceBranding(current?.id ?? "", sync, !visiting);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(storedTheme);
@@ -499,6 +518,7 @@ function SyncIndicator() {
 /** Shown on every page while OnHold's team is inside a client's workspace. */
 function VisitBanner({ name, expiresAt }: { name: string; expiresAt: string }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <div role="status" className="flex flex-wrap items-center gap-2 bg-warning px-3 py-1.5 text-sm text-black sm:px-4">
       <ShieldCheck className="size-4 shrink-0" />
@@ -513,13 +533,27 @@ function VisitBanner({ name, expiresAt }: { name: string; expiresAt: string }) {
         disabled={busy}
         onClick={async () => {
           setBusy(true);
-          await api.DELETE("/api/v1/admin/impersonation").catch(() => undefined);
-          setWorkspace(undefined);
-          window.location.assign("/operator");
+          setError(null);
+          try {
+            await ok(api.DELETE("/api/v1/admin/impersonation"));
+          } catch (err) {
+            // Still visiting: say so rather than leave as if it had ended.
+            setError(`The visit has not ended: ${err instanceof Error ? err.message : String(err)}`);
+            setBusy(false);
+            return;
+          }
+          endVisit();
         }}
       >
         End visit
       </Button>
+      {error && <span className="basis-full font-medium">{error}</span>}
     </div>
   );
+}
+
+/** Leaves a visit with nothing of the client's workspace left in memory. */
+function endVisit() {
+  setWorkspace(undefined);
+  window.location.assign("/operator");
 }

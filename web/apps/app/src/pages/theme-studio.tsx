@@ -27,10 +27,11 @@ import {
   readTheme,
 } from "@onhold/ui";
 import { Moon, RotateCcw, Sun, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, ok } from "../api.ts";
 import { fetchWorkspace, useOffline } from "../data.ts";
 import { useSession } from "../session.tsx";
+import { storedTheme } from "../shell.tsx";
 
 type Mode = "light" | "dark";
 
@@ -113,6 +114,11 @@ function cleanTheme(t: BrandTheme): BrandTheme | null {
 }
 
 export function ThemeStudioPage() {
+  // A fresh studio for each workspace, so one's draft never saves onto another.
+  return <ThemeStudio key={useSession().workspace.id} />;
+}
+
+function ThemeStudio() {
   const { me, workspace } = useSession();
   const sync = useOffline();
   const qc = useQueryClient();
@@ -134,13 +140,24 @@ export function ThemeStudioPage() {
     if (!saved) return;
     applyBrandTheme(JSON.parse(look));
   }, [look, saved]);
-  useEffect(() => () => applyBrandTheme(JSON.parse(savedLook)), [savedLook]);
-  useLayoutEffect(() => {
+  const savedRef = useRef(savedLook);
+  savedRef.current = savedLook;
+  useEffect(() => () => applyBrandTheme(JSON.parse(savedRef.current)), []);
+  useLayoutEffect(() => applyTheme(mode), [mode]);
+  useEffect(() => {
+    // Following the header's light or dark switch while here, and leaving
+    // with the person's own choice as it then stands.
     const root = document.documentElement;
-    const before = root.classList.contains("dark") ? "dark" : root.classList.contains("light") ? "light" : "system";
-    applyTheme(mode);
-    return () => applyTheme(before);
-  }, [mode]);
+    const watch = new MutationObserver(() => {
+      if (root.classList.contains("dark")) setMode("dark");
+      else if (root.classList.contains("light")) setMode("light");
+    });
+    watch.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => {
+      watch.disconnect();
+      applyTheme(storedTheme());
+    };
+  }, []);
   useLayoutEffect(() => setShown(readTokens()), [look, mode]);
 
   if (!me.user.is_superadmin) {
@@ -151,8 +168,8 @@ export function ThemeStudioPage() {
       </div>
     );
   }
-  if (ws.isPending || !saved) return <Spinner />;
   if (ws.isError) return <Alert>{ws.error.message}</Alert>;
+  if (ws.isPending || !saved) return <Spinner />;
 
   const tokens = theme[mode] ?? {};
   const setToken = (t: ThemeToken, value: string | null) =>
@@ -164,7 +181,8 @@ export function ThemeStudioPage() {
       return { ...base, [mode]: next };
     });
   const changed = JSON.stringify(cleanTheme(theme)) !== JSON.stringify(saved.theme ? cleanTheme(saved.theme) : null);
-  const invalid = Object.values(tokens).some((v) => !hexColour(v));
+  const badIn = (m: Mode) => Object.values(theme[m] ?? {}).some((v) => !hexColour(v));
+  const invalid = badIn("light") || badIn("dark");
 
   const save = async () => {
     setBusy(true);
@@ -283,7 +301,11 @@ export function ThemeStudioPage() {
                 );
               })}
             </div>
-            {invalid && <p className="text-sm text-destructive">Use hex colours such as #2747c7.</p>}
+            {invalid && (
+              <p className="text-sm text-destructive">
+                Use hex colours such as #2747c7 ({[badIn("light") && "light", badIn("dark") && "dark"].filter(Boolean).join(" and ")} mode).
+              </p>
+            )}
           </section>
         </div>
 
