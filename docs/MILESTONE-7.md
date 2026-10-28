@@ -26,6 +26,7 @@ Runs end to end in `web/apps/app/e2e/portal.spec.ts` on desktop and phone: an ag
   - **Documents**: on their dates from three months back, and on their own record (rider, press kit, insurance, passport, visa).
   - **Money**: final settlements, with fee, commission, expenses, net, what was paid out and the statement PDF.
 - **API**: `/api/v1/portal…` for talent (`portal:use`), `/api/v1/workspace/portal` and `/api/v1/talent/{id}/portal` for staff.
+- **What talent never see**: the talent role holds only `portal:use` (no staff endpoint, not even the workspace's rules or templates). On a booking with several acts, the shared fee is never shown and travel shows only items naming one of their acts. While fees are hidden, so are contracts and confirmations, which carry them. A record's portal opens only through the invitation (not by editing the record), not for a colleague whose role has no portal, and deleting the record ends it.
 
 ### Not yet
 

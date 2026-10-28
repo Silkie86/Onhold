@@ -186,6 +186,7 @@ pub async fn invite(
             "this talent's portal is already open; remove that access first to invite someone else",
         ));
     }
+    check_existing_member(&mut tx, &email).await?;
     let workspace = core_db::workspaces::get(&mut tx, ctx.workspace_id)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -213,14 +214,23 @@ pub async fn remove_access(state: &AppState, ctx: &Ctx, talent_id: Uuid) -> ApiR
     core_db::talent::get(&mut tx, talent_id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    let revoked = core_db::portal::revoke_invitations(&mut tx, talent_id).await?;
-    let user = core_db::portal::unlink_talent(&mut tx, talent_id, ctx.user_id()).await?;
-    if user.is_none() && revoked == 0 {
+    if !end_access_in(&mut tx, ctx, talent_id).await? {
         return Err(ApiError::NotFound);
     }
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Ends a talent record's portal: waiting invitations are cancelled and
+/// whoever it opened for is unlinked; a talent member left with no record
+/// leaves the workspace. False when there was nothing to end. Also used
+/// when the record itself is deleted.
+pub(crate) async fn end_access_in(tx: &mut Tx, ctx: &Ctx, talent_id: Uuid) -> ApiResult<bool> {
+    let revoked = core_db::portal::revoke_invitations(tx, talent_id).await?;
+    let user = core_db::portal::unlink_talent(tx, talent_id, ctx.user_id()).await?;
     if let Some(user) = user {
         record(
-            &mut tx,
+            tx,
             ctx,
             Change {
                 topic: "talent.portal_unlinked",
@@ -233,12 +243,11 @@ pub async fn remove_access(state: &AppState, ctx: &Ctx, talent_id: Uuid) -> ApiR
         )
         .await?;
         let user = UserId(user);
-        let is_talent_member =
-            core_db::members::role_of(&mut tx, user).await? == Some(Role::Talent);
-        if is_talent_member && core_db::portal::talent_count(&mut tx, user.0).await? == 0 {
-            core_db::members::soft_delete(&mut tx, user, ctx.user_id()).await?;
+        let is_talent_member = core_db::members::role_of(tx, user).await? == Some(Role::Talent);
+        if is_talent_member && core_db::portal::talent_count(tx, user.0).await? == 0 {
+            core_db::members::soft_delete(tx, user, ctx.user_id()).await?;
             record(
-                &mut tx,
+                tx,
                 ctx,
                 Change {
                     topic: "member.removed",
@@ -252,7 +261,29 @@ pub async fn remove_access(state: &AppState, ctx: &Ctx, talent_id: Uuid) -> ApiR
             .await?;
         }
     }
-    tx.commit().await?;
+    Ok(user.is_some() || revoked > 0)
+}
+
+/// Refuses a portal for someone already in the workspace whose role does
+/// not open the portal (an agent, say): the link would lead nowhere.
+pub(crate) async fn check_existing_member(tx: &mut Tx, email: &str) -> ApiResult<()> {
+    let member = core_db::members::list(tx)
+        .await?
+        .into_iter()
+        .find(|m| m.email.eq_ignore_ascii_case(email));
+    if let Some(m) = member
+        && !core_db::workspaces::role_permissions(tx, m.role)
+            .await?
+            .contains(&Permission::PortalUse)
+    {
+        return Err(ApiError::conflict(
+            "already_member",
+            format!(
+                "{email} is already in this workspace as {}, which has no talent portal",
+                m.role
+            ),
+        ));
+    }
     Ok(())
 }
 
@@ -268,6 +299,9 @@ pub struct PortalTalent {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct PortalHome {
     pub workspace_name: String,
+    /// The workspace's logo and colours, for the portal's look.
+    #[schema(value_type = Object)]
+    pub branding: Value,
     pub settings: PortalSettings,
     /// The talent records opened for this person here (usually one; none
     /// once the agency ends their access).
@@ -309,6 +343,7 @@ pub async fn home(state: &AppState, ctx: &Ctx) -> ApiResult<PortalHome> {
     tx.commit().await?;
     Ok(PortalHome {
         workspace_name: workspace.name,
+        branding: workspace.branding,
         settings,
         talent: talent
             .into_iter()
@@ -380,7 +415,8 @@ pub struct PortalDate {
 }
 
 fn date_view(d: core_db::portal::Date, s: &PortalSettings) -> PortalDate {
-    let fee = match (s.show_fees, d.fee_minor, d.fee_currency) {
+    // A fee shared by several acts is not any one act's to see.
+    let fee = match (s.show_fees && d.acts == 1, d.fee_minor, d.fee_currency) {
         (true, Some(minor), Some(currency)) => Some(Money { minor, currency }),
         _ => None,
     };
@@ -524,12 +560,15 @@ pub async fn date(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<PortalDate
 
 async fn detail_in(tx: &mut Tx, id: Uuid, s: &PortalSettings) -> ApiResult<PortalDateDetail> {
     let shown = shown(s);
-    let entries: Vec<PortalDate> = core_db::portal::date(tx, id)
+    let rows: Vec<core_db::portal::Date> = core_db::portal::date(tx, id)
         .await?
         .into_iter()
         .filter(|d| shown.contains(&d.status))
-        .map(|d| date_view(d, s))
         .collect();
+    // On a booking with other acts, only travel naming one of theirs.
+    let shared = rows.first().is_some_and(|d| d.acts > rows.len() as i64);
+    let names: Vec<String> = rows.iter().map(|d| d.talent_name.to_lowercase()).collect();
+    let entries: Vec<PortalDate> = rows.into_iter().map(|d| date_view(d, s)).collect();
     if entries.is_empty() {
         return Err(ApiError::NotFound);
     }
@@ -537,6 +576,7 @@ async fn detail_in(tx: &mut Tx, id: Uuid, s: &PortalSettings) -> ApiResult<Porta
         core_db::travel::list(tx, &[id], None)
             .await?
             .into_iter()
+            .filter(|t| !shared || travels_with(&t.travellers, &names))
             .map(|t| PortalTravel {
                 id: t.id,
                 kind: t.kind,
@@ -560,7 +600,7 @@ async fn detail_in(tx: &mut Tx, id: Uuid, s: &PortalSettings) -> ApiResult<Porta
         Vec::new()
     };
     let documents = if s.show_documents {
-        core_db::portal::documents(tx, &[id])
+        core_db::portal::documents(tx, &[id], core_db::portal::date_kinds(s.show_fees))
             .await?
             .into_iter()
             .filter(|d| d.related_entity == "booking")
@@ -573,6 +613,14 @@ async fn detail_in(tx: &mut Tx, id: Uuid, s: &PortalSettings) -> ApiResult<Porta
         entries,
         travel,
         documents,
+    })
+}
+
+/// Whether a travel item names one of these acts among its travellers.
+fn travels_with(travellers: &[String], names: &[String]) -> bool {
+    travellers.iter().any(|t| {
+        let t = t.to_lowercase();
+        names.iter().any(|n| t.contains(n.as_str()))
     })
 }
 
@@ -635,6 +683,12 @@ pub async fn answer(
             "not_answerable",
             "this date can no longer be answered",
         ));
+    }
+    // The same answer sent again (a double tap, a retry) changes nothing
+    // and gives the agent no second task.
+    if entry.answer.as_deref() == Some(answer.as_str()) && entry.answer_note == note {
+        tx.commit().await?;
+        return Ok(before);
     }
     if !core_db::portal::set_answer(&mut tx, id, entry.talent_id, &answer, note.as_deref(), user)
         .await?
@@ -849,7 +903,8 @@ pub async fn documents(state: &AppState, ctx: &Ctx) -> ApiResult<Vec<PortalDocum
     .into_iter()
     .map(|d| d.id)
     .collect();
-    let docs = core_db::portal::documents(&mut tx, &ids).await?;
+    let docs =
+        core_db::portal::documents(&mut tx, &ids, core_db::portal::date_kinds(s.show_fees)).await?;
     tx.commit().await?;
     Ok(docs.into_iter().map(Into::into).collect())
 }
@@ -860,7 +915,16 @@ pub async fn download(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<files:
     let mut tx = begin(state, ctx).await?;
     mine(&mut tx).await?;
     let s = settings_in(&mut tx).await?;
-    if !core_db::portal::may_open_document(&mut tx, id, s.show_documents, s.show_money).await? {
+    let may = core_db::portal::may_open_document(
+        &mut tx,
+        id,
+        core_db::portal::date_kinds(s.show_fees),
+        &shown(&s),
+        s.show_documents,
+        s.show_money,
+    )
+    .await?;
+    if !may {
         return Err(ApiError::NotFound);
     }
     let doc = core_db::documents::get(&mut tx, id)
@@ -941,6 +1005,16 @@ pub async fn money(state: &AppState, ctx: &Ctx) -> ApiResult<Vec<PortalStatement
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn shared_travel_is_shown_only_to_the_acts_it_names() {
+        let names = vec!["ada".to_owned()];
+        assert!(travels_with(&["Ada Lovelace".into()], &names));
+        assert!(travels_with(&["Crew".into(), "ADA".into()], &names));
+        assert!(!travels_with(&["Grace".into()], &names));
+        assert!(!travels_with(&[], &names));
+    }
+
     use super::*;
 
     #[test]

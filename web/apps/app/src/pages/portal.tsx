@@ -94,9 +94,24 @@ function AnswerBadge({ d }: { d: PortalDate }) {
   return null;
 }
 
+const HALF_DAY = 12 * 60 * 60 * 1000;
+
+/**
+ * The days an all-day date covers, the same wherever the talent is. All-day
+ * dates start at midnight where they were entered, never more than twelve
+ * hours from UTC midnight, so half a day in from each end is safely inside.
+ */
+function allDay(starts: string, ends: string): string {
+  const day = (ms: number) =>
+    new Intl.DateTimeFormat(undefined, { timeZone: "UTC", weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(new Date(ms));
+  const first = day(Date.parse(starts) + HALF_DAY);
+  const last = day(Date.parse(ends) - HALF_DAY);
+  return first === last ? first : `${first} – ${last}`;
+}
+
 /** "Sat 14 Jun" and "19:00–22:00 (Europe/London)" for a date, in the venue's clock. */
 function when(d: PortalDate): { day: string; time: string } {
-  if (d.all_day) return { day: formatWhen(d.starts_at, d.ends_at, true), time: "All day" };
+  if (d.all_day) return { day: allDay(d.starts_at, d.ends_at), time: "All day" };
   let day: string;
   try {
     day = new Intl.DateTimeFormat(undefined, { timeZone: d.timezone, weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(
@@ -115,12 +130,17 @@ function when(d: PortalDate): { day: string; time: string } {
 export function PortalShell({ me }: { me: Session["me"] }) {
   const actions = useSessionActions(me);
   const workspace = actions.workspace ?? me.workspaces[0]!;
-  const session: Session = { me, workspace, switchWorkspace: actions.switchWorkspace, signOut: actions.signOut };
-  const logo = useWorkspaceBranding(workspace.id, null);
-  const [theme, setTheme] = useState<Theme>(storedTheme);
   const location = useLocation();
   const navigate = useNavigate();
+  // Another workspace may be a staff one, whose app starts at its home.
+  const switchWorkspace = (id: string) => {
+    actions.switchWorkspace(id);
+    void navigate({ to: "/", replace: true });
+  };
+  const session: Session = { me, workspace, switchWorkspace, signOut: actions.signOut };
   const home = usePortal();
+  const logo = useWorkspaceBranding(workspace.id, null, true, home.data ? { branding: home.data.branding } : null);
+  const [theme, setTheme] = useState<Theme>(storedTheme);
   useEffect(() => {
     applyTheme(theme);
     try {
@@ -192,7 +212,7 @@ export function PortalShell({ me }: { me: Session["me"] }) {
                   <MenuSeparator />
                   <MenuLabel>Switch to</MenuLabel>
                   {me.workspaces.map((w) => (
-                    <MenuItem key={w.id} onSelect={() => actions.switchWorkspace(w.id)}>
+                    <MenuItem key={w.id} onSelect={() => switchWorkspace(w.id)}>
                       {w.name} {w.id === workspace.id && "✓"}
                     </MenuItem>
                   ))}
@@ -386,7 +406,17 @@ export function PortalDatePage() {
         </section>
       )}
       {detail.data.entries.map((e) => (
-        <AnswerBox key={e.talent_id} d={e} several={detail.data.entries.length > 1} onSaved={saved} onError={setError} />
+        <AnswerBox
+            key={e.talent_id}
+            d={e}
+            several={detail.data.entries.length > 1}
+            onSaved={saved}
+            onError={(m) => {
+              setError(m);
+              // The date may have moved on (confirmed, cancelled): show it as it is now.
+              if (m) void qc.invalidateQueries({ queryKey: ["portal"] });
+            }}
+          />
       ))}
       {error && <Alert>{error}</Alert>}
       {detail.data.travel.length > 0 && (

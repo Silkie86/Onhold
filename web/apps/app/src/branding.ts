@@ -48,11 +48,30 @@ function storeLook(workspaceId: string, look: Look) {
 
 /**
  * Applies the workspace's colours and returns its logo, if it has one. On a
- * visit by OnHold's team (`keep` false) nothing is kept on the device.
+ * visit by OnHold's team (`keep` false) nothing is kept on the device. The
+ * talent portal passes the branding it was given (`null` while loading)
+ * instead of reading the workspace, which its people may not.
  */
-export function useWorkspaceBranding(workspaceId: string, sync: OfflineSync | null, keep = true): string | null {
-  const ws = useQuery({ queryKey: ["workspace"], queryFn: async () => (await fetchWorkspace(sync)).data, staleTime: 5 * 60_000 });
-  const fromServer = ws.data && ws.data.id === workspaceId ? readBranding(ws.data.branding) : undefined;
+export function useWorkspaceBranding(
+  workspaceId: string,
+  sync: OfflineSync | null,
+  keep = true,
+  given?: { branding: unknown } | null,
+): string | null {
+  const ws = useQuery({
+    queryKey: ["workspace"],
+    queryFn: async () => (await fetchWorkspace(sync)).data,
+    staleTime: 5 * 60_000,
+    enabled: given === undefined,
+  });
+  const fromServer =
+    given !== undefined
+      ? given
+        ? readBranding(given.branding)
+        : undefined
+      : ws.data && ws.data.id === workspaceId
+        ? readBranding(ws.data.branding)
+        : undefined;
   const saved = useMemo(() => (keep ? storedLook(workspaceId) : null), [workspaceId, keep]);
   const look: Look = fromServer ? { colour: fromServer.colour, theme: fromServer.theme } : (saved ?? { colour: null, theme: null });
   // One string to compare, so the effects run only when the look changes.

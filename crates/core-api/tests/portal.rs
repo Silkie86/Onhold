@@ -393,34 +393,53 @@ async fn a_talent_opens_only_the_documents_meant_for_them(pool: PgPool) {
         }
     };
     let contract = doc("contract", "booking", gig).await;
+    let sheet = doc("advance_sheet", "booking", gig).await;
     let po = doc("purchase_order", "booking", gig).await;
     let rider = doc("rider", "talent", ada).await;
 
+    let kinds_on_date = |body: &Value| -> Vec<String> {
+        body["documents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["kind"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    // Contracts carry the fee, so they stay hidden while fees are.
     let d = get(&app, &me, &format!("/api/v1/portal/dates/{gig}"))
         .await
         .ok();
-    let on_date: Vec<&str> = d.body["documents"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|x| x["kind"].as_str().unwrap())
-        .collect();
-    assert_eq!(on_date, ["contract"]);
+    assert_eq!(kinds_on_date(&d.body), ["advance_sheet"]);
     let all = get(&app, &me, "/api/v1/portal/documents").await.ok();
     assert_eq!(all.body.as_array().unwrap().len(), 2, "{}", all.body);
+    get(
+        &app,
+        &me,
+        &format!("/api/v1/portal/documents/{contract}/download"),
+    )
+    .await
+    .expect(StatusCode::NOT_FOUND, "not_found");
+    app.put("/api/v1/workspace/portal")
+        .signed_in(&owner)
+        .json(json!({ "show_fees": true }))
+        .send()
+        .await
+        .ok();
+    let d = get(&app, &me, &format!("/api/v1/portal/dates/{gig}"))
+        .await
+        .ok();
+    let mut kinds = kinds_on_date(&d.body);
+    kinds.sort();
+    assert_eq!(kinds, ["advance_sheet", "contract"]);
 
-    let file = app
-        .get(&format!("/api/v1/portal/documents/{contract}/download"))
-        .signed_in(&me)
-        .send()
-        .await;
-    assert_eq!(file.status, StatusCode::OK);
-    let file = app
-        .get(&format!("/api/v1/portal/documents/{rider}/download"))
-        .signed_in(&me)
-        .send()
-        .await;
-    assert_eq!(file.status, StatusCode::OK);
+    for id in [contract, sheet, rider] {
+        let file = app
+            .get(&format!("/api/v1/portal/documents/{id}/download"))
+            .signed_in(&me)
+            .send()
+            .await;
+        assert_eq!(file.status, StatusCode::OK);
+    }
     get(
         &app,
         &me,
@@ -438,11 +457,69 @@ async fn a_talent_opens_only_the_documents_meant_for_them(pool: PgPool) {
         .ok();
     let all = get(&app, &me, "/api/v1/portal/documents").await.ok();
     assert_eq!(all.body, json!([]));
-    get(
+    for id in [contract, rider] {
+        get(
+            &app,
+            &me,
+            &format!("/api/v1/portal/documents/{id}/download"),
+        )
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+    }
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn portal_links_are_made_only_by_invitation(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let agent = app.add_member(&owner, "agent@acme.test", "agent").await;
+    let ada = talent(&app, &agent, "Ada").await;
+    let me = invite_talent(&app, &agent, ws, ada, "ada@artist.test").await;
+    let grace = talent(&app, &agent, "Grace").await;
+
+    // Pointing another record at Ada's account would show her its dates.
+    let ada_user = get(&app, &agent, &format!("/api/v1/talent/{ada}"))
+        .await
+        .ok()
+        .body["portal_user_id"]
+        .clone();
+    let res = app
+        .patch(&format!("/api/v1/talent/{grace}"))
+        .signed_in(&agent)
+        .json(json!({ "portal_user_id": ada_user }))
+        .send()
+        .await;
+    res.expect(StatusCode::BAD_REQUEST, "invalid_input");
+    let res = app
+        .patch(&format!("/api/v1/talent/{ada}"))
+        .signed_in(&agent)
+        .json(json!({ "portal_user_id": null }))
+        .send()
+        .await;
+    res.expect(StatusCode::BAD_REQUEST, "invalid_input");
+
+    // A colleague's account has no portal to open.
+    let res = post(
         &app,
-        &me,
-        &format!("/api/v1/portal/documents/{contract}/download"),
+        &agent,
+        &format!("/api/v1/talent/{grace}/portal"),
+        json!({ "email": "agent@acme.test" }),
     )
-    .await
-    .expect(StatusCode::NOT_FOUND, "not_found");
+    .await;
+    res.expect(StatusCode::CONFLICT, "already_member");
+
+    // Deleting the record ends the portal, and the talent member goes.
+    app.delete(&format!("/api/v1/talent/{ada}"))
+        .signed_in(&agent)
+        .send()
+        .await
+        .ok();
+    let members = get(&app, &owner, "/api/v1/members").await.ok();
+    assert!(
+        !members.body.to_string().contains("ada@artist.test"),
+        "{}",
+        members.body
+    );
+    let res = get(&app, &me, "/api/v1/portal").await;
+    assert!(!res.status.is_success());
 }

@@ -48,6 +48,8 @@ pub struct Date {
     pub answered_at: Option<DateTime<Utc>>,
     pub enquiry_id: Option<Uuid>,
     pub created_by: Option<UserId>,
+    /// How many acts are on the booking (its fee and travel are shared).
+    pub acts: i64,
 }
 
 /// The user's dates overlapping `[from, to)` in these statuses, soonest
@@ -67,7 +69,9 @@ pub async fn dates(
                   (SELECT name FROM organisations o WHERE o.id = b.organisation_id) AS organisation_name,
                   b.timezone, b.starts_at, b.ends_at, b.all_day, b.schedule, b.hold_expires_at,
                   b.fee_minor, b.fee_currency, bt.answer, bt.answer_note, bt.answered_at,
-                  b.enquiry_id, b.created_by AS "created_by: UserId"
+                  b.enquiry_id, b.created_by AS "created_by: UserId",
+                  (SELECT count(*) FROM booking_talent x
+                   WHERE x.workspace_id = b.workspace_id AND x.booking_id = b.id) AS "acts!"
            FROM booking_talent bt
            JOIN bookings b ON b.id = bt.booking_id
            JOIN talent t ON t.id = bt.talent_id
@@ -98,7 +102,9 @@ pub async fn date(conn: &mut PgConnection, booking_id: Uuid) -> Result<Vec<Date>
                   (SELECT name FROM organisations o WHERE o.id = b.organisation_id) AS organisation_name,
                   b.timezone, b.starts_at, b.ends_at, b.all_day, b.schedule, b.hold_expires_at,
                   b.fee_minor, b.fee_currency, bt.answer, bt.answer_note, bt.answered_at,
-                  b.enquiry_id, b.created_by AS "created_by: UserId"
+                  b.enquiry_id, b.created_by AS "created_by: UserId",
+                  (SELECT count(*) FROM booking_talent x
+                   WHERE x.workspace_id = b.workspace_id AND x.booking_id = b.id) AS "acts!"
            FROM booking_talent bt
            JOIN bookings b ON b.id = bt.booking_id
            JOIN talent t ON t.id = bt.talent_id
@@ -143,10 +149,13 @@ pub async fn date_owner(conn: &mut PgConnection, booking_id: Uuid) -> Result<Opt
     Ok(sqlx::query_scalar!(
         r#"SELECT m.user_id
            FROM bookings b
-           LEFT JOIN enquiries e ON e.id = b.enquiry_id
+           LEFT JOIN enquiries e ON e.workspace_id = b.workspace_id AND e.id = b.enquiry_id
+           CROSS JOIN LATERAL (VALUES (1, e.owner_id), (2, b.created_by)) AS c (ord, user_id)
            JOIN memberships m ON m.workspace_id = b.workspace_id AND m.deleted_at IS NULL
-                AND m.role <> 'talent' AND m.user_id = coalesce(e.owner_id, b.created_by)
-           WHERE b.workspace_id = app_workspace_id() AND b.id = $1"#,
+                AND m.role <> 'talent' AND m.user_id = c.user_id
+           WHERE b.workspace_id = app_workspace_id() AND b.id = $1
+           ORDER BY c.ord
+           LIMIT 1"#,
         booking_id
     )
     .fetch_optional(conn)
@@ -176,6 +185,17 @@ pub const DATE_KINDS: &[&str] = &[
     "tech_spec",
     "stage_plot",
 ];
+/// The date kinds that carry no fee, for agencies that keep fees from talent.
+pub const DATE_KINDS_WITHOUT_FEES: &[&str] = &["advance_sheet", "rider", "tech_spec", "stage_plot"];
+
+/// The kinds of a date's documents a talent may see.
+pub fn date_kinds(show_fees: bool) -> &'static [&'static str] {
+    if show_fees {
+        DATE_KINDS
+    } else {
+        DATE_KINDS_WITHOUT_FEES
+    }
+}
 /// Kinds a talent sees on their own record.
 pub const TALENT_KINDS: &[&str] = &[
     "rider",
@@ -189,7 +209,11 @@ pub const TALENT_KINDS: &[&str] = &[
 
 /// The portal's documents on these bookings (all the user's own, checked
 /// here) and the user's talent records, newest first.
-pub async fn documents(conn: &mut PgConnection, booking_ids: &[Uuid]) -> Result<Vec<Document>> {
+pub async fn documents(
+    conn: &mut PgConnection,
+    booking_ids: &[Uuid],
+    date_kinds: &[&str],
+) -> Result<Vec<Document>> {
     Ok(sqlx::query_as!(
         Document,
         r#"SELECT d.id, d.kind, d.title, d.related_entity AS "related_entity!", d.related_id AS "related_id!",
@@ -206,44 +230,49 @@ pub async fn documents(conn: &mut PgConnection, booking_ids: &[Uuid]) -> Result<
            ORDER BY d.updated_at DESC, d.id
            LIMIT 200"#,
         booking_ids,
-        DATE_KINDS as &[&str],
+        date_kinds as &[&str],
         TALENT_KINDS as &[&str],
     )
     .fetch_all(conn)
     .await?)
 }
 
-/// Whether the portal may open this document: on a date of the user's, or
-/// on their talent record, of a kind meant for them; or the statement of one
+/// Whether the portal may open this document: when `with_documents`, on a
+/// date of the user's in one of `statuses`, of one of `date_kinds`, or on
+/// their talent record, of a kind meant for them; or the statement of one
 /// of their final settlements when `with_statements`.
 pub async fn may_open_document(
     conn: &mut PgConnection,
     id: Uuid,
-    with_dates: bool,
+    date_kinds: &[&str],
+    statuses: &[BookingStatus],
+    with_documents: bool,
     with_statements: bool,
 ) -> Result<bool> {
     Ok(sqlx::query_scalar!(
         r#"SELECT EXISTS (
              SELECT 1 FROM documents d
              WHERE d.workspace_id = app_workspace_id() AND d.id = $1 AND d.deleted_at IS NULL
-               AND ((d.related_entity = 'booking' AND $4 AND d.kind = ANY($2)
+               AND (($4 AND d.related_entity = 'booking' AND d.kind = ANY($2)
                      AND EXISTS (SELECT 1 FROM booking_talent bt JOIN talent t ON t.id = bt.talent_id
                                  JOIN bookings b ON b.id = bt.booking_id AND b.deleted_at IS NULL
                                  WHERE bt.booking_id = d.related_id AND t.portal_user_id = app_user_id()
-                                   AND t.deleted_at IS NULL))
-                    OR (d.related_entity = 'talent' AND d.kind = ANY($3)
+                                   AND t.deleted_at IS NULL AND b.status = ANY($6)))
+                    OR ($4 AND d.related_entity = 'talent' AND d.kind = ANY($3)
                         AND d.related_id IN (SELECT id FROM talent WHERE workspace_id = app_workspace_id()
                                              AND portal_user_id = app_user_id() AND deleted_at IS NULL))
                     OR ($5 AND EXISTS (SELECT 1 FROM settlements s JOIN talent t ON t.id = s.talent_id
+                                       JOIN bookings b ON b.id = s.booking_id AND b.deleted_at IS NULL
                                        WHERE s.workspace_id = app_workspace_id() AND s.document_id = d.id
                                          AND s.status = 'final' AND s.deleted_at IS NULL
                                          AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL)))
            ) AS "x!""#,
         id,
-        DATE_KINDS as &[&str],
+        date_kinds as &[&str],
         TALENT_KINDS as &[&str],
-        with_dates,
+        with_documents,
         with_statements,
+        statuses as &[BookingStatus],
     )
     .fetch_one(conn)
     .await?)
@@ -279,7 +308,7 @@ pub async fn statements(conn: &mut PgConnection, limit: i64) -> Result<Vec<State
                             WHERE p.workspace_id = s.workspace_id AND p.settlement_id = s.id
                               AND p.kind = 'payout' AND p.voided_at IS NULL), 0)::bigint AS "paid_minor!"
            FROM settlements s
-           JOIN bookings b ON b.id = s.booking_id
+           JOIN bookings b ON b.id = s.booking_id AND b.deleted_at IS NULL
            JOIN talent t ON t.id = s.talent_id
            WHERE s.workspace_id = app_workspace_id() AND s.status = 'final' AND s.deleted_at IS NULL
              AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL

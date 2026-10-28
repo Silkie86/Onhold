@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT s.id, s.booking_id, b.title AS booking_title, b.starts_at, s.talent_id, t.name AS talent_name,\n                  s.currency::text AS \"currency!\", s.gross_minor, s.commission_minor, s.expenses_minor, s.net_minor,\n                  s.finalised_at, s.document_id,\n                  coalesce((SELECT sum(p.amount_minor) FROM payments p\n                            WHERE p.workspace_id = s.workspace_id AND p.settlement_id = s.id\n                              AND p.kind = 'payout' AND p.voided_at IS NULL), 0)::bigint AS \"paid_minor!\"\n           FROM settlements s\n           JOIN bookings b ON b.id = s.booking_id\n           JOIN talent t ON t.id = s.talent_id\n           WHERE s.workspace_id = app_workspace_id() AND s.status = 'final' AND s.deleted_at IS NULL\n             AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL\n           ORDER BY s.finalised_at DESC, s.id\n           LIMIT $1",
+  "query": "SELECT s.id, s.booking_id, b.title AS booking_title, b.starts_at, s.talent_id, t.name AS talent_name,\n                  s.currency::text AS \"currency!\", s.gross_minor, s.commission_minor, s.expenses_minor, s.net_minor,\n                  s.finalised_at, s.document_id,\n                  coalesce((SELECT sum(p.amount_minor) FROM payments p\n                            WHERE p.workspace_id = s.workspace_id AND p.settlement_id = s.id\n                              AND p.kind = 'payout' AND p.voided_at IS NULL), 0)::bigint AS \"paid_minor!\"\n           FROM settlements s\n           JOIN bookings b ON b.id = s.booking_id AND b.deleted_at IS NULL\n           JOIN talent t ON t.id = s.talent_id\n           WHERE s.workspace_id = app_workspace_id() AND s.status = 'final' AND s.deleted_at IS NULL\n             AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL\n           ORDER BY s.finalised_at DESC, s.id\n           LIMIT $1",
   "describe": {
     "columns": [
       {
@@ -170,5 +170,5 @@
       null
     ]
   },
-  "hash": "c92161e697e4e9f5ba5b6d26cc54bfa511c66f61c590dcb16c107dc799ebe227"
+  "hash": "b5df66eff8bad6c6453b1f4d6edcc732d3e0105838e69599d3157b68b6ab9be2"
 }

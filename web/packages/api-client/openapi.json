@@ -35349,6 +35349,7 @@
         "description": "What the portal opens with.",
         "required": [
           "workspace_name",
+          "branding",
           "settings",
           "talent",
           "awaiting_answer"
@@ -35358,6 +35359,10 @@
             "type": "integer",
             "format": "int64",
             "description": "Dates waiting for their answer."
+          },
+          "branding": {
+            "type": "object",
+            "description": "The workspace's logo and colours, for the portal's look."
           },
           "settings": {
             "$ref": "#/components/schemas/PortalSettings"

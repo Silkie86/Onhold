@@ -11,6 +11,9 @@ INSERT INTO role_permissions (workspace_id, role, permission)
 SELECT w.id, r.role::member_role, 'portal:use'
 FROM workspaces w CROSS JOIN (VALUES ('owner'), ('admin'), ('talent')) AS r (role)
 ON CONFLICT DO NOTHING;
+-- Talent held `workspace:read` before, which also reads the workspace's
+-- rules and templates; the portal brings what they need itself.
+DELETE FROM role_permissions WHERE role = 'talent' AND permission <> 'portal:use';
 
 -- An invitation for the portal names the talent record it opens.
 ALTER TABLE invitations ADD COLUMN talent_id uuid;

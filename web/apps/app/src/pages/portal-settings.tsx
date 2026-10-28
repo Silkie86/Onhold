@@ -135,7 +135,7 @@ export function PortalAccessCard({ talentId, canWrite }: { talentId: string; can
 const SWITCHES: { key: keyof Settings; label: string; hint: string }[] = [
   { key: "answer_dates", label: "Confirm or decline dates", hint: "You get a task when they answer. The booking itself stays yours to move." },
   { key: "show_holds", label: "Show pencilled dates", hint: "Holds as well as dates being confirmed and confirmed ones." },
-  { key: "show_fees", label: "Show fees", hint: "The fee on each of their dates." },
+  { key: "show_fees", label: "Show fees", hint: "The fee on dates they play alone, and contracts and confirmations, which carry it." },
   { key: "show_travel", label: "Show travel", hint: "Flights, trains, rides and hotels on their dates; never what they cost." },
   { key: "show_documents", label: "Show documents", hint: "Contracts, advance sheets, riders and stage plots on their dates and record." },
   { key: "edit_availability", label: "Mark their own availability", hint: "Unavailable and tentative times, and connecting their own calendar." },

@@ -7480,6 +7480,8 @@ export interface components {
              * @description Dates waiting for their answer.
              */
             awaiting_answer: number;
+            /** @description The workspace's logo and colours, for the portal's look. */
+            branding: Record<string, never>;
             settings: components["schemas"]["PortalSettings"];
             /**
              * @description The talent records opened for this person here (usually one; none

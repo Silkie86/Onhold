@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT b.id, bt.talent_id, t.name AS talent_name, b.title, b.status AS \"status: BookingStatus\",\n                  coalesce((SELECT name FROM organisations o WHERE o.id = b.venue_id), b.venue_text) AS venue,\n                  (SELECT name FROM organisations o WHERE o.id = b.organisation_id) AS organisation_name,\n                  b.timezone, b.starts_at, b.ends_at, b.all_day, b.schedule, b.hold_expires_at,\n                  b.fee_minor, b.fee_currency, bt.answer, bt.answer_note, bt.answered_at,\n                  b.enquiry_id, b.created_by AS \"created_by: UserId\"\n           FROM booking_talent bt\n           JOIN bookings b ON b.id = bt.booking_id\n           JOIN talent t ON t.id = bt.talent_id\n           WHERE bt.workspace_id = app_workspace_id() AND b.deleted_at IS NULL\n             AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL\n             AND b.status = ANY($3)\n             AND ($1::timestamptz IS NULL OR b.ends_at > $1)\n             AND ($2::timestamptz IS NULL OR b.starts_at < $2)\n           ORDER BY CASE WHEN $4 THEN b.starts_at END DESC,\n                    CASE WHEN NOT $4 THEN b.starts_at END ASC, t.name, b.id\n           LIMIT $5",
+  "query": "SELECT b.id, bt.talent_id, t.name AS talent_name, b.title, b.status AS \"status: BookingStatus\",\n                  coalesce((SELECT name FROM organisations o WHERE o.id = b.venue_id), b.venue_text) AS venue,\n                  (SELECT name FROM organisations o WHERE o.id = b.organisation_id) AS organisation_name,\n                  b.timezone, b.starts_at, b.ends_at, b.all_day, b.schedule, b.hold_expires_at,\n                  b.fee_minor, b.fee_currency, bt.answer, bt.answer_note, bt.answered_at,\n                  b.enquiry_id, b.created_by AS \"created_by: UserId\",\n                  (SELECT count(*) FROM booking_talent x\n                   WHERE x.workspace_id = b.workspace_id AND x.booking_id = b.id) AS \"acts!\"\n           FROM booking_talent bt\n           JOIN bookings b ON b.id = bt.booking_id\n           JOIN talent t ON t.id = bt.talent_id\n           WHERE bt.workspace_id = app_workspace_id() AND b.deleted_at IS NULL\n             AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL\n             AND b.status = ANY($3)\n             AND ($1::timestamptz IS NULL OR b.ends_at > $1)\n             AND ($2::timestamptz IS NULL OR b.starts_at < $2)\n           ORDER BY CASE WHEN $4 THEN b.starts_at END DESC,\n                    CASE WHEN NOT $4 THEN b.starts_at END ASC, t.name, b.id\n           LIMIT $5",
   "describe": {
     "columns": [
       {
@@ -226,6 +226,12 @@
             "name": "created_by"
           }
         }
+      },
+      {
+        "ordinal": 20,
+        "name": "acts!",
+        "type_info": "Int8",
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -278,8 +284,9 @@
       true,
       true,
       true,
-      true
+      true,
+      null
     ]
   },
-  "hash": "739612a3658cefcce5247248a75b967316375ea856aa227bb37fb665e32d4eec"
+  "hash": "2e3d54ad79a259be3a772eee8335fc4e9ed794269b4c71f775e9aef47db693fa"
 }

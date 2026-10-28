@@ -12,3 +12,6 @@ ALTER TABLE invitations DROP CONSTRAINT IF EXISTS invitations_talent_role;
 ALTER TABLE invitations DROP CONSTRAINT IF EXISTS invitations_talent_fk;
 ALTER TABLE invitations DROP COLUMN IF EXISTS talent_id;
 DELETE FROM role_permissions WHERE permission = 'portal:use';
+INSERT INTO role_permissions (workspace_id, role, permission)
+SELECT id, 'talent', 'workspace:read' FROM workspaces
+ON CONFLICT DO NOTHING;

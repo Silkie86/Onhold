@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT b.id, bt.talent_id, t.name AS talent_name, b.title, b.status AS \"status: BookingStatus\",\n                  coalesce((SELECT name FROM organisations o WHERE o.id = b.venue_id), b.venue_text) AS venue,\n                  (SELECT name FROM organisations o WHERE o.id = b.organisation_id) AS organisation_name,\n                  b.timezone, b.starts_at, b.ends_at, b.all_day, b.schedule, b.hold_expires_at,\n                  b.fee_minor, b.fee_currency, bt.answer, bt.answer_note, bt.answered_at,\n                  b.enquiry_id, b.created_by AS \"created_by: UserId\"\n           FROM booking_talent bt\n           JOIN bookings b ON b.id = bt.booking_id\n           JOIN talent t ON t.id = bt.talent_id\n           WHERE bt.workspace_id = app_workspace_id() AND bt.booking_id = $1 AND b.deleted_at IS NULL\n             AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL\n           ORDER BY bt.position, t.name",
+  "query": "SELECT b.id, bt.talent_id, t.name AS talent_name, b.title, b.status AS \"status: BookingStatus\",\n                  coalesce((SELECT name FROM organisations o WHERE o.id = b.venue_id), b.venue_text) AS venue,\n                  (SELECT name FROM organisations o WHERE o.id = b.organisation_id) AS organisation_name,\n                  b.timezone, b.starts_at, b.ends_at, b.all_day, b.schedule, b.hold_expires_at,\n                  b.fee_minor, b.fee_currency, bt.answer, bt.answer_note, bt.answered_at,\n                  b.enquiry_id, b.created_by AS \"created_by: UserId\",\n                  (SELECT count(*) FROM booking_talent x\n                   WHERE x.workspace_id = b.workspace_id AND x.booking_id = b.id) AS \"acts!\"\n           FROM booking_talent bt\n           JOIN bookings b ON b.id = bt.booking_id\n           JOIN talent t ON t.id = bt.talent_id\n           WHERE bt.workspace_id = app_workspace_id() AND bt.booking_id = $1 AND b.deleted_at IS NULL\n             AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL\n           ORDER BY bt.position, t.name",
   "describe": {
     "columns": [
       {
@@ -226,6 +226,12 @@
             "name": "created_by"
           }
         }
+      },
+      {
+        "ordinal": 20,
+        "name": "acts!",
+        "type_info": "Int8",
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -253,8 +259,9 @@
       true,
       true,
       true,
-      true
+      true,
+      null
     ]
   },
-  "hash": "fa27ed042ed033a68695bf2b9080108bd78ff3fd4cf8cd2b63d9ebb7bb2e96b5"
+  "hash": "4fd1f7a2a23c4a844600f18d13bead0f8eed612d26199458ea3f456272df3bad"
 }

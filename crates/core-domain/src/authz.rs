@@ -156,7 +156,7 @@ impl Role {
                 P::InboxRead,
             ]
             .into(),
-            Role::Talent => [P::WorkspaceRead, P::PortalUse].into(),
+            Role::Talent => [P::PortalUse].into(),
         }
     }
 }
