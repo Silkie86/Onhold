@@ -561,6 +561,26 @@ pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<Enti
             || (f.key == "commission_percent" && !commission);
         f.required || !hidden
     });
+    // Named in the workspace's own words ("DJs", "Gigs", "Offers").
+    let term = match entity {
+        "talent" => Some(("crm", "talent")),
+        "enquiry" => Some(("bookings", "enquiry")),
+        "booking" => Some(("bookings", "booking")),
+        _ => None,
+    };
+    if let Some((module, term)) = term {
+        let word = |n: &str| {
+            w.vocabulary
+                .pointer(&format!("/{module}/{term}/{n}"))
+                .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_owned)
+        };
+        if let (Some(one), Some(many)) = (word("one"), word("many")) {
+            schema.label = one;
+            schema.label_plural = many;
+        }
+    }
     Ok(schema)
 }
 

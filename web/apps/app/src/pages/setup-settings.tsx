@@ -168,7 +168,11 @@ export function SetupSettingsPage() {
           </Card>
           {message && <Alert tone={message.ok ? "success" : "error"}>{message.text}</Alert>}
           {canChange && (
-            <div className="flex flex-wrap items-center gap-3">
+            // On a phone the summary sits below the form, so the price rides along with the button.
+            <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-3 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0">
+              <span className="flex-1 text-sm lg:hidden">
+                <span className="font-semibold">{price(monthly, prices.currency)}</span> a month{prices.placeholder ? " (example)" : ""}
+              </span>
               <Button type="submit" disabled={busy}>
                 {busy ? "Saving…" : done_at ? "Save changes" : "Set up my app"}
               </Button>

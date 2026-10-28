@@ -1727,4 +1727,6 @@ async fn operators_streamline_a_workspace_and_it_survives_the_form(pool: PgPool)
             .iter()
             .any(|f| f["key"] == "commission_percent")
     );
+    // And its pages use the workspace's words.
+    assert_eq!(talent.body["label_plural"], json!("My acts"));
 }
