@@ -54,8 +54,8 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
 const STATUS_STYLE: Partial<Record<InvoiceStatus, string>> = {
   issued: "border-sky-500 text-sky-800 dark:text-sky-300",
   part_paid: "border-amber-500 text-amber-800 dark:text-amber-300",
-  paid: "border-emerald-600 bg-emerald-600 text-white",
-  overdue: "border-destructive bg-destructive text-white",
+  paid: "border-emerald-700 bg-emerald-700 text-white",
+  overdue: "border-destructive bg-destructive text-destructive-foreground",
   void: "text-muted-foreground line-through",
 };
 

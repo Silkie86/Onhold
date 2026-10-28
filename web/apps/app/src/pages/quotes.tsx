@@ -46,7 +46,7 @@ const QUOTE_LABEL: Record<QuoteStatus, string> = {
 const QUOTE_STYLE: Partial<Record<QuoteStatus, string>> = {
   sent: "border-sky-500 text-sky-800 dark:text-sky-300",
   viewed: "border-sky-500 bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200",
-  accepted: "border-emerald-600 bg-emerald-600 text-white",
+  accepted: "border-emerald-700 bg-emerald-700 text-white",
   declined: "border-destructive text-destructive",
 };
 
