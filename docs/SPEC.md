@@ -313,7 +313,7 @@ Six modules ship in v1 (importing past PDFs is part of Documents), each switchab
 
 Any status can also end in lost, declined, expired or cancelled, each with its own event; what triggers each arrow (deposit percentage, who signs first, chase timing) is configuration, not code.
 
-**CRM** — Talent, Organisations, Contacts. Global search across all three plus bookings and messages (Postgres full-text, `pg_trgm` for fuzzy). Deduplication prompts on create (same email, same phone, similar name). Import from CSV with a column-mapping step and a dry run. Each record has an activity timeline merging messages, bookings, documents, tasks and audit entries. Tags are free-form per workspace. Talent records hold the public-facing assets (photos, bio, tech rider, stage plot, EPK links) that documents and portal pages pull from.
+**CRM** — Talent, Organisations, Contacts. Global search across all three plus bookings and messages (Postgres full-text, `pg_trgm` for fuzzy). Deduplication prompts on create (same email, same phone, similar name). Import from CSV or contact cards (vCard) with a column-mapping step and a dry run. Switching from another app takes no setup: exports from Google Contacts, Outlook, Apple/iCloud/Android contact cards, HubSpot, Salesforce, Pipedrive, Mailchimp and LinkedIn are recognised and their columns matched (other spreadsheets, booking-system rosters included, get a best guess), the upload can work out whether the file holds talent, contacts or organisations, and the check lists the rows at fault so they can be corrected or left out before anything is saved. Files are read whatever their encoding (UTF-8, UTF-16, Windows-1252), and contact-card photos are dropped before upload. Each record has an activity timeline merging messages, bookings, documents, tasks and audit entries. Tags are free-form per workspace. Talent records hold the public-facing assets (photos, bio, tech rider, stage plot, EPK links) that documents and portal pages pull from.
 
 **Enquiry → Quote → Booking → Invoice** — the money loop.
 
@@ -463,7 +463,7 @@ A new client's "custom app" is the core plus, in order of preference: configurat
 **Onboarding a new client** (target: under two hours of your time)
 
 1. `onhold admin workspace create --slug acme --name "Acme Agency" --country GB --currency GBP --timezone Europe/London --owner-email owner@acme.example --plan standard` seeds defaults: roles, tax codes and templates; a `--preset` option (for example `--preset agency,manager`, combinable) sets the presets' modules, extras and words now, and from M8 their pipeline, rules and custom fields. The owner can then adjust it in the setup form.
-2. Import their spreadsheet with the CSV importer; connect Google or Microsoft; connect Stripe.
+2. Import their spreadsheet, or the export of the app they are leaving, with the importer; connect Google or Microsoft; connect Stripe.
 3. Adjust configuration with them on a call; most "bespoke" asks end here.
 4. If they need a tenant directory or plugin, create it from the templates in `web/tenants/_template` and `crates/plugins/_template`, ship it behind their slug.
 5. Hand over, start the monthly fee.

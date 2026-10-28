@@ -1,10 +1,15 @@
-//! Importing talent, organisations or contacts from a spreadsheet.
+//! Importing talent, organisations or contacts from a spreadsheet, or from
+//! the export of the app a workspace is moving from.
 //!
-//! 1. Upload the CSV: it is parsed, kept, and answered with its columns, a
-//!    sample and a suggested mapping of columns to fields.
+//! 1. Upload the CSV or contact cards (vCard): it is parsed, kept, and
+//!    answered with its columns, a sample and a suggested mapping of columns
+//!    to fields. Exports from apps we know (Google Contacts, Outlook,
+//!    HubSpot...) are recognised and mapped without guessing, and what the
+//!    file holds can be left for the upload to work out.
 //! 2. Dry run with a mapping: every row is read and checked exactly as the
 //!    real run would, nothing is written, and the result says how many rows
-//!    would be created, updated, skipped or refused, and why.
+//!    would be created, updated, skipped or refused, and why, with the rows
+//!    at fault so they can be corrected (or left out) before the run.
 //! 3. Run: the worker imports in batches, recording progress, so a large
 //!    file neither times out nor half-finishes; a crash resumes where it
 //!    stopped. The file is dropped when the run ends.
@@ -14,6 +19,7 @@
 //! anyway, as chosen. Imported records do not trigger automation rules
 //! unless asked, so an import never mass-mails anyone by surprise.
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
@@ -23,6 +29,7 @@ use core_domain::crm::{email_key, name_key, phone_key};
 use core_domain::{Actor, Ctx, Money, Permission, TalentKind, UserId, WorkspaceId};
 use core_engines::fields::FieldDef;
 use core_engines::import::{self as engine, DateOrder, Reading, Target};
+use core_engines::{import_sources, vcard};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use utoipa::ToSchema;
@@ -82,7 +89,27 @@ pub struct ImportOptions {
     /// Let automation rules react to the imported records (default false).
     #[serde(default)]
     pub run_rules: bool,
+    /// Corrections made while checking: cells read as these values instead.
+    #[serde(default)]
+    pub edits: Vec<CellEdit>,
+    /// Spreadsheet rows to leave out.
+    #[serde(default)]
+    pub skip_rows: Vec<usize>,
 }
+
+/// One cell corrected before importing.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CellEdit {
+    /// The spreadsheet row (the header is row 1), as problems give it.
+    pub row: usize,
+    /// The column, counting from 0.
+    pub column: usize,
+    pub value: String,
+}
+
+/// The most corrections one import takes, and the longest corrected cell.
+const MAX_EDITS: usize = 5_000;
+const MAX_EDIT_CHARS: usize = 10_000;
 
 impl Default for ImportOptions {
     fn default() -> Self {
@@ -93,6 +120,8 @@ impl Default for ImportOptions {
             create_organisations: true,
             tags: Vec::new(),
             run_rules: false,
+            edits: Vec::new(),
+            skip_rows: Vec::new(),
         }
     }
 }
@@ -188,6 +217,17 @@ pub struct ImportPreview {
     pub suggested: Vec<Option<String>>,
     /// The fields columns can feed.
     pub targets: Vec<ImportTarget>,
+    /// The app the file was recognised as an export of, if any.
+    pub source: Option<ImportSource>,
+}
+
+/// An app whose export was recognised.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ImportSource {
+    /// `google`, `outlook`, `vcard`, `hubspot`, `salesforce`, `pipedrive`,
+    /// `mailchimp` or `linkedin`.
+    pub key: String,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -203,17 +243,37 @@ pub struct DryRunResult {
     /// The first records as they would be saved.
     #[schema(value_type = Vec<Object>)]
     pub sample: Vec<Value>,
+    /// The first rows with problems (up to 100), corrections applied, to
+    /// correct or leave out.
+    pub problem_rows: Vec<ProblemRow>,
 }
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ProblemRow {
+    /// The spreadsheet row (the header is row 1).
+    pub row: usize,
+    /// Its cells, in column order.
+    pub cells: Vec<String>,
+    /// What is wrong with it.
+    pub issues: Vec<ImportIssue>,
+}
+
+const MAX_PROBLEM_ROWS: usize = 100;
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct NewImport {
-    /// `talent`, `organisation` or `contact`.
+    /// `talent`, `organisation` or `contact`, or `auto` to work it out
+    /// from the file.
     pub entity: String,
     pub filename: Option<String>,
     /// The file's text: CSV with a header row, separated by commas,
-    /// semicolons or tabs. Save spreadsheets as CSV (UTF-8).
+    /// semicolons or tabs (save spreadsheets as CSV UTF-8), or contact
+    /// cards (vCard, `.vcf`).
     pub csv: String,
 }
+
+/// Asks the upload to work out what the file holds.
+pub const AUTO: &str = "auto";
 
 fn write_permission(entity: &str) -> ApiResult<Permission> {
     super::records::write_permission(entity).ok_or_else(|| {
@@ -232,6 +292,8 @@ struct CoreTarget {
     many: bool,
     required: bool,
     synonyms: &'static [&'static str],
+    /// Spellings that suggest it only when no other column does.
+    weak: &'static [&'static str],
 }
 
 const fn t(
@@ -245,6 +307,7 @@ const fn t(
         many: false,
         required: false,
         synonyms,
+        weak: &[],
     }
 }
 
@@ -259,16 +322,24 @@ const fn many(
         many: true,
         required: false,
         synonyms,
+        weak: &[],
     }
 }
 
 const fn name(synonyms: &'static [&'static str]) -> CoreTarget {
+    weak_name(synonyms, &[])
+}
+
+/// The name, with spellings that name it only on a sheet with no other
+/// name column (`Agency` beside `Artist Name` is the artist's agency).
+const fn weak_name(synonyms: &'static [&'static str], weak: &'static [&'static str]) -> CoreTarget {
     CoreTarget {
         key: "name",
         label: "Name",
         many: true,
         required: true,
         synonyms,
+        weak,
     }
 }
 
@@ -282,52 +353,111 @@ const NOTES: CoreTarget = many(
 fn core_targets(entity: &str) -> Vec<CoreTarget> {
     match entity {
         talent::ENTITY => vec![
-            name(&[
-                "stage name",
-                "artist",
-                "artist name",
-                "act",
-                "act name",
-                "talent",
-            ]),
+            weak_name(
+                &[
+                    "stage name",
+                    "artist",
+                    "artist name",
+                    "act",
+                    "act name",
+                    "talent",
+                    "talent name",
+                    "band name",
+                    "dj name",
+                ],
+                &["performer", "band", "dj", "client", "client name", "roster"],
+            ),
             t("kind", "Kind", &[]),
             t(
                 "talent_type",
                 "Type",
-                &["talent type", "category", "genre type"],
+                &[
+                    "talent type",
+                    "category",
+                    "genre type",
+                    "act type",
+                    "artist type",
+                    "discipline",
+                ],
             ),
             t(
                 "legal_name",
                 "Legal name",
-                &["real name", "full legal name"],
+                &["real name", "full legal name", "birth name"],
             ),
-            many("bio", "Bio", &["biography", "about", "description"]),
+            many(
+                "bio",
+                "Bio",
+                &[
+                    "biography",
+                    "about",
+                    "description",
+                    "short bio",
+                    "press bio",
+                    "artist bio",
+                ],
+            ),
             t(
                 "base_location",
                 "Based in",
-                &["location", "base", "city", "hometown", "based"],
+                &[
+                    "location",
+                    "base",
+                    "city",
+                    "hometown",
+                    "home town",
+                    "home city",
+                    "home base",
+                    "based",
+                ],
             ),
-            t("default_fee", "Default fee", &["fee", "rate", "price"]),
+            t(
+                "default_fee",
+                "Default fee",
+                &[
+                    "fee",
+                    "rate",
+                    "price",
+                    "booking fee",
+                    "standard fee",
+                    "asking fee",
+                    "minimum fee",
+                    "guarantee",
+                ],
+            ),
             t(
                 "commission_percent",
                 "Commission %",
-                &["commission", "commission percent"],
+                &[
+                    "commission",
+                    "commission percent",
+                    "commission rate",
+                    "agency commission",
+                ],
             ),
             t("status", "Status", &["active"]),
-            TAGS,
+            many(
+                "tags",
+                "Tags",
+                // Not `label`: an artist's label is a record label.
+                &["labels", "tag", "categories", "genre", "genres", "style"],
+            ),
         ],
         organisations::ENTITY => vec![
-            name(&[
-                "organisation",
-                "organization",
-                "company",
-                "company name",
-                "venue",
-                "venue name",
-                "organisation name",
-                "organization name",
-                "business",
-            ]),
+            weak_name(
+                &[
+                    "organisation",
+                    "organization",
+                    "company",
+                    "company name",
+                    "venue",
+                    "venue name",
+                    "organisation name",
+                    "organization name",
+                    "business",
+                ],
+                &["account name", "promoter", "festival", "agency"],
+            ),
             t(
                 "org_type",
                 "Type",
@@ -380,6 +510,7 @@ fn core_targets(entity: &str) -> Vec<CoreTarget> {
                 "given name",
                 "family name",
                 "forename",
+                "middle name",
             ]),
             many(
                 "emails",
@@ -393,6 +524,8 @@ fn core_targets(entity: &str) -> Vec<CoreTarget> {
                     "emails",
                     "email 2",
                     "other email",
+                    "primary email",
+                    "email address 1",
                 ],
             ),
             many(
@@ -409,6 +542,10 @@ fn core_targets(entity: &str) -> Vec<CoreTarget> {
                     "phones",
                     "work phone",
                     "home phone",
+                    "mobile phone",
+                    "business phone",
+                    "primary phone",
+                    "cell phone",
                 ],
             ),
             t("role", "Role", &["job title", "title", "position", "job"]),
@@ -467,6 +604,8 @@ fn targets(entity: &str, defs: &[FieldDef]) -> Vec<(ImportTarget, Target)> {
                     key: c.key.into(),
                     label: c.label.into(),
                     synonyms: c.synonyms.iter().map(|s| (*s).to_owned()).collect(),
+                    weak_synonyms: c.weak.iter().map(|s| (*s).to_owned()).collect(),
+                    many: c.many,
                 },
             )
         })
@@ -484,6 +623,8 @@ fn targets(entity: &str, defs: &[FieldDef]) -> Vec<(ImportTarget, Target)> {
                 key,
                 label: d.label.clone(),
                 synonyms: vec![d.key.clone()],
+                weak_synonyms: Vec::new(),
+                many: false,
             },
         ));
     }
@@ -492,8 +633,55 @@ fn targets(entity: &str, defs: &[FieldDef]) -> Vec<(ImportTarget, Target)> {
 
 // Upload and inspect ------------------------------------------------------------
 
+/// The suggested mapping: where a recognised export says each column goes,
+/// else the general guess, with a one-column field given once.
+fn suggest(
+    headers: &[String],
+    targets: &[(ImportTarget, Target)],
+    source: Option<&import_sources::Source>,
+) -> Vec<Option<String>> {
+    let engine_targets: Vec<Target> = targets.iter().map(|(_, t)| t.clone()).collect();
+    let guessed = engine::suggest_mapping(headers, &engine_targets);
+    let Some(source) = source else {
+        return guessed;
+    };
+    let known = |k: &String| engine_targets.iter().any(|t| &t.key == k);
+    let columns = source
+        .columns_for(headers)
+        .into_iter()
+        .zip(guessed)
+        .map(|(said, guess)| match said {
+            Some(target) => target.filter(known),
+            None => guess,
+        })
+        .collect();
+    engine::once_each(columns, &engine_targets)
+}
+
+/// What a file of unknown contents most likely holds: the kind of record
+/// whose fields its columns match best, counting each field once and a
+/// name column most, contacts when it is a tie. (A roster with agents'
+/// emails and phones is still talent, by its artist name and fee.)
+fn likely_entity(headers: &[String]) -> &'static str {
+    let mut best = (contacts::ENTITY, 0);
+    for entity in [contacts::ENTITY, talent::ENTITY, organisations::ENTITY] {
+        let targets = targets(entity, &[]);
+        let fields: HashSet<String> = suggest(headers, &targets, None)
+            .into_iter()
+            .flatten()
+            .collect();
+        let matched = fields.len() + if fields.contains("name") { 10 } else { 0 };
+        if matched > best.1 {
+            best = (entity, matched);
+        }
+    }
+    best.0
+}
+
 pub async fn upload(state: &AppState, ctx: &Ctx, new: NewImport) -> ApiResult<ImportPreview> {
-    ctx.authorize(write_permission(&new.entity)?)?;
+    if new.entity != AUTO {
+        ctx.authorize(write_permission(&new.entity)?)?;
+    }
     if new.csv.len() > MAX_CSV_BYTES {
         return Err(ApiError::invalid(
             "csv",
@@ -501,26 +689,46 @@ pub async fn upload(state: &AppState, ctx: &Ctx, new: NewImport) -> ApiResult<Im
         ));
     }
     let filename = super::optional_text("filename", new.filename, 255)?;
-    let table = engine::parse_csv(&new.csv).map_err(|m| ApiError::invalid("csv", m))?;
+    // Contact cards are kept as the table they read as: smaller, without
+    // their photos, and read again like any spreadsheet.
+    let (table, csv, source) = if vcard::is_vcard(&new.csv) {
+        let table = vcard::parse(&new.csv).map_err(|m| ApiError::invalid("csv", m))?;
+        let csv = vcard::to_csv(&table).map_err(ApiError::internal)?;
+        (table, csv, Some(&import_sources::VCARD))
+    } else {
+        let table = engine::parse_csv(&new.csv).map_err(|m| ApiError::invalid("csv", m))?;
+        let source = import_sources::detect(&table.headers);
+        (table, new.csv, source)
+    };
     if table.rows.is_empty() {
         return Err(ApiError::invalid(
             "csv",
             "the file has no rows under its header",
         ));
     }
+    let entity = match (new.entity.as_str(), source) {
+        (AUTO, Some(s)) => s.entity.to_owned(),
+        (AUTO, None) => likely_entity(&table.headers).to_owned(),
+        (chosen, _) => chosen.to_owned(),
+    };
+    if new.entity == AUTO {
+        ctx.authorize(write_permission(&entity)?)?;
+    }
+    // A recognised export of other records (a HubSpot companies file
+    // uploaded as contacts) is mapped as a spreadsheet would be.
+    let source = source.filter(|s| s.entity == entity);
     let mut tx = begin(state, ctx).await?;
-    let defs = super::fields::engine_defs(&mut tx, &new.entity).await?;
-    let targets = targets(&new.entity, &defs);
-    let engine_targets: Vec<Target> = targets.iter().map(|(_, t)| t.clone()).collect();
-    let suggested = engine::suggest_mapping(&table.headers, &engine_targets);
+    let defs = super::fields::engine_defs(&mut tx, &entity).await?;
+    let targets = targets(&entity, &defs);
+    let suggested = suggest(&table.headers, &targets, source);
     let id = core_domain::ids::new_id();
     core_db::imports::insert(
         &mut tx,
         id,
         core_db::imports::New {
-            entity: &new.entity,
+            entity: &entity,
             filename: filename.as_deref(),
-            csv: &new.csv,
+            csv: &csv,
             headers: &table.headers,
             row_count: i32::try_from(table.rows.len()).unwrap_or(i32::MAX),
         },
@@ -536,6 +744,10 @@ pub async fn upload(state: &AppState, ctx: &Ctx, new: NewImport) -> ApiResult<Im
         sample: table.rows.into_iter().take(SAMPLE_ROWS).collect(),
         suggested,
         targets: targets.into_iter().map(|(t, _)| t).collect(),
+        source: source.map(|s| ImportSource {
+            key: s.key.to_owned(),
+            label: s.label.to_owned(),
+        }),
     })
 }
 
@@ -647,7 +859,10 @@ impl Reader<'_> {
                 }
             }
         }
-        let mut tags = list("tags");
+        let mut tags: Vec<String> = list("tags")
+            .iter()
+            .filter_map(|t| engine::clean_label(t))
+            .collect();
         tags.extend(self.extra_tags.iter().cloned());
         let flag = |k: &str, issue: &mut dyn FnMut(&str, String)| -> bool {
             match text(k) {
@@ -878,6 +1093,9 @@ struct Setup {
     defs: Vec<FieldDef>,
     reading: Reading,
     extra_tags: Vec<String>,
+    /// Corrections by spreadsheet row: (column, value).
+    edits: HashMap<usize, Vec<(usize, String)>>,
+    skip_rows: HashSet<usize>,
 }
 
 async fn setup(
@@ -915,6 +1133,32 @@ async fn setup(
     if !plan.columns.iter().flatten().any(|c| c == "name") {
         check.issue("columns", "choose the column (or columns) with the name");
     }
+    if plan.options.edits.len() > MAX_EDITS {
+        check.issue(
+            "options.edits",
+            format!("make at most {MAX_EDITS} corrections in one import"),
+        );
+    }
+    if plan.options.skip_rows.len() > engine::MAX_ROWS {
+        check.issue("options.skip_rows", "too many rows to leave out");
+    }
+    let mut edits: HashMap<usize, Vec<(usize, String)>> = HashMap::new();
+    for (i, e) in plan.options.edits.iter().enumerate() {
+        if e.column >= import.headers.len() {
+            check.issue(
+                format!("options.edits[{i}].column"),
+                "there is no such column",
+            );
+        } else if e.value.chars().count() > MAX_EDIT_CHARS {
+            check.issue(format!("options.edits[{i}].value"), "this is too long");
+        } else {
+            let cells = edits.entry(e.row).or_default();
+            // A later correction of the same cell wins.
+            cells.retain(|(c, _)| *c != e.column);
+            cells.push((e.column, e.value.trim().to_owned()));
+        }
+    }
+    let skip_rows: HashSet<usize> = plan.options.skip_rows.iter().copied().collect();
     let extra_tags = check.tags(&plan.options.tags);
     let currency = check.currency(
         "options.default_currency",
@@ -942,10 +1186,31 @@ async fn setup(
         defs,
         reading,
         extra_tags,
+        edits,
+        skip_rows,
     })
 }
 
 impl Setup {
+    /// The row with its corrections, or `None` when it is left out.
+    fn row<'r>(&self, number: usize, row: &'r [String]) -> Option<Cow<'r, [String]>> {
+        if self.skip_rows.contains(&number) {
+            return None;
+        }
+        Some(match self.edits.get(&number) {
+            None => Cow::Borrowed(row),
+            Some(cells) => {
+                let mut row = row.to_vec();
+                for (column, value) in cells {
+                    if let Some(cell) = row.get_mut(*column) {
+                        cell.clone_from(value);
+                    }
+                }
+                Cow::Owned(row)
+            }
+        })
+    }
+
     fn reader(&self) -> Reader<'_> {
         Reader {
             entity: &self.entity,
@@ -1093,9 +1358,15 @@ pub async fn dry_run(
         new_organisations: Vec::new(),
         issues: Vec::new(),
         sample: Vec::new(),
+        problem_rows: Vec::new(),
     };
     for (i, row) in table.rows.iter().enumerate() {
-        match setup.plan(&reader, &index, row) {
+        let number = table.row_numbers[i];
+        let Some(row) = setup.row(number, row) else {
+            out.skip += 1;
+            continue;
+        };
+        match setup.plan(&reader, &index, &row) {
             Plan::Create(record) | Plan::Update(_, record, _) if out.sample.len() < SAMPLE_ROWS => {
                 out.sample.push(record_json(&record));
                 count(&mut out, &mut index, &setup, &record, i);
@@ -1106,9 +1377,17 @@ pub async fn dry_run(
             Plan::Skip => out.skip += 1,
             Plan::Fail(list) => {
                 out.fail += 1;
+                let issues = issues_for(number, list);
                 if out.issues.len() < MAX_DRY_RUN_ISSUES {
-                    out.issues.extend(issues_for(table.row_numbers[i], list));
+                    out.issues.extend(issues.iter().cloned());
                     out.issues.truncate(MAX_DRY_RUN_ISSUES);
+                }
+                if out.problem_rows.len() < MAX_PROBLEM_ROWS {
+                    out.problem_rows.push(ProblemRow {
+                        row: number,
+                        cells: row.into_owned(),
+                        issues,
+                    });
                 }
             }
         }
@@ -1479,7 +1758,11 @@ pub async fn execute(
             if i < start {
                 continue;
             }
-            let plan = setup.plan(&reader, &index, row);
+            let Some(row) = setup.row(table.row_numbers[i], row) else {
+                counts.skipped += 1;
+                continue;
+            };
+            let plan = setup.plan(&reader, &index, &row);
             match apply(&mut tx, &ctx, &mut index, plan, &extra).await? {
                 Ok("created") => counts.created += 1,
                 Ok("updated") => counts.updated += 1,

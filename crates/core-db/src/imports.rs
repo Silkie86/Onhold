@@ -180,7 +180,8 @@ pub async fn progress(
     Ok(())
 }
 
-/// Ends the run (`done` or `failed`) and drops the uploaded file.
+/// Ends the run (`done` or `failed`) and drops the uploaded file, and the
+/// corrections made to it, which hold its cells.
 pub async fn finish(
     conn: &mut PgConnection,
     id: Uuid,
@@ -188,7 +189,8 @@ pub async fn finish(
     error: Option<&str>,
 ) -> Result<()> {
     sqlx::query!(
-        r#"UPDATE imports SET status = $2, error = $3, csv = NULL, finished_at = now()
+        r#"UPDATE imports SET status = $2, error = $3, csv = NULL,
+                  options = options - 'edits', finished_at = now()
            WHERE workspace_id = app_workspace_id() AND id = $1"#,
         id,
         status,

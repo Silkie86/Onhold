@@ -7,11 +7,13 @@ pub mod conditions;
 pub mod documents;
 pub mod fields;
 pub mod import;
+pub mod import_sources;
 pub mod path;
 pub mod pipeline;
 pub mod rules;
 pub mod schedule;
 pub mod templates;
+pub mod vcard;
 pub mod webhooks;
 
 /// A problem with one input field, for validation errors that name the
