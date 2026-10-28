@@ -2858,7 +2858,9 @@ pub async fn execute_undo(
                     // Already gone.
                     continue;
                 };
-                if changed > ended || core_db::imports::record_in_use(&mut tx, entity, *record).await? {
+                if changed > ended
+                    || core_db::imports::record_in_use(&mut tx, entity, *record).await?
+                {
                     kept += 1;
                     continue;
                 }

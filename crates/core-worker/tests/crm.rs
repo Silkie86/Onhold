@@ -797,7 +797,9 @@ async fn an_import_can_be_undone_keeping_what_changed_since(pool: PgPool) {
                Ben Ode,ben@example.com,Red Room\n\
                Cy Moss,cy@example.com,Red Room\n\
                Already Here,here@example.com,\n";
-    let path = h.queue_import(&owner, "contact", csv, json!({ "on_match": "update" })).await;
+    let path = h
+        .queue_import(&owner, "contact", csv, json!({ "on_match": "update" }))
+        .await;
     let id = path.rsplit('/').next().unwrap().to_owned();
     // Not finished yet: nothing to undo.
     let early = h
@@ -806,10 +808,19 @@ async fn an_import_can_be_undone_keeping_what_changed_since(pool: PgPool) {
         .signed_in(&owner)
         .send()
         .await;
-    assert_eq!(early.status, axum::http::StatusCode::CONFLICT, "{}", early.body);
+    assert_eq!(
+        early.status,
+        axum::http::StatusCode::CONFLICT,
+        "{}",
+        early.body
+    );
     h.drain().await;
     let view = h.get(&owner, &path).await;
-    assert_eq!((view["created"].as_i64(), view["updated"].as_i64()), (Some(3), Some(1)), "{view}");
+    assert_eq!(
+        (view["created"].as_i64(), view["updated"].as_i64()),
+        (Some(3), Some(1)),
+        "{view}"
+    );
 
     // Cy is edited after the import, so Cy and the Red Room stay.
     let list = h.get(&owner, "/api/v1/contacts?sort=name").await;
@@ -836,16 +847,21 @@ async fn an_import_can_be_undone_keeping_what_changed_since(pool: PgPool) {
     let view = h.get(&owner, &path).await;
     assert_eq!(view["status"], "undone", "{view}");
     // Ann, Ben and the Blue Room go; Cy and the Red Room are kept.
-    assert_eq!((view["undone"].as_i64(), view["kept"].as_i64()), (Some(3), Some(2)), "{view}");
+    assert_eq!(
+        (view["undone"].as_i64(), view["kept"].as_i64()),
+        (Some(3), Some(2)),
+        "{view}"
+    );
     let list = h.get(&owner, "/api/v1/contacts?sort=name").await;
     assert_eq!(names(&list["items"]), ["Already Here", "Cy Moss"]);
     let orgs = h.get(&owner, "/api/v1/organisations?sort=name").await;
     assert_eq!(names(&orgs["items"]), ["Red Room"]);
-    let left: i64 = sqlx::query_scalar("SELECT count(*) FROM import_records WHERE import_id = $1::uuid")
-        .bind(&id)
-        .fetch_one(&h.app.owner)
-        .await
-        .unwrap();
+    let left: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM import_records WHERE import_id = $1::uuid")
+            .bind(&id)
+            .fetch_one(&h.app.owner)
+            .await
+            .unwrap();
     assert_eq!(left, 0);
 
     // Once is enough.
