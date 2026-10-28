@@ -612,3 +612,71 @@ async fn rules_text_only_those_who_agreed(pool: PgPool) {
     assert!(text.contains("has not agreed"), "{text}");
     assert!(text.contains(&quiet.to_string()), "{text}");
 }
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn follow_ups_switch_on_and_off(pool: PgPool) {
+    let h = harness(pool).await;
+    let (_ws, owner) = h.app.workspace_with_owner("finches").await;
+    let list = h.get(&owner, "/api/v1/follow-ups").await;
+    let keys: Vec<&str> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "enquiry_unanswered",
+            "quote_chase",
+            "invoice_overdue",
+            "booking_reminder_text"
+        ]
+    );
+    assert!(list.as_array().unwrap().iter().all(|f| f["on"] == false));
+
+    let set = |key: &str, on: bool| {
+        let path = format!("/api/v1/follow-ups/{key}");
+        let req = h.app.put(&path).signed_in(&owner).json(json!({ "on": on }));
+        async move { req.send().await }
+    };
+    // Every follow-up installs: its rules check out against its templates.
+    for key in keys {
+        let f = set(key, true).await.ok().body;
+        assert_eq!(f["on"], true, "{key}");
+    }
+    let overdue = set("invoice_overdue", true).await.ok().body;
+    let ids = overdue["rule_ids"].as_array().unwrap().clone();
+    assert_eq!(ids.len(), 3, "switching on again adds nothing");
+    let rules = h.get(&owner, "/api/v1/rules").await;
+    let rules = rules["items"].as_array().or(rules.as_array()).unwrap();
+    assert_eq!(rules.len(), 6);
+
+    // Off deletes the rules and keeps the (perhaps reworded) templates.
+    let template: Uuid = h
+        .get(&owner, "/api/v1/templates?kind=email")
+        .await
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["key"] == "follow_up.invoice.first")
+        .map(|t| t["id"].as_str().unwrap().parse().unwrap())
+        .unwrap();
+    let off = set("invoice_overdue", false).await.ok().body;
+    assert_eq!(off["on"], false);
+    assert!(off["rule_ids"].as_array().unwrap().is_empty());
+    h.app
+        .get(&format!("/api/v1/rules/{}", ids[0].as_str().unwrap()))
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+    h.get(&owner, &format!("/api/v1/templates/{template}")).await;
+    let again = set("invoice_overdue", true).await.ok().body;
+    assert_eq!(again["rule_ids"].as_array().unwrap().len(), 3);
+    assert_ne!(again["rule_ids"][0], ids[0]);
+
+    set("nothing_like_it", true)
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+}

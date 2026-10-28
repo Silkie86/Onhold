@@ -1597,6 +1597,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/follow-ups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The ready-made follow-ups and whether each is on. */
+        get: operations["list_follow_ups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/follow-ups/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a ready-made follow-up on (installing its rules and any missing
+         *     templates) or off (deleting its rules; templates stay).
+         */
+        put: operations["set_follow_up"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/fx-rates": {
         parameters: {
             query?: never;
@@ -1608,6 +1645,24 @@ export interface paths {
         get: operations["fx_rate"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hooks/messaging/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Meta's check of a WhatsApp number's callback URL. */
+        get: operations["messaging_verify"];
+        put?: never;
+        /** Texts in, and what became of texts sent, from Twilio or Meta. */
+        post: operations["messaging_hook"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1856,6 +1911,91 @@ export interface paths {
         put?: never;
         /** Read a mailbox now rather than at its next turn. */
         post: operations["sync_mailbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/numbers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The workspace's SMS and WhatsApp numbers. */
+        get: operations["list_numbers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/numbers/sms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect the workspace's Twilio number for SMS (checked with Twilio). */
+        post: operations["connect_sms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/numbers/whatsapp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect the workspace's WhatsApp number in Meta's Cloud API (checked with Meta). */
+        post: operations["connect_whatsapp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/numbers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop using a number and forget its credentials; its conversations stay. */
+        delete: operations["disconnect_number"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/texts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Text a contact or a number from the workspace's SMS or WhatsApp number. */
+        post: operations["start_text"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4874,12 +5014,27 @@ export interface components {
             /** Format: date-time */
             last_used_at?: string | null;
         };
+        ConnectSms: {
+            /** @description The Twilio account's SID (`AC…`). */
+            account_sid: string;
+            auth_token: string;
+            /** @description A number in that account, in international form (`+447700900123`). */
+            number: string;
+        };
         ConnectStart: {
             /**
              * @description Send the admin here; Stripe sends them back to Settings → Payments
              *     with `code` and `state`, which the page passes to the finish call.
              */
             url: string;
+        };
+        ConnectWhatsapp: {
+            /** @description A system user's permanent access token with `whatsapp_business_messaging`. */
+            access_token: string;
+            /** @description The Meta app's secret, which signs what Meta sends. */
+            app_secret: string;
+            /** @description The number's "Phone number ID" in WhatsApp Manager. */
+            phone_number_id: string;
         };
         ContactDuplicateQuery: {
             emails?: string[];
@@ -5663,6 +5818,18 @@ export interface components {
             /** @description From Stripe's redirect, as the start call made it. */
             state: string;
         };
+        /** @description A ready-made follow-up and whether it is on. */
+        FollowUp: {
+            description: string;
+            key: string;
+            /** @description The workspace module it belongs to. */
+            module: string;
+            name: string;
+            /** @description Whether its rules are installed. */
+            on: boolean;
+            /** @description The rules installed for it, to edit them like any other rule. */
+            rule_ids: string[];
+        };
         FunnelReport: {
             /** Format: int64 */
             enquiries: number;
@@ -6318,6 +6485,38 @@ export interface components {
             template_key?: string | null;
             text: string;
             to: string[];
+        };
+        Messaging: {
+            channels: components["schemas"]["MessagingChannel"][];
+        };
+        MessagingChannel: {
+            /** @description Twilio's account SID; Meta's phone number id. */
+            account_id: string;
+            /** Format: date-time */
+            connected_at: string;
+            /** @description WhatsApp's verified name for the number. */
+            display_name?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description `sms` or `whatsapp`. */
+            kind: string;
+            last_error?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            /** @description `twilio` or `meta`. */
+            provider: string;
+            /** @description The number, in international form. */
+            sender: string;
+            /** @description `active`, or `failing` when the provider refused the account itself. */
+            status: string;
+            /** @description Meta's "Verify token" for that callback URL. */
+            verify_token?: string | null;
+            /**
+             * @description For setting up the provider (members who manage integrations
+             *     only): where it sends messages. Twilio: the number's "A message
+             *     comes in" webhook. Meta: the app's callback URL.
+             */
+            webhook_url?: string | null;
         };
         MfaVerifyRequest: {
             /** @description The 6-digit code from the authenticator app. */
@@ -7584,6 +7783,9 @@ export interface components {
             mfa_required: boolean;
             user_id: components["schemas"]["UserId"];
         };
+        SetFollowUp: {
+            on: boolean;
+        };
         SettlementPatch: {
             /** Format: int32 */
             commission_bps?: number | null;
@@ -7794,6 +7996,23 @@ export interface components {
             /** @description Recorded in the customer's audit log. */
             reason: string;
             workspace_id: components["schemas"]["WorkspaceId"];
+        };
+        StartText: {
+            body?: string | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** @description `sms` or `whatsapp`. */
+            channel: string;
+            /**
+             * Format: uuid
+             * @description Who to text: a contact (their first number that can take texts) or
+             *     a number with its country code.
+             */
+            contact_id?: string | null;
+            /** Format: uuid */
+            enquiry_id?: string | null;
+            template_key?: string | null;
+            to?: string | null;
         };
         StatusRequest: {
             /** @description Confirm despite a clash (needs `booking:override`). */
@@ -8276,7 +8495,7 @@ export interface components {
             assigned_to?: string | null;
             /** Format: uuid */
             booking_id?: string | null;
-            /** @description `email`. */
+            /** @description `email`, `sms` or `whatsapp`. */
             channel: string;
             /** Format: uuid */
             contact_id?: string | null;
@@ -8299,6 +8518,11 @@ export interface components {
             last_outbound_at?: string | null;
             /** Format: int32 */
             message_count: number;
+            /**
+             * Format: uuid
+             * @description The workspace's SMS or WhatsApp number it is on.
+             */
+            messaging_channel_id?: string | null;
             /** Format: uuid */
             organisation_id?: string | null;
             /** @description The other people in it. */
@@ -13093,6 +13317,71 @@ export interface operations {
             };
         };
     };
+    list_follow_ups: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FollowUp"][];
+                };
+            };
+        };
+    };
+    set_follow_up: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetFollowUp"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FollowUp"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     fx_rate: {
         parameters: {
             query: {
@@ -13119,6 +13408,86 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    messaging_verify: {
+        parameters: {
+            query?: {
+                "hub.mode"?: string | null;
+                "hub.verify_token"?: string | null;
+                "hub.challenge"?: string | null;
+            };
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    messaging_hook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": string;
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13850,6 +14219,199 @@ export interface operations {
             };
         };
     };
+    list_numbers: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Messaging"];
+                };
+            };
+        };
+    };
+    connect_sms: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectSms"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagingChannel"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    connect_whatsapp: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectWhatsapp"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagingChannel"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disconnect_number: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_text: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartText"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_threads: {
         parameters: {
             query?: {
@@ -13857,6 +14419,8 @@ export interface operations {
                 status?: string | null;
                 /** @description One mailbox's threads. */
                 integration_id?: string | null;
+                /** @description `email`, `sms` or `whatsapp`. */
+                channel?: string | null;
                 contact_id?: string | null;
                 organisation_id?: string | null;
                 enquiry_id?: string | null;

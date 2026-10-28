@@ -407,13 +407,20 @@ pub async fn get(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Rule> {
 pub async fn create(state: &AppState, ctx: &Ctx, input: Input) -> ApiResult<Rule> {
     ctx.authorize(Permission::ConfigWrite)?;
     let mut tx = begin(state, ctx).await?;
+    let rule = create_in(&mut tx, ctx, &input).await?;
+    tx.commit().await?;
+    Ok(rule)
+}
+
+/// Saves a new rule inside the caller's transaction (permission already checked).
+pub(crate) async fn create_in(tx: &mut Tx, ctx: &Ctx, input: &Input) -> ApiResult<Rule> {
     let id = core_domain::ids::new_id();
-    save(&mut tx, ctx, id, &input, None, None).await?;
-    let rule = core_db::rules::get(&mut tx, id)
+    save(tx, ctx, id, input, None, None).await?;
+    let rule = core_db::rules::get(tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     record(
-        &mut tx,
+        tx,
         ctx,
         Change {
             topic: "rule.created",
@@ -425,7 +432,6 @@ pub async fn create(state: &AppState, ctx: &Ctx, input: Input) -> ApiResult<Rule
         },
     )
     .await?;
-    tx.commit().await?;
     Ok(rule)
 }
 
@@ -488,12 +494,19 @@ pub async fn update(
 pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::ConfigWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let before = core_db::rules::get(&mut tx, id)
+    delete_in(&mut tx, ctx, id).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Deletes a rule inside the caller's transaction (permission already checked).
+pub(crate) async fn delete_in(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
+    let before = core_db::rules::get(tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    core_db::rules::soft_delete(&mut tx, id, ctx.user_id()).await?;
+    core_db::rules::soft_delete(tx, id, ctx.user_id()).await?;
     record(
-        &mut tx,
+        tx,
         ctx,
         Change {
             topic: "rule.deleted",
@@ -505,7 +518,6 @@ pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
         },
     )
     .await?;
-    tx.commit().await?;
     Ok(())
 }
 

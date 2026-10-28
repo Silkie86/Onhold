@@ -19,6 +19,7 @@ pub mod enquiries;
 pub mod events;
 pub mod fields;
 pub mod files;
+pub mod follow_ups;
 pub mod finance;
 pub mod imports;
 pub mod inbox;

@@ -8144,6 +8144,140 @@
         ]
       }
     },
+    "/api/v1/follow-ups": {
+      "get": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "The ready-made follow-ups and whether each is on.",
+        "operationId": "list_follow_ups",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FollowUp"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/follow-ups/{key}": {
+      "put": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Switch a ready-made follow-up on (installing its rules and any missing\ntemplates) or off (deleting its rules; templates stay).",
+        "operationId": "set_follow_up",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetFollowUp"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FollowUp"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/fx-rates": {
       "get": {
         "tags": [
@@ -8226,6 +8360,135 @@
             "api_key": []
           }
         ]
+      }
+    },
+    "/api/v1/hooks/messaging/{token}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Meta's check of a WhatsApp number's callback URL.",
+        "operationId": "messaging_verify",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hub.mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "hub.verify_token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "hub.challenge",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Texts in, and what became of texts sent, from Twilio or Meta.",
+        "operationId": "messaging_hook",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/imports": {
@@ -9640,6 +9903,372 @@
         ]
       }
     },
+    "/api/v1/inbox/numbers": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "The workspace's SMS and WhatsApp numbers.",
+        "operationId": "list_numbers",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Messaging"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/numbers/sms": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Connect the workspace's Twilio number for SMS (checked with Twilio).",
+        "operationId": "connect_sms",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectSms"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessagingChannel"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/numbers/whatsapp": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Connect the workspace's WhatsApp number in Meta's Cloud API (checked with Meta).",
+        "operationId": "connect_whatsapp",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectWhatsapp"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessagingChannel"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/numbers/{id}": {
+      "delete": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Stop using a number and forget its credentials; its conversations stay.",
+        "operationId": "disconnect_number",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/texts": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Text a contact or a number from the workspace's SMS or WhatsApp number.",
+        "operationId": "start_text",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartText"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/inbox/threads": {
       "get": {
         "tags": [
@@ -9683,6 +10312,18 @@
                 "null"
               ],
               "format": "uuid"
+            }
+          },
+          {
+            "name": "channel",
+            "in": "query",
+            "description": "`email`, `sms` or `whatsapp`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           {
@@ -26123,6 +26764,27 @@
           }
         }
       },
+      "ConnectSms": {
+        "type": "object",
+        "required": [
+          "account_sid",
+          "auth_token",
+          "number"
+        ],
+        "properties": {
+          "account_sid": {
+            "type": "string",
+            "description": "The Twilio account's SID (`AC…`)."
+          },
+          "auth_token": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string",
+            "description": "A number in that account, in international form (`+447700900123`)."
+          }
+        }
+      },
       "ConnectStart": {
         "type": "object",
         "required": [
@@ -26132,6 +26794,28 @@
           "url": {
             "type": "string",
             "description": "Send the admin here; Stripe sends them back to Settings → Payments\nwith `code` and `state`, which the page passes to the finish call."
+          }
+        }
+      },
+      "ConnectWhatsapp": {
+        "type": "object",
+        "required": [
+          "phone_number_id",
+          "access_token",
+          "app_secret"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "A system user's permanent access token with `whatsapp_business_messaging`."
+          },
+          "app_secret": {
+            "type": "string",
+            "description": "The Meta app's secret, which signs what Meta sends."
+          },
+          "phone_number_id": {
+            "type": "string",
+            "description": "The number's \"Phone number ID\" in WhatsApp Manager."
           }
         }
       },
@@ -28824,6 +29508,45 @@
           }
         }
       },
+      "FollowUp": {
+        "type": "object",
+        "description": "A ready-made follow-up and whether it is on.",
+        "required": [
+          "key",
+          "name",
+          "description",
+          "module",
+          "on",
+          "rule_ids"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string",
+            "description": "The workspace module it belongs to."
+          },
+          "name": {
+            "type": "string"
+          },
+          "on": {
+            "type": "boolean",
+            "description": "Whether its rules are installed."
+          },
+          "rule_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The rules installed for it, to edit them like any other rule."
+          }
+        }
+      },
       "FunnelReport": {
         "type": "object",
         "required": [
@@ -30896,6 +31619,96 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "Messaging": {
+        "type": "object",
+        "required": [
+          "channels"
+        ],
+        "properties": {
+          "channels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessagingChannel"
+            }
+          }
+        }
+      },
+      "MessagingChannel": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "provider",
+          "sender",
+          "account_id",
+          "status",
+          "connected_at"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "description": "Twilio's account SID; Meta's phone number id."
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "WhatsApp's verified name for the number."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`sms` or `whatsapp`."
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "provider": {
+            "type": "string",
+            "description": "`twilio` or `meta`."
+          },
+          "sender": {
+            "type": "string",
+            "description": "The number, in international form."
+          },
+          "status": {
+            "type": "string",
+            "description": "`active`, or `failing` when the provider refused the account itself."
+          },
+          "verify_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Meta's \"Verify token\" for that callback URL."
+          },
+          "webhook_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For setting up the provider (members who manage integrations\nonly): where it sends messages. Twilio: the number's \"A message\ncomes in\" webhook. Meta: the app's callback URL."
           }
         }
       },
@@ -35154,6 +35967,17 @@
           }
         }
       },
+      "SetFollowUp": {
+        "type": "object",
+        "required": [
+          "on"
+        ],
+        "properties": {
+          "on": {
+            "type": "boolean"
+          }
+        }
+      },
       "SettlementPatch": {
         "type": "object",
         "properties": {
@@ -35797,6 +36621,58 @@
           },
           "workspace_id": {
             "$ref": "#/components/schemas/WorkspaceId"
+          }
+        }
+      },
+      "StartText": {
+        "type": "object",
+        "required": [
+          "channel"
+        ],
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "booking_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "channel": {
+            "type": "string",
+            "description": "`sms` or `whatsapp`."
+          },
+          "contact_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Who to text: a contact (their first number that can take texts) or\na number with its country code."
+          },
+          "enquiry_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "template_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -37380,7 +38256,7 @@
           },
           "channel": {
             "type": "string",
-            "description": "`email`."
+            "description": "`email`, `sms` or `whatsapp`."
           },
           "contact_id": {
             "type": [
@@ -37433,6 +38309,14 @@
           "message_count": {
             "type": "integer",
             "format": "int32"
+          },
+          "messaging_channel_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The workspace's SMS or WhatsApp number it is on."
           },
           "organisation_id": {
             "type": [

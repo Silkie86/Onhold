@@ -89,3 +89,9 @@ REVOKE ALL ON FUNCTION messaging_channel_for_hook(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION messaging_channel_for_hook(text) TO onhold_app;
 
 GRANT SELECT, INSERT, UPDATE ON messaging_channels, messaging_opt_outs TO onhold_app;
+
+-- Which ready-made follow-up a rule was installed from (`quote_chase`,
+-- `invoice_overdue/7`…), so switching the follow-up off and on finds it.
+ALTER TABLE rules ADD COLUMN preset text;
+CREATE UNIQUE INDEX rules_preset ON rules (workspace_id, preset)
+    WHERE preset IS NOT NULL AND deleted_at IS NULL;

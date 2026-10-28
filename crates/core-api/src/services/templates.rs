@@ -117,6 +117,20 @@ pub struct New {
 
 pub async fn create(state: &AppState, ctx: &Ctx, new: New) -> ApiResult<Template> {
     ctx.authorize(Permission::ConfigWrite)?;
+    let mut tx = begin(state, ctx).await?;
+    let t = create_in(state, &mut tx, ctx, new).await?;
+    tx.commit().await?;
+    Ok(t)
+}
+
+/// Checks and saves a new template inside the caller's transaction
+/// (permission already checked).
+pub(crate) async fn create_in(
+    state: &AppState,
+    tx: &mut Tx,
+    ctx: &Ctx,
+    new: New,
+) -> ApiResult<Template> {
     check_key(&new.key)?;
     let locale = new.locale.unwrap_or_else(|| "en".into());
     core_domain::workspace::validate_locale(&locale)?;
@@ -129,13 +143,10 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: New) -> ApiResult<Template
             "system mail templates are emails",
         ));
     }
-
-    let mut tx = begin(state, ctx).await?;
-    super::mail::check_link_use(state, &mut tx, &new.key, new.subject.as_deref(), &new.body)
-        .await?;
+    super::mail::check_link_use(state, tx, &new.key, new.subject.as_deref(), &new.body).await?;
     let id = core_domain::ids::new_id();
     let inserted = core_db::templates::insert(
-        &mut tx,
+        tx,
         id,
         new.kind.as_str(),
         &new.key,
@@ -159,11 +170,11 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: New) -> ApiResult<Template
             err.into()
         });
     }
-    let t = core_db::templates::get(&mut tx, id)
+    let t = core_db::templates::get(tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     record(
-        &mut tx,
+        tx,
         ctx,
         Change {
             topic: "template.created",
@@ -175,7 +186,6 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: New) -> ApiResult<Template
         },
     )
     .await?;
-    tx.commit().await?;
     Ok(t)
 }
 

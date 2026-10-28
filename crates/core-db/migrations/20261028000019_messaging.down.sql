@@ -1,3 +1,5 @@
+DROP INDEX rules_preset;
+ALTER TABLE rules DROP COLUMN preset;
 DROP FUNCTION messaging_channel_for_hook(text);
 DROP INDEX thread_messages_messaging;
 ALTER TABLE thread_messages DROP CONSTRAINT thread_messages_messaging_channel_fk;
