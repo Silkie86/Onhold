@@ -1744,6 +1744,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take away what a finished import created, in the background: records
+         *     changed since, or in use elsewhere, are kept, and what it updated stays.
+         *     Follow it at `GET /imports/{id}`.
+         */
+        post: operations["undo_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inbox/domains": {
         parameters: {
             query?: never;
@@ -6450,6 +6471,8 @@ export interface components {
             id: string;
             /** @description The first problems found (up to 1,000). */
             issues: components["schemas"]["ImportIssue"][];
+            /** Format: int32 */
+            kept: number;
             plan?: components["schemas"]["ImportPlan"] | null;
             /**
              * Format: int32
@@ -6462,8 +6485,27 @@ export interface components {
             skipped: number;
             /** Format: date-time */
             started_at?: string | null;
-            /** @description `uploaded`, `queued`, `running`, `done` or `failed`. */
+            /**
+             * @description `uploaded`, `queued`, `running`, `done` or `failed`; then `undoing`
+             *     and `undone` when it is undone.
+             */
             status: string;
+            /**
+             * Format: int32
+             * @description Records it created that are left to undo; none for imports from
+             *     before undoing existed.
+             */
+            to_undo: number;
+            /** @description Why the last undo gave up, if it did. */
+            undo_error?: string | null;
+            /**
+             * Format: int32
+             * @description Undoing it: records taken away, and those kept because they were
+             *     changed since or are in use.
+             */
+            undone: number;
+            /** Format: date-time */
+            undone_at?: string | null;
             /** Format: int32 */
             updated: number;
         };
@@ -14578,6 +14620,54 @@ export interface operations {
                 };
             };
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    undo_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportView"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

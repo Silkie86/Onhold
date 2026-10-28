@@ -46,6 +46,7 @@ use crate::AppState;
 use crate::error::{ApiError, ApiResult};
 
 pub const JOB_IMPORT: &str = "crm.import";
+pub const JOB_UNDO: &str = "crm.import_undo";
 /// The largest file accepted.
 pub const MAX_CSV_BYTES: usize = 10 * 1024 * 1024;
 /// Rows written per transaction.
@@ -168,7 +169,8 @@ pub struct ImportView {
     pub id: Uuid,
     pub entity: String,
     pub filename: Option<String>,
-    /// `uploaded`, `queued`, `running`, `done` or `failed`.
+    /// `uploaded`, `queued`, `running`, `done` or `failed`; then `undoing`
+    /// and `undone` when it is undone.
     pub status: String,
     pub headers: Vec<String>,
     pub row_count: i32,
@@ -187,6 +189,16 @@ pub struct ImportView {
     pub created_by: Option<UserId>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    /// Undoing it: records taken away, and those kept because they were
+    /// changed since or are in use.
+    pub undone: i32,
+    pub kept: i32,
+    pub undone_at: Option<DateTime<Utc>>,
+    /// Why the last undo gave up, if it did.
+    pub undo_error: Option<String>,
+    /// Records it created that are left to undo; none for imports from
+    /// before undoing existed.
+    pub to_undo: i32,
 }
 
 impl From<core_db::imports::Import> for ImportView {
@@ -213,6 +225,11 @@ impl From<core_db::imports::Import> for ImportView {
             created_by: i.created_by,
             started_at: i.started_at,
             finished_at: i.finished_at,
+            undone: i.undone_count,
+            kept: i.kept_count,
+            undone_at: i.undone_at,
+            undo_error: i.undo_error,
+            to_undo: i.to_undo,
         }
     }
 }
@@ -1668,6 +1685,9 @@ struct Index {
     by_name_at: HashMap<(String, Uuid), Uuid>,
     /// Organisations by name, for contacts.
     organisations: HashMap<String, Uuid>,
+    /// The import being run, which notes what it creates so it can be
+    /// undone; `None` in a dry run.
+    import: Option<Uuid>,
     /// Contacts' name keys, and whether the name stands in for one (an
     /// email or number), to tell people sharing an address apart.
     names: HashMap<Uuid, (String, bool)>,
@@ -1775,6 +1795,22 @@ impl Index {
                 .entry((name_key(&c.name), org))
                 .or_insert(id);
         }
+    }
+
+    async fn created(&self, tx: &mut Tx, entity: &str, id: Uuid) -> ApiResult<()> {
+        if let Some(import) = self.import {
+            core_db::imports::created(tx, import, entity, id).await?;
+        }
+        Ok(())
+    }
+
+    /// After changing a record this import may have created, so its own
+    /// change does not count as one made since.
+    async fn touched(&self, tx: &mut Tx, id: Uuid) -> ApiResult<()> {
+        if let Some(import) = self.import {
+            core_db::imports::touched(tx, import, id).await?;
+        }
+        Ok(())
     }
 
     fn organisation_named(&self, name: Option<&str>) -> Option<Uuid> {
@@ -2380,28 +2416,21 @@ pub async fn run(state: &AppState, ctx: &Ctx, id: Uuid, plan: ImportPlan) -> Api
 
 // The worker's part --------------------------------------------------------------------
 
-/// Who an import acts as: the member who started it, with what they may
-/// still do of what importing needs (an API key's permissions were checked
-/// when it queued the run). `None` once that member may no longer write
-/// the records at all, or has left.
-async fn import_ctx(
+/// Who a job acts as: the member who started it, with what they may still
+/// do of `permissions` (an API key's were checked when it queued the job).
+/// `None` once that member has left.
+async fn acting_ctx(
     tx: &mut Tx,
     workspace: WorkspaceId,
     by: Option<UserId>,
-    entity: &str,
-    options: &ImportOptions,
-    columns: &[Option<String>],
+    mut permissions: std::collections::BTreeSet<Permission>,
 ) -> ApiResult<Option<Ctx>> {
-    let mut permissions = permissions_needed(entity, options, columns)?;
     if let Some(user) = by {
         let Some(role) = core_db::members::role_of(tx, user).await? else {
             return Ok(None);
         };
         let current = core_db::workspaces::role_permissions(tx, role).await?;
         permissions.retain(|p| current.contains(p));
-        if !permissions.contains(&write_permission(entity)?) {
-            return Ok(None);
-        }
     }
     Ok(Some(Ctx {
         workspace_id: workspace,
@@ -2416,6 +2445,23 @@ async fn import_ctx(
         permissions,
         meta: core_domain::authz::RequestMeta::default(),
     }))
+}
+
+/// Who an import acts as, with what importing needs; `None` once the
+/// member who started it may no longer write the records at all.
+async fn import_ctx(
+    tx: &mut Tx,
+    workspace: WorkspaceId,
+    by: Option<UserId>,
+    entity: &str,
+    options: &ImportOptions,
+    columns: &[Option<String>],
+) -> ApiResult<Option<Ctx>> {
+    let needed = permissions_needed(entity, options, columns)?;
+    let write = write_permission(entity)?;
+    Ok(acting_ctx(tx, workspace, by, needed)
+        .await?
+        .filter(|ctx| ctx.permissions.contains(&write)))
 }
 
 /// Lists in the row are added to the record's own.
@@ -2507,6 +2553,7 @@ async fn organisation_for(
         Some(extra.clone()),
     )
     .await?;
+    index.created(tx, organisations::ENTITY, org.id).await?;
     index.organisations.insert(key, org.id);
     Ok(Some(org.id))
 }
@@ -2553,6 +2600,7 @@ async fn add_person(
                 ..Default::default()
             };
             contacts::update_in_tx(tx, ctx, id, patch, None, Some(extra.clone())).await?;
+            index.touched(tx, id).await?;
             id
         }
         None => {
@@ -2561,9 +2609,11 @@ async fn add_person(
                 organisation_id: Some(org),
                 ..person.clone()
             };
-            contacts::create_in_tx(tx, ctx, new, Some(extra.clone()))
+            let id = contacts::create_in_tx(tx, ctx, new, Some(extra.clone()))
                 .await?
-                .id
+                .id;
+            index.created(tx, contacts::ENTITY, id).await?;
+            id
         }
     };
     index.add_contact(person, Some(org), id);
@@ -2604,6 +2654,12 @@ async fn create(
                 .id
         }
     };
+    let entity = match &record {
+        Record::Talent(_) => talent::ENTITY,
+        Record::Organisation(..) => organisations::ENTITY,
+        Record::Contact(..) => contacts::ENTITY,
+    };
+    index.created(tx, entity, id).await?;
     index.add(&record, id);
     if let Record::Organisation(_, Some(person)) = &record {
         add_person(tx, ctx, index, id, person, on_match, extra).await?;
@@ -2728,6 +2784,7 @@ async fn update(
             contacts::update_in_tx(tx, ctx, id, patch, None, Some(extra.clone())).await?;
         }
     }
+    index.touched(tx, id).await?;
     index.add(&record, id);
     if let Record::Organisation(_, Some(person)) = &record {
         add_person(tx, ctx, index, id, person, on_match, extra).await?;
@@ -2811,6 +2868,7 @@ pub async fn execute(
 
     let mut tx = super::begin(state, &ctx).await?;
     let mut index = Index::load(&mut tx, &import.entity).await?;
+    index.import = Some(id);
     tx.commit().await?;
 
     for (b, batch) in table.rows.chunks(BATCH).enumerate() {
@@ -2906,6 +2964,196 @@ pub async fn abandon(
     {
         core_db::imports::finish(&mut tx, id, "failed", Some(error)).await?;
     }
+    tx.commit().await?;
+    Ok(())
+}
+
+// Undoing ------------------------------------------------------------------------
+
+/// What undoing needs: writing each kind of record the import created.
+async fn undo_permissions(
+    tx: &mut Tx,
+    id: Uuid,
+) -> ApiResult<std::collections::BTreeSet<Permission>> {
+    core_db::imports::recorded_entities(tx, id)
+        .await?
+        .iter()
+        .map(|e| write_permission(e))
+        .collect()
+}
+
+/// Queues taking away what a finished import created. Records changed since
+/// the import, or now in use elsewhere, are kept; what it updated stays.
+pub async fn undo(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<ImportView> {
+    let mut tx = begin(state, ctx).await?;
+    let import = core_db::imports::get(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    ctx.authorize(write_permission(&import.entity)?)?;
+    let needed = undo_permissions(&mut tx, id).await?;
+    for p in &needed {
+        ctx.authorize(*p)?;
+    }
+    // Imports from before undoing existed noted nothing they created.
+    if needed.is_empty() {
+        return Err(ApiError::conflict(
+            "import_nothing_to_undo",
+            "this import has nothing it created left to undo",
+        ));
+    }
+    if !core_db::imports::start_undo(&mut tx, id).await? {
+        return Err(ApiError::conflict(
+            "import_not_finished",
+            "only a finished import can be undone, and only once",
+        ));
+    }
+    let payload = json!({ "import_id": id, "by": ctx.user_id() });
+    // The status change above lets only one undo start at a time.
+    core_db::jobs::enqueue(
+        &mut tx,
+        NewJob::new(Some(ctx.workspace_id), JOB_UNDO, &payload),
+    )
+    .await?
+    .ok_or_else(|| ApiError::Internal("the undo could not be queued".into()))?;
+    let import = core_db::imports::get(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    tx.commit().await?;
+    Ok(import.into())
+}
+
+/// Whether undoing keeps a record: changed since the import was done with
+/// it, or in use. A person also stays with an organisation the import made
+/// that is kept for its own sake, and an organisation with anyone left.
+async fn keeps(
+    tx: &mut Tx,
+    id: Uuid,
+    entity: &str,
+    record: Uuid,
+    noted: i64,
+    version: i64,
+    organisation: Option<Uuid>,
+) -> ApiResult<bool> {
+    if version != noted || core_db::imports::record_in_use(tx, entity, record).await? {
+        return Ok(true);
+    }
+    if entity == organisations::ENTITY {
+        return Ok(core_db::imports::has_people(tx, record).await?);
+    }
+    let Some(org) = organisation else {
+        return Ok(false);
+    };
+    let Some(org_noted) = core_db::imports::created_version(tx, id, org).await? else {
+        return Ok(false);
+    };
+    Ok(
+        match core_db::imports::lock_record(tx, organisations::ENTITY, org).await? {
+            Some((org_version, _)) => {
+                org_version != org_noted
+                    || core_db::imports::record_in_use(tx, organisations::ENTITY, org).await?
+            }
+            None => false,
+        },
+    )
+}
+
+/// `crm.import_undo`: deletes what the import created, people first, then
+/// organisations, then talent, in batches; stops after `budget` and queues
+/// a job for the rest.
+pub async fn execute_undo(
+    state: &AppState,
+    workspace: WorkspaceId,
+    id: Uuid,
+    by: Option<UserId>,
+    budget: std::time::Duration,
+) -> ApiResult<()> {
+    let deadline = std::time::Instant::now() + budget;
+    let mut tx = core_db::begin(&state.db, Some(workspace), None).await?;
+    let Some(import) = core_db::imports::get(&mut tx, id).await? else {
+        return Ok(());
+    };
+    if import.status != "undoing" {
+        return Ok(());
+    }
+    // Who asked, with what they may still do of what undoing needs.
+    let needed = undo_permissions(&mut tx, id).await?;
+    let ctx = match acting_ctx(&mut tx, workspace, by, needed.clone()).await? {
+        Some(ctx) if ctx.permissions == needed => ctx,
+        _ => {
+            let error = "the member who asked may no longer remove these records";
+            core_db::imports::finish_undo(&mut tx, id, Some(error)).await?;
+            tx.commit().await?;
+            return Ok(());
+        }
+    };
+    tx.commit().await?;
+    let run_rules = import
+        .options
+        .as_ref()
+        .and_then(|o| o.get("run_rules"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let extra = json!({ "import": { "id": id, "run_rules": run_rules, "undo": true } });
+    for entity in [contacts::ENTITY, organisations::ENTITY, talent::ENTITY] {
+        loop {
+            let mut tx = super::begin(state, &ctx).await?;
+            // One job at a time, should a retry overlap the next.
+            if !core_db::imports::lock_undoing(&mut tx, id).await? {
+                return Ok(());
+            }
+            let batch =
+                core_db::imports::created_records(&mut tx, id, entity, BATCH as i64).await?;
+            if batch.is_empty() {
+                tx.commit().await?;
+                break;
+            }
+            let (mut undone, mut kept) = (0, 0);
+            for (record, noted) in &batch {
+                let Some((version, org)) =
+                    core_db::imports::lock_record(&mut tx, entity, *record).await?
+                else {
+                    // Already gone.
+                    continue;
+                };
+                if keeps(&mut tx, id, entity, *record, *noted, version, org).await? {
+                    kept += 1;
+                    continue;
+                }
+                super::records::delete(&mut tx, &ctx, entity, *record, Some(extra.clone())).await?;
+                undone += 1;
+            }
+            let done: Vec<Uuid> = batch.iter().map(|(r, _)| *r).collect();
+            core_db::imports::undo_progress(&mut tx, id, &done, undone, kept).await?;
+            if std::time::Instant::now() >= deadline {
+                let payload = json!({ "import_id": id, "by": by });
+                let key = format!("undo:{id}:{}", done[0]);
+                core_db::jobs::enqueue(
+                    &mut tx,
+                    NewJob::new(Some(workspace), JOB_UNDO, &payload).dedupe(&key),
+                )
+                .await?;
+                tx.commit().await?;
+                return Ok(());
+            }
+            tx.commit().await?;
+        }
+    }
+    let mut tx = core_db::begin(&state.db, Some(workspace), None).await?;
+    core_db::imports::finish_undo(&mut tx, id, None).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Puts an import back as it was when its undo has given up for good, so
+/// it can be tried again.
+pub async fn abandon_undo(
+    state: &AppState,
+    workspace: WorkspaceId,
+    id: Uuid,
+    error: &str,
+) -> ApiResult<()> {
+    let mut tx = core_db::begin(&state.db, Some(workspace), None).await?;
+    core_db::imports::finish_undo(&mut tx, id, Some(error)).await?;
     tx.commit().await?;
     Ok(())
 }

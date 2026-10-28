@@ -270,6 +270,7 @@ impl Worker {
             }
             JOB_WEBHOOK => self.deliver_webhook(job, log).await,
             imports::JOB_IMPORT => self.run_import(job, log).await,
+            imports::JOB_UNDO => self.undo_import(job, log).await,
             other => Err(JobError::permanent(format!(
                 "no handler for job kind `{other}`"
             ))),
@@ -294,12 +295,19 @@ impl Worker {
             }
             return;
         }
-        if kind != imports::JOB_IMPORT {
+        if kind != imports::JOB_IMPORT && kind != imports::JOB_UNDO {
             return;
         }
         let (Some(workspace), Ok(id)) = (workspace, uuid_field(payload, "import_id")) else {
             return;
         };
+        if kind == imports::JOB_UNDO {
+            let message = format!("the undo stopped: {error}");
+            if let Err(e) = imports::abandon_undo(&self.app, workspace, id, &message).await {
+                tracing::error!(import_id = %id, error = %e, "could not end an undo");
+            }
+            return;
+        }
         let message = format!("the import stopped: {error}");
         if let Err(e) = imports::abandon(&self.app, workspace, id, &message).await {
             tracing::error!(import_id = %id, error = %e, "could not mark an import failed");
@@ -319,6 +327,26 @@ impl Worker {
             let message = format!("the import stopped: {}", err.message);
             if let Err(e) = imports::abandon(&self.app, workspace, id, &message).await {
                 tracing::error!(job_id = %job.id, error = %e, "could not mark an import failed");
+            }
+        }
+        Err(err)
+    }
+
+    async fn undo_import(&self, job: &Claimed, log: &mut Vec<LogLine>) -> Result<(), JobError> {
+        let workspace = workspace(job)?;
+        let id = uuid_field(&job.payload, "import_id")?;
+        let by = uuid_field(&job.payload, "by").ok().map(core_domain::UserId);
+        let result =
+            imports::execute_undo(&self.app, workspace, id, by, self.settings.import_slice).await;
+        let Err(err) = result else {
+            return Ok(());
+        };
+        let err = JobError::from(err);
+        if err.permanent || job.attempt >= job.max_attempts {
+            note(log, "giving up; the import can be undone again");
+            let message = format!("the undo stopped: {}", err.message);
+            if let Err(e) = imports::abandon_undo(&self.app, workspace, id, &message).await {
+                tracing::error!(job_id = %job.id, error = %e, "could not end an undo");
             }
         }
         Err(err)

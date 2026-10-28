@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, entity, filename, status, headers, row_count, mapping, options, created_count,\n                  updated_count, skipped_count, failed_count, processed, issues, error, version, created_at,\n                  updated_at, created_by AS \"created_by: UserId\", started_at, finished_at\n           FROM imports WHERE workspace_id = app_workspace_id() AND id = $1",
+  "query": "SELECT id, entity, filename, status, headers, row_count, mapping, options, created_count,\n                  updated_count, skipped_count, failed_count, processed, issues, error, version, created_at,\n                  updated_at, created_by AS \"created_by: UserId\", started_at, finished_at,\n                  undone_count, kept_count, undone_at, undo_error,\n                  (SELECT count(*) FROM import_records r\n                   WHERE r.workspace_id = imports.workspace_id AND r.import_id = imports.id)::int AS \"to_undo!\"\n           FROM imports WHERE workspace_id = app_workspace_id() AND id = $1",
   "describe": {
     "columns": [
       {
@@ -233,6 +233,56 @@
             "name": "finished_at"
           }
         }
+      },
+      {
+        "ordinal": 21,
+        "name": "undone_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "undone_count"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "kept_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "kept_count"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "undone_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "undone_at"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "undo_error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "undo_error"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "to_undo!",
+        "type_info": "Int4",
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -261,8 +311,13 @@
       false,
       true,
       true,
-      true
+      true,
+      false,
+      false,
+      true,
+      true,
+      null
     ]
   },
-  "hash": "e159dbc64894c0822739fc61b8823c1f336d6013b29ba4e105a26d6d9e66e513"
+  "hash": "2cc2f6b15b687c7b6094b04ef774b2f2cf049a3f60a181407fdddce4a9018979"
 }

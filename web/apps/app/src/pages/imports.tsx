@@ -8,7 +8,7 @@ import { Link } from "@tanstack/react-router";
 import type { Schemas } from "@onhold/api-client";
 import { Alert, Badge, Button, Card, Checkbox, Input, Label, NativeSelect, Spinner, relativeTime } from "@onhold/ui";
 import { FileUp, Plus } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { ENTITIES, type EntityKey, api, ok } from "../api.ts";
 
 type Preview = Schemas["ImportPreview"];
@@ -104,11 +104,55 @@ const STATUS: Record<string, string> = {
   running: "Importing",
   done: "Done",
   failed: "Failed",
+  undoing: "Undoing",
+  undone: "Undone",
 };
+
+/** Whether a finished import can be undone: it noted records it created
+ * that are left to undo (imports from before undoing existed noted none). */
+export function canUndo(i: Pick<ImportView, "status" | "to_undo">): boolean {
+  return (i.status === "done" || i.status === "failed") && i.to_undo > 0;
+}
+
+/** Follows one undo until it ends, then refreshes what it changed. */
+function UndoWatch({ id }: { id: string }) {
+  const qc = useQueryClient();
+  const view = useQuery({
+    queryKey: ["import", id],
+    queryFn: () => ok(api.GET("/api/v1/imports/{id}", { params: { path: { id } } })),
+    refetchInterval: (q) => (q.state.data && q.state.data.status !== "undoing" ? false : 2000),
+  });
+  const status = view.data?.status;
+  useEffect(() => {
+    if (!status || status === "undoing") return;
+    void qc.invalidateQueries({ queryKey: ["imports"] });
+    void qc.invalidateQueries({ queryKey: ["list"] });
+    void qc.invalidateQueries({ queryKey: ["tags"] });
+  }, [status, qc]);
+  return null;
+}
 
 export function ImportsPage() {
   const [wizard, setWizard] = useState(false);
+  const qc = useQueryClient();
   const imports = useQuery({ queryKey: ["imports"], queryFn: () => ok(api.GET("/api/v1/imports")) });
+  const [undoError, setUndoError] = useState<string | null>(null);
+  const undo = async (i: ImportView) => {
+    const what = `${i.to_undo} ${i.to_undo === 1 ? "record" : "records"}`;
+    if (
+      !window.confirm(
+        `Undo ${i.filename ?? "this import"}? The ${what} it created are removed, except any changed since or now in use. What it updated stays as it is.`,
+      )
+    )
+      return;
+    setUndoError(null);
+    try {
+      await ok(api.POST("/api/v1/imports/{id}/undo", { params: { path: { id: i.id } } }));
+    } catch (e) {
+      setUndoError(e instanceof Error ? e.message : String(e));
+    }
+    void qc.invalidateQueries({ queryKey: ["imports"] });
+  };
   if (wizard) return <ImportWizard onDone={() => setWizard(false)} />;
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4 sm:p-6">
@@ -119,6 +163,7 @@ export function ImportsPage() {
         </Button>
       </div>
       {imports.isPending && <Spinner />}
+      {undoError && <Alert>{undoError}</Alert>}
       {imports.data?.length === 0 && (
         <Card className="flex flex-col items-center gap-3 p-8 text-center">
           <FileUp className="size-8 text-muted-foreground" />
@@ -143,6 +188,9 @@ export function ImportsPage() {
                 <th className="px-3 py-2">Updated</th>
                 <th className="px-3 py-2">Failed</th>
                 <th className="px-3 py-2">When</th>
+                <th className="px-3 py-2">
+                  <span className="sr-only">Undo</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -152,11 +200,27 @@ export function ImportsPage() {
                   <td className="px-3 py-2 capitalize">{i.entity}</td>
                   <td className="px-3 py-2">
                     <Badge>{STATUS[i.status] ?? i.status}</Badge>
+                    {(i.status === "undoing" || i.status === "undone") && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {i.undone} removed{i.kept > 0 ? `, ${i.kept} kept (changed since or in use)` : ""}
+                      </p>
+                    )}
+                    {i.status === "undoing" && <UndoWatch id={i.id} />}
+                    {i.undo_error && i.status !== "undoing" && (
+                      <p className="mt-1 text-xs text-destructive">{i.undo_error}</p>
+                    )}
                   </td>
                   <td className="px-3 py-2">{i.created}</td>
                   <td className="px-3 py-2">{i.updated}</td>
                   <td className="px-3 py-2">{i.failed}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{relativeTime(i.created_at)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {canUndo(i) && (
+                      <Button size="sm" variant="ghost" onClick={() => void undo(i)} aria-label={`Undo ${i.filename ?? "import"}`}>
+                        Undo
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

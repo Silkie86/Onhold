@@ -67,6 +67,8 @@ async fn the_app_role_cannot_bypass_policies(pool: PgPool) {
     // belongs to is a link; the project's audit entry keeps the history.
     // An organisation's interested-in and potential-match lists are
     // replaced as a whole; the organisation's audit entry keeps the history.
+    // What an import created is crossed off as the import is undone; the
+    // records' own audit entries keep the history.
     let links = [
         "enquiry_talent",
         "booking_talent",
@@ -74,6 +76,7 @@ async fn the_app_role_cannot_bypass_policies(pool: PgPool) {
         "calendar_push_events",
         "project_bookings",
         "organisation_items",
+        "import_records",
     ];
     let deletable: Vec<&String> = deletable
         .iter()

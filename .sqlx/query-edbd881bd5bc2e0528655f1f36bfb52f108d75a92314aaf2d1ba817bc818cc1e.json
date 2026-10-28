@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO import_records (workspace_id, import_id, entity, record_id, version)\n           SELECT app_workspace_id(), $1, $2, $3, v.version\n           FROM (SELECT version FROM talent WHERE $2 = 'talent' AND id = $3\n                 UNION ALL SELECT version FROM organisations WHERE $2 = 'organisation' AND id = $3\n                 UNION ALL SELECT version FROM contacts WHERE $2 = 'contact' AND id = $3) v\n           ON CONFLICT (import_id, record_id) DO UPDATE SET version = EXCLUDED.version",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "edbd881bd5bc2e0528655f1f36bfb52f108d75a92314aaf2d1ba817bc818cc1e"
+}

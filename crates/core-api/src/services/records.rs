@@ -95,11 +95,17 @@ pub(crate) async fn edit(
     Ok(())
 }
 
-pub(crate) async fn delete(tx: &mut Tx, ctx: &Ctx, entity: &str, id: Uuid) -> ApiResult<()> {
+pub(crate) async fn delete(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    entity: &str,
+    id: Uuid,
+    event_extra: Option<Value>,
+) -> ApiResult<()> {
     match entity {
-        talent::ENTITY => talent::delete_in_tx(tx, ctx, id).await,
-        organisations::ENTITY => organisations::delete_in_tx(tx, ctx, id).await,
-        contacts::ENTITY => contacts::delete_in_tx(tx, ctx, id).await,
+        talent::ENTITY => talent::delete_in_tx(tx, ctx, id, event_extra).await,
+        organisations::ENTITY => organisations::delete_in_tx(tx, ctx, id, event_extra).await,
+        contacts::ENTITY => contacts::delete_in_tx(tx, ctx, id, event_extra).await,
         _ => Err(ApiError::NotFound),
     }
 }
@@ -167,7 +173,7 @@ pub async fn bulk(
     ids.retain(|id| seen.insert(*id));
     for id in ids {
         let result = match req.action {
-            BulkAction::Delete => delete(&mut tx, ctx, entity, id).await,
+            BulkAction::Delete => delete(&mut tx, ctx, entity, id, None).await,
             BulkAction::AddTags | BulkAction::RemoveTags => {
                 match tags_of(&mut tx, entity, id).await {
                     Ok(mut current) => {

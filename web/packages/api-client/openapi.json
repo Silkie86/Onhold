@@ -8888,6 +8888,95 @@
         ]
       }
     },
+    "/api/v1/imports/{id}/undo": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Take away what a finished import created, in the background: records\nchanged since, or in use elsewhere, are kept, and what it updated stays.\nFollow it at `GET /imports/{id}`.",
+        "operationId": "undo_import",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportView"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/inbox/domains": {
       "get": {
         "tags": [
@@ -32008,7 +32097,10 @@
           "failed",
           "processed",
           "issues",
-          "created_at"
+          "created_at",
+          "undone",
+          "kept",
+          "to_undo"
         ],
         "properties": {
           "created": {
@@ -32072,6 +32164,10 @@
             },
             "description": "The first problems found (up to 1,000)."
           },
+          "kept": {
+            "type": "integer",
+            "format": "int32"
+          },
           "plan": {
             "oneOf": [
               {
@@ -32104,7 +32200,31 @@
           },
           "status": {
             "type": "string",
-            "description": "`uploaded`, `queued`, `running`, `done` or `failed`."
+            "description": "`uploaded`, `queued`, `running`, `done` or `failed`; then `undoing`\nand `undone` when it is undone."
+          },
+          "to_undo": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Records it created that are left to undo; none for imports from\nbefore undoing existed."
+          },
+          "undo_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last undo gave up, if it did."
+          },
+          "undone": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Undoing it: records taken away, and those kept because they were\nchanged since or are in use."
+          },
+          "undone_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           },
           "updated": {
             "type": "integer",

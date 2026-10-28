@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE imports SET undo_from = status, status = 'undoing', undo_error = NULL\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND status IN ('done', 'failed')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "72de70034fbbc0517b0d86a80875f7688f84767e400f0fc6f5604978baa068a1"
+}

@@ -1,5 +1,5 @@
 import { safeRedirect } from "./auth.tsx";
-import { decodeFile, isWorkbook, needsResaving, rowLabel, sheetsSummary, stripCardAttachments } from "./imports.tsx";
+import { canUndo, decodeFile, isWorkbook, needsResaving, rowLabel, sheetsSummary, stripCardAttachments } from "./imports.tsx";
 import { dialable, validateListSearch } from "./crm.tsx";
 import { keyFor, newKey } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
@@ -89,6 +89,16 @@ test("a workbook's sheets are summed up in a sentence", () => {
   ).toBe(
     "Read 2 sheets: UK & Ireland (4 rows), Europe (1 row). Each row's sheet is in the Sheet column, which can go into Region, and its row there in the Sheet row column. Left out, as their columns are different: Notes.",
   );
+});
+
+test("only finished imports with records left to undo can be undone", () => {
+  expect(canUndo({ status: "done", to_undo: 3 })).toBe(true);
+  expect(canUndo({ status: "failed", to_undo: 1 })).toBe(true);
+  // From before undoing existed, or nothing created.
+  expect(canUndo({ status: "done", to_undo: 0 })).toBe(false);
+  expect(canUndo({ status: "running", to_undo: 5 })).toBe(false);
+  expect(canUndo({ status: "undoing", to_undo: 5 })).toBe(false);
+  expect(canUndo({ status: "undone", to_undo: 2 })).toBe(false);
 });
 
 test("rows are named where they can be found", () => {
