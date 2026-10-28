@@ -27,6 +27,7 @@ pub mod invoices;
 pub mod jobs;
 pub mod links;
 pub mod mail;
+pub mod messaging;
 pub mod organisations;
 pub mod payments;
 pub mod pdf_imports;

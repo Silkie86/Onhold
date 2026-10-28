@@ -193,7 +193,12 @@ fn task_title(title: &str, ctx_json: &Value) -> String {
 }
 
 /// Works out what an action would do, without doing it.
-async fn plan(tx: &mut Tx, action: &Action, ctx_json: &Value) -> ApiResult<ActionResult> {
+async fn plan(
+    tx: &mut Tx,
+    action: &Action,
+    entity: &str,
+    ctx_json: &Value,
+) -> ApiResult<ActionResult> {
     let (kind, detail) = match action {
         Action::GenerateDocument { template } => {
             ("generate_document", json!({ "template": template }))
@@ -203,6 +208,21 @@ async fn plan(tx: &mut Tx, action: &Action, ctx_json: &Value) -> ApiResult<Actio
             json!({ "purpose": purpose, "issue": issue }),
         ),
         Action::SetBookingStatus { status } => ("set_booking_status", json!({ "status": status })),
+        Action::SendSms { template, to } | Action::SendWhatsapp { template, to } => {
+            let kind = if matches!(action, Action::SendSms { .. }) {
+                "send_sms"
+            } else {
+                "send_whatsapp"
+            };
+            let path = to
+                .as_deref()
+                .or_else(|| core_engines::rules::default_contact_path(entity));
+            let contact = path
+                .and_then(|p| core_engines::path::lookup(ctx_json, p))
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse::<Uuid>().ok());
+            (kind, json!({ "template": template, "contact_id": contact }))
+        }
         Action::SendEmail { template, to } => {
             let to = recipients(tx, to, ctx_json).await?;
             ("send_email", json!({ "template": template, "to": to }))
@@ -353,6 +373,25 @@ async fn act(
                 .await?;
             }
             Ok(planned)
+        }
+        Action::SendSms { template, .. } | Action::SendWhatsapp { template, .. } => {
+            let kind = if matches!(action, Action::SendSms { .. }) {
+                "sms"
+            } else {
+                "whatsapp"
+            };
+            let Some(contact) = planned
+                .detail
+                .get("contact_id")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse::<Uuid>().ok())
+            else {
+                return Ok(failed(planned, "there is no contact to text".into()));
+            };
+            let ctx = rule_ctx(workspace, rule.id, input.depth.saturating_add(1));
+            let r = super::messaging::from_rule(state, tx, &ctx, kind, template, contact, ctx_json)
+                .await;
+            outcome(planned, r)
         }
         Action::CallWebhook { webhook_id } => {
             let Some(event) = &input.event else {
@@ -608,7 +647,7 @@ async fn run_rule(
 
     let mut planned = Vec::with_capacity(def.actions.len());
     for action in &def.actions {
-        planned.push(plan(tx, action, &ctx_json).await?);
+        planned.push(plan(tx, action, &input.entity, &ctx_json).await?);
     }
     if rule.dry_run {
         return log_run(tx, rule, &input, "dry_run", None, &planned).await;
@@ -932,7 +971,35 @@ pub async fn scan_rule(
     }
     let (workspace_json, options) = context::workspace(&mut tx, state).await?;
     let is_booking = entity == super::bookings::ENTITY;
-    let reached: Vec<(Uuid, DateTime<Utc>)> = if entity == super::invoices::ENTITY {
+    let reached: Vec<(Uuid, DateTime<Utc>)> = if entity == super::enquiries::ENTITY {
+        core_db::enquiries::date_between(
+            &mut tx,
+            field,
+            options.timezone.name(),
+            *offset_minutes,
+            from,
+            until,
+            SCAN_BATCH,
+        )
+        .await?
+        .into_iter()
+        .map(|r| (r.id, r.at))
+        .collect()
+    } else if entity == super::quotes::ENTITY {
+        core_db::quotes::date_between(
+            &mut tx,
+            field,
+            options.timezone.name(),
+            *offset_minutes,
+            from,
+            until,
+            SCAN_BATCH,
+        )
+        .await?
+        .into_iter()
+        .map(|r| (r.id, r.at))
+        .collect()
+    } else if entity == super::invoices::ENTITY {
         core_db::invoices::date_between(
             &mut tx,
             field,
@@ -1160,7 +1227,7 @@ pub async fn dry_run(
     let (matched, checks) = conditions::evaluate(&def.conditions, &ctx_json);
     let mut actions = Vec::new();
     for action in &def.actions {
-        actions.push(plan(&mut tx, action, &ctx_json).await?);
+        actions.push(plan(&mut tx, action, &entity, &ctx_json).await?);
     }
     let note = if core_db::workspaces::automations_paused(&mut tx).await? {
         Some("automations are paused in this workspace".to_owned())

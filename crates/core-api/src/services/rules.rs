@@ -25,6 +25,8 @@ pub(crate) struct Catalog {
     thing_dates: Vec<String>,
     booking_dates: Vec<String>,
     email_templates: HashSet<String>,
+    /// `(kind, key)` of the SMS and WhatsApp templates.
+    text_templates: HashSet<(String, String)>,
 }
 
 /// A booking's own dates a date-offset rule can count from.
@@ -33,6 +35,11 @@ pub const BOOKING_DATES: &[&str] = &["starts_at", "ends_at", "hold_expires_at"];
 pub const INVOICE_DATES: &[&str] = &["due_date", "issue_date"];
 /// A document's date a rule can count from.
 pub const DOCUMENT_DATES: &[&str] = &["expires_on"];
+/// An enquiry's dates a rule can count from (only open enquiries are found).
+pub const ENQUIRY_DATES: &[&str] = &["created_at", "stage_entered_at", "starts_on"];
+/// A quote's dates a rule can count from (only quotes sent and not yet
+/// decided are found).
+pub const QUOTE_DATES: &[&str] = &["sent_at", "valid_until"];
 
 impl engine::Catalog for Catalog {
     fn date_fields(&self, entity: &str) -> Option<Vec<String>> {
@@ -41,12 +48,19 @@ impl engine::Catalog for Catalog {
             "booking" => Some(self.booking_dates.clone()),
             "invoice" => Some(INVOICE_DATES.iter().map(|d| (*d).to_owned()).collect()),
             "document" => Some(DOCUMENT_DATES.iter().map(|d| (*d).to_owned()).collect()),
+            "enquiry" => Some(ENQUIRY_DATES.iter().map(|d| (*d).to_owned()).collect()),
+            "quote" => Some(QUOTE_DATES.iter().map(|d| (*d).to_owned()).collect()),
             _ => None,
         }
     }
 
     fn template_exists(&self, key: &str) -> bool {
         self.email_templates.contains(key)
+    }
+
+    fn text_template_exists(&self, kind: &str, key: &str) -> bool {
+        self.text_templates
+            .contains(&(kind.to_owned(), key.to_owned()))
     }
 
     fn is_valid_timezone(&self, tz: &str) -> bool {
@@ -79,10 +93,17 @@ pub(crate) async fn catalog(tx: &mut Tx) -> ApiResult<Catalog> {
         .into_iter()
         .map(|t| t.key)
         .collect();
+    let mut text_templates = HashSet::new();
+    for kind in ["sms", "whatsapp"] {
+        for t in core_db::templates::list(tx, Some(kind)).await? {
+            text_templates.insert((kind.to_owned(), t.key));
+        }
+    }
     Ok(Catalog {
         thing_dates,
         booking_dates,
         email_templates,
+        text_templates,
     })
 }
 
@@ -247,8 +268,21 @@ async fn check_references(tx: &mut Tx, def: &RuleDef) -> ApiResult<()> {
                     ));
                 }
             }
-            Action::SendEmail { .. } | Action::CreateTask { .. } | Action::CreateInvoice { .. } => {
+            Action::SendSms { to: None, .. } | Action::SendWhatsapp { to: None, .. }
+                if engine::default_contact_path(&entity).is_none() =>
+            {
+                return Err(ApiError::invalid(
+                    format!("actions[{i}].to"),
+                    format!(
+                        "{entity} records are with no one contact; say where the contact's id is"
+                    ),
+                ));
             }
+            Action::SendEmail { .. }
+            | Action::CreateTask { .. }
+            | Action::CreateInvoice { .. }
+            | Action::SendSms { .. }
+            | Action::SendWhatsapp { .. } => {}
         }
     }
     Ok(())

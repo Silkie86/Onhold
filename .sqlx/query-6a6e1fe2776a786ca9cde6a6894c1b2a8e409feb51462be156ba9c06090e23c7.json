@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE messaging_channels SET disconnected_at = now(), secret = '\\x'::bytea\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6a6e1fe2776a786ca9cde6a6894c1b2a8e409feb51462be156ba9c06090e23c7"
+}

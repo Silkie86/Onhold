@@ -45,10 +45,12 @@ const MAX_BODY: usize = 100_000;
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ThreadView {
     pub id: Uuid,
-    /// `email`.
+    /// `email`, `sms` or `whatsapp`.
     pub channel: String,
     /// The mailbox it lives in; none for one sent through OnHold's own sender.
     pub integration_id: Option<Uuid>,
+    /// The workspace's SMS or WhatsApp number it is on.
+    pub messaging_channel_id: Option<Uuid>,
     pub subject: Option<String>,
     pub contact_id: Option<Uuid>,
     pub organisation_id: Option<Uuid>,
@@ -77,6 +79,7 @@ impl From<Thread> for ThreadView {
             id: t.id,
             channel: t.channel,
             integration_id: t.integration_id,
+            messaging_channel_id: t.messaging_channel_id,
             subject: t.subject,
             contact_id: t.contact_id,
             organisation_id: t.organisation_id,
@@ -152,7 +155,7 @@ pub struct ThreadDetail {
     pub mailbox: Option<String>,
 }
 
-fn event_json(t: &Thread) -> Value {
+pub(crate) fn event_json(t: &Thread) -> Value {
     json!({
         "status": t.status,
         "snoozed_until": t.snoozed_until,
@@ -166,13 +169,17 @@ fn event_json(t: &Thread) -> Value {
     })
 }
 
-async fn load(tx: &mut core_db::Tx, ctx: &Ctx, id: Uuid) -> ApiResult<Thread> {
+pub(crate) async fn load(tx: &mut core_db::Tx, ctx: &Ctx, id: Uuid) -> ApiResult<Thread> {
     core_db::inbox::get(tx, id, viewer(ctx))
         .await?
         .ok_or(ApiError::NotFound)
 }
 
-async fn detail(state: &AppState, tx: &mut core_db::Tx, t: Thread) -> ApiResult<ThreadDetail> {
+pub(crate) async fn detail(
+    state: &AppState,
+    tx: &mut core_db::Tx,
+    t: Thread,
+) -> ApiResult<ThreadDetail> {
     let messages = core_db::inbox::messages(tx, t.id).await?;
     let files = core_db::inbox::files(tx, t.id).await?;
     let mailbox = match t.integration_id {
@@ -230,6 +237,8 @@ pub struct ThreadQuery {
     pub status: Option<String>,
     /// One mailbox's threads.
     pub integration_id: Option<Uuid>,
+    /// `email`, `sms` or `whatsapp`.
+    pub channel: Option<String>,
     pub contact_id: Option<Uuid>,
     pub organisation_id: Option<Uuid>,
     pub enquiry_id: Option<Uuid>,
@@ -254,6 +263,11 @@ pub async fn list(state: &AppState, ctx: &Ctx, q: ThreadQuery) -> ApiResult<Thre
     {
         return Err(ApiError::invalid("status", "use open, snoozed or resolved"));
     }
+    if let Some(c) = q.channel.as_deref()
+        && !["email", "sms", "whatsapp"].contains(&c)
+    {
+        return Err(ApiError::invalid("channel", "use email, sms or whatsapp"));
+    }
     let search = q.q.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let mut tx = begin(state, ctx).await?;
     let (rows, total) = core_db::inbox::list(
@@ -262,6 +276,7 @@ pub async fn list(state: &AppState, ctx: &Ctx, q: ThreadQuery) -> ApiResult<Thre
             viewer: viewer(ctx),
             status: q.status.as_deref(),
             integration_id: q.integration_id,
+            channel: q.channel.as_deref(),
             contact_id: q.contact_id,
             organisation_id: q.organisation_id,
             enquiry_id: q.enquiry_id,
@@ -695,6 +710,42 @@ struct Written {
     template_key: Option<String>,
 }
 
+/// What a template written in the inbox is filled in with: the workspace,
+/// the writer, and what the thread is linked to (as far as they may see).
+pub(crate) async fn template_context(
+    state: &AppState,
+    tx: &mut core_db::Tx,
+    ctx: &Ctx,
+    about: &Links,
+) -> ApiResult<(Value, core_engines::templates::Options)> {
+    let (workspace, options) = super::context::workspace(tx, state).await?;
+    let mut tree = serde_json::Map::new();
+    tree.insert("workspace".into(), workspace);
+    for (entity, id, permission) in [
+        ("contact", about.contact_id, Permission::ContactRead),
+        (
+            "organisation",
+            about.organisation_id,
+            Permission::OrganisationRead,
+        ),
+        ("enquiry", about.enquiry_id, Permission::EnquiryRead),
+        ("booking", about.booking_id, Permission::BookingRead),
+    ] {
+        if let Some(id) = id
+            && ctx.permissions.contains(&permission)
+            && let Some(obj) = super::context::load_object(tx, state, entity, id).await?
+        {
+            tree.insert(entity.into(), obj);
+        }
+    }
+    if let Some(user) = ctx.user_id()
+        && let Some(u) = core_db::users::get(tx, user).await?
+    {
+        tree.insert("user".into(), json!({ "name": u.name, "email": u.email }));
+    }
+    Ok((Value::Object(tree), options))
+}
+
 async fn write_body(
     state: &AppState,
     tx: &mut core_db::Tx,
@@ -727,41 +778,17 @@ async fn write_body(
             })
         }
         (None, Some(key)) => {
-            let (workspace, options) = super::context::workspace(tx, state).await?;
+            let (tree, options) = template_context(state, tx, ctx, about).await?;
             let template = core_db::templates::find(tx, key, &options.locale)
                 .await?
                 .filter(|t| t.kind == "email")
                 .ok_or_else(|| ApiError::invalid("template_key", "no such email template"))?;
-            let mut tree = serde_json::Map::new();
-            tree.insert("workspace".into(), workspace);
-            for (entity, id, permission) in [
-                ("contact", about.contact_id, Permission::ContactRead),
-                (
-                    "organisation",
-                    about.organisation_id,
-                    Permission::OrganisationRead,
-                ),
-                ("enquiry", about.enquiry_id, Permission::EnquiryRead),
-                ("booking", about.booking_id, Permission::BookingRead),
-            ] {
-                if let Some(id) = id
-                    && ctx.permissions.contains(&permission)
-                    && let Some(obj) = super::context::load_object(tx, state, entity, id).await?
-                {
-                    tree.insert(entity.into(), obj);
-                }
-            }
-            if let Some(user) = ctx.user_id()
-                && let Some(u) = core_db::users::get(tx, user).await?
-            {
-                tree.insert("user".into(), json!({ "name": u.name, "email": u.email }));
-            }
             let rendered = super::templates::render_in(
                 tx,
                 core_engines::templates::Kind::Email,
                 template.subject.as_deref(),
                 &template.body,
-                &Value::Object(tree),
+                &tree,
                 &options,
             )
             .await?;
@@ -855,6 +882,11 @@ pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult
     let mut tx = begin(state, ctx).await?;
     let thread = load(&mut tx, ctx, id).await?;
     core_db::inbox::lock(&mut tx, id).await?;
+    if let Some(channel) = thread.messaging_channel_id {
+        let view = super::messaging::reply(state, &mut tx, ctx, &thread, channel, r).await?;
+        tx.commit().await?;
+        return Ok(view);
+    }
     let messages = core_db::inbox::messages(&mut tx, id).await?;
     let mailbox = match thread.integration_id {
         Some(i) => sending_mailbox(&mut tx, ctx, i).await?,
@@ -1276,6 +1308,9 @@ pub async fn send(
     let thread = core_db::inbox::get(&mut tx, m.thread_id, None)
         .await?
         .ok_or(ApiError::NotFound)?;
+    if let Some(channel) = thread.messaging_channel_id {
+        return super::messaging::send(state, tx, &ctx, &m, &thread, channel, last_attempt).await;
+    }
     let mailbox = match thread.integration_id {
         Some(i) => core_db::integrations::get(&mut tx, i)
             .await?
@@ -1439,7 +1474,7 @@ pub async fn send(
     }
 }
 
-async fn finish(
+pub(crate) async fn finish(
     state: &AppState,
     ctx: &Ctx,
     m: &core_db::inbox::Message,

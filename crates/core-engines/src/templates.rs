@@ -67,8 +67,13 @@ impl Kind {
         matches!(self, Kind::Email | Kind::Partial | Kind::Document)
     }
 
+    /// A WhatsApp template's subject names the template approved in
+    /// WhatsApp Manager that it fills in.
     pub fn has_subject(self) -> bool {
-        matches!(self, Kind::Email | Kind::Notification | Kind::Document)
+        matches!(
+            self,
+            Kind::Email | Kind::Notification | Kind::Document | Kind::Whatsapp
+        )
     }
 }
 

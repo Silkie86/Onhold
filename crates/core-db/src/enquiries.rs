@@ -346,3 +346,51 @@ pub async fn count_in_pipeline(conn: &mut PgConnection, pipeline_id: Uuid) -> Re
     .fetch_one(conn)
     .await?)
 }
+
+/// When an open enquiry's date (plus the offset) is reached.
+#[derive(Debug, Clone)]
+pub struct Reached {
+    pub id: Uuid,
+    pub at: DateTime<Utc>,
+}
+
+/// Open enquiries (not won or lost) whose `field` (`created_at`,
+/// `stage_entered_at`, or the day `starts_on` begins in `timezone`) plus
+/// the offset falls in (`from`, `to`]: for date-offset rules.
+#[allow(clippy::too_many_arguments)]
+pub async fn date_between(
+    conn: &mut PgConnection,
+    field: &str,
+    timezone: &str,
+    offset_minutes: i64,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+    limit: i64,
+) -> Result<Vec<Reached>> {
+    Ok(sqlx::query_as!(
+        Reached,
+        r#"SELECT id AS "id!", at AS "at!" FROM (
+               SELECT e.id,
+                      CASE $1
+                          WHEN 'created_at' THEN e.created_at
+                          WHEN 'stage_entered_at' THEN e.stage_entered_at
+                          ELSE e.starts_on::timestamp AT TIME ZONE $2
+                      END + make_interval(mins => $3::int) AS at
+               FROM enquiries e
+               LEFT JOIN pipeline_stages s ON s.id = e.stage_id
+               WHERE e.workspace_id = app_workspace_id() AND e.deleted_at IS NULL
+                 AND coalesce(s.outcome, 'open') = 'open'
+           ) t
+           WHERE at > $4 AND at <= $5
+           ORDER BY at, id
+           LIMIT $6"#,
+        field,
+        timezone,
+        offset_minutes as i32,
+        from,
+        to,
+        limit
+    )
+    .fetch_all(conn)
+    .await?)
+}

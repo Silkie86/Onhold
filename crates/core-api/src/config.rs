@@ -124,6 +124,33 @@ impl Default for AccountingConfig {
     }
 }
 
+/// Workspaces' own SMS (Twilio) and WhatsApp (Meta) numbers.
+#[derive(Debug, Clone)]
+pub struct MessagingConfig {
+    pub twilio_api: Url,
+    pub meta_api: Url,
+    /// Where providers send what comes in on a number, before its token:
+    /// `<PUBLIC_BASE_URL>/api/v1/hooks/messaging/` unless the API is
+    /// reached elsewhere.
+    pub hook_base: String,
+    pub http: reqwest::Client,
+}
+
+impl MessagingConfig {
+    pub fn new(public_base_url: &Url) -> Self {
+        #[allow(clippy::expect_used)]
+        Self {
+            twilio_api: Url::parse(core_integrations::messaging::TWILIO_API).expect("static URL"),
+            meta_api: Url::parse(core_integrations::messaging::META_API).expect("static URL"),
+            hook_base: format!(
+                "{}/api/v1/hooks/messaging/",
+                public_base_url.as_str().trim_end_matches('/')
+            ),
+            http: core_integrations::provider::http_client().unwrap_or_default(),
+        }
+    }
+}
+
 /// Workspaces' own sender domains: the provider that verifies them, the
 /// DNS lookups, and Domain Connect when OnHold's template is published.
 #[derive(Debug, Clone)]
@@ -176,6 +203,7 @@ pub struct Config {
     pub stripe: Option<StripeClient>,
     pub mailboxes: MailboxConfig,
     pub accounting: AccountingConfig,
+    pub messaging: MessagingConfig,
     /// Sending from workspaces' own domains; `None`: everything is sent
     /// from the platform's address.
     pub sender_domains: Option<SenderDomainsConfig>,
@@ -184,6 +212,7 @@ pub struct Config {
 impl Config {
     /// Production defaults for everything but the base URL and keys.
     pub fn new(public_base_url: Url, keyring: Keyring) -> Self {
+        let messaging = MessagingConfig::new(&public_base_url);
         Self {
             public_base_url,
             cookie_secure: true,
@@ -209,6 +238,7 @@ impl Config {
             stripe: None,
             mailboxes: MailboxConfig::default(),
             accounting: AccountingConfig::default(),
+            messaging,
             sender_domains: None,
         }
     }

@@ -8,7 +8,7 @@ use clap::Args;
 use core_api::Config;
 use core_api::config::ProxyHeaders;
 use core_api::config::{
-    AccountingConfig, MailboxConfig, PdfConfig, SenderDomainsConfig, StorageConfig,
+    AccountingConfig, MailboxConfig, MessagingConfig, PdfConfig, SenderDomainsConfig, StorageConfig,
 };
 use core_api::oidc::OidcProvider;
 use core_domain::crypto::Keyring;
@@ -198,6 +198,12 @@ pub struct ApiArgs {
     /// Use Intuit's sandbox companies (while the app is in development).
     #[arg(long, env = "QUICKBOOKS_SANDBOX", default_value_t = false, action = clap::ArgAction::Set, global = true)]
     quickbooks_sandbox: bool,
+
+    /// Where Twilio and Meta send texts that come in, when the API is not
+    /// reached at `<PUBLIC_BASE_URL>/api/v1`: the URL that ends in
+    /// `/hooks/messaging/`.
+    #[arg(long, env = "MESSAGING_HOOK_BASE", global = true)]
+    messaging_hook_base: Option<Url>,
 
     /// How often each connected mailbox is read, in seconds.
     #[arg(long, env = "MAIL_POLL_SECONDS", default_value_t = 120, global = true)]
@@ -549,6 +555,15 @@ impl ApiArgs {
             None => None,
         };
 
+        let mut messaging = MessagingConfig::new(&self.public_base_url);
+        if let Some(base) = self.messaging_hook_base {
+            anyhow::ensure!(
+                base.path().ends_with("/hooks/messaging/"),
+                "MESSAGING_HOOK_BASE must end in /hooks/messaging/"
+            );
+            messaging.hook_base = base.to_string();
+        }
+
         Ok(Config {
             storage,
             pdf,
@@ -564,6 +579,7 @@ impl ApiArgs {
             stripe,
             mailboxes,
             accounting,
+            messaging,
             sender_domains,
             ..Config::new(self.public_base_url, keyring)
         })

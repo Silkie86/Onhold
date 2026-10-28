@@ -35,6 +35,7 @@ pub mod invoices;
 pub mod jobs;
 pub mod members;
 pub mod messages;
+pub mod messaging;
 pub mod organisations;
 pub mod outbox;
 pub mod payments;

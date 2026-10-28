@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT t.id, t.channel, t.integration_id, t.external_id, t.subject, t.contact_id, t.organisation_id,\n                  t.enquiry_id, t.booking_id, t.status, t.snoozed_until, t.assigned_to, t.unread,\n                  t.message_count, t.participants, t.preview, t.last_message_at, t.last_inbound_at,\n                  t.last_outbound_at, t.created_at, t.version\n           FROM threads t\n           LEFT JOIN integrations i ON i.workspace_id = t.workspace_id AND i.id = t.integration_id\n           WHERE t.workspace_id = app_workspace_id()\n             AND ($1::uuid IS NULL OR t.integration_id IS NULL OR i.shared OR i.owner_id = $1)\n             AND (t.contact_id = ANY($2) OR t.organisation_id = ANY($2) OR t.enquiry_id = ANY($2)\n                  OR t.booking_id = ANY($2) OR t.participants && $3)\n           ORDER BY t.last_message_at DESC LIMIT $4",
+  "query": "SELECT t.id, t.channel, t.integration_id, t.messaging_channel_id, t.external_id, t.subject,\n                  t.contact_id, t.organisation_id,\n                  t.enquiry_id, t.booking_id, t.status, t.snoozed_until, t.assigned_to, t.unread,\n                  t.message_count, t.participants, t.preview, t.last_message_at, t.last_inbound_at,\n                  t.last_outbound_at, t.created_at, t.version\n           FROM threads t\n           LEFT JOIN integrations i ON i.workspace_id = t.workspace_id AND i.id = t.integration_id\n           WHERE t.workspace_id = app_workspace_id() AND t.id = $1\n             AND ($2::uuid IS NULL OR t.integration_id IS NULL OR i.shared OR i.owner_id = $2)",
   "describe": {
     "columns": [
       {
@@ -38,6 +38,17 @@
       },
       {
         "ordinal": 3,
+        "name": "messaging_channel_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "messaging_channel_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "external_id",
         "type_info": "Text",
         "origin": {
@@ -48,7 +59,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "subject",
         "type_info": "Text",
         "origin": {
@@ -59,7 +70,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "contact_id",
         "type_info": "Uuid",
         "origin": {
@@ -70,7 +81,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "organisation_id",
         "type_info": "Uuid",
         "origin": {
@@ -81,7 +92,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "enquiry_id",
         "type_info": "Uuid",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "booking_id",
         "type_info": "Uuid",
         "origin": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "status",
         "type_info": "Text",
         "origin": {
@@ -114,7 +125,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "snoozed_until",
         "type_info": "Timestamptz",
         "origin": {
@@ -125,7 +136,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "assigned_to",
         "type_info": "Uuid",
         "origin": {
@@ -136,7 +147,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "unread",
         "type_info": "Bool",
         "origin": {
@@ -147,7 +158,7 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "message_count",
         "type_info": "Int4",
         "origin": {
@@ -158,7 +169,7 @@
         }
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "participants",
         "type_info": "TextArray",
         "origin": {
@@ -169,7 +180,7 @@
         }
       },
       {
-        "ordinal": 15,
+        "ordinal": 16,
         "name": "preview",
         "type_info": "Text",
         "origin": {
@@ -180,7 +191,7 @@
         }
       },
       {
-        "ordinal": 16,
+        "ordinal": 17,
         "name": "last_message_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -191,7 +202,7 @@
         }
       },
       {
-        "ordinal": 17,
+        "ordinal": 18,
         "name": "last_inbound_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -202,7 +213,7 @@
         }
       },
       {
-        "ordinal": 18,
+        "ordinal": 19,
         "name": "last_outbound_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -213,7 +224,7 @@
         }
       },
       {
-        "ordinal": 19,
+        "ordinal": 20,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -224,7 +235,7 @@
         }
       },
       {
-        "ordinal": 20,
+        "ordinal": 21,
         "name": "version",
         "type_info": "Int8",
         "origin": {
@@ -238,14 +249,13 @@
     "parameters": {
       "Left": [
         "Uuid",
-        "UuidArray",
-        "TextArray",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
       false,
       false,
+      true,
       true,
       true,
       true,
@@ -267,5 +277,5 @@
       false
     ]
   },
-  "hash": "2d231e60981307b17d8c78c76e2ee3657dad4deadae29c4eea8af1196a2386d4"
+  "hash": "fe56f700d74d65efdabad6f98523d43a774bda5041db3d7bf79edd680dbdf9ec"
 }
