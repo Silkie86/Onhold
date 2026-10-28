@@ -1054,8 +1054,19 @@ async fn imports_refuse_files_they_cannot_read(pool: PgPool) {
     )
     .await
     .ok();
+    // Over 10 MB of text, though its body is within the limit: refused by
+    // the service, with a reason.
+    let over = format!("Name\n{}", "n\n".repeat(6 * 1024 * 1024));
+    post(
+        &app,
+        &owner,
+        "/api/v1/imports",
+        json!({ "entity": "contact", "csv": over }),
+    )
+    .await
+    .expect(StatusCode::BAD_REQUEST, "invalid_input");
     // Past the upload limit.
-    let huge = format!("Name\n{}", "n\n".repeat(6 * 1024 * 1024));
+    let huge = format!("Name\n{}", "n\n".repeat(11 * 1024 * 1024));
     let res = post(
         &app,
         &owner,

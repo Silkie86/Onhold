@@ -39,8 +39,10 @@ const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 /// Largest request body the API accepts, except on upload routes.
 const MAX_BODY_BYTES: usize = 1024 * 1024;
 
-/// Largest body an upload route accepts: a CSV file plus its JSON wrapping.
-pub(crate) const MAX_UPLOAD_BODY_BYTES: usize = services::imports::MAX_CSV_BYTES + 64 * 1024;
+/// Largest body an upload route accepts: a CSV file plus its JSON wrapping,
+/// which escaping (line breaks, quotes) can make up to twice as long. The
+/// service checks the file itself against `MAX_CSV_BYTES`.
+pub(crate) const MAX_UPLOAD_BODY_BYTES: usize = 2 * services::imports::MAX_CSV_BYTES + 64 * 1024;
 
 /// Largest file upload body; the configured limit (25 MB by default) is
 /// checked by the service, within this.

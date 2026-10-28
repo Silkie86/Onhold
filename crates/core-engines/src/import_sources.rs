@@ -316,13 +316,25 @@ pub const VCARD: Source = Source {
     columns: &[],
 };
 
+/// A header as written, numbering and case aside, keeping its punctuation
+/// so Pipedrive's `Organization - Name` is not any `Organization Name`.
+fn as_written(s: &str) -> String {
+    s.chars()
+        .filter(|c| !c.is_ascii_digit())
+        .flat_map(char::to_lowercase)
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// The export these headers come from, if it is one we know.
 pub fn detect(headers: &[String]) -> Option<&'static Source> {
-    let have: Vec<String> = headers.iter().map(|h| unnumbered_header(h)).collect();
+    let have: Vec<String> = headers.iter().map(|h| as_written(h)).collect();
     SOURCES.iter().find(|s| {
         s.signature
             .iter()
-            .all(|sig| have.contains(&unnumbered_header(sig)))
+            .all(|sig| have.contains(&as_written(sig)))
     })
 }
 
@@ -405,5 +417,11 @@ mod tests {
         assert_eq!(detect(&linkedin).map(|s| s.key), Some("linkedin"));
 
         assert!(detect(&headers("Name,Email,Phone")).is_none());
+        // A plain sheet is not Pipedrive's because it says Organization Name.
+        assert!(detect(&headers("Name,Email,Organization Name")).is_none());
+        assert_eq!(
+            detect(&headers("Organization - Name,Organization - Address")).map(|s| s.key),
+            Some("pipedrive")
+        );
     }
 }

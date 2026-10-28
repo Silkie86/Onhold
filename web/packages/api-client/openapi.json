@@ -36578,7 +36578,8 @@
         "type": "object",
         "required": [
           "row",
-          "cells"
+          "cells",
+          "issues"
         ],
         "properties": {
           "cells": {
@@ -36587,6 +36588,13 @@
               "type": "string"
             },
             "description": "Its cells, in column order."
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportIssue"
+            },
+            "description": "What is wrong with it."
           },
           "row": {
             "type": "integer",

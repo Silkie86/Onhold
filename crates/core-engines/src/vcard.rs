@@ -116,7 +116,9 @@ fn decode_quoted_printable(s: &str) -> String {
             i += 1;
         }
     }
-    String::from_utf8_lossy(&out).into_owned()
+    // Older phones and Outlook wrote Latin-1 (CHARSET=ISO-8859-1 or none):
+    // bytes that are not UTF-8 are read as that.
+    String::from_utf8(out).unwrap_or_else(|e| e.into_bytes().into_iter().map(char::from).collect())
 }
 
 /// Splits a structured value (`N`, `ADR`, `ORG`) on its unescaped `;`
@@ -138,6 +140,28 @@ fn components(value: &str) -> Vec<String> {
     }
     parts.push(part);
     parts.into_iter().map(|p| p.trim().to_owned()).collect()
+}
+
+/// Splits on `sep` where it is not escaped with a backslash, keeping the
+/// escapes for [`text`] to undo.
+fn split_unescaped(value: &str, sep: char) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut part = String::new();
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            part.push(c);
+            if let Some(next) = chars.next() {
+                part.push(next);
+            }
+        } else if c == sep {
+            parts.push(std::mem::take(&mut part));
+        } else {
+            part.push(c);
+        }
+    }
+    parts.push(part);
+    parts
 }
 
 fn text(value: &str) -> String {
@@ -225,8 +249,8 @@ impl Card {
                 }
             }
             "CATEGORIES" => {
-                for c in value.split(',') {
-                    let c = text(c);
+                for c in split_unescaped(&value, ',') {
+                    let c = text(&c);
                     if !c.is_empty() && !self.categories.contains(&c) {
                         self.categories.push(c);
                     }
@@ -321,7 +345,7 @@ mod tests {
     use super::*;
     use crate::import::parse_csv;
 
-    const APPLE: &str = "BEGIN:VCARD\r\nVERSION:3.0\r\nPRODID:-//Apple Inc.//macOS 15.0//EN\r\nN:Okafor;Ada;;Dr;\r\nFN:Dr Ada Okafor\r\nORG:Lagos Live;Bookings\r\nTITLE:Head of Music\r\nitem1.EMAIL;type=INTERNET;type=pref:ada@lagoslive.example\r\nEMAIL;type=INTERNET;type=HOME:ada@home.example\r\nTEL;type=CELL;type=VOICE;type=pref:+44 7700 900123\r\nitem2.ADR;type=WORK:;;1 Marina Road;Lagos;;101241;Nigeria\r\nNOTE:Met at Afro Nation\\, Portugal\\nLikes early calls\r\nCATEGORIES:Promoters,VIP\r\nPHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRgABAQAAAQABAAD\r\n /2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8U\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:2.1\r\nN;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:M=C3=BCller;J=C3=BCrgen;;;\r\nTEL;CELL:07700 900456\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:4.0\r\nFN:\r\nORG:Warehouse Project\r\nEMAIL:info@whp.example\r\nNOTE;ENCODING=QUOTED-PRINTABLE:Line one=0D=0A=\r\nline two\r\nEND:VCARD\r\n";
+    const APPLE: &str = "BEGIN:VCARD\r\nVERSION:3.0\r\nPRODID:-//Apple Inc.//macOS 15.0//EN\r\nN:Okafor;Ada;;Dr;\r\nFN:Dr Ada Okafor\r\nORG:Lagos Live;Bookings\r\nTITLE:Head of Music\r\nitem1.EMAIL;type=INTERNET;type=pref:ada@lagoslive.example\r\nEMAIL;type=INTERNET;type=HOME:ada@home.example\r\nTEL;type=CELL;type=VOICE;type=pref:+44 7700 900123\r\nitem2.ADR;type=WORK:;;1 Marina Road;Lagos;;101241;Nigeria\r\nNOTE:Met at Afro Nation\\, Portugal\\nLikes early calls\r\nCATEGORIES:Promoters,VIP,Rock\\, Pop\r\nPHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRgABAQAAAQABAAD\r\n /2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8U\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:2.1\r\nN;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:M=C3=BCller;J=C3=BCrgen;;;\r\nORG;CHARSET=ISO-8859-1;ENCODING=QUOTED-PRINTABLE:Caf=E9 Bleu\r\nTEL;CELL:07700 900456\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:4.0\r\nFN:\r\nORG:Warehouse Project\r\nEMAIL:info@whp.example\r\nNOTE;ENCODING=QUOTED-PRINTABLE:Line one=0D=0A=\r\nline two\r\nEND:VCARD\r\n";
 
     #[test]
     fn cards_become_rows() {
@@ -343,12 +367,13 @@ mod tests {
                 "101241",
                 "Nigeria",
                 "Met at Afro Nation, Portugal\nLikes early calls",
-                "Promoters; VIP",
+                "Promoters; VIP; Rock, Pop",
             ]
         );
         // Version 2.1 with quoted-printable names; no FN, so N.
         assert_eq!(t.rows[1][0], "Jürgen Müller");
         assert_eq!(t.rows[1][4], "07700 900456");
+        assert_eq!(t.rows[1][1], "Café Bleu");
         // A company card names itself after the organisation, and a soft
         // line break joins the note's lines.
         assert_eq!(t.rows[2][0], "Warehouse Project");

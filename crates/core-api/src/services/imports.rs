@@ -254,6 +254,8 @@ pub struct ProblemRow {
     pub row: usize,
     /// Its cells, in column order.
     pub cells: Vec<String>,
+    /// What is wrong with it.
+    pub issues: Vec<ImportIssue>,
 }
 
 const MAX_PROBLEM_ROWS: usize = 100;
@@ -290,6 +292,8 @@ struct CoreTarget {
     many: bool,
     required: bool,
     synonyms: &'static [&'static str],
+    /// Spellings that suggest it only when no other column does.
+    weak: &'static [&'static str],
 }
 
 const fn t(
@@ -303,6 +307,7 @@ const fn t(
         many: false,
         required: false,
         synonyms,
+        weak: &[],
     }
 }
 
@@ -317,16 +322,24 @@ const fn many(
         many: true,
         required: false,
         synonyms,
+        weak: &[],
     }
 }
 
 const fn name(synonyms: &'static [&'static str]) -> CoreTarget {
+    weak_name(synonyms, &[])
+}
+
+/// The name, with spellings that name it only on a sheet with no other
+/// name column (`Agency` beside `Artist Name` is the artist's agency).
+const fn weak_name(synonyms: &'static [&'static str], weak: &'static [&'static str]) -> CoreTarget {
     CoreTarget {
         key: "name",
         label: "Name",
         many: true,
         required: true,
         synonyms,
+        weak,
     }
 }
 
@@ -340,23 +353,20 @@ const NOTES: CoreTarget = many(
 fn core_targets(entity: &str) -> Vec<CoreTarget> {
     match entity {
         talent::ENTITY => vec![
-            name(&[
-                "stage name",
-                "artist",
-                "artist name",
-                "act",
-                "act name",
-                "talent",
-                "talent name",
-                "performer",
-                "band",
-                "band name",
-                "dj",
-                "dj name",
-                "client",
-                "client name",
-                "roster",
-            ]),
+            weak_name(
+                &[
+                    "stage name",
+                    "artist",
+                    "artist name",
+                    "act",
+                    "act name",
+                    "talent",
+                    "talent name",
+                    "band name",
+                    "dj name",
+                ],
+                &["performer", "band", "dj", "client", "client name", "roster"],
+            ),
             t("kind", "Kind", &[]),
             t(
                 "talent_type",
@@ -434,21 +444,20 @@ fn core_targets(entity: &str) -> Vec<CoreTarget> {
             ),
         ],
         organisations::ENTITY => vec![
-            name(&[
-                "organisation",
-                "organization",
-                "company",
-                "company name",
-                "venue",
-                "venue name",
-                "organisation name",
-                "organization name",
-                "business",
-                "account name",
-                "promoter",
-                "festival",
-                "agency",
-            ]),
+            weak_name(
+                &[
+                    "organisation",
+                    "organization",
+                    "company",
+                    "company name",
+                    "venue",
+                    "venue name",
+                    "organisation name",
+                    "organization name",
+                    "business",
+                ],
+                &["account name", "promoter", "festival", "agency"],
+            ),
             t(
                 "org_type",
                 "Type",
@@ -595,6 +604,7 @@ fn targets(entity: &str, defs: &[FieldDef]) -> Vec<(ImportTarget, Target)> {
                     key: c.key.into(),
                     label: c.label.into(),
                     synonyms: c.synonyms.iter().map(|s| (*s).to_owned()).collect(),
+                    weak_synonyms: c.weak.iter().map(|s| (*s).to_owned()).collect(),
                     many: c.many,
                 },
             )
@@ -613,6 +623,7 @@ fn targets(entity: &str, defs: &[FieldDef]) -> Vec<(ImportTarget, Target)> {
                 key,
                 label: d.label.clone(),
                 synonyms: vec![d.key.clone()],
+                weak_synonyms: Vec::new(),
                 many: false,
             },
         ));
@@ -648,15 +659,18 @@ fn suggest(
 }
 
 /// What a file of unknown contents most likely holds: the kind of record
-/// whose fields its columns match best, contacts when it is a tie.
+/// whose fields its columns match best, counting each field once and a
+/// name column most, contacts when it is a tie. (A roster with agents'
+/// emails and phones is still talent, by its artist name and fee.)
 fn likely_entity(headers: &[String]) -> &'static str {
     let mut best = (contacts::ENTITY, 0);
     for entity in [contacts::ENTITY, talent::ENTITY, organisations::ENTITY] {
         let targets = targets(entity, &[]);
-        let matched = suggest(headers, &targets, None)
-            .iter()
-            .filter(|c| c.is_some())
-            .count();
+        let fields: HashSet<String> = suggest(headers, &targets, None)
+            .into_iter()
+            .flatten()
+            .collect();
+        let matched = fields.len() + if fields.contains("name") { 10 } else { 0 };
         if matched > best.1 {
             best = (entity, matched);
         }
@@ -1363,14 +1377,16 @@ pub async fn dry_run(
             Plan::Skip => out.skip += 1,
             Plan::Fail(list) => {
                 out.fail += 1;
+                let issues = issues_for(number, list);
                 if out.issues.len() < MAX_DRY_RUN_ISSUES {
-                    out.issues.extend(issues_for(number, list));
+                    out.issues.extend(issues.iter().cloned());
                     out.issues.truncate(MAX_DRY_RUN_ISSUES);
                 }
                 if out.problem_rows.len() < MAX_PROBLEM_ROWS {
                     out.problem_rows.push(ProblemRow {
                         row: number,
                         cells: row.into_owned(),
+                        issues,
                     });
                 }
             }

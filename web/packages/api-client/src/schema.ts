@@ -7877,6 +7877,8 @@ export interface components {
         ProblemRow: {
             /** @description Its cells, in column order. */
             cells: string[];
+            /** @description What is wrong with it. */
+            issues: components["schemas"]["ImportIssue"][];
             /** @description The spreadsheet row (the header is row 1). */
             row: number;
         };

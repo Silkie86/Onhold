@@ -18,16 +18,20 @@ type Options = Schemas["ImportOptions"];
 type ImportEntity = EntityKey | "auto";
 
 /** Reads an uploaded file's text whatever it was saved as: UTF-8, UTF-16
- * (Excel's "Unicode text") or, failing those, Windows-1252 (older Excel
- * and Outlook exports). */
+ * (Excel's "Unicode text") or Windows-1252 (older Excel and Outlook
+ * exports). A UTF-8 file with the odd stray byte stays UTF-8. */
 export function decodeFile(bytes: Uint8Array): string {
   if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder("utf-16le").decode(bytes);
   if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes);
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return new TextDecoder("windows-1252").decode(bytes);
+  const utf8 = new TextDecoder("utf-8").decode(bytes);
+  let bad = 0;
+  let good = 0;
+  for (const c of utf8) {
+    if (c === "\uFFFD") bad++;
+    else if (c.charCodeAt(0) > 0x7f) good++;
   }
+  // Mostly well-formed UTF-8 is UTF-8; otherwise the bytes are Windows-1252.
+  return bad === 0 || good > bad ? utf8 : new TextDecoder("windows-1252").decode(bytes);
 }
 
 const HEAVY_CARD_LINE = /^(?:[\w-]+\.)?(?:PHOTO|LOGO|SOUND|KEY)[;:]/i;
@@ -38,12 +42,20 @@ export function stripCardAttachments(text: string): string {
   if (!/^\s*BEGIN:VCARD/i.test(text.replace(/^\uFEFF/, ""))) return text;
   const out: string[] = [];
   let dropping = false;
+  // A vCard 2.1 quoted-printable line ending in `=` carries on in the next
+  // line, whatever that starts with.
+  let carriesOn = false;
+  let head = "";
   for (const line of text.split(/\r?\n/)) {
-    if (dropping && (line.startsWith(" ") || line.startsWith("\t"))) continue;
-    dropping = HEAVY_CARD_LINE.test(line);
+    const continued = carriesOn || line.startsWith(" ") || line.startsWith("\t");
+    if (!continued) {
+      dropping = HEAVY_CARD_LINE.test(line);
+      head = line.split(":")[0] ?? "";
+    }
+    carriesOn = /QUOTED-PRINTABLE/i.test(head) && line.endsWith("=");
     if (!dropping) out.push(line);
   }
-  return out.join("\r\n");
+  return out.join("\n");
 }
 
 /** Corrections made while checking, by `row:column`. */
@@ -225,7 +237,7 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
               {dry.new_organisations.length > 10 && ` and ${dry.new_organisations.length - 10} more`}
             </p>
           )}
-          {dry.problem_rows.length > 0 ? (
+          {dry.problem_rows.length > 0 || skipRows.length > 0 ? (
             <ProblemRows
               dry={dry}
               headers={preview.import.headers}
@@ -496,15 +508,22 @@ function ProblemRows({
   onSkip: (row: number, skip: boolean) => void;
 }) {
   const label = (key: string | null | undefined) => targets.find((t) => t.key === key)?.label ?? key;
+  // Rows left out no longer come back as problems, so they are listed here
+  // to be put back.
+  const shown = new Set(dry.problem_rows.map((p) => p.row));
+  const leftOut = skipRows.filter((r) => !shown.has(r));
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm font-medium">
-        {dry.fail} {dry.fail === 1 ? "row needs" : "rows need"} a look. Correct them here and check again, or leave them out
-        {dry.fail > dry.problem_rows.length ? ` (the first ${dry.problem_rows.length} are shown)` : ""}.
+        {dry.fail === 0
+          ? "No rows have problems now."
+          : `${dry.fail} ${dry.fail === 1 ? "row needs" : "rows need"} a look. Correct them here and check again, or leave them out${
+              dry.fail > dry.problem_rows.length ? ` (the first ${dry.problem_rows.length} are shown)` : ""
+            }.`}
       </p>
       <ul className="flex max-h-[28rem] flex-col gap-2 overflow-y-auto">
         {dry.problem_rows.map((p) => {
-          const issues = dry.issues.filter((i) => i.row === p.row);
+          const issues = p.issues;
           const fields = new Set(issues.map((i) => i.field).filter(Boolean));
           let cols = columns.flatMap((c, i) => (c && fields.has(c) ? [i] : []));
           if (cols.length === 0) cols = columns.flatMap((c, i) => (c ? [i] : []));
@@ -549,6 +568,16 @@ function ProblemRows({
           );
         })}
       </ul>
+      {leftOut.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Left out:</span>
+          {leftOut.map((row) => (
+            <Button key={row} size="sm" variant="outline" onClick={() => onSkip(row, false)} aria-label={`Put row ${row} back`}>
+              Row {row} ✕
+            </Button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
