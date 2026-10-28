@@ -197,6 +197,7 @@ impl AppState {
         (name = "enquiries", description = "Requests for talent, through the enquiry pipeline"),
         (name = "bookings", description = "Holds and bookings, with clash checks"),
         (name = "travel", description = "Travel on a booking (flights, trains, rides, hotels), its buyouts and costs, and whether it pays"),
+        (name = "projects", description = "Tours, seasons, circuits and campaigns: their dates, crew, costs, whether they pay, and the itinerary"),
         (name = "quotes", description = "Priced offers the buyer accepts on the web"),
         (name = "calendar", description = "The calendar, availability and iCal feeds"),
         (name = "tasks", description = "To-dos on any record"),
@@ -250,6 +251,7 @@ fn api_router() -> OpenApiRouter<AppState> {
             .merge(routes::crm::router())
             .merge(routes::bookings::router())
             .merge(routes::travel::router())
+            .merge(routes::projects::router())
             .merge(routes::documents::router())
             .merge(routes::finance::router())
             .merge(routes::stripe::router())

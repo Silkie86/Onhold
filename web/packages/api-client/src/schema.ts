@@ -2437,6 +2437,190 @@ export interface paths {
         patch: operations["update_pipeline"];
         trace?: never;
     };
+    "/api/v1/project-crew/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a crew member; every field is replaced. */
+        put: operations["update_crew"];
+        post?: never;
+        delete: operations["remove_crew"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Projects with dates still to come first, soonest first. */
+        get: operations["list_projects"];
+        put?: never;
+        /** Start a project (a tour by default), optionally with its first dates. */
+        post: operations["create_project"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_project"];
+        put?: never;
+        post?: never;
+        /** Delete a project. Its dates stay, as bookings of their own. */
+        delete: operations["delete_project"];
+        options?: never;
+        head?: never;
+        patch: operations["update_project"];
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/crew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["add_crew"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make a booking one of the project's dates (moving it out of any other project). */
+        post: operations["add_date"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/dates/{booking_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Take a date out of the project; the booking itself stays. */
+        delete: operations["remove_date"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/itinerary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Day by day from the first journey to the last: dates with their running
+         *     order, journeys, where people sleep, and days off. Day sheets read it.
+         */
+        get: operations["project_itinerary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/money": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Income or a cost of the project as a whole: rehearsals, insurance, a
+         *     tour manager's wage, sponsorship. Change or remove it at `/money-lines/{id}`.
+         */
+        post: operations["add_project_line"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every date with whether it pays, the totals across the project in its
+         *     currency, the budget against what is booked or spent, the crew, and the
+         *     project's own travel and costs.
+         */
+        get: operations["project_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/travel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Travel that belongs to the project rather than one date: the drive
+         *     between two cities on a day off, the flight home. Change or remove it at
+         *     `/travel/{id}`.
+         */
+        post: operations["add_project_travel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/calendar-connect/finish": {
         parameters: {
             query?: never;
@@ -4066,6 +4250,14 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        /** @description One cost category: what was planned and what is booked or spent. */
+        BudgetLine: {
+            actual: components["schemas"]["Money"];
+            budget: components["schemas"]["Money"];
+            category: string;
+            /** @description Budget less actual; negative when over. */
+            remaining: components["schemas"]["Money"];
+        };
         /** @enum {string} */
         BulkAction: "delete" | "add_tags" | "remove_tags";
         BulkFailure: {
@@ -4491,6 +4683,30 @@ export interface components {
             slug: string;
             workspace_id: components["schemas"]["WorkspaceId"];
         };
+        /**
+         * @description A crew member, as given when adding or changing one; changing replaces
+         *     every field.
+         */
+        CrewInput: {
+            email?: string | null;
+            name: string;
+            notes?: string | null;
+            phone?: string | null;
+            role?: string | null;
+        };
+        CrewView: {
+            email?: string | null;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            notes?: string | null;
+            phone?: string | null;
+            /** Format: uuid */
+            project_id: string;
+            role?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
         CurrentSessionView: {
             /** @description `browser` or `app`. */
             client: string;
@@ -4501,11 +4717,36 @@ export interface components {
             id: string;
             mfa_verified: boolean;
         };
+        DateLink: {
+            /** Format: uuid */
+            booking_id: string;
+        };
         /**
          * @description How to read day/month order in dates like `07/03/2027`.
          * @enum {string}
          */
         DateOrder: "dmy" | "mdy" | "ymd";
+        /** @description A date in the project, as the overview lists it. */
+        DateSummary: {
+            /** Format: uuid */
+            booking_id: string;
+            commission: components["schemas"]["Money"];
+            costs: components["schemas"]["Money"];
+            /** Format: date-time */
+            ends_at: string;
+            /** @description The date's own money check, in its fee's currency. */
+            income: components["schemas"]["Money"];
+            net: components["schemas"]["Money"];
+            net_in_currency?: components["schemas"]["Money"] | null;
+            /** Format: date-time */
+            starts_at: string;
+            status: components["schemas"]["BookingStatus"];
+            talent: string[];
+            timezone: string;
+            title: string;
+            venue?: string | null;
+            warnings: components["schemas"]["Warning"][];
+        };
         DecideAppSignInRequest: {
             /** @description True signs the app in as you; false refuses it. */
             approve: boolean;
@@ -5415,6 +5656,42 @@ export interface components {
              */
             issue_date?: string | null;
         };
+        Itinerary: {
+            crew: components["schemas"]["CrewView"][];
+            days: components["schemas"]["ItineraryDay"][];
+            name: string;
+            /** Format: uuid */
+            project_id: string;
+        };
+        /** @description A date on a day of the itinerary, with what the day sheet needs. */
+        ItineraryDate: {
+            all_day: boolean;
+            /** Format: uuid */
+            booking_id: string;
+            contact_name?: string | null;
+            /** Format: date-time */
+            ends_at: string;
+            notes?: string | null;
+            schedule: components["schemas"]["ScheduleItem"][];
+            /** Format: date-time */
+            starts_at: string;
+            status: components["schemas"]["BookingStatus"];
+            talent: string[];
+            timezone: string;
+            title: string;
+            venue?: string | null;
+        };
+        ItineraryDay: {
+            /** Format: date */
+            date: string;
+            dates: components["schemas"]["ItineraryDate"][];
+            /** @description Where people sleep tonight. */
+            hotels: components["schemas"]["TravelView"][];
+            /** @description `show` (a date is on), `travel` (moving, nothing on) or `off`. */
+            kind: string;
+            /** @description Journeys that leave this day (hotels not included). */
+            travel: components["schemas"]["TravelView"][];
+        };
         JobDetail: {
             job: components["schemas"]["JobView"];
             /** @description Every attempt, oldest first. */
@@ -5684,7 +5961,7 @@ export interface components {
         MoneyLineView: {
             amount: components["schemas"]["Money"];
             /** Format: uuid */
-            booking_id: string;
+            booking_id?: string | null;
             /**
              * @description Income: `buyout`, `merchandise`, `other`. Cost: `travel`,
              *     `accommodation`, `ground`, `per_diem`, `crew`, `production`, `visa`,
@@ -5700,6 +5977,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             notes?: string | null;
+            /** Format: uuid */
+            project_id?: string | null;
             /** Format: date */
             spent_on?: string | null;
             /** Format: date-time */
@@ -5934,6 +6213,27 @@ export interface components {
         NewPdfImports: {
             /** @description Uploaded PDFs (`POST /files`), up to 200 at a time. */
             file_ids: string[];
+        };
+        NewProject: {
+            /** @description Bookings that are its dates from the start. */
+            booking_ids?: string[];
+            budget?: {
+                [key: string]: number;
+            };
+            /** @description Default: the workspace's currency. */
+            currency?: string | null;
+            /** @description Default `tour`. */
+            kind?: string | null;
+            name: string;
+            notes?: string | null;
+            /**
+             * Format: uuid
+             * @description Default: the member creating it.
+             */
+            owner_id?: string | null;
+            /** @description Default `planning`. */
+            status?: string | null;
+            tags?: string[];
         };
         NewQuote: {
             /** @description Default: the booking's fee currency, else the first talent's, else the workspace's. */
@@ -6197,7 +6497,7 @@ export interface components {
          * @description A `resource:action` permission.
          * @enum {string}
          */
-        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write" | "enquiry:read" | "enquiry:write" | "booking:read" | "booking:write" | "booking:override" | "quote:read" | "quote:write" | "task:read" | "task:write" | "document:read" | "document:write" | "invoice:read" | "invoice:write" | "payment:write" | "report:read" | "finance:config" | "inbox:read" | "inbox:write" | "integration:manage";
+        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write" | "enquiry:read" | "enquiry:write" | "booking:read" | "booking:write" | "booking:override" | "quote:read" | "quote:write" | "task:read" | "task:write" | "project:read" | "project:write" | "document:read" | "document:write" | "invoice:read" | "invoice:write" | "payment:write" | "report:read" | "finance:config" | "inbox:read" | "inbox:write" | "integration:manage";
         /**
          * @description Whether the workspace represents talent (`sells`), books talent for its
          *     own events (`buys`), or both. Changes vocabulary and defaults, never the
@@ -6256,6 +6556,82 @@ export interface components {
              * @description The same as `record_id` with `entity` `thing`.
              */
             thing_id?: string | null;
+        };
+        ProjectOverview: {
+            budget: components["schemas"]["BudgetLine"][];
+            crew: components["schemas"]["CrewView"][];
+            dates: components["schemas"]["DateSummary"][];
+            lines: components["schemas"]["MoneyLineView"][];
+            net: components["schemas"]["Money"];
+            project: components["schemas"]["ProjectView"];
+            total_commission: components["schemas"]["Money"];
+            total_costs: components["schemas"]["Money"];
+            /**
+             * @description Across every date plus the project's own income and costs, in the
+             *     project's currency.
+             */
+            total_income: components["schemas"]["Money"];
+            /** @description Travel and money that belong to the project rather than one date. */
+            travel: components["schemas"]["TravelView"][];
+            warnings: components["schemas"]["Warning"][];
+        };
+        ProjectPage: {
+            items: components["schemas"]["ProjectView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        ProjectPatch: {
+            /** @description Replaces the whole budget. */
+            budget?: {
+                [key: string]: number;
+            } | null;
+            currency?: string | null;
+            kind?: string | null;
+            name?: string | null;
+            notes?: string | null;
+            /** Format: uuid */
+            owner_id?: string | null;
+            status?: string | null;
+            tags?: string[] | null;
+        };
+        ProjectView: {
+            /** @description Expected costs per cost category, in minor units of `currency`. */
+            budget: {
+                [key: string]: number;
+            };
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** @description What the project's sums are shown in. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description How many dates.
+             */
+            dates: number;
+            /**
+             * Format: date-time
+             * @description The first and last date's start.
+             */
+            first_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description `tour`, `season`, `circuit`, `exhibition`, `production`, `campaign` or `other`. */
+            kind: string;
+            /** Format: date-time */
+            last_at?: string | null;
+            name: string;
+            notes?: string | null;
+            /** Format: uuid */
+            owner_id?: string | null;
+            /** @description `planning`, `confirmed`, `under_way`, `done` or `cancelled`. */
+            status: string;
+            tags: string[];
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
         };
         /** @description What the talent sees on opening their link. */
         PublicCalendarConnect: {
@@ -7502,8 +7878,11 @@ export interface components {
             travellers?: string[];
         };
         TravelView: {
-            /** Format: uuid */
-            booking_id: string;
+            /**
+             * Format: uuid
+             * @description The booking it is for, or
+             */
+            booking_id?: string | null;
             /** @description The airline, rail company, driver or hotel. */
             carrier?: string | null;
             cost?: components["schemas"]["Money"] | null;
@@ -7528,6 +7907,11 @@ export interface components {
             number?: string | null;
             /** @description `us` (a cost against the fee) or `buyer` (the client provides it). */
             paid_by: string;
+            /**
+             * Format: uuid
+             * @description the project it belongs to (travel on a day between dates).
+             */
+            project_id?: string | null;
             /** @description The booking reference or confirmation code. */
             reference?: string | null;
             /** @description The IANA zone of the departure. */
@@ -14804,6 +15188,549 @@ export interface operations {
                 };
             };
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_crew: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrewInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrewView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_crew: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_projects: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                offset?: number | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_project: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewProject"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_project: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_project: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_project: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_crew: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrewInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrewView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_date: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DateLink"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_date: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    project_itinerary: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Itinerary"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_project_line: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoneyLineInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoneyLineView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    project_overview: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOverview"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_project_travel: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TravelInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

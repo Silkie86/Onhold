@@ -54,6 +54,7 @@ import {
   Sun,
   Workflow,
   X,
+  Route as RouteIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -75,6 +76,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
       { to: "/calendar", label: "Calendar", icon: <CalendarDays /> },
       { to: "/enquiries", label: "Enquiries", icon: <Inbox /> },
       { to: "/bookings", label: "Bookings", icon: <CalendarCheck /> },
+      { to: "/projects", label: "Tours", icon: <RouteIcon /> },
       { to: "/tasks", label: "Tasks", icon: <CheckSquare /> },
     ],
   },

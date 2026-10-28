@@ -26,6 +26,7 @@ pub const RELATED: &[&str] = &[
     "enquiry",
     "booking",
     "quote",
+    "project",
 ];
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -62,6 +63,7 @@ pub(crate) async fn record_name(tx: &mut Tx, entity: &str, id: Uuid) -> ApiResul
         "contact" => core_db::contacts::get(tx, id).await?.map(|r| r.name),
         "enquiry" => core_db::enquiries::get(tx, id).await?.map(|r| r.title),
         "booking" => core_db::bookings::get(tx, id).await?.map(|r| r.title),
+        "project" => core_db::projects::get(tx, id).await?.map(|r| r.name),
         "quote" => core_db::quotes::get(tx, id).await?.map(|q| {
             format!(
                 "{} · {}",

@@ -1,0 +1,209 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT p.id, p.kind, p.name, p.status, p.currency::text AS \"currency!\", p.owner_id, p.budget,\n                  p.notes, p.tags, p.version, p.created_at, p.updated_at,\n                  p.created_by AS \"created_by: UserId\", p.updated_by AS \"updated_by: UserId\",\n                  d.first_at, d.last_at, coalesce(d.dates, 0) AS \"dates!\", count(*) OVER () AS \"total!\"\n           FROM projects p\n           LEFT JOIN LATERAL (\n               SELECT min(b.starts_at) AS first_at, max(b.starts_at) AS last_at, count(*) AS dates\n               FROM project_bookings pb JOIN bookings b ON b.id = pb.booking_id\n               WHERE pb.project_id = p.id AND b.deleted_at IS NULL\n           ) d ON true\n           WHERE p.workspace_id = app_workspace_id() AND p.deleted_at IS NULL\n             AND ($1::text IS NULL OR p.status = $1)\n           ORDER BY coalesce(d.last_at, p.created_at) < now(),\n                    CASE WHEN coalesce(d.last_at, p.created_at) >= now() THEN d.first_at END ASC NULLS LAST,\n                    d.last_at DESC NULLS LAST, p.created_at DESC, p.id\n           OFFSET $2 LIMIT $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "currency!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "owner_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "owner_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "budget",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "budget"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "tags",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "tags"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "updated_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "updated_by"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "first_at",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 15,
+        "name": "last_at",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 16,
+        "name": "dates!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 17,
+        "name": "total!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "cf724795bc091db576491e2c47a33c5b1a41b2ea44138905ce3a85d4b6593af9"
+}

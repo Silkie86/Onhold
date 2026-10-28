@@ -10,6 +10,7 @@
 
 use chrono::{DateTime, NaiveDate, Utc};
 use core_db::Tx;
+pub use core_db::travel::Owner;
 use core_db::travel::{LineValues, MoneyLine, TravelItem, TravelValues};
 use core_domain::touring::{self, COST_CATEGORIES, INCOME_CATEGORIES, TRAVEL_KINDS, Warning};
 use core_domain::{Ctx, Money, Permission, UserId};
@@ -31,7 +32,10 @@ const MAX_TRAVELLERS: usize = 40;
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct TravelView {
     pub id: Uuid,
-    pub booking_id: Uuid,
+    /// The booking it is for, or
+    pub booking_id: Option<Uuid>,
+    /// the project it belongs to (travel on a day between dates).
+    pub project_id: Option<Uuid>,
     /// `flight`, `train`, `bus`, `car`, `ferry`, `taxi`, `hotel` or `other`.
     pub kind: String,
     /// `planned`, `booked` or `cancelled`.
@@ -72,6 +76,7 @@ impl From<TravelItem> for TravelView {
         Self {
             id: t.id,
             booking_id: t.booking_id,
+            project_id: t.project_id,
             kind: t.kind,
             status: t.status,
             carrier: t.carrier,
@@ -106,7 +111,7 @@ impl From<TravelItem> for TravelView {
 
 impl TravelView {
     /// What this item costs the booking, if anything.
-    fn our_cost(&self) -> Option<&Money> {
+    pub(crate) fn our_cost(&self) -> Option<&Money> {
         (self.paid_by == "us" && self.status != "cancelled")
             .then_some(self.cost.as_ref())
             .flatten()
@@ -328,7 +333,7 @@ async fn booking(tx: &mut Tx, id: Uuid) -> ApiResult<BookingView> {
 
 /// The travel of a booking, in time order.
 pub(crate) async fn travel_of(tx: &mut Tx, booking_id: Uuid) -> ApiResult<Vec<TravelView>> {
-    Ok(core_db::travel::list(tx, &[booking_id])
+    Ok(core_db::travel::list(tx, &[booking_id], None)
         .await?
         .into_iter()
         .map(TravelView::from)
@@ -348,18 +353,46 @@ pub async fn list_travel(
     Ok(items)
 }
 
+/// Who may change an item, and the zone its times default to.
+async fn owner_rules(tx: &mut Tx, ctx: &Ctx, owner: Owner) -> ApiResult<(Permission, String)> {
+    match owner {
+        Owner::Booking(id) => Ok((Permission::BookingWrite, booking(tx, id).await?.timezone)),
+        Owner::Project(id) => {
+            core_db::projects::get(tx, id)
+                .await?
+                .ok_or(ApiError::NotFound)?;
+            let tz = core_db::workspaces::get(tx, ctx.workspace_id)
+                .await?
+                .map_or_else(|| "UTC".to_owned(), |w| w.default_timezone);
+            Ok((Permission::ProjectWrite, tz))
+        }
+    }
+}
+
+fn owner_of(booking_id: Option<Uuid>, project_id: Option<Uuid>) -> ApiResult<Owner> {
+    match (booking_id, project_id) {
+        (Some(b), _) => Ok(Owner::Booking(b)),
+        (None, Some(p)) => Ok(Owner::Project(p)),
+        (None, None) => Err(ApiError::NotFound),
+    }
+}
+
+/// Adds travel to a booking, or to a project for a day between its dates.
 pub async fn create_travel(
     state: &AppState,
     ctx: &Ctx,
-    booking_id: Uuid,
+    owner: Owner,
     input: TravelInput,
 ) -> ApiResult<TravelView> {
-    ctx.authorize(Permission::BookingWrite)?;
+    ctx.authorize(match owner {
+        Owner::Booking(_) => Permission::BookingWrite,
+        Owner::Project(_) => Permission::ProjectWrite,
+    })?;
     let mut tx = begin(state, ctx).await?;
-    let b = booking(&mut tx, booking_id).await?;
-    let c = check_travel(input, &b.timezone)?;
+    let (_, tz) = owner_rules(&mut tx, ctx, owner).await?;
+    let c = check_travel(input, &tz)?;
     let id = core_domain::ids::new_id();
-    core_db::travel::insert(&mut tx, id, booking_id, c.values(), ctx.user_id()).await?;
+    core_db::travel::insert(&mut tx, id, owner, c.values(), ctx.user_id()).await?;
     let v: TravelView = core_db::travel::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?
@@ -388,18 +421,23 @@ pub async fn update_travel(
     input: TravelInput,
     if_match: Option<i64>,
 ) -> ApiResult<TravelView> {
-    ctx.authorize(Permission::BookingWrite)?;
     let mut tx = begin(state, ctx).await?;
     let version = core_db::travel::lock(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    check_version(version, if_match)?;
     let before: TravelView = core_db::travel::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?
         .into();
-    let b = booking(&mut tx, before.booking_id).await?;
-    let c = check_travel(input, &b.timezone)?;
+    let (permission, tz) = owner_rules(
+        &mut tx,
+        ctx,
+        owner_of(before.booking_id, before.project_id)?,
+    )
+    .await?;
+    ctx.authorize(permission)?;
+    check_version(version, if_match)?;
+    let c = check_travel(input, &tz)?;
     core_db::travel::update(&mut tx, id, c.values(), ctx.user_id()).await?;
     let after: TravelView = core_db::travel::get(&mut tx, id)
         .await?
@@ -423,12 +461,18 @@ pub async fn update_travel(
 }
 
 pub async fn delete_travel(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
-    ctx.authorize(Permission::BookingWrite)?;
     let mut tx = begin(state, ctx).await?;
     let before: TravelView = core_db::travel::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?
         .into();
+    let (permission, _) = owner_rules(
+        &mut tx,
+        ctx,
+        owner_of(before.booking_id, before.project_id)?,
+    )
+    .await?;
+    ctx.authorize(permission)?;
     core_db::travel::soft_delete(&mut tx, id, ctx.user_id()).await?;
     record(
         &mut tx,
@@ -452,7 +496,8 @@ pub async fn delete_travel(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<(
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MoneyLineView {
     pub id: Uuid,
-    pub booking_id: Uuid,
+    pub booking_id: Option<Uuid>,
+    pub project_id: Option<Uuid>,
     /// `income` or `cost`.
     pub direction: String,
     /// Income: `buyout`, `merchandise`, `other`. Cost: `travel`,
@@ -475,6 +520,7 @@ impl From<MoneyLine> for MoneyLineView {
         Self {
             id: l.id,
             booking_id: l.booking_id,
+            project_id: l.project_id,
             direction: l.direction,
             category: l.category,
             description: l.description,
@@ -565,18 +611,22 @@ fn check_line(input: MoneyLineInput) -> ApiResult<CheckedLine> {
     })
 }
 
+/// Adds income or a cost to a booking, or to a project as a whole.
 pub async fn create_line(
     state: &AppState,
     ctx: &Ctx,
-    booking_id: Uuid,
+    owner: Owner,
     input: MoneyLineInput,
 ) -> ApiResult<MoneyLineView> {
-    ctx.authorize(Permission::BookingWrite)?;
+    ctx.authorize(match owner {
+        Owner::Booking(_) => Permission::BookingWrite,
+        Owner::Project(_) => Permission::ProjectWrite,
+    })?;
     let c = check_line(input)?;
     let mut tx = begin(state, ctx).await?;
-    booking(&mut tx, booking_id).await?;
+    owner_rules(&mut tx, ctx, owner).await?;
     let id = core_domain::ids::new_id();
-    core_db::travel::insert_line(&mut tx, id, booking_id, c.values(), ctx.user_id()).await?;
+    core_db::travel::insert_line(&mut tx, id, owner, c.values(), ctx.user_id()).await?;
     let v: MoneyLineView = core_db::travel::line(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?
@@ -605,17 +655,23 @@ pub async fn update_line(
     input: MoneyLineInput,
     if_match: Option<i64>,
 ) -> ApiResult<MoneyLineView> {
-    ctx.authorize(Permission::BookingWrite)?;
     let c = check_line(input)?;
     let mut tx = begin(state, ctx).await?;
     let version = core_db::travel::lock_line(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    check_version(version, if_match)?;
     let before: MoneyLineView = core_db::travel::line(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?
         .into();
+    let (permission, _) = owner_rules(
+        &mut tx,
+        ctx,
+        owner_of(before.booking_id, before.project_id)?,
+    )
+    .await?;
+    ctx.authorize(permission)?;
+    check_version(version, if_match)?;
     core_db::travel::update_line(&mut tx, id, c.values(), ctx.user_id()).await?;
     let after: MoneyLineView = core_db::travel::line(&mut tx, id)
         .await?
@@ -639,12 +695,18 @@ pub async fn update_line(
 }
 
 pub async fn delete_line(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
-    ctx.authorize(Permission::BookingWrite)?;
     let mut tx = begin(state, ctx).await?;
     let before: MoneyLineView = core_db::travel::line(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?
         .into();
+    let (permission, _) = owner_rules(
+        &mut tx,
+        ctx,
+        owner_of(before.booking_id, before.project_id)?,
+    )
+    .await?;
+    ctx.authorize(permission)?;
     core_db::travel::delete_line(&mut tx, id, ctx.user_id()).await?;
     record(
         &mut tx,
@@ -701,7 +763,12 @@ pub struct MoneyCheck {
 
 /// Converts `m` to `to` at the reference rate on `on`; `None` when there is
 /// no rate.
-async fn convert(tx: &mut Tx, m: &Money, to: &str, on: NaiveDate) -> ApiResult<Option<i64>> {
+pub(crate) async fn convert(
+    tx: &mut Tx,
+    m: &Money,
+    to: &str,
+    on: NaiveDate,
+) -> ApiResult<Option<i64>> {
     if m.currency == to {
         return Ok(Some(m.minor));
     }
@@ -815,7 +882,7 @@ pub(crate) async fn check_booking(
         .with_timezone(&tz)
         .date_naive()
         .min(super::finance::today(tx, ctx).await?);
-    let lines: Vec<MoneyLineView> = core_db::travel::lines(tx, &[b.id])
+    let lines: Vec<MoneyLineView> = core_db::travel::lines(tx, &[b.id], None)
         .await?
         .into_iter()
         .map(MoneyLineView::from)

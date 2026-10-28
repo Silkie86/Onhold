@@ -11,6 +11,7 @@ pub mod events;
 pub mod finance;
 pub mod inbox;
 pub mod jobs;
+pub mod projects;
 pub mod stripe;
 pub mod things;
 pub mod travel;

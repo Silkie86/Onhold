@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, booking_id, direction, category, description, amount_minor,\n                  currency::text AS \"currency!\", spent_on, notes, version, created_at, updated_at,\n                  created_by AS \"created_by: UserId\", updated_by AS \"updated_by: UserId\"\n           FROM money_lines\n           WHERE workspace_id = app_workspace_id() AND booking_id = ANY($1) AND deleted_at IS NULL\n           ORDER BY direction DESC, created_at, id",
+  "query": "SELECT id, booking_id, project_id, direction, category, description, amount_minor,\n                  currency::text AS \"currency!\", spent_on, notes, version, created_at, updated_at,\n                  created_by AS \"created_by: UserId\", updated_by AS \"updated_by: UserId\"\n           FROM money_lines\n           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL\n             AND (booking_id = ANY($1) OR project_id = $2)\n           ORDER BY direction DESC, created_at, id",
   "describe": {
     "columns": [
       {
@@ -27,6 +27,17 @@
       },
       {
         "ordinal": 2,
+        "name": "project_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "money_lines",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
         "name": "direction",
         "type_info": "Text",
         "origin": {
@@ -37,7 +48,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "category",
         "type_info": "Text",
         "origin": {
@@ -48,7 +59,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "description",
         "type_info": "Text",
         "origin": {
@@ -59,7 +70,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "amount_minor",
         "type_info": "Int8",
         "origin": {
@@ -70,13 +81,13 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "currency!",
         "type_info": "Text",
         "origin": "Expression"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "spent_on",
         "type_info": "Date",
         "origin": {
@@ -87,7 +98,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "notes",
         "type_info": "Text",
         "origin": {
@@ -98,7 +109,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "version",
         "type_info": "Int8",
         "origin": {
@@ -109,7 +120,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -120,7 +131,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -131,7 +142,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "created_by: UserId",
         "type_info": "Uuid",
         "origin": {
@@ -142,7 +153,7 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "updated_by: UserId",
         "type_info": "Uuid",
         "origin": {
@@ -155,12 +166,14 @@
     ],
     "parameters": {
       "Left": [
-        "UuidArray"
+        "UuidArray",
+        "Uuid"
       ]
     },
     "nullable": [
       false,
-      false,
+      true,
+      true,
       false,
       false,
       false,
@@ -175,5 +188,5 @@
       true
     ]
   },
-  "hash": "35dfaf45218900c2fbcfc4830f9cc0cf7bc8645d9894212f7328c76136d81163"
+  "hash": "f5709d71ba09b992ca1b02b94f9f10cdf3ea73c0820074461d54facf2a533a4a"
 }

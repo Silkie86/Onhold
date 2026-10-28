@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT b.id FROM project_bookings pb JOIN bookings b ON b.id = pb.booking_id\n           WHERE pb.workspace_id = app_workspace_id() AND pb.project_id = $1 AND b.deleted_at IS NULL\n           ORDER BY b.starts_at, b.id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2b27727df8c7bc23453910402042f290c964f7ff3651281dc85ca6b1de7dddc6"
+}

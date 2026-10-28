@@ -39,6 +39,7 @@ pub mod outbox;
 pub mod payments;
 pub mod pdf_imports;
 pub mod pipelines;
+pub mod projects;
 pub mod quotes;
 pub mod reports;
 pub mod rules;

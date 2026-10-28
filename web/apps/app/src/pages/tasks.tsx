@@ -12,6 +12,7 @@ import { OfflineNote, failureIssues } from "./crm.tsx";
 
 const RELATED_PATH: Record<string, string> = {
   booking: "/bookings/$id",
+  project: "/projects/$id",
   enquiry: "/enquiries/$id",
   contact: "/crm/contacts/$id",
   organisation: "/crm/organisations/$id",
