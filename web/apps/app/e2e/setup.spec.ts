@@ -34,6 +34,12 @@ test("a solo artist sets up a simple app, then adds invoicing back", async ({ pa
   await soloInfo.click();
   await expect(soloInfo).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText(/For an artist, DJ or producer running their own bookings\. A simple app/)).toBeVisible();
+  // It sits over the form and closes with Escape, or a tap elsewhere.
+  await page.keyboard.press("Escape");
+  await expect(page.getByText(/For an artist, DJ or producer running their own bookings\. A simple app/)).toHaveCount(0);
+  await soloInfo.click();
+  await page.getByRole("heading", { name: "Your setup" }).click();
+  await expect(soloInfo).toHaveAttribute("aria-expanded", "false");
 
   // It starts from what the workspace has now, so saving as is changes nothing.
   await expect(page.getByRole("checkbox", { name: "Shape it to how I work: custom fields, pipelines and imports" })).toBeChecked();
