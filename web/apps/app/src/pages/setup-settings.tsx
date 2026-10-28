@@ -5,7 +5,7 @@
 // OnHold's team.
 
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Badge, Button, Card, Checkbox, Label, Spinner, Textarea, cn } from "@onhold/ui";
+import { Alert, Badge, Button, Card, Checkbox, Label, Popover, PopoverAnchor, PopoverContent, PopoverTrigger, Spinner, Textarea, cn } from "@onhold/ui";
 import { Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Schemas } from "@onhold/api-client";
@@ -36,30 +36,19 @@ export function SetupSettingsPage() {
   const qc = useQueryClient();
   const form = useQuery({ queryKey: ["setup"], queryFn: () => ok(api.GET("/api/v1/workspace/setup")) });
   const [answers, setAnswers] = useState<Answers | null>(null);
+  // The workspace version the answers being edited started from, so saving over someone else's change is refused.
+  const [baseVersion, setBaseVersion] = useState<number | null>(null);
   const [comment, setComment] = useState("");
-  // The choice whose fuller explanation is open, shown over the form so the grid never shifts.
+  // The choice whose fuller explanation is open, in a panel over the form so the grid never shifts.
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => {
-    if (form.data && answers === null) setAnswers(form.data.answers);
+    if (form.data && answers === null) {
+      setAnswers(form.data.answers);
+      setBaseVersion(form.data.version);
+    }
   }, [form.data, answers]);
-  // An open explanation closes on a tap elsewhere or Escape.
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => {
-      if (!(e.target instanceof Element) || !e.target.closest(`[data-choice="${open}"]`)) setOpen(null);
-    };
-    const escape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(null);
-    };
-    document.addEventListener("pointerdown", away);
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("pointerdown", away);
-      document.removeEventListener("keydown", escape);
-    };
-  }, [open]);
   const preview = useQuery({
     queryKey: ["setup-preview", answers],
     queryFn: () => ok(api.POST("/api/v1/workspace/setup/preview", { body: answers! })),
@@ -67,8 +56,9 @@ export function SetupSettingsPage() {
     placeholderData: keepPreviousData,
   });
 
-  if (form.isPending || !answers) return <Spinner />;
-  if (form.isError) return <Alert>{form.error.message}</Alert>;
+  // A failed refresh keeps the form being edited; only a failed first load shows the error.
+  if (form.isError && !form.data) return <Alert>{form.error.message}</Alert>;
+  if (!form.data || !answers) return <Spinner />;
   const { questions, price_list, requests, done_at } = form.data;
   const prices = price_list as PriceList;
   const list = (key: string) => (answers[key as keyof Answers] as string[] | null | undefined) ?? [];
@@ -92,7 +82,7 @@ export function SetupSettingsPage() {
     try {
       await ok(
         api.PUT("/api/v1/workspace/setup", {
-          params: { header: { "If-Match": String(form.data.version) } },
+          params: { header: { "If-Match": String(baseVersion ?? form.data.version) } },
           body: { answers, comment: comment.trim() || null },
         }),
       );
@@ -144,56 +134,43 @@ export function SetupSettingsPage() {
                     const checked = q.multiple ? list(q.key).includes(c.key) : answers.team === c.key;
                     const more = open === id;
                     return (
-                      <div
-                        key={c.key}
-                        data-choice={id}
-                        className={cn("relative flex items-center rounded-md border text-sm", checked && "border-primary bg-accent", more && "z-20")}
-                      >
-                        <label htmlFor={id} className="flex h-full min-h-11 flex-1 cursor-pointer items-center gap-3 rounded-md p-3 hover:bg-accent">
-                          {q.multiple ? (
-                            <Checkbox
-                              id={id}
-                              className="shrink-0"
-                              disabled={!canChange}
-                              checked={checked}
-                              onChange={(e) => toggle(q.key, c.key, e.target.checked, c.suggests)}
-                            />
-                          ) : (
-                            <input
-                              id={id}
-                              type="radio"
-                              name={`setup-${q.key}`}
-                              className="size-4 shrink-0 accent-primary"
-                              disabled={!canChange}
-                              checked={checked}
-                              onChange={() => toggle(q.key, c.key, true, [])}
-                            />
-                          )}
-                          <span className="flex flex-col gap-0.5">
-                            <span>{c.label}</span>
-                            {c.hint && <span className="text-xs text-muted-foreground">{c.hint}</span>}
-                          </span>
-                        </label>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="m-1 shrink-0 text-muted-foreground"
-                          aria-expanded={more}
-                          aria-controls={`${id}-details`}
-                          aria-label={`More about ${c.label}`}
-                          onClick={() => setOpen((o) => (o === id ? null : id))}
-                        >
-                          <Info className="size-4" />
-                        </Button>
-                        {more && (
-                          <p
-                            id={`${id}-details`}
-                            className="absolute inset-x-0 top-full z-20 mt-1 rounded-md border bg-card p-3 text-sm text-card-foreground shadow-lg"
-                          >
-                            {c.details}
-                          </p>
-                        )}
-                      </div>
+                      <Popover key={c.key} open={more} onOpenChange={(o) => setOpen(o ? id : null)}>
+                        <PopoverAnchor asChild>
+                          <div className={cn("flex items-center rounded-md border text-sm", checked && "border-primary bg-accent")}>
+                            <label htmlFor={id} className="flex h-full min-h-11 flex-1 cursor-pointer items-center gap-3 rounded-md p-3 hover:bg-accent">
+                              {q.multiple ? (
+                                <Checkbox
+                                  id={id}
+                                  className="shrink-0"
+                                  disabled={!canChange}
+                                  checked={checked}
+                                  onChange={(e) => toggle(q.key, c.key, e.target.checked, c.suggests)}
+                                />
+                              ) : (
+                                <input
+                                  id={id}
+                                  type="radio"
+                                  name={`setup-${q.key}`}
+                                  className="size-4 shrink-0 accent-primary"
+                                  disabled={!canChange}
+                                  checked={checked}
+                                  onChange={() => toggle(q.key, c.key, true, [])}
+                                />
+                              )}
+                              <span className="flex flex-col gap-0.5">
+                                <span>{c.label}</span>
+                                {c.hint && <span className="text-xs text-muted-foreground">{c.hint}</span>}
+                              </span>
+                            </label>
+                            <PopoverTrigger asChild>
+                              <Button variant="ghost" size="icon" className="m-1 shrink-0 text-muted-foreground" aria-label={`More about ${c.label}`}>
+                                <Info className="size-4" />
+                              </Button>
+                            </PopoverTrigger>
+                          </div>
+                        </PopoverAnchor>
+                        <PopoverContent>{c.details}</PopoverContent>
+                      </Popover>
                     );
                   })}
                 </div>
@@ -245,20 +222,20 @@ export function SetupSettingsPage() {
             </Card>
           )}
         </form>
-        <Summary plan={plan} prices={prices} monthly={monthly} />
+        <Summary plan={plan} failed={preview.isError && !plan} prices={prices} monthly={monthly} />
       </div>
     </div>
   );
 }
 
 /** What the answers give, updated as boxes are ticked. */
-function Summary({ plan, prices, monthly }: { plan: Plan | undefined; prices: PriceList; monthly: number }) {
+function Summary({ plan, failed, prices, monthly }: { plan: Plan | undefined; failed: boolean; prices: PriceList; monthly: number }) {
   const words = setupOf(plan && { enabled_modules: plan.modules, extras: plan.extras, vocabulary: plan.vocabulary });
   const parts = plan ? [...plan.modules, ...plan.extras] : [];
   return (
     <Card className="flex flex-col gap-3 p-4 lg:sticky lg:top-4" aria-live="polite">
       <h2 className="font-semibold">Your app</h2>
-      {!plan && <Spinner />}
+      {!plan && (failed ? <p className="text-sm text-muted-foreground">Couldn&apos;t show what these answers give just now. You can still save them.</p> : <Spinner />)}
       {plan && (
         <>
           <ul className="flex flex-col gap-1.5 text-sm">
