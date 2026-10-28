@@ -8,7 +8,7 @@ M7 comes in several PRs. This page grows with each.
 2. Locked paid features with "Unlock features", a preview of the full app, and the agency's "hide locked features" switch.
 3. Messages between the talent and their agent, and profile edits.
 4. Busy elsewhere: a talent with more than one agency (or their own workspace) lets each see when they are booked in the others, with their consent.
-5. Plans: the setup page's price estimate says talent in the portal are free and never count towards the team, and links to the plans on OnHold's website (the price list's upgrade link). Nothing is charged in the app.
+5. Plans: the setup page's price estimate says each talent invited to the portal costs nothing extra and never counts towards the team (the portal feature itself keeps its price), and links to the plans on OnHold's website (the price list's upgrade link). Nothing is charged in the app.
 
 ## The portal
 

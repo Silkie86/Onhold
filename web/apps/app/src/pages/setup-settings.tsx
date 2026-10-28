@@ -24,7 +24,7 @@ const ADDS: Record<string, string> = {
   finance: "Quotes, invoices, card payments and reports",
   documents: "Contracts, e-signatures and documents",
   events: "Events, tours and line-ups",
-  portal: "A free login for your artists or clients",
+  portal: "A login for your artists or clients, with no charge per person",
   team: "Assigning work to each other",
   commission: "Commission and artist statements",
   advanced: "Custom fields, pipelines and imports",
@@ -246,7 +246,7 @@ function Summary({ plan, prices, monthly }: { plan: Plan | undefined; prices: Pr
           </span>
         )}
         <span className="text-xs text-muted-foreground">
-          Artists you invite to their portal are free and never count towards your team. Nothing is charged from this page.
+          Each artist you invite to their portal costs nothing extra and never counts towards your team. Nothing is charged from this page.
         </span>
         {prices.upgrade_url && (
           <a href={prices.upgrade_url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
