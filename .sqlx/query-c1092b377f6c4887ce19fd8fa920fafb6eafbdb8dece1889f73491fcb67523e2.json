@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT portal_user_id AS \"user!\" FROM talent\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND portal_user_id IS NOT NULL\n           FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "portal_user_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "c1092b377f6c4887ce19fd8fa920fafb6eafbdb8dece1889f73491fcb67523e2"
+}

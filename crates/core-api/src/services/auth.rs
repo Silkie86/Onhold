@@ -611,6 +611,28 @@ pub async fn join_from_invitation(
         )
         .await?;
     }
+    // A portal invitation opens its talent record for this person.
+    if let Some(talent_id) = core_db::portal::invitation_talent(tx, inv.invitation_id).await? {
+        if !core_db::portal::link_talent(tx, talent_id, user).await? {
+            return Err(ApiError::conflict(
+                "talent_taken",
+                "this talent's portal is already open for someone else; ask for a new invitation",
+            ));
+        }
+        record(
+            tx,
+            &ctx,
+            Change {
+                topic: "talent.portal_linked",
+                resource: "talent",
+                object_id: Some(talent_id),
+                before: None,
+                after: Some(json!({ "portal_user_id": user })),
+                event_extra: None,
+            },
+        )
+        .await?;
+    }
     record(
         tx,
         &ctx,

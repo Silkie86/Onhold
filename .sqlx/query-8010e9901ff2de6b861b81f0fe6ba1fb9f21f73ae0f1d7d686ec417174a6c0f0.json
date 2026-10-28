@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE booking_talent bt\n           SET answer = $3, answer_note = $4, answered_at = now(), answered_by = $5\n           FROM talent t\n           WHERE bt.workspace_id = app_workspace_id() AND bt.booking_id = $1 AND bt.talent_id = $2\n             AND t.id = bt.talent_id AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8010e9901ff2de6b861b81f0fe6ba1fb9f21f73ae0f1d7d686ec417174a6c0f0"
+}

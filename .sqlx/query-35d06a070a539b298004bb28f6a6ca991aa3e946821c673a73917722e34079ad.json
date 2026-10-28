@@ -1,0 +1,114 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT d.id, d.kind, d.title, d.related_entity AS \"related_entity!\", d.related_id AS \"related_id!\",\n                  d.expires_on, d.signature_status, d.updated_at\n           FROM documents d\n           WHERE d.workspace_id = app_workspace_id() AND d.deleted_at IS NULL AND d.current_version > 0\n             AND ((d.related_entity = 'booking' AND d.related_id = ANY($1) AND d.kind = ANY($2)\n                   AND EXISTS (SELECT 1 FROM booking_talent bt JOIN talent t ON t.id = bt.talent_id\n                               WHERE bt.booking_id = d.related_id AND t.portal_user_id = app_user_id()\n                                 AND t.deleted_at IS NULL))\n                  OR (d.related_entity = 'talent' AND d.kind = ANY($3)\n                      AND d.related_id IN (SELECT id FROM talent WHERE workspace_id = app_workspace_id()\n                                           AND portal_user_id = app_user_id() AND deleted_at IS NULL)))\n           ORDER BY d.updated_at DESC, d.id\n           LIMIT 200",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "related_entity!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "related_entity"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "related_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "related_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "expires_on",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "expires_on"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "signature_status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "signature_status"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "35d06a070a539b298004bb28f6a6ca991aa3e946821c673a73917722e34079ad"
+}

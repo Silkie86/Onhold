@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE invitations SET revoked_at = now()\n           WHERE workspace_id = app_workspace_id() AND talent_id = $1\n             AND accepted_at IS NULL AND revoked_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "96a56598004967290287d4f3a3f4aa80eda421e6d92f15bbf53dcb4491c742f8"
+}

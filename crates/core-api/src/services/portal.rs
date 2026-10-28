@@ -1,0 +1,958 @@
+//! The talent portal (M7): the free viewer for the artists, performers and
+//! other creatives a workspace represents. Staff invite a talent from their
+//! record; the talent then sees their own dates, times, travel and
+//! documents, answers dates, keeps their availability (or connects their
+//! own calendar) and, when the workspace allows, sees fees and statements.
+//!
+//! Every portal read goes through `core_db::portal`, which narrows to the
+//! talent records opened for the signed-in user; what else they may see is
+//! the workspace's [`PortalSettings`].
+
+use chrono::{DateTime, Duration, NaiveDate, Utc};
+use core_db::Tx;
+use core_domain::{BookingStatus, Ctx, Money, Permission, Role, UserId};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
+
+use super::availability::{AvailabilityView, NewAvailability};
+use super::crm::Check;
+use super::files;
+use super::talent_calendars::{self, CreatedConnectLink, TalentCalendarView};
+use super::{Change, begin, record};
+use crate::AppState;
+use crate::error::{ApiError, ApiResult};
+
+/// What a workspace lets its talent see and do in the portal. Everything
+/// is a switch the owner or an admin sets; a cautious agency can start with
+/// read-only dates.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(default)]
+pub struct PortalSettings {
+    /// Fees on their dates. Off until the agency turns it on.
+    pub show_fees: bool,
+    /// Holds (pencilled dates) as well as pending and confirmed ones.
+    pub show_holds: bool,
+    /// Confirm or decline a date; the agent is told either way.
+    pub answer_dates: bool,
+    /// Add and remove their own unavailable or tentative times, and connect
+    /// their own calendar.
+    pub edit_availability: bool,
+    /// Contracts, advance sheets, riders and the like on their dates and record.
+    pub show_documents: bool,
+    /// Flights, trains, rides and hotels on their dates (never what they cost).
+    pub show_travel: bool,
+    /// Their statements: what each date paid them, and what was paid out.
+    pub show_money: bool,
+    /// Hide the paid features shown locked in the free viewer.
+    pub hide_locked: bool,
+}
+
+impl Default for PortalSettings {
+    fn default() -> Self {
+        Self {
+            show_fees: false,
+            show_holds: true,
+            answer_dates: true,
+            edit_availability: true,
+            show_documents: true,
+            show_travel: true,
+            show_money: false,
+            hide_locked: false,
+        }
+    }
+}
+
+impl PortalSettings {
+    /// The stored switches; unknown keys are ignored and missing ones default.
+    pub fn from_json(v: &Value) -> Self {
+        serde_json::from_value(v.clone()).unwrap_or_default()
+    }
+}
+
+async fn settings_in(tx: &mut Tx) -> ApiResult<PortalSettings> {
+    Ok(PortalSettings::from_json(
+        &core_db::portal::settings(tx).await?,
+    ))
+}
+
+// For the agency -------------------------------------------------------------------------------
+
+pub async fn get_settings(state: &AppState, ctx: &Ctx) -> ApiResult<PortalSettings> {
+    ctx.authorize(Permission::WorkspaceRead)?;
+    let mut tx = begin(state, ctx).await?;
+    let s = settings_in(&mut tx).await?;
+    tx.commit().await?;
+    Ok(s)
+}
+
+pub async fn update_settings(
+    state: &AppState,
+    ctx: &Ctx,
+    new: PortalSettings,
+) -> ApiResult<PortalSettings> {
+    ctx.authorize(Permission::WorkspaceUpdate)?;
+    let mut tx = begin(state, ctx).await?;
+    let before = settings_in(&mut tx).await?;
+    let stored = serde_json::to_value(&new).map_err(ApiError::internal)?;
+    core_db::portal::set_settings(&mut tx, ctx.workspace_id, &stored, ctx.user_id()).await?;
+    record(
+        &mut tx,
+        ctx,
+        Change {
+            topic: "workspace.portal_updated",
+            resource: "workspace",
+            object_id: Some(ctx.workspace_id.0),
+            before: Some(json!(before)),
+            after: Some(stored),
+            event_extra: None,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(new)
+}
+
+/// Who a talent record's portal opens for, and any invitation still waiting.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalAccess {
+    pub user: Option<PortalUser>,
+    pub invitation: Option<PendingInvitation>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalUser {
+    pub id: Uuid,
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PendingInvitation {
+    pub email: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+async fn access_in(tx: &mut Tx, talent_id: Uuid) -> ApiResult<PortalAccess> {
+    let talent = core_db::talent::get(tx, talent_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let user = match talent.portal_user_id {
+        Some(id) => core_db::members::list(tx)
+            .await?
+            .into_iter()
+            .find(|m| m.user_id.0 == id)
+            .map(|m| PortalUser {
+                id,
+                name: m.name,
+                email: m.email,
+            }),
+        None => None,
+    };
+    let invitation = core_db::portal::open_invitation(tx, talent_id)
+        .await?
+        .map(|(email, expires_at)| PendingInvitation { email, expires_at });
+    Ok(PortalAccess { user, invitation })
+}
+
+pub async fn access(state: &AppState, ctx: &Ctx, talent_id: Uuid) -> ApiResult<PortalAccess> {
+    ctx.authorize(Permission::TalentRead)?;
+    let mut tx = begin(state, ctx).await?;
+    let a = access_in(&mut tx, talent_id).await?;
+    tx.commit().await?;
+    Ok(a)
+}
+
+/// Invites a talent to the portal by email, for this talent record. An
+/// earlier invitation still waiting is replaced. Whoever looks after the
+/// talent's record may do this (agents too): the membership it makes sees
+/// only that record's portal.
+pub async fn invite(
+    state: &AppState,
+    ctx: &Ctx,
+    talent_id: Uuid,
+    email: &str,
+) -> ApiResult<PortalAccess> {
+    ctx.authorize(Permission::TalentWrite)?;
+    let email = super::tenancy::validate_email(email)?;
+    let mut tx = begin(state, ctx).await?;
+    let talent = core_db::talent::get(&mut tx, talent_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if talent.portal_user_id.is_some() {
+        return Err(ApiError::conflict(
+            "portal_open",
+            "this talent's portal is already open; remove that access first to invite someone else",
+        ));
+    }
+    let workspace = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    core_db::portal::revoke_invitations(&mut tx, talent_id).await?;
+    super::tenancy::invite_in_tx(
+        state,
+        &mut tx,
+        ctx,
+        &email,
+        Role::Talent,
+        Some(talent_id),
+        &workspace.name,
+    )
+    .await?;
+    let a = access_in(&mut tx, talent_id).await?;
+    tx.commit().await?;
+    Ok(a)
+}
+
+/// Ends a talent record's portal access and cancels waiting invitations.
+/// A talent member left with no talent record here leaves the workspace.
+pub async fn remove_access(state: &AppState, ctx: &Ctx, talent_id: Uuid) -> ApiResult<()> {
+    ctx.authorize(Permission::TalentWrite)?;
+    let mut tx = begin(state, ctx).await?;
+    core_db::talent::get(&mut tx, talent_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let revoked = core_db::portal::revoke_invitations(&mut tx, talent_id).await?;
+    let user = core_db::portal::unlink_talent(&mut tx, talent_id, ctx.user_id()).await?;
+    if user.is_none() && revoked == 0 {
+        return Err(ApiError::NotFound);
+    }
+    if let Some(user) = user {
+        record(
+            &mut tx,
+            ctx,
+            Change {
+                topic: "talent.portal_unlinked",
+                resource: "talent",
+                object_id: Some(talent_id),
+                before: Some(json!({ "portal_user_id": user })),
+                after: Some(json!({ "portal_user_id": null })),
+                event_extra: None,
+            },
+        )
+        .await?;
+        let user = UserId(user);
+        let is_talent_member =
+            core_db::members::role_of(&mut tx, user).await? == Some(Role::Talent);
+        if is_talent_member && core_db::portal::talent_count(&mut tx, user.0).await? == 0 {
+            core_db::members::soft_delete(&mut tx, user, ctx.user_id()).await?;
+            record(
+                &mut tx,
+                ctx,
+                Change {
+                    topic: "member.removed",
+                    resource: "member",
+                    object_id: Some(user.0),
+                    before: Some(json!({ "role": Role::Talent })),
+                    after: None,
+                    event_extra: Some(json!({ "via": "portal_access_removed" })),
+                },
+            )
+            .await?;
+        }
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+// For the talent -------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalTalent {
+    pub id: Uuid,
+    pub name: String,
+}
+
+/// What the portal opens with.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalHome {
+    pub workspace_name: String,
+    pub settings: PortalSettings,
+    /// The talent records opened for this person here (usually one).
+    pub talent: Vec<PortalTalent>,
+    /// Dates waiting for their answer.
+    pub awaiting_answer: i64,
+}
+
+/// The talent records opened for the signed-in person; refuses when none.
+async fn mine(tx: &mut Tx) -> ApiResult<Vec<(Uuid, String)>> {
+    let mine = core_db::portal::my_talent(tx).await?;
+    if mine.is_empty() {
+        return Err(ApiError::forbidden(
+            "no_portal",
+            "no talent record is open for you in this workspace",
+        ));
+    }
+    Ok(mine)
+}
+
+pub async fn home(state: &AppState, ctx: &Ctx) -> ApiResult<PortalHome> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    let talent = mine(&mut tx).await?;
+    let settings = settings_in(&mut tx).await?;
+    let workspace = core_db::workspaces::get(&mut tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let awaiting_answer = if settings.answer_dates {
+        core_db::portal::dates(
+            &mut tx,
+            Some(Utc::now()),
+            None,
+            &answerable(&settings),
+            false,
+            MAX_DATES,
+        )
+        .await?
+        .iter()
+        .filter(|d| d.answer.is_none())
+        .count() as i64
+    } else {
+        0
+    };
+    tx.commit().await?;
+    Ok(PortalHome {
+        workspace_name: workspace.name,
+        settings,
+        talent: talent
+            .into_iter()
+            .map(|(id, name)| PortalTalent { id, name })
+            .collect(),
+        awaiting_answer,
+    })
+}
+
+const MAX_DATES: i64 = 500;
+
+/// The statuses the portal shows.
+fn shown(s: &PortalSettings) -> Vec<BookingStatus> {
+    let mut v = vec![
+        BookingStatus::Pending,
+        BookingStatus::Confirmed,
+        BookingStatus::Completed,
+        BookingStatus::Cancelled,
+    ];
+    if s.show_holds {
+        v.push(BookingStatus::Hold);
+    }
+    v
+}
+
+/// The statuses a talent may answer.
+fn answerable(s: &PortalSettings) -> Vec<BookingStatus> {
+    shown(s)
+        .into_iter()
+        .filter(|st| {
+            matches!(
+                st,
+                BookingStatus::Hold | BookingStatus::Pending | BookingStatus::Confirmed
+            )
+        })
+        .collect()
+}
+
+/// One of the talent's dates.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalDate {
+    pub id: Uuid,
+    /// Which of their talent records it is for.
+    pub talent_id: Uuid,
+    pub talent_name: String,
+    pub title: String,
+    #[schema(value_type = String)]
+    pub status: BookingStatus,
+    pub venue: Option<String>,
+    /// Who booked them (the promoter, brand or venue).
+    pub organisation_name: Option<String>,
+    /// The IANA zone the date's times are shown in.
+    pub timezone: String,
+    pub starts_at: DateTime<Utc>,
+    pub ends_at: DateTime<Utc>,
+    pub all_day: bool,
+    /// Load-in, soundcheck, set times: `[{label, at}]`.
+    pub schedule: Value,
+    /// When a hold lapses by itself.
+    pub hold_expires_at: Option<DateTime<Utc>>,
+    /// Only when the workspace shows fees.
+    pub fee: Option<Money>,
+    /// `confirmed` or `declined`, once they answered.
+    pub answer: Option<String>,
+    pub answer_note: Option<String>,
+    pub answered_at: Option<DateTime<Utc>>,
+    /// Whether they may answer (or change their answer) now.
+    pub can_answer: bool,
+}
+
+fn date_view(d: core_db::portal::Date, s: &PortalSettings) -> PortalDate {
+    let fee = match (s.show_fees, d.fee_minor, d.fee_currency) {
+        (true, Some(minor), Some(currency)) => Some(Money { minor, currency }),
+        _ => None,
+    };
+    let can_answer = s.answer_dates && answerable(s).contains(&d.status) && d.ends_at > Utc::now();
+    PortalDate {
+        id: d.id,
+        talent_id: d.talent_id,
+        talent_name: d.talent_name,
+        title: d.title,
+        status: d.status,
+        venue: d.venue,
+        organisation_name: d.organisation_name,
+        timezone: d.timezone,
+        starts_at: d.starts_at,
+        ends_at: d.ends_at,
+        all_day: d.all_day,
+        schedule: d.schedule,
+        hold_expires_at: d.hold_expires_at,
+        fee,
+        answer: d.answer,
+        answer_note: d.answer_note,
+        answered_at: d.answered_at,
+        can_answer,
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum When {
+    /// From today on, soonest first.
+    #[default]
+    Upcoming,
+    /// Before today, latest first (the last two years).
+    Past,
+}
+
+#[derive(Debug, Default, Deserialize, IntoParams)]
+pub struct DatesQuery {
+    /// `upcoming` (default) or `past`.
+    #[param(inline)]
+    pub when: Option<When>,
+}
+
+pub async fn dates(state: &AppState, ctx: &Ctx, q: &DatesQuery) -> ApiResult<Vec<PortalDate>> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    mine(&mut tx).await?;
+    let s = settings_in(&mut tx).await?;
+    let now = Utc::now();
+    let rows = match q.when.unwrap_or_default() {
+        When::Upcoming => {
+            core_db::portal::dates(&mut tx, Some(now), None, &shown(&s), false, MAX_DATES).await?
+        }
+        When::Past => core_db::portal::dates(
+            &mut tx,
+            Some(now - Duration::days(731)),
+            Some(now),
+            &shown(&s),
+            true,
+            MAX_DATES,
+        )
+        .await?
+        .into_iter()
+        .filter(|d| d.ends_at <= now)
+        .collect(),
+    };
+    tx.commit().await?;
+    Ok(rows.into_iter().map(|d| date_view(d, &s)).collect())
+}
+
+/// Travel as the talent sees it: where and when, never what it cost.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalTravel {
+    pub id: Uuid,
+    /// `flight`, `train`, `bus`, `car`, `ferry`, `taxi`, `hotel` or `other`.
+    pub kind: String,
+    /// `planned`, `booked` or `cancelled`.
+    pub status: String,
+    pub carrier: Option<String>,
+    pub number: Option<String>,
+    pub reference: Option<String>,
+    pub from_place: Option<String>,
+    pub from_code: Option<String>,
+    pub to_place: Option<String>,
+    pub to_code: Option<String>,
+    pub starts_at: DateTime<Utc>,
+    pub start_tz: String,
+    pub ends_at: Option<DateTime<Utc>>,
+    pub end_tz: Option<String>,
+    pub travellers: Vec<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalDocument {
+    pub id: Uuid,
+    pub kind: String,
+    pub title: String,
+    /// `booking` or `talent`.
+    pub related_entity: String,
+    pub related_id: Uuid,
+    pub expires_on: Option<NaiveDate>,
+    /// `none`, `awaiting`, `signed` or `declined`.
+    pub signature_status: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<core_db::portal::Document> for PortalDocument {
+    fn from(d: core_db::portal::Document) -> Self {
+        Self {
+            id: d.id,
+            kind: d.kind,
+            title: d.title,
+            related_entity: d.related_entity,
+            related_id: d.related_id,
+            expires_on: d.expires_on,
+            signature_status: d.signature_status,
+            updated_at: d.updated_at,
+        }
+    }
+}
+
+/// A date with everything the talent needs for it.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalDateDetail {
+    /// The date, once for each of their talent records on it.
+    pub entries: Vec<PortalDate>,
+    pub travel: Vec<PortalTravel>,
+    pub documents: Vec<PortalDocument>,
+}
+
+pub async fn date(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<PortalDateDetail> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    mine(&mut tx).await?;
+    let s = settings_in(&mut tx).await?;
+    let detail = detail_in(&mut tx, id, &s).await?;
+    tx.commit().await?;
+    Ok(detail)
+}
+
+async fn detail_in(tx: &mut Tx, id: Uuid, s: &PortalSettings) -> ApiResult<PortalDateDetail> {
+    let shown = shown(s);
+    let entries: Vec<PortalDate> = core_db::portal::date(tx, id)
+        .await?
+        .into_iter()
+        .filter(|d| shown.contains(&d.status))
+        .map(|d| date_view(d, s))
+        .collect();
+    if entries.is_empty() {
+        return Err(ApiError::NotFound);
+    }
+    let travel = if s.show_travel {
+        core_db::travel::list(tx, &[id], None)
+            .await?
+            .into_iter()
+            .map(|t| PortalTravel {
+                id: t.id,
+                kind: t.kind,
+                status: t.status,
+                carrier: t.carrier,
+                number: t.number,
+                reference: t.reference,
+                from_place: t.from_place,
+                from_code: t.from_code,
+                to_place: t.to_place,
+                to_code: t.to_code,
+                starts_at: t.starts_at,
+                start_tz: t.start_tz,
+                ends_at: t.ends_at,
+                end_tz: t.end_tz,
+                travellers: t.travellers,
+                notes: t.notes,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let documents = if s.show_documents {
+        core_db::portal::documents(tx, &[id])
+            .await?
+            .into_iter()
+            .filter(|d| d.related_entity == "booking")
+            .map(Into::into)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    Ok(PortalDateDetail {
+        entries,
+        travel,
+        documents,
+    })
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct AnswerInput {
+    /// `confirmed` or `declined`.
+    pub answer: String,
+    /// Which of their talent records answers; needed only when several of
+    /// theirs are on the date.
+    pub talent_id: Option<Uuid>,
+    /// A few words for the agent, e.g. why they cannot do it.
+    pub note: Option<String>,
+}
+
+/// The talent confirms or declines a date. The booking's own status stays
+/// the agency's to move; the agent gets a task saying what the talent said.
+pub async fn answer(
+    state: &AppState,
+    ctx: &Ctx,
+    id: Uuid,
+    input: AnswerInput,
+) -> ApiResult<PortalDateDetail> {
+    ctx.authorize(Permission::PortalUse)?;
+    let user = ctx
+        .user_id()
+        .ok_or_else(|| ApiError::forbidden("person_required", "only the talent can answer"))?;
+    let mut check = Check::default();
+    let answer = input.answer.trim().to_owned();
+    if answer != "confirmed" && answer != "declined" {
+        check.issue("answer", "must be confirmed or declined");
+    }
+    let note = check.optional("note", input.note.as_deref(), 500);
+    check.finish()?;
+
+    let mut tx = begin(state, ctx).await?;
+    mine(&mut tx).await?;
+    let s = settings_in(&mut tx).await?;
+    if !s.answer_dates {
+        return Err(ApiError::forbidden(
+            "portal_switched_off",
+            "your agency answers dates for you here",
+        ));
+    }
+    let before = detail_in(&mut tx, id, &s).await?;
+    let entry = match input.talent_id {
+        Some(t) => before.entries.iter().find(|e| e.talent_id == t),
+        None if before.entries.len() == 1 => before.entries.first(),
+        None => {
+            return Err(ApiError::invalid(
+                "talent_id",
+                "say which of your acts is answering",
+            ));
+        }
+    }
+    .ok_or(ApiError::NotFound)?
+    .clone();
+    if !entry.can_answer {
+        return Err(ApiError::conflict(
+            "not_answerable",
+            "this date can no longer be answered",
+        ));
+    }
+    if !core_db::portal::set_answer(&mut tx, id, entry.talent_id, &answer, note.as_deref(), user)
+        .await?
+    {
+        return Err(ApiError::NotFound);
+    }
+    // The agent hears about it: a task on the booking, due now.
+    let assignee = core_db::portal::date_owner(&mut tx, id).await?;
+    let verb = if answer == "confirmed" {
+        "confirmed"
+    } else {
+        "declined"
+    };
+    let title = format!("{} {} {}", entry.talent_name, verb, entry.title);
+    let title: String = title.chars().take(300).collect();
+    let task_id = core_domain::ids::new_id();
+    core_db::tasks::insert(
+        &mut tx,
+        task_id,
+        core_db::tasks::Values {
+            title: &title,
+            notes: note.as_deref(),
+            due_at: Some(Utc::now()),
+            assignee_id: assignee,
+            related_entity: Some("booking"),
+            related_id: Some(id),
+            status: "open",
+            done_at: None,
+            done_by: None,
+        },
+        None,
+        Some(user),
+    )
+    .await?;
+    record(
+        &mut tx,
+        ctx,
+        Change {
+            topic: "booking.talent_answered",
+            resource: "booking",
+            object_id: Some(id),
+            before: Some(json!({ "talent_id": entry.talent_id, "answer": entry.answer })),
+            after: Some(json!({ "talent_id": entry.talent_id, "answer": answer, "note": note, "task_id": task_id })),
+            event_extra: None,
+        },
+    )
+    .await?;
+    let after = detail_in(&mut tx, id, &s).await?;
+    tx.commit().await?;
+    Ok(after)
+}
+
+/// The talent's availability and busy times from their own calendars.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalAvailability {
+    /// From a month ago to a year ahead.
+    pub entries: Vec<AvailabilityView>,
+    /// Their connected calendars.
+    pub calendars: Vec<TalentCalendarView>,
+    /// Whether they may change it here.
+    pub can_edit: bool,
+}
+
+pub async fn availability(state: &AppState, ctx: &Ctx) -> ApiResult<PortalAvailability> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    let ids: Vec<Uuid> = mine(&mut tx).await?.into_iter().map(|(id, _)| id).collect();
+    let s = settings_in(&mut tx).await?;
+    let from = Utc::now() - Duration::days(31);
+    let entries = core_db::availability::list(&mut tx, &ids, from, from + Duration::days(397), &[])
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    let mut calendars = Vec::new();
+    for id in &ids {
+        calendars.extend(
+            core_db::talent_calendars::list(&mut tx, Some(*id))
+                .await?
+                .iter()
+                .map(TalentCalendarView::from),
+        );
+    }
+    tx.commit().await?;
+    Ok(PortalAvailability {
+        entries,
+        calendars,
+        can_edit: s.edit_availability,
+    })
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PortalNewAvailability {
+    /// Which of their talent records; needed only when they have several.
+    pub talent_id: Option<Uuid>,
+    #[serde(flatten)]
+    pub entry: NewAvailability,
+}
+
+/// The one of `mine` a request names, or the only one.
+fn pick(mine: &[(Uuid, String)], talent_id: Option<Uuid>) -> ApiResult<Uuid> {
+    match talent_id {
+        Some(t) if mine.iter().any(|(id, _)| *id == t) => Ok(t),
+        Some(_) => Err(ApiError::NotFound),
+        None if mine.len() == 1 => Ok(mine[0].0),
+        None => Err(ApiError::invalid(
+            "talent_id",
+            "say which of your acts this is for",
+        )),
+    }
+}
+
+async fn may_edit_availability(tx: &mut Tx) -> ApiResult<()> {
+    if settings_in(tx).await?.edit_availability {
+        Ok(())
+    } else {
+        Err(ApiError::forbidden(
+            "portal_switched_off",
+            "your agency keeps your availability for you here",
+        ))
+    }
+}
+
+pub async fn add_availability(
+    state: &AppState,
+    ctx: &Ctx,
+    input: PortalNewAvailability,
+) -> ApiResult<AvailabilityView> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    let talent_id = pick(&mine(&mut tx).await?, input.talent_id)?;
+    may_edit_availability(&mut tx).await?;
+    let view =
+        super::availability::insert_in(&mut tx, ctx, talent_id, "portal", input.entry).await?;
+    tx.commit().await?;
+    Ok(view)
+}
+
+/// Removes an entry the talent added here. Entries the agency added stay
+/// the agency's.
+pub async fn remove_availability(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    let ids: Vec<Uuid> = mine(&mut tx).await?.into_iter().map(|(id, _)| id).collect();
+    may_edit_availability(&mut tx).await?;
+    let entry = core_db::availability::get(&mut tx, id)
+        .await?
+        .filter(|a| ids.contains(&a.talent_id))
+        .ok_or(ApiError::NotFound)?;
+    if entry.source != "portal" {
+        return Err(ApiError::conflict(
+            "agency_entry",
+            "your agency added this; ask them to change it",
+        ));
+    }
+    super::availability::delete_in(&mut tx, ctx, id).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+pub struct PortalCalendarLink {
+    /// Which of their talent records; needed only when they have several.
+    pub talent_id: Option<Uuid>,
+}
+
+/// A link to connect the talent's own calendar (Google, Microsoft or an
+/// iCal link), the same one an agency sends.
+pub async fn calendar_link(
+    state: &AppState,
+    ctx: &Ctx,
+    input: PortalCalendarLink,
+) -> ApiResult<CreatedConnectLink> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    let talent_id = pick(&mine(&mut tx).await?, input.talent_id)?;
+    may_edit_availability(&mut tx).await?;
+    let link = talent_calendars::make_link(state, &mut tx, ctx, talent_id).await?;
+    tx.commit().await?;
+    Ok(link)
+}
+
+pub async fn documents(state: &AppState, ctx: &Ctx) -> ApiResult<Vec<PortalDocument>> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    mine(&mut tx).await?;
+    let s = settings_in(&mut tx).await?;
+    if !s.show_documents {
+        tx.commit().await?;
+        return Ok(Vec::new());
+    }
+    let now = Utc::now();
+    let ids: Vec<Uuid> = core_db::portal::dates(
+        &mut tx,
+        Some(now - Duration::days(92)),
+        None,
+        &shown(&s),
+        false,
+        MAX_DATES,
+    )
+    .await?
+    .into_iter()
+    .map(|d| d.id)
+    .collect();
+    let docs = core_db::portal::documents(&mut tx, &ids).await?;
+    tx.commit().await?;
+    Ok(docs.into_iter().map(Into::into).collect())
+}
+
+/// The current file of a document the portal shows.
+pub async fn download(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<files::Download> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    mine(&mut tx).await?;
+    let s = settings_in(&mut tx).await?;
+    if !core_db::portal::may_open_document(&mut tx, id, s.show_documents, s.show_money).await? {
+        return Err(ApiError::NotFound);
+    }
+    let doc = core_db::documents::get(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let v = core_db::documents::version(&mut tx, id, doc.current_version)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let file_id = v.file_id.ok_or_else(|| {
+        ApiError::conflict("document_not_ready", "this document is not ready yet")
+    })?;
+    let file = core_db::files::get(&mut tx, file_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let bytes = files::bytes(state, &mut tx, &file).await?;
+    tx.commit().await?;
+    Ok(files::Download {
+        filename: file.filename,
+        content_type: file.content_type,
+        bytes,
+    })
+}
+
+/// What a date paid the talent.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalStatement {
+    pub id: Uuid,
+    pub booking_id: Uuid,
+    pub booking_title: String,
+    pub starts_at: DateTime<Utc>,
+    pub talent_id: Uuid,
+    pub talent_name: String,
+    pub gross: Money,
+    pub commission: Money,
+    pub expenses: Money,
+    pub net: Money,
+    /// Paid out to them so far.
+    pub paid: Money,
+    pub finalised_at: Option<DateTime<Utc>>,
+    /// The statement's PDF, opened through the portal's documents.
+    pub document_id: Option<Uuid>,
+}
+
+pub async fn money(state: &AppState, ctx: &Ctx) -> ApiResult<Vec<PortalStatement>> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    mine(&mut tx).await?;
+    if !settings_in(&mut tx).await?.show_money {
+        return Err(ApiError::forbidden(
+            "portal_switched_off",
+            "your agency has not shared statements here",
+        ));
+    }
+    let rows = core_db::portal::statements(&mut tx, 200).await?;
+    tx.commit().await?;
+    let m = |minor: i64, c: &str| Money {
+        minor,
+        currency: c.to_owned(),
+    };
+    Ok(rows
+        .into_iter()
+        .map(|r| PortalStatement {
+            id: r.id,
+            booking_id: r.booking_id,
+            booking_title: r.booking_title,
+            starts_at: r.starts_at,
+            talent_id: r.talent_id,
+            talent_name: r.talent_name,
+            gross: m(r.gross_minor, &r.currency),
+            commission: m(r.commission_minor, &r.currency),
+            expenses: m(r.expenses_minor, &r.currency),
+            net: m(r.net_minor, &r.currency),
+            paid: m(r.paid_minor, &r.currency),
+            finalised_at: r.finalised_at,
+            document_id: r.document_id,
+        })
+        .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_default_to_cautious_fees_and_open_dates() {
+        let s = PortalSettings::from_json(&json!({}));
+        assert!(!s.show_fees && !s.show_money && !s.hide_locked);
+        assert!(s.answer_dates && s.edit_availability && s.show_documents && s.show_travel);
+        let s = PortalSettings::from_json(&json!({ "show_fees": true, "unknown": 1 }));
+        assert!(s.show_fees && s.show_holds);
+    }
+
+    #[test]
+    fn holds_are_answerable_only_when_shown() {
+        let mut s = PortalSettings::default();
+        assert!(answerable(&s).contains(&BookingStatus::Hold));
+        s.show_holds = false;
+        assert!(!answerable(&s).contains(&BookingStatus::Hold));
+        assert!(!answerable(&s).contains(&BookingStatus::Cancelled));
+    }
+}

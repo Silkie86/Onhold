@@ -156,7 +156,7 @@ impl Role {
                 P::InboxRead,
             ]
             .into(),
-            Role::Talent => [P::WorkspaceRead].into(),
+            Role::Talent => [P::WorkspaceRead, P::PortalUse].into(),
         }
     }
 }
@@ -256,6 +256,9 @@ permissions! {
     InboxWrite => "inbox:write",
     // Seeing every connected account's health and disconnecting any of them.
     IntegrationManage => "integration:manage",
+    // The talent portal: a talent member's own dates, availability,
+    // documents and money, narrowed to their own talent records.
+    PortalUse => "portal:use",
 }
 
 impl std::fmt::Display for Permission {

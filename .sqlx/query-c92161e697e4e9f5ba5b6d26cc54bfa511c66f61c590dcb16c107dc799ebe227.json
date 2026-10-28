@@ -1,0 +1,174 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT s.id, s.booking_id, b.title AS booking_title, b.starts_at, s.talent_id, t.name AS talent_name,\n                  s.currency::text AS \"currency!\", s.gross_minor, s.commission_minor, s.expenses_minor, s.net_minor,\n                  s.finalised_at, s.document_id,\n                  coalesce((SELECT sum(p.amount_minor) FROM payments p\n                            WHERE p.workspace_id = s.workspace_id AND p.settlement_id = s.id\n                              AND p.kind = 'payout' AND p.voided_at IS NULL), 0)::bigint AS \"paid_minor!\"\n           FROM settlements s\n           JOIN bookings b ON b.id = s.booking_id\n           JOIN talent t ON t.id = s.talent_id\n           WHERE s.workspace_id = app_workspace_id() AND s.status = 'final' AND s.deleted_at IS NULL\n             AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL\n           ORDER BY s.finalised_at DESC, s.id\n           LIMIT $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "booking_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "booking_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "booking_title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "starts_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "starts_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "talent_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "talent_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "currency!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 7,
+        "name": "gross_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "gross_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "commission_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "commission_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "expenses_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "expenses_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "net_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "net_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "finalised_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "finalised_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "document_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "settlements",
+            "name": "document_id"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "paid_minor!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      null,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "c92161e697e4e9f5ba5b6d26cc54bfa511c66f61c590dcb16c107dc799ebe227"
+}
