@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO import_records (workspace_id, import_id, entity, record_id)\n           VALUES (app_workspace_id(), $1, $2, $3) ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d9e8e517715a04a64c3e9231628383082c9abd0105df09f7de8faac1169a55cb"
+}

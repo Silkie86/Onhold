@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (SELECT 1 FROM contacts WHERE workspace_id = app_workspace_id()\n                              AND organisation_id = $1 AND deleted_at IS NULL)\n                   OR EXISTS (SELECT 1 FROM enquiries WHERE workspace_id = app_workspace_id() AND organisation_id = $1)\n                   OR EXISTS (SELECT 1 FROM bookings WHERE workspace_id = app_workspace_id() AND organisation_id = $1)\n                   OR EXISTS (SELECT 1 FROM invoices WHERE workspace_id = app_workspace_id() AND payer_organisation_id = $1)\n                   OR EXISTS (SELECT 1 FROM threads WHERE workspace_id = app_workspace_id() AND organisation_id = $1)\n                   AS \"used!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "used!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "af938ee2e09856c98a3f99429d6fc23d7f0b3e33f726ce9258486b3ca4e7826c"
+}

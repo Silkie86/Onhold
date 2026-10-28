@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, entity, filename, status, headers, row_count, mapping, options, created_count,\n                  updated_count, skipped_count, failed_count, processed, issues, error, version, created_at,\n                  updated_at, created_by AS \"created_by: UserId\", started_at, finished_at\n           FROM imports\n           WHERE workspace_id = app_workspace_id() AND ($1::uuid IS NULL OR id < $1)\n           ORDER BY id DESC\n           LIMIT $2",
+  "query": "SELECT id, entity, filename, status, headers, row_count, mapping, options, created_count,\n                  updated_count, skipped_count, failed_count, processed, issues, error, version, created_at,\n                  updated_at, created_by AS \"created_by: UserId\", started_at, finished_at,\n                  undone_count, kept_count, undone_at\n           FROM imports\n           WHERE workspace_id = app_workspace_id() AND ($1::uuid IS NULL OR id < $1)\n           ORDER BY id DESC\n           LIMIT $2",
   "describe": {
     "columns": [
       {
@@ -233,6 +233,39 @@
             "name": "finished_at"
           }
         }
+      },
+      {
+        "ordinal": 21,
+        "name": "undone_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "undone_count"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "kept_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "kept_count"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "undone_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "undone_at"
+          }
+        }
       }
     ],
     "parameters": {
@@ -262,8 +295,11 @@
       false,
       true,
       true,
+      true,
+      false,
+      false,
       true
     ]
   },
-  "hash": "0c3e5524b18cf629433b7a3d7783049a3944ffcd054206897f0e46966122debc"
+  "hash": "866782462061f5347a4acea9a97123057fc24932d82833b7878a5aa150b113f5"
 }

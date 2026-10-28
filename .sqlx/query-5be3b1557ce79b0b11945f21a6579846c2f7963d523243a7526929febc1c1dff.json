@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE imports\n           SET status = CASE WHEN $2::text IS NULL THEN 'undone' ELSE 'done' END,\n               error = $2, undone_at = CASE WHEN $2::text IS NULL THEN now() END\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND status = 'undoing'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5be3b1557ce79b0b11945f21a6579846c2f7963d523243a7526929febc1c1dff"
+}

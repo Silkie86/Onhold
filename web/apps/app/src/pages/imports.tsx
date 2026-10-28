@@ -75,6 +75,12 @@ function base64(bytes: Uint8Array): string {
   return btoa(text);
 }
 
+/** A row as the person can find it: in its own sheet when several sheets
+ * were read together, else by its row in the file. */
+export function rowLabel(r: { row: number; at?: string | null }): string {
+  return r.at ?? `Row ${r.row}`;
+}
+
 /** What became of a workbook's sheets, in a sentence, or nothing for a
  * file with one sheet. */
 export function sheetsSummary(sheets: Schemas["ImportSheet"][]): string | null {
@@ -83,7 +89,8 @@ export function sheetsSummary(sheets: Schemas["ImportSheet"][]): string | null {
   const read = sheets.filter((s) => s.included);
   const left = sheets.filter((s) => !s.included);
   let text = `Read ${read.length} ${read.length === 1 ? "sheet" : "sheets"}: ${read.map((s) => `${s.name} (${rows(s.rows)})`).join(", ")}.`;
-  if (read.length > 1) text += " Each row's sheet is in the Sheet column, which can go into Region.";
+  if (read.length > 1)
+    text += " Each row's sheet is in the Sheet column, which can go into Region, and its row there in the Sheet row column.";
   if (left.length > 0) text += ` Left out, as their columns are different: ${left.map((s) => s.name).join(", ")}.`;
   return text;
 }
@@ -337,7 +344,13 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
             dry.issues.length > 0 && <Issues issues={dry.issues} />
           )}
           {dry.to_check.length > 0 && (
-            <ToCheck rows={dry.to_check} headers={preview.import.headers} skipRows={skipRows} onSkip={(row) => setSkipRows([...skipRows, row])} />
+            <ToCheck
+              rows={dry.to_check}
+              total={dry.to_check_total}
+              headers={preview.import.headers}
+              skipRows={skipRows}
+              onSkip={(row) => setSkipRows([...skipRows, row])}
+            />
           )}
           {dry.readings.length > 0 && <Readings readings={dry.readings} targets={preview.targets} />}
           {error && <Alert>{error}</Alert>}
@@ -637,7 +650,7 @@ function ProblemRows({
           return (
             <li key={p.row} className="flex flex-col gap-2 rounded-md border p-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-medium">Row {p.row}</span>
+                <span className="font-medium">{rowLabel(p)}</span>
                 <label className="flex items-center gap-2 text-xs">
                   <Checkbox checked={skipped} onChange={(e) => onSkip(p.row, e.target.checked)} />
                   Leave this row out
@@ -692,11 +705,13 @@ function ProblemRows({
  * leave out if need be. */
 function ToCheck({
   rows,
+  total,
   headers,
   skipRows,
   onSkip,
 }: {
   rows: Schemas["ProblemRow"][];
+  total: number;
   headers: string[];
   skipRows: number[];
   onSkip: (row: number) => void;
@@ -708,13 +723,14 @@ function ToCheck({
     <details className="rounded-md border p-3 text-sm" open={shown.length <= 10}>
       <summary className="cursor-pointer font-medium">
         {shown.length} {shown.length === 1 ? "row" : "rows"} to check (they import unless you leave them out)
+        {total > rows.length && `; the first ${rows.length} of ${total} are shown`}
       </summary>
       <ul className="mt-2 flex max-h-72 flex-col gap-2 overflow-y-auto">
         {shown.map((r) => (
           <li key={r.row} className="flex flex-wrap items-start justify-between gap-2 border-t pt-2 first:border-t-0 first:pt-0">
             <div className="min-w-0">
               <p className="font-medium">
-                Row {r.row}
+                {rowLabel(r)}
                 {r.cells[nameAt] ? `: ${r.cells[nameAt]}` : ""}
               </p>
               <ul className="text-muted-foreground">
@@ -782,7 +798,7 @@ function Issues({ issues }: { issues: Schemas["ImportIssue"][] }) {
         {issues.map((i, n) => (
           // Several problems can share a row and field.
           <li key={`${i.row}-${i.field}-${n}`}>
-            Row {i.row}
+            {rowLabel(i)}
             {i.field ? `, ${i.field}` : ""}: {i.message}
           </li>
         ))}
