@@ -7,8 +7,8 @@ M7 comes in several PRs. This page grows with each.
 1. **The portal itself**: inviting a talent from their record, and their own dates, answers, availability, calendar, travel, documents and statements, with the agency's switches.
 2. Locked paid features with "Unlock features", a preview of the full app, and the agency's "hide locked features" switch.
 3. Messages between the talent and their agent, and profile edits.
-4. "Run your own bookings": the artist's own workspace, linked to the manager's, each seeing the other's dates as busy with the artist's consent.
-5. OnHold's own plans for talent, shown as a preview (nothing charged).
+4. Busy elsewhere: a talent with more than one agency (or their own workspace) lets each see when they are booked in the others, with their consent.
+5. Plans: the setup page's price estimate says each talent invited to the portal costs nothing extra and never counts towards the team (the portal feature itself keeps its price), and links to the plans on OnHold's website (the price list's upgrade link). Nothing is charged in the app.
 
 ## The portal
 
@@ -30,8 +30,10 @@ Runs end to end in `web/apps/app/e2e/portal.spec.ts` on desktop and phone: an ag
 
 - **Messages** (Messages tab, switch "Messages"): one conversation per talent record, which sits in the agency's inbox as a Portal conversation beside email and texts (unread, assign, snooze, link as usual). The talent writes from their page; staff answer from the inbox or with "Write to them" on the talent's record, and the talent gets an email (`system.portal_message`) with a link back. The tab shows how many are unread.
 - **Profile** (account menu, switch "Edit their profile"): the talent keeps their bio and where they are based on their record; the change is recorded as theirs (`talent.updated`, `by_talent`).
+- **Busy elsewhere** (Availability, "Share when I'm booked or pencilled in with my other agencies", off until the talent switches it on): someone who is talent in more than one workspace lets each see when they are held, pending or confirmed in the others. Clash checks list it as "busy elsewhere", a warning that never blocks, with the times only: never the title, client, fee or which workspace. Closed workspaces never count. The switch is the person's own and covers all their workspaces (`user.busy_sharing_changed`).
 
 ### Not yet
 
 - No email or push to the agent beyond the task; a rule on `booking.talent_answered` can send one.
 - The portal keeps nothing on the device for offline use; dates need a connection.
+- Starting their own workspace from the portal: upgrades happen on OnHold's website (the price list's upgrade link).

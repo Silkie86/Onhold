@@ -156,7 +156,8 @@ async fn with_talent(tx: &mut Tx, rows: Vec<Booking>) -> ApiResult<Vec<BookingVi
 /// Something else taking a talent's time.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Clash {
-    /// `booking` or `availability`.
+    /// `booking`, `availability`, or `elsewhere`: booked in another of the
+    /// person's workspaces, which they share their busy times with.
     pub kind: String,
     /// Whether it stops the booking being confirmed: a confirmed booking or
     /// unavailable time. Holds, pending bookings and tentative time only warn,
@@ -256,6 +257,22 @@ pub(crate) async fn find_clashes(
             status: a.kind.as_str().into(),
             starts_at: a.starts_at,
             ends_at: a.ends_at,
+        });
+    }
+    // Booked with another of their workspaces, which they let this one see:
+    // when, never what.
+    for b in core_db::portal::busy_elsewhere(tx, talent, starts, ends).await? {
+        clashes.push(Clash {
+            kind: "elsewhere".into(),
+            blocking: false,
+            talent_id: b.talent_id,
+            talent_name: b.talent_name,
+            booking_id: None,
+            availability_id: None,
+            title: None,
+            status: "busy".into(),
+            starts_at: b.starts_at,
+            ends_at: b.ends_at,
         });
     }
     clashes.sort_by_key(|c| (!c.blocking, c.starts_at));

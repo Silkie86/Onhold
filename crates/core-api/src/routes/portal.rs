@@ -22,7 +22,8 @@ use crate::services::portal::{
     self, AgencyMessageInput, AnswerInput, DatesQuery, MessagesQuery, PortalAccess,
     PortalAvailability, PortalCalendarLink, PortalConversation, PortalDate, PortalDateDetail,
     PortalDocument, PortalHome, PortalMessage, PortalMessageInput, PortalNewAvailability,
-    PortalProfile, PortalProfileInput, PortalSettings, PortalStatement,
+    PortalProfile, PortalProfileInput, PortalSettings, PortalSharing, PortalSharingInput,
+    PortalStatement,
 };
 use crate::services::talent_calendars::CreatedConnectLink;
 
@@ -48,6 +49,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(portal_profiles))
         .routes(routes!(update_portal_profile))
         .routes(routes!(write_to_talent))
+        .routes(routes!(portal_sharing, update_portal_sharing))
 }
 
 // For the agency --------------------------------------------------------------------------------
@@ -343,4 +345,29 @@ async fn write_to_talent(
 ) -> ApiResult<(StatusCode, Json<WrittenToTalent>)> {
     let thread_id = portal::write_to_talent(&state, &ctx, id, b).await?;
     Ok((StatusCode::CREATED, Json(WrittenToTalent { thread_id })))
+}
+
+/// Whether the talent shares when they are booked with their other workspaces.
+#[utoipa::path(get, path = "/portal/sharing", tag = "portal", params(WorkspaceHeader),
+    responses((status = 200, body = PortalSharing), (status = 403, body = ErrorBody)),
+    security(("session" = [])))]
+async fn portal_sharing(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<PortalSharing>> {
+    Ok(Json(portal::sharing(&state, &ctx).await?))
+}
+
+/// Share (or stop sharing) when they are booked, times only, with every
+/// other workspace they are talent with.
+#[utoipa::path(put, path = "/portal/sharing", tag = "portal", params(WorkspaceHeader, IdempotencyHeader),
+    request_body = PortalSharingInput,
+    responses((status = 200, body = PortalSharing), (status = 403, body = ErrorBody)),
+    security(("session" = [])))]
+async fn update_portal_sharing(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Json(b): Json<PortalSharingInput>,
+) -> ApiResult<Json<PortalSharing>> {
+    Ok(Json(portal::set_sharing(&state, &ctx, b).await?))
 }

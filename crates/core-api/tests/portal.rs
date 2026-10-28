@@ -749,3 +749,120 @@ async fn a_talent_keeps_their_own_bio(pool: PgPool) {
         .await;
     res.expect(StatusCode::FORBIDDEN, "portal_switched_off");
 }
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_talent_with_two_agencies_can_share_when_they_are_busy(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (acme, acme_owner) = app.workspace_with_owner("acme").await;
+    let (bravo, bravo_owner) = app.workspace_with_owner("bravo").await;
+    let ada_acme = talent(&app, &acme_owner, "Ada").await;
+    let ada_bravo = talent(&app, &bravo_owner, "Ada Lovelace").await;
+    let me = invite_talent(&app, &acme_owner, acme, ada_acme, "ada@artist.test").await;
+    // The same person, invited by the second agency, accepts signed in.
+    post(
+        &app,
+        &bravo_owner,
+        &format!("/api/v1/talent/{ada_bravo}/portal"),
+        json!({ "email": "ada@artist.test" }),
+    )
+    .await
+    .ok();
+    let token = app.last_invitation_token(bravo).await;
+    app.post("/api/v1/invitations/accept")
+        .signed_in(&me)
+        .json(json!({ "token": token }))
+        .send()
+        .await
+        .ok();
+    booking(
+        &app,
+        &bravo_owner,
+        ada_bravo,
+        "Secret festival",
+        "confirmed",
+        14,
+    )
+    .await;
+
+    let check = json!({ "talent_ids": [ada_acme], "starts_at": "2031-06-14T20:00:00Z",
+                        "ends_at": "2031-06-14T23:00:00Z" });
+    let report = post(
+        &app,
+        &acme_owner,
+        "/api/v1/bookings/clash-check",
+        check.clone(),
+    )
+    .await
+    .ok();
+    assert_eq!(report.body["clashes"], json!([]));
+
+    // Off until they switch it on; then times only, never what.
+    let sharing = get(&app, &me, "/api/v1/portal/sharing").await.ok();
+    assert_eq!(sharing.body["share_busy"], false);
+    assert_eq!(sharing.body["other_workspaces"], 1);
+    app.put("/api/v1/portal/sharing")
+        .signed_in(&me)
+        .json(json!({ "share_busy": true }))
+        .send()
+        .await
+        .ok();
+    let report = post(
+        &app,
+        &acme_owner,
+        "/api/v1/bookings/clash-check",
+        check.clone(),
+    )
+    .await
+    .ok();
+    let clashes = report.body["clashes"].as_array().unwrap();
+    assert_eq!(clashes.len(), 1, "{}", report.body);
+    assert_eq!(clashes[0]["kind"], "elsewhere");
+    assert_eq!(clashes[0]["blocking"], false);
+    assert!(clashes[0]["title"].is_null());
+    assert!(!report.body.to_string().contains("Secret festival"));
+    assert_eq!(report.body["blocking"], false);
+
+    // A talent record not linked to them sees nothing of it.
+    let grace = talent(&app, &acme_owner, "Grace").await;
+    let report = post(
+        &app,
+        &acme_owner,
+        "/api/v1/bookings/clash-check",
+        json!({ "talent_ids": [grace], "starts_at": "2031-06-14T20:00:00Z",
+                "ends_at": "2031-06-14T23:00:00Z" }),
+    )
+    .await
+    .ok();
+    assert_eq!(report.body["clashes"], json!([]));
+
+    // A closed agency's old bookings are no one's busy time.
+    app.post("/api/v1/workspace/close")
+        .signed_in(&bravo_owner)
+        .json(json!({ "confirm_slug": "bravo" }))
+        .send()
+        .await
+        .ok();
+    let report = post(
+        &app,
+        &acme_owner,
+        "/api/v1/bookings/clash-check",
+        check.clone(),
+    )
+    .await
+    .ok();
+    assert_eq!(report.body["clashes"], json!([]));
+    let sharing = get(&app, &me, "/api/v1/portal/sharing").await.ok();
+    assert_eq!(sharing.body["other_workspaces"], 0);
+
+    // Switched off again, it goes.
+    app.put("/api/v1/portal/sharing")
+        .signed_in(&me)
+        .json(json!({ "share_busy": false }))
+        .send()
+        .await
+        .ok();
+    let report = post(&app, &acme_owner, "/api/v1/bookings/clash-check", check)
+        .await
+        .ok();
+    assert_eq!(report.body["clashes"], json!([]));
+}

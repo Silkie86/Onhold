@@ -1,4 +1,5 @@
 import { safeRedirect } from "./auth.tsx";
+import { decodeFile, isWorkbook, needsResaving, stripCardAttachments } from "./imports.tsx";
 import { validateListSearch } from "./crm.tsx";
 import { keyFrom } from "./settings.tsx";
 
@@ -25,4 +26,36 @@ test("list addresses keep only what they understand", () => {
     limit: 25,
     view: undefined,
   });
+});
+
+test("imported files are read whatever they were saved as", () => {
+  const utf8 = new TextEncoder().encode("Name\nJürgen");
+  expect(decodeFile(utf8)).toBe("Name\nJürgen");
+  // Windows-1252, as older Outlook exports are: ü is 0xFC.
+  expect(decodeFile(new Uint8Array([0x4e, 0x0a, 0x4a, 0xfc, 0x72]))).toBe("N\nJür");
+  // UTF-16 with its byte-order mark, as Excel's "Unicode text" is.
+  // UTF-8 with one stray byte stays UTF-8.
+  const mostly = new Uint8Array([...new TextEncoder().encode("Jürgen Müller Café Zoë Ñandú "), 0xff]);
+  expect(decodeFile(mostly).startsWith("Jürgen")).toBe(true);
+  expect(decodeFile(new Uint8Array([0xff, 0xfe, 0x41, 0x00, 0x09, 0x00, 0x42, 0x00]))).toBe("A\tB");
+});
+
+test("contact cards lose their photos before upload", () => {
+  const card = "BEGIN:VCARD\r\nFN:Ada\r\nPHOTO;ENCODING=b:AAAA\r\n BBBB\r\nitem1.EMAIL:ada@example.com\r\nEND:VCARD";
+  expect(stripCardAttachments(card)).toBe("BEGIN:VCARD\nFN:Ada\nitem1.EMAIL:ada@example.com\nEND:VCARD");
+  // A quoted-printable note carrying on into a line that looks like a photo keeps it.
+  const qp = "BEGIN:VCARD\nNOTE;ENCODING=QUOTED-PRINTABLE:see=\nphoto: soon\nEND:VCARD";
+  expect(stripCardAttachments(qp)).toBe(qp);
+  expect(stripCardAttachments("Name,Photo\nAda,x")).toBe("Name,Photo\nAda,x");
+});
+
+test("Excel files are told apart from text", () => {
+  expect(isWorkbook(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14]))).toBe(true);
+  expect(isWorkbook(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1]))).toBe(false);
+  // Old .xls (or a web page saved as .xls) and OpenDocument need saving as .xlsx first.
+  expect(needsResaving("export.xls", new TextEncoder().encode("<html>"))).toBe(true);
+  expect(needsResaving("book.ods", new Uint8Array([0x50, 0x4b, 0x03, 0x04]))).toBe(true);
+  expect(needsResaving("book.xlsx", new Uint8Array([0x50, 0x4b, 0x03, 0x04]))).toBe(false);
+  expect(needsResaving("people.csv", new TextEncoder().encode("Name"))).toBe(false);
+  expect(isWorkbook(new TextEncoder().encode("PK,Name\n1,Ada"))).toBe(false);
 });

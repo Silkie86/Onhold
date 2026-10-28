@@ -1498,6 +1498,69 @@ pub async fn update_profile(
     Ok(profile_view(after, true))
 }
 
+// Busy elsewhere --------------------------------------------------------------------------------
+
+/// Whether the person lets their other workspaces see when they are booked.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalSharing {
+    pub share_busy: bool,
+    /// Other workspaces they are talent with.
+    pub other_workspaces: i64,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PortalSharingInput {
+    pub share_busy: bool,
+}
+
+pub async fn sharing(state: &AppState, ctx: &Ctx) -> ApiResult<PortalSharing> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    let out = PortalSharing {
+        share_busy: core_db::portal::share_busy(&mut tx).await?,
+        other_workspaces: core_db::portal::other_talent_workspaces(&mut tx).await?,
+    };
+    tx.commit().await?;
+    Ok(out)
+}
+
+/// Switches sharing on or off for every workspace they are talent with:
+/// each then sees when they are booked with the others, never what.
+pub async fn set_sharing(
+    state: &AppState,
+    ctx: &Ctx,
+    input: PortalSharingInput,
+) -> ApiResult<PortalSharing> {
+    ctx.authorize(Permission::PortalUse)?;
+    let user = ctx
+        .user_id()
+        .ok_or_else(|| ApiError::forbidden("person_required", "only the talent can change this"))?;
+    let mut tx = begin(state, ctx).await?;
+    let before = core_db::portal::share_busy(&mut tx).await?;
+    if before != input.share_busy {
+        core_db::portal::set_share_busy(&mut tx, input.share_busy).await?;
+        record(
+            &mut tx,
+            ctx,
+            Change {
+                topic: "user.busy_sharing_changed",
+                resource: "user",
+                object_id: Some(user.0),
+                before: Some(json!({ "share_busy": before })),
+                after: Some(json!({ "share_busy": input.share_busy })),
+                event_extra: None,
+            },
+        )
+        .await?;
+    }
+    let out = PortalSharing {
+        share_busy: input.share_busy,
+        other_workspaces: core_db::portal::other_talent_workspaces(&mut tx).await?,
+    };
+    tx.commit().await?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
 

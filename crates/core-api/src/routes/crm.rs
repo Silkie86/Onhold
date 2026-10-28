@@ -43,7 +43,7 @@ use crate::services::views::{self, EntitySchema, SavedView, SavedViewInput};
 pub fn router() -> OpenApiRouter<AppState> {
     let imports = OpenApiRouter::new()
         .routes(routes!(list_imports, upload_import))
-        .layer(DefaultBodyLimit::max(imports::MAX_CSV_BYTES + 64 * 1024));
+        .layer(DefaultBodyLimit::max(crate::MAX_UPLOAD_BODY_BYTES));
     OpenApiRouter::new()
         .routes(routes!(list_talent, create_talent))
         .routes(routes!(get_talent, update_talent, delete_talent))
