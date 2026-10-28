@@ -22,6 +22,7 @@ export {
   formBody,
 } from "./components/entity-form.tsx";
 export { Checkbox, Input, Label, NativeSelect, Textarea } from "./components/inputs.tsx";
+export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./components/popover.tsx";
 export { Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "./components/menu.tsx";
 export { Alert, Badge, Card, CopyButton, EmptyState, Spinner, StatusDot } from "./components/misc.tsx";
 export { Timeline, type TimelineEntry, relativeTime } from "./components/timeline.tsx";
