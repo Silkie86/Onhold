@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE travel_items SET kind = $2, status = $3, carrier = $4, number = $5, reference = $6,\n                  from_place = $7, from_code = $8, to_place = $9, to_code = $10, starts_at = $11,\n                  start_tz = $12, ends_at = $13, end_tz = $14, travellers = $15, notes = $16,\n                  cost_minor = $17, cost_currency = $18, paid_by = $19, updated_by = $20\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Text",
+        "Timestamptz",
+        "Text",
+        "TextArray",
+        "Text",
+        "Int8",
+        "Bpchar",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1a8e8ea3de8bb31c9ab623fb26b0442b1065b7bdccab0424503e34be17f5e03b"
+}

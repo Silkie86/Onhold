@@ -24,6 +24,7 @@ export const KINDS: Record<string, string> = {
   contract: "Contract",
   confirmation: "Confirmation",
   advance_sheet: "Advance sheet",
+  day_sheet: "Day sheet",
   invoice: "Invoice",
   credit_note: "Credit note",
   quote: "Quote",

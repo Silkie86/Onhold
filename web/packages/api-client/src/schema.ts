@@ -597,6 +597,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bookings/{id}/money": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether a booking pays: the fee and other income, less commission,
+         *     travel and other costs, in the fee's currency, with warnings.
+         */
+        get: operations["money_check"];
+        put?: never;
+        /** Add income (a buyout) or a cost to a booking. */
+        post: operations["create_line"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bookings/{id}/pack": {
         parameters: {
             query?: never;
@@ -685,6 +706,24 @@ export interface paths {
         get: operations["booking_timeline"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{id}/travel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A booking's travel, in time order. */
+        get: operations["list_travel"];
+        put?: never;
+        /** Add a flight, train, ride or hotel to a booking. */
+        post: operations["create_travel"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2035,6 +2074,23 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/money-lines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change an income or cost line; every field is replaced. */
+        put: operations["update_line"];
+        post?: never;
+        delete: operations["delete_line"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3421,6 +3477,23 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_thing"];
+        trace?: never;
+    };
+    "/api/v1/travel/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a travel item; every field is replaced. */
+        put: operations["update_travel"];
+        post?: never;
+        delete: operations["delete_travel"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/views": {
@@ -5559,6 +5632,82 @@ export interface components {
              */
             minor: number;
         };
+        /**
+         * @description Whether a booking pays: income less commission and costs, all in one
+         *     currency.
+         */
+        MoneyCheck: {
+            /** Format: uuid */
+            booking_id: string;
+            commission: components["schemas"]["MoneyItem"][];
+            costs: components["schemas"]["MoneyItem"][];
+            /** @description The fee's currency, or the workspace's when there is no fee. */
+            currency: string;
+            income: components["schemas"]["MoneyItem"][];
+            /** @description The income and cost lines themselves, to edit. */
+            lines: components["schemas"]["MoneyLineView"][];
+            /** @description What is left: income less commission and costs. */
+            net: components["schemas"]["Money"];
+            total_commission: components["schemas"]["Money"];
+            total_costs: components["schemas"]["Money"];
+            total_income: components["schemas"]["Money"];
+            warnings: components["schemas"]["Warning"][];
+        };
+        /** @description One amount in the money check, in the check's currency. */
+        MoneyItem: {
+            /** @description In the check's currency. */
+            amount: components["schemas"]["Money"];
+            /** @description `fee`, `commission`, `travel`, or a money line's category. */
+            category: string;
+            description: string;
+            original?: components["schemas"]["Money"] | null;
+            /**
+             * Format: uuid
+             * @description The travel item or money line it comes from.
+             */
+            source_id?: string | null;
+        };
+        /**
+         * @description A money line, as given when adding or changing one. Changing replaces
+         *     every field.
+         */
+        MoneyLineInput: {
+            amount: components["schemas"]["Money"];
+            category: string;
+            description: string;
+            /** @description `income` or `cost`. */
+            direction: string;
+            notes?: string | null;
+            /** Format: date */
+            spent_on?: string | null;
+        };
+        MoneyLineView: {
+            amount: components["schemas"]["Money"];
+            /** Format: uuid */
+            booking_id: string;
+            /**
+             * @description Income: `buyout`, `merchandise`, `other`. Cost: `travel`,
+             *     `accommodation`, `ground`, `per_diem`, `crew`, `production`, `visa`,
+             *     `marketing`, `other`.
+             */
+            category: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            description: string;
+            /** @description `income` or `cost`. */
+            direction: string;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            /** Format: date */
+            spent_on?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+        };
         MyWorkspaceView: {
             /**
              * @description False when the workspace's plan does not include the desktop and
@@ -7322,6 +7471,84 @@ export interface components {
             /** @description The same secret in base32, for typing in by hand. */
             secret: string;
         };
+        /**
+         * @description A travel item, as given when adding or changing one. Changing replaces
+         *     every field.
+         */
+        TravelInput: {
+            carrier?: string | null;
+            cost?: components["schemas"]["Money"] | null;
+            /** @description Default: the departure's zone. */
+            end_tz?: string | null;
+            /** Format: date-time */
+            ends_at?: string | null;
+            /** @description An IATA airport code; any case. */
+            from_code?: string | null;
+            from_place?: string | null;
+            kind: string;
+            notes?: string | null;
+            number?: string | null;
+            /** @description Default `us`. */
+            paid_by?: string | null;
+            reference?: string | null;
+            /** @description Default: the booking's zone. */
+            start_tz?: string | null;
+            /** Format: date-time */
+            starts_at: string;
+            /** @description Default `planned`. */
+            status?: string | null;
+            to_code?: string | null;
+            to_place?: string | null;
+            travellers?: string[];
+        };
+        TravelView: {
+            /** Format: uuid */
+            booking_id: string;
+            /** @description The airline, rail company, driver or hotel. */
+            carrier?: string | null;
+            cost?: components["schemas"]["Money"] | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            end_tz?: string | null;
+            /**
+             * Format: date-time
+             * @description Arrival, or check-out for a hotel.
+             */
+            ends_at?: string | null;
+            /** @description IATA airport code. */
+            from_code?: string | null;
+            from_place?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description `flight`, `train`, `bus`, `car`, `ferry`, `taxi`, `hotel` or `other`. */
+            kind: string;
+            notes?: string | null;
+            /** @description A flight or train number, e.g. `BA 1442`. */
+            number?: string | null;
+            /** @description `us` (a cost against the fee) or `buyer` (the client provides it). */
+            paid_by: string;
+            /** @description The booking reference or confirmation code. */
+            reference?: string | null;
+            /** @description The IANA zone of the departure. */
+            start_tz: string;
+            /**
+             * Format: date-time
+             * @description Departure, or check-in for a hotel.
+             */
+            starts_at: string;
+            /** @description `planned`, `booked` or `cancelled`. */
+            status: string;
+            to_code?: string | null;
+            /** @description Where to; for a hotel, the hotel's address. */
+            to_place?: string | null;
+            travellers: string[];
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+        };
         UpdateMemberRequest: {
             role: components["schemas"]["Role"];
         };
@@ -7395,6 +7622,14 @@ export interface components {
         VoidPayment: {
             reason?: string | null;
         };
+        Warning: {
+            /** @description `loss`, `high_costs`, `no_income`, `unconverted`, `unpriced`. */
+            code: string;
+            level: components["schemas"]["WarningLevel"];
+            message: string;
+        };
+        /** @enum {string} */
+        WarningLevel: "caution" | "loss";
         WebhookPatchRequest: {
             description?: string | null;
             enabled?: boolean | null;
@@ -8862,6 +9097,97 @@ export interface operations {
             };
         };
     };
+    money_check: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoneyCheck"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_line: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoneyLineInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoneyLineView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     booking_pack: {
         parameters: {
             query?: never;
@@ -9109,6 +9435,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimelinePage"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_travel: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelView"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_travel: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TravelInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             404: {
@@ -13247,6 +13664,89 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_line: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoneyLineInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoneyLineView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_line: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -17519,6 +18019,89 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_travel: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TravelInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_travel: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

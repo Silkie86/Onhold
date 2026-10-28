@@ -157,3 +157,68 @@ export function fromLocalInput(text: string): string | null {
   const d = new Date(text);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
+
+/** `datetime-local` text for an instant as the clock reads in `zone`. */
+export function toZonedInput(iso: string | null | undefined, zone: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  try {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: zone,
+        hourCycle: "h23",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+        .formatToParts(d)
+        .map((p) => [p.type, p.value]),
+    );
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+  } catch {
+    return toLocalInput(iso);
+  }
+}
+
+/** The instant a `datetime-local` text means on a clock in `zone`; null when blank or unreadable. */
+export function fromZonedInput(text: string, zone: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(text);
+  if (!m) return null;
+  const wanted = Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!);
+  // Guess, see how the zone reads the guess, and correct by the difference;
+  // a second round settles the hours around a clock change.
+  let at = wanted;
+  for (let i = 0; i < 2; i++) {
+    const read = toZonedInput(new Date(at).toISOString(), zone);
+    const r = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(read);
+    if (!r) return null;
+    at += wanted - Date.UTC(+r[1]!, +r[2]! - 1, +r[3]!, +r[4]!, +r[5]!);
+  }
+  return new Date(at).toISOString();
+}
+
+/** "07:10" (or "Sat 14 Jun, 07:10") as the clock reads in `zone`. */
+export function zonedTime(iso: string, zone: string, withDay = false, locale?: string): string {
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      timeZone: zone,
+      ...(withDay && { weekday: "short", day: "numeric", month: "short" }),
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return new Date(iso).toLocaleString(locale);
+  }
+}
+
+/** Every IANA zone the browser knows, for a picker. */
+export function timeZones(): string[] {
+  try {
+    return Intl.supportedValuesOf("timeZone");
+  } catch {
+    return ["UTC", "Europe/London"];
+  }
+}

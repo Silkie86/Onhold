@@ -555,6 +555,7 @@ pub const DOCUMENT_KINDS: &[&str] = &[
     "contract",
     "confirmation",
     "advance_sheet",
+    "day_sheet",
     "invoice",
     "credit_note",
     "quote",

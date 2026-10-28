@@ -1,0 +1,311 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, booking_id, kind, status, carrier, number, reference, from_place, from_code,\n                  to_place, to_code, starts_at, start_tz, ends_at, end_tz, travellers, notes,\n                  cost_minor, cost_currency::text AS cost_currency, paid_by, version, created_at,\n                  updated_at, created_by AS \"created_by: UserId\", updated_by AS \"updated_by: UserId\"\n           FROM travel_items\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "booking_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "booking_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "carrier",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "carrier"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "number",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "number"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "reference",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "reference"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "from_place",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "from_place"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "from_code",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "from_code"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "to_place",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "to_place"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "to_code",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "to_code"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "starts_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "starts_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "start_tz",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "start_tz"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "ends_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "ends_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "end_tz",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "end_tz"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "travellers",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "travellers"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "cost_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "cost_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "cost_currency",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 19,
+        "name": "paid_by",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "paid_by"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "updated_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "updated_by"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      null,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "83f42de7d64c0a787c2ebbcd8772f09d1ea7260fce1ca4592e3910735d847d46"
+}
