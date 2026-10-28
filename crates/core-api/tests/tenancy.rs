@@ -1450,3 +1450,394 @@ async fn the_full_theme_is_for_operators_only(pool: PgPool) {
         .await
         .expect(StatusCode::FORBIDDEN, "theme_is_operator_only");
 }
+
+// Setup form ----------------------------------------------------------------------------
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn the_setup_form_shapes_the_workspace_and_reaches_operators(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+
+    // Before the form is sent, everything is on and the form is offered.
+    let before = app
+        .get("/api/v1/workspace")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert!(before.body["setup_at"].is_null());
+    assert_eq!(
+        before.body["extras"],
+        json!(["team", "commission", "advanced"])
+    );
+    let form = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert_eq!(form.body["questions"].as_array().unwrap().len(), 4);
+    assert_eq!(form.body["price_list"]["placeholder"], json!(true));
+
+    let answers = json!({ "roles": ["solo"], "features": ["bookings", "calendar", "invoicing"],
+                          "talent_kinds": ["djs"], "team": "just_me" });
+    let preview = app
+        .post("/api/v1/workspace/setup/preview")
+        .signed_in(&owner)
+        .json(answers.clone())
+        .send()
+        .await
+        .ok();
+    assert_eq!(
+        preview.body["modules"],
+        json!(["crm", "bookings", "calendar", "finance"])
+    );
+
+    let saved = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": answers, "comment": "  Can it track my rider?  " }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(saved.body["presets"], json!(["solo"]));
+    assert_eq!(
+        saved.body["enabled_modules"],
+        json!(["crm", "bookings", "calendar", "finance"])
+    );
+    assert_eq!(saved.body["extras"], json!([]));
+    assert_eq!(
+        saved.body["vocabulary"]["bookings"]["booking"]["many"],
+        json!("Gigs")
+    );
+    assert!(saved.body["setup_at"].is_string());
+
+    // The answers come back for editing; nothing is locked in.
+    let form = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert_eq!(form.body["answers"]["roles"], json!(["solo"]));
+    assert_eq!(
+        form.body["requests"][0]["body"],
+        json!("Can it track my rider?")
+    );
+    let again = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": { "roles": ["solo", "promoter"], "features": ["bookings", "events"], "team": "small" } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(again.body["perspective"], json!("both"));
+    assert_eq!(again.body["extras"], json!(["team"]));
+
+    // Unknown choices are refused; members who cannot change settings cannot send it.
+    app.put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": { "roles": ["wizard"] } }))
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+    let agent = app.add_member(&owner, "agent@acme.test", "agent").await;
+    let res = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&agent)
+        .json(json!({ "answers": {} }))
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::FORBIDDEN, "{}", res.body);
+    // They see the form, but not the owners' messages to OnHold.
+    let theirs = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&agent)
+        .send()
+        .await
+        .ok();
+    assert_eq!(theirs.body["requests"], json!([]));
+    let actions = app.audit_actions(ws).await;
+    assert!(actions.iter().any(|a| a == "setup_request.created"));
+
+    // Sending the same answers again changes nothing and logs nothing.
+    let logged = actions
+        .iter()
+        .filter(|a| *a == "workspace.setup_changed")
+        .count();
+    let current = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    let same = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": current.body["answers"] }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(same.body["version"], current.body["version"]);
+    assert_eq!(
+        app.audit_actions(ws)
+            .await
+            .iter()
+            .filter(|a| *a == "workspace.setup_changed")
+            .count(),
+        logged
+    );
+
+    // OnHold's team sees the setup and the comment, and marks it done.
+    let ops = operator(&app).await;
+    let list = app
+        .get("/api/v1/admin/workspaces")
+        .signed_in(&ops)
+        .send()
+        .await
+        .ok();
+    let acme = list
+        .body
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["slug"] == "acme")
+        .unwrap()
+        .clone();
+    assert_eq!(acme["presets"], json!(["solo", "promoter"]));
+    assert_eq!(acme["open_requests"], json!(1));
+    let requests = app
+        .get("/api/v1/admin/setup-requests")
+        .signed_in(&ops)
+        .send()
+        .await
+        .ok();
+    let id = requests.body[0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(requests.body[0]["author_email"], json!("owner@acme.test"));
+    let res = app
+        .post(&format!("/api/v1/admin/setup-requests/{id}/resolve"))
+        .signed_in(&ops)
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.body);
+    app.post(&format!("/api/v1/admin/setup-requests/{id}/resolve"))
+        .signed_in(&ops)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+    app.get("/api/v1/admin/setup-requests")
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "superadmin_required");
+
+    // The price list is OnHold's to set, and checked.
+    let mut prices = app
+        .get("/api/v1/admin/price-list")
+        .signed_in(&ops)
+        .send()
+        .await
+        .ok()
+        .body;
+    prices["base"] = json!(2500);
+    prices["placeholder"] = json!(false);
+    let res = app
+        .put("/api/v1/admin/price-list")
+        .signed_in(&ops)
+        .json(prices)
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.body);
+    let form = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert_eq!(form.body["price_list"]["base"], json!(2500));
+    app.put("/api/v1/admin/price-list")
+        .signed_in(&ops)
+        .json(json!({ "currency": "GBP", "base": 100, "features": { "teleport": 5 }, "team": {} }))
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn operators_create_workspaces_from_presets(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let ops = operator(&app).await;
+    let res = app
+        .post("/api/v1/admin/workspaces")
+        .signed_in(&ops)
+        .json(
+            json!({ "slug": "djco", "name": "DJ Co", "country": "GB", "default_currency": "GBP",
+                      "default_timezone": "Europe/London", "owner_email": "dj@djco.test",
+                      "presets": ["solo"] }),
+        )
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::CREATED, "{}", res.body);
+    let list = app
+        .get("/api/v1/admin/workspaces")
+        .signed_in(&ops)
+        .send()
+        .await
+        .ok();
+    let djco = list
+        .body
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["slug"] == "djco")
+        .unwrap()
+        .clone();
+    assert_eq!(djco["presets"], json!(["solo"]));
+    assert_eq!(djco["extras"], json!([]));
+    assert!(djco["setup"].is_null());
+    app.post("/api/v1/admin/workspaces")
+        .signed_in(&ops)
+        .json(
+            json!({ "slug": "nope", "name": "Nope", "country": "GB", "default_currency": "GBP",
+                      "default_timezone": "Europe/London", "owner_email": "x@nope.test",
+                      "presets": ["wizard"] }),
+        )
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn operators_streamline_a_workspace_and_it_survives_the_form(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let hide = json!({ "hidden": ["nav:/finance/reports", "section:booking.quotes", "field:contact.role"] });
+
+    // Members cannot; OnHold's team can, on a visit.
+    app.put("/api/v1/workspace/streamline")
+        .signed_in(&owner)
+        .json(hide.clone())
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "streamlining_is_operator_only");
+    let ops = operator(&app).await;
+    app.post("/api/v1/admin/impersonation")
+        .signed_in(&ops)
+        .json(json!({ "workspace_id": ws, "reason": "onboarding: streamlining" }))
+        .send()
+        .await
+        .ok();
+    let visit = ops.clone().in_workspace(ws);
+    let options = app
+        .get("/api/v1/workspace/streamline")
+        .signed_in(&visit)
+        .send()
+        .await
+        .ok();
+    let fields = options.body["fields"].as_array().unwrap();
+    assert!(
+        fields
+            .iter()
+            .any(|f| f["entity"] == "contact" && f["key"] == "role")
+    );
+    assert!(
+        !fields
+            .iter()
+            .any(|f| f["entity"] == "contact" && f["key"] == "name"),
+        "required fields cannot be hidden"
+    );
+    // A required field, or one since removed, is dropped rather than refused.
+    let mut with_stale = hide.clone();
+    for extra in ["field:contact.name", "field:contact.nope"] {
+        with_stale["hidden"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!(extra));
+    }
+    let saved = app
+        .put("/api/v1/workspace/streamline")
+        .signed_in(&visit)
+        .json(with_stale)
+        .send()
+        .await
+        .ok();
+    assert_eq!(saved.body["hidden"].as_array().unwrap().len(), 3);
+    for bad in [
+        json!(["menu:/x"]),
+        json!(["field:"]),
+        json!(["nav:no-slash"]),
+    ] {
+        let res = app
+            .put("/api/v1/workspace/streamline")
+            .signed_in(&visit)
+            .json(json!({ "hidden": bad }))
+            .send()
+            .await;
+        assert_eq!(res.status, StatusCode::BAD_REQUEST, "{bad} → {}", res.body);
+    }
+
+    // The client's forms lose the field, and sending the form again keeps it hidden.
+    let schema = app
+        .get("/api/v1/schema/contact")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    let keys: Vec<&str> = schema.body["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["key"].as_str().unwrap())
+        .collect();
+    assert!(!keys.contains(&"role") && keys.contains(&"name"));
+    let again = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": { "roles": ["agency"], "features": ["bookings", "invoicing", "commission"] } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(again.body["hidden"].as_array().unwrap().len(), 3);
+    assert!(
+        app.audit_actions(ws)
+            .await
+            .iter()
+            .any(|a| a == "workspace.streamlined")
+    );
+
+    // Talent's commission shows only where commission is taken.
+    let talent = app
+        .get("/api/v1/schema/talent")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert!(
+        talent.body["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["key"] == "commission_percent")
+    );
+    app.put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": { "roles": ["solo"], "features": ["bookings"] } }))
+        .send()
+        .await
+        .ok();
+    let talent = app
+        .get("/api/v1/schema/talent")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert!(
+        !talent.body["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["key"] == "commission_percent")
+    );
+    // And its pages use the workspace's words.
+    assert_eq!(talent.body["label_plural"], json!("My acts"));
+}

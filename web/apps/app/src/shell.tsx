@@ -28,10 +28,12 @@ import {
   CheckSquare,
   ChevronsUpDown,
   Inbox,
+  ListChecks,
   Mail,
   AtSign,
   CloudOff,
   Download,
+  EyeOff,
   Contact,
   ChartColumn,
   FileSearch,
@@ -66,26 +68,38 @@ import { IS_APP, KEEPS_OFFLINE_COPY, serverUrl } from "./platform.ts";
 import { useWorkspaceBranding } from "./branding.ts";
 import { GoTo } from "./go-to.tsx";
 import { useInstallOffer } from "./install.ts";
+import { useSetup } from "./setup.ts";
 import { type Session, SessionContext, useMe, useSessionActions } from "./session.tsx";
 
-const NAV: { group: string; items: { to: string; label: string; icon: ReactNode }[] }[] = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: ReactNode;
+  /** Shown only when the workspace uses this module or extra. */
+  module?: string;
+  extra?: string;
+  /** Named in the workspace's own words: [module, term]. */
+  word?: [string, string];
+};
+
+export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Bookings",
     items: [
-      { to: "/inbox", label: "Inbox", icon: <Mail /> },
-      { to: "/calendar", label: "Calendar", icon: <CalendarDays /> },
-      { to: "/enquiries", label: "Enquiries", icon: <Inbox /> },
-      { to: "/bookings", label: "Bookings", icon: <CalendarCheck /> },
-      { to: "/projects", label: "Tours", icon: <RouteIcon /> },
+      { to: "/inbox", label: "Inbox", icon: <Mail />, module: "messaging" },
+      { to: "/calendar", label: "Calendar", icon: <CalendarDays />, module: "calendar" },
+      { to: "/enquiries", label: "Enquiries", icon: <Inbox />, module: "bookings", word: ["bookings", "enquiry"] },
+      { to: "/bookings", label: "Bookings", icon: <CalendarCheck />, module: "bookings", word: ["bookings", "booking"] },
+      { to: "/projects", label: "Tours", icon: <RouteIcon />, module: "events" },
       { to: "/tasks", label: "Tasks", icon: <CheckSquare /> },
     ],
   },
   {
     group: "Money",
     items: [
-      { to: "/finance/invoices", label: "Invoices", icon: <Receipt /> },
-      { to: "/finance/payments", label: "Payments", icon: <HandCoins /> },
-      { to: "/finance/reports", label: "Reports", icon: <ChartColumn /> },
+      { to: "/finance/invoices", label: "Invoices", icon: <Receipt />, module: "finance" },
+      { to: "/finance/payments", label: "Payments", icon: <HandCoins />, module: "finance" },
+      { to: "/finance/reports", label: "Reports", icon: <ChartColumn />, module: "finance" },
     ],
   },
   {
@@ -93,36 +107,38 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
     items: [
       { to: "/crm/contacts", label: "Contacts", icon: <Contact /> },
       { to: "/crm/organisations", label: "Organisations", icon: <Building2 /> },
-      { to: "/crm/talent", label: "Talent", icon: <Mic2 /> },
+      { to: "/crm/talent", label: "Talent", icon: <Mic2 />, word: ["crm", "talent"] },
     ],
   },
   {
     group: "Data",
     items: [
-      { to: "/documents", label: "Documents", icon: <FileText /> },
-      { to: "/documents/imports", label: "Import past PDFs", icon: <FileSearch /> },
-      { to: "/imports", label: "Imports", icon: <FileUp /> },
+      { to: "/documents", label: "Documents", icon: <FileText />, module: "documents" },
+      { to: "/documents/imports", label: "Import past PDFs", icon: <FileSearch />, module: "documents" },
+      { to: "/imports", label: "Imports", icon: <FileUp />, extra: "advanced" },
     ],
   },
   {
     group: "Settings",
     items: [
+      { to: "/settings/setup", label: "Your setup", icon: <ListChecks /> },
       { to: "/settings/branding", label: "Branding", icon: <Palette /> },
-      { to: "/settings/email", label: "Email accounts", icon: <AtSign /> },
-      { to: "/settings/fields", label: "Custom fields", icon: <SlidersHorizontal /> },
-      { to: "/settings/pipelines", label: "Pipelines", icon: <Workflow /> },
-      { to: "/settings/calendar", label: "Calendar settings", icon: <CalendarCog /> },
-      { to: "/settings/finance", label: "Invoicing", icon: <Landmark /> },
-      { to: "/settings/payments", label: "Card payments", icon: <CreditCard /> },
+      { to: "/settings/email", label: "Email accounts", icon: <AtSign />, module: "messaging" },
+      { to: "/settings/fields", label: "Custom fields", icon: <SlidersHorizontal />, extra: "advanced" },
+      { to: "/settings/pipelines", label: "Pipelines", icon: <Workflow />, extra: "advanced" },
+      { to: "/settings/calendar", label: "Calendar settings", icon: <CalendarCog />, module: "calendar" },
+      { to: "/settings/finance", label: "Invoicing", icon: <Landmark />, module: "finance" },
+      { to: "/settings/payments", label: "Card payments", icon: <CreditCard />, module: "finance" },
     ],
   },
 ];
 
 /** OnHold's own team: the full theme, and visiting clients' workspaces. */
-const OPERATOR_NAV = {
+const OPERATOR_NAV: { group: string; items: NavItem[] } = {
   group: "OnHold team",
   items: [
     { to: "/settings/theme", label: "Theme studio", icon: <Paintbrush /> },
+    { to: "/settings/streamline", label: "Streamline this app", icon: <EyeOff /> },
     { to: "/operator", label: "Client workspaces", icon: <ShieldCheck /> },
   ],
 };
@@ -298,7 +314,19 @@ function SignedIn({ me }: { me: Session["me"] }) {
     },
     [sync],
   );
-  const actions: PaletteAction[] = NAV.flatMap((g) =>
+  // The menu holds only what the workspace set itself up to use, in its own words.
+  const setup = useSetup(sync);
+  const shown = (items: NavItem[]) =>
+    items
+      .filter((i) => (!i.module || setup.has(i.module)) && (!i.extra || setup.hasExtra(i.extra)) && setup.shows(`nav:${i.to}`))
+      .map((i) => (i.word ? { ...i, label: setup.word(i.word[0], i.word[1], true) } : i));
+  // OnHold's own tools are never hidden; streamlining shows while visiting.
+  const operatorNav = { ...OPERATOR_NAV, items: OPERATOR_NAV.items.filter((i) => visiting || i.to !== "/settings/streamline") };
+  const menu = [
+    ...NAV.map((g) => ({ ...g, items: shown(g.items) })).filter((g) => g.items.length > 0),
+    ...(me.user.is_superadmin ? [operatorNav] : []),
+  ];
+  const actions: PaletteAction[] = menu.flatMap((g) =>
     g.items.map((i) => ({ id: i.to, title: `Go to ${i.label}`, group: "Pages", icon: i.icon })),
   );
   const paths: Record<string, string> = { Contacts: "contacts", Organisations: "organisations", Talent: "talent" };
@@ -311,7 +339,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
     .slice(0, 2)
     .toUpperCase();
 
-  const groups = me.user.is_superadmin ? [...NAV, OPERATOR_NAV] : NAV;
+  const groups = menu;
   const nav = (
     <nav aria-label="Main" className="flex flex-col gap-4 overflow-y-auto p-3">
       {groups.map((g) => (
@@ -359,6 +387,9 @@ function SignedIn({ me }: { me: Session["me"] }) {
         )}
         <div className="flex min-w-0 flex-1 flex-col">
           {visiting && <VisitBanner name={current?.name ?? ""} expiresAt={visiting.expires_at} />}
+          {setup.known && !setup.done && (visiting || current?.role === "owner" || current?.role === "admin") && location.pathname !== "/settings/setup" && (
+            <SetupBanner />
+          )}
           <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3 sm:px-4">
             <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu" onClick={() => setNavOpen(true)}>
               <MenuIcon />
@@ -514,6 +545,19 @@ function SyncIndicator() {
       <span className="hidden sm:inline">{label}</span>
       <span className="sr-only sm:hidden">{label}</span>
     </Link>
+  );
+}
+
+/** Until the setup form is sent: everything shows, and this offers to trim it. */
+function SetupBanner() {
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-2 border-b bg-accent px-3 py-2 text-sm text-accent-foreground sm:px-4">
+      <ListChecks className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1">Tell us what you&apos;ll use OnHold for, and we&apos;ll set up your menus to match. You can change it any time.</span>
+      <Button size="sm" asChild>
+        <Link to="/settings/setup">Set up OnHold</Link>
+      </Button>
+    </div>
   );
 }
 

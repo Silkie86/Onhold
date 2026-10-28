@@ -30,6 +30,7 @@ import { Ban, CreditCard, Download, FileMinus2, FileText, HandCoins, Plus, Recei
 import { useEffect, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
 import { fetchSaved, useOffline, useSyncStatus } from "../data.ts";
+import { useSetup } from "../setup.ts";
 import { isLocalId } from "../offline/store.ts";
 import type { Booking, Named } from "../work.ts";
 import { Loading, OfflineNote, PageError, failureIssues, useWorkspaceCurrency } from "./crm.tsx";
@@ -1098,6 +1099,9 @@ function RevenueTable({ title, rows }: { title: string; rows: Schemas["RevenueRo
 /** The invoices and settlements of a booking, with the next sensible step. */
 export function BookingFinancePanel({ booking }: { booking: Booking }) {
   const sync = useOffline();
+  // Commission is for those who represent talent; anything already worked out still shows.
+  const setup = useSetup();
+  const commission = setup.hasExtra("commission") && setup.shows("section:booking.settlements");
   const online = useOnline();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -1188,6 +1192,7 @@ export function BookingFinancePanel({ booking }: { booking: Booking }) {
           ))}
         </ul>
       )}
+      {(commission || (settlements.data?.length ?? 0) > 0) && (
       <div className="flex flex-wrap items-center gap-2 pt-2">
         <h3 className="flex-1 text-sm font-semibold">Settlements</h3>
         {canChange && booking.talent.length > 0 && (settlements.data?.length ?? 0) < booking.talent.length && (
@@ -1200,6 +1205,7 @@ export function BookingFinancePanel({ booking }: { booking: Booking }) {
           </Button>
         )}
       </div>
+      )}
       {(settlements.data ?? []).map((s) => (
         <SettlementCard key={s.id} settlement={s} canChange={canChange} onChanged={refresh} />
       ))}
@@ -1263,6 +1269,8 @@ function SettlementCard({ settlement: s, canChange, onChanged }: { settlement: S
 
 export function FinanceSettingsPage() {
   const qc = useQueryClient();
+  // Kept in the form (so saving keeps it) but shown only to those taking commission.
+  const commission = useSetup().hasExtra("commission");
   const settings = useQuery({ queryKey: ["finance-settings"], queryFn: () => ok(api.GET("/api/v1/finance/settings")) });
   const codes = useTaxCodes();
   const [issues, setIssues] = useState<FieldIssue[]>([]);
@@ -1364,7 +1372,7 @@ export function FinanceSettingsPage() {
             <Input id="fs-terms" name="payment_terms_days" type="number" min={0} defaultValue={s.payment_terms_days} />
           </div>
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className={cn("flex flex-col gap-1.5", !commission && "hidden")}>
           <Label htmlFor="fs-model">Who invoices the buyer</Label>
           <NativeSelect id="fs-model" name="invoicing_model" defaultValue={s.invoicing_model}>
             <option value="agency">The agency invoices, then pays the talent their share</option>

@@ -1,0 +1,13 @@
+# Freelance creative selling their own time. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Freelance creative selling their own time"
+perspective = "sells"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents"]
+extras = []
+[vocabulary.crm.talent]
+one = "Service"
+many = "My services"
+
+[vocabulary.bookings.booking]
+one = "Job"
+many = "Jobs"

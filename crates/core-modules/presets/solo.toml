@@ -1,0 +1,17 @@
+# Artist, DJ or producer running their own bookings. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Artist, DJ or producer running their own bookings"
+perspective = "sells"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents"]
+extras = []
+[vocabulary.crm.talent]
+one = "Act"
+many = "My acts"
+
+[vocabulary.bookings.enquiry]
+one = "Request"
+many = "Requests"
+
+[vocabulary.bookings.booking]
+one = "Gig"
+many = "Gigs"

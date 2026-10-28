@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE workspaces\n           SET perspective = $2, presets = $3, enabled_modules = $4, extras = $5, vocabulary = $6,\n               setup = $7, setup_at = now(), updated_by = $8\n           WHERE id = $1 AND version = $9",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "workspace_perspective",
+            "kind": {
+              "Enum": [
+                "sells",
+                "buys",
+                "both"
+              ]
+            }
+          }
+        },
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "Jsonb",
+        "Jsonb",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6e5e8cf99c13b04c020b986d2ef5bc114595635ec4ccd814058583d2e23bac95"
+}

@@ -42,6 +42,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/price-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The price list the setup form's estimate uses (minor units a month). */
+        get: operations["get_price_list"];
+        /** Replace the price list: `currency`, `base`, `features` and `team` amounts in minor units a month. */
+        put: operations["set_price_list"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/setup-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Requests and questions clients left in the setup form, open ones first. */
+        get: operations["list_setup_requests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/setup-requests/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a client's request dealt with. */
+        post: operations["resolve_setup_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/workspaces": {
         parameters: {
             query?: never;
@@ -3887,6 +3939,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspace/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The setup form ("what will you use OnHold for?"), its answers so far and what they set up. */
+        get: operations["get_setup"];
+        /**
+         * Set the workspace up from the form's answers. Modules left out are only
+         *     hidden, never deleted, and the form can be sent again at any time.
+         */
+        put: operations["save_setup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspace/setup/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What a set of answers would set up, without saving it. */
+        post: operations["preview_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspace/streamline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What OnHold's team hid in this workspace, and the fields that could be. */
+        get: operations["get_streamline"];
+        /**
+         * Hide menu items, page sections and optional fields to streamline the
+         *     app (OnHold's team only). Data is never deleted, and it survives the
+         *     client sending their setup form again.
+         */
+        put: operations["set_streamline"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -3971,14 +4083,39 @@ export interface components {
             /** @description State, county or province. */
             region?: string | null;
         };
+        AdminSetupRequestView: {
+            author_email?: string | null;
+            author_name?: string | null;
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            resolved_at?: string | null;
+            workspace_id: components["schemas"]["WorkspaceId"];
+            workspace_name: string;
+        };
         AdminWorkspaceView: {
             /** Format: date-time */
             created_at: string;
+            enabled_modules: string[];
+            extras: string[];
             id: components["schemas"]["WorkspaceId"];
             /** Format: int64 */
             member_count: number;
             name: string;
+            /**
+             * Format: int64
+             * @description Comments from the setup form not yet marked done.
+             */
+            open_requests: number;
             plan: string;
+            presets: string[];
+            /** @description The setup form's answers; absent until the client sends it. */
+            setup?: Record<string, never> | null;
+            /** Format: date-time */
+            setup_at?: string | null;
             slug: string;
             status: components["schemas"]["WorkspaceStatus"];
         };
@@ -4011,6 +4148,14 @@ export interface components {
             paid_on: string;
             /** Format: uuid */
             payment_id: string;
+        };
+        /** @description What someone ticked. */
+        Answers: {
+            features?: string[];
+            roles?: string[];
+            talent_kinds?: string[];
+            /** @description `just_me`, `small` or `large`. */
+            team?: string | null;
         };
         ApiKeyView: {
             /** Format: date-time */
@@ -4361,6 +4506,14 @@ export interface components {
             op: components["schemas"]["Op"];
             passed: boolean;
         };
+        /** @description One tick box or choice. */
+        Choice: {
+            hint?: string | null;
+            key: string;
+            label: string;
+            /** @description Features worth ticking when this is ticked (a role's usual setup). */
+            suggests: string[];
+        };
         /** @description Something else taking a talent's time. */
         Clash: {
             /** Format: uuid */
@@ -4657,6 +4810,8 @@ export interface components {
             perspective?: components["schemas"]["Perspective"] | null;
             plan?: string | null;
             plugin_slug?: string | null;
+            /** @description Presets to combine, e.g. `["solo", "promoter"]`. */
+            presets?: string[];
             /** @description Lowercase letters, digits and inner hyphens; permanent. */
             slug: string;
         };
@@ -5293,6 +5448,12 @@ export interface components {
         };
         HealthBody: {
             status: string;
+        };
+        HideableFieldView: {
+            entity: string;
+            hidden: boolean;
+            key: string;
+            label: string;
         };
         HistoricalInvoice: {
             /** Format: uuid */
@@ -6530,6 +6691,14 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        /** @description What the answers set up. */
+        Plan: {
+            extras: string[];
+            modules: string[];
+            perspective?: components["schemas"]["Perspective"] | null;
+            presets: string[];
+            vocabulary: Record<string, never>;
+        };
         Preview: {
             /** @description The rendered body (HTML for email). */
             body: string;
@@ -6556,6 +6725,26 @@ export interface components {
              * @description The same as `record_id` with `entity` `thing`.
              */
             thing_id?: string | null;
+        };
+        /**
+         * @description What OnHold charges, in minor units a month: a base price, plus each
+         *     ticked feature, plus the team size. Shown as an estimate only.
+         */
+        PriceList: {
+            /** Format: int32 */
+            base: number;
+            /** @description ISO 4217, e.g. `GBP`. */
+            currency: string;
+            /** @description Per feature key of the setup form. */
+            features: {
+                [key: string]: number;
+            };
+            /** @description Shown as example prices while pricing is not final. */
+            placeholder?: boolean;
+            /** @description Per team size (`just_me`, `small`, `large`). */
+            team: {
+                [key: string]: number;
+            };
         };
         ProjectOverview: {
             budget: components["schemas"]["BudgetLine"][];
@@ -6722,6 +6911,15 @@ export interface components {
             /** @description pending, signed, declined, or cancelled (a newer version replaced it). */
             status: string;
             workspace_name: string;
+        };
+        Question: {
+            choices: components["schemas"]["Choice"][];
+            help?: string | null;
+            /** @description The `Answers` field it fills. */
+            key: string;
+            /** @description Tick any (true) or pick one (false). */
+            multiple: boolean;
+            title: string;
         };
         QueuedResponse: {
             /**
@@ -6938,6 +7136,11 @@ export interface components {
             updated_at: string;
             /** Format: int64 */
             version: number;
+        };
+        SaveSetupRequest: {
+            answers: components["schemas"]["Answers"];
+            /** @description A request or question for OnHold's team (up to 4,000 characters). */
+            comment?: string | null;
         };
         SavedView: {
             /** @description Columns, sort, filters: whatever the list needs to restore itself. */
@@ -7161,6 +7364,40 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        SetupRequestView: {
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When OnHold's team marked it dealt with.
+             */
+            resolved_at?: string | null;
+        };
+        SetupView: {
+            /** @description The answers last sent, or what the workspace's presets suggest. */
+            answers: components["schemas"]["Answers"];
+            /** @description What is set up now. */
+            current: components["schemas"]["Plan"];
+            /**
+             * Format: date-time
+             * @description When the form was last sent; absent if never.
+             */
+            done_at?: string | null;
+            /** @description OnHold's prices for the estimate. */
+            price_list: components["schemas"]["PriceList"];
+            questions: components["schemas"]["Question"][];
+            /** @description This workspace's latest comments, newest first. */
+            requests: components["schemas"]["SetupRequestView"][];
+            /**
+             * Format: int64
+             * @description Send back as `If-Match` when saving.
+             */
+            version: number;
+        };
         SignDecision: {
             /** @description Must be true to sign: they agree to sign electronically. */
             agree?: boolean;
@@ -7295,6 +7532,18 @@ export interface components {
             /** @description Why it was cancelled. */
             reason?: string | null;
             status: components["schemas"]["BookingStatus"];
+        };
+        StreamlineRequest: {
+            /** @description The full list of what to hide; anything left out shows again. */
+            hidden: string[];
+        };
+        StreamlineView: {
+            /** @description Every optional field that can be hidden; required ones always show. */
+            fields: components["schemas"]["HideableFieldView"][];
+            /** @description What is hidden now. */
+            hidden: string[];
+            /** Format: int64 */
+            version: number;
         };
         StripeStatus: {
             account_id?: string | null;
@@ -8075,6 +8324,13 @@ export interface components {
             default_currency: string;
             default_timezone: string;
             enabled_modules: string[];
+            /** @description Finer switches inside modules: `team`, `commission`, `advanced`. */
+            extras: string[];
+            /**
+             * @description What OnHold's team hid on top of the setup: `nav:<path>`,
+             *     `section:<key>` and `field:<entity>.<key>`.
+             */
+            hidden: string[];
             /**
              * Format: int32
              * @description How many days a new hold lasts before it lapses; 0 means never.
@@ -8086,7 +8342,14 @@ export interface components {
             perspective: components["schemas"]["Perspective"];
             plan: string;
             plugin_slug?: string | null;
+            /** @description The presets the workspace combines, from its setup. */
+            presets: string[];
             require_staff_2fa: boolean;
+            /**
+             * Format: date-time
+             * @description When the setup form was last sent; absent until it has been.
+             */
+            setup_at?: string | null;
             slug: string;
             status: components["schemas"]["WorkspaceStatus"];
             /** Format: date-time */
@@ -8096,6 +8359,8 @@ export interface components {
              * @description Send back as `If-Match` when saving to avoid overwriting someone else's change.
              */
             version: number;
+            /** @description Its own words, per module: `{"crm": {"talent": {"one": "DJ", "many": "DJs"}}}`. */
+            vocabulary: Record<string, never>;
         };
     };
     responses: never;
@@ -8180,6 +8445,132 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_price_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceList"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_price_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriceList"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_setup_requests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSetupRequestView"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resolve_setup_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19687,6 +20078,199 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RolesResponse"];
+                };
+            };
+        };
+    };
+    get_setup: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupView"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    save_setup: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveSetupRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    preview_setup: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Answers"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_streamline: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamlineView"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_streamline: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamlineRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
