@@ -264,9 +264,12 @@ pub async fn list(state: &AppState, ctx: &Ctx, q: ThreadQuery) -> ApiResult<Thre
         return Err(ApiError::invalid("status", "use open, snoozed or resolved"));
     }
     if let Some(c) = q.channel.as_deref()
-        && !["email", "sms", "whatsapp"].contains(&c)
+        && !["email", "sms", "whatsapp", "portal"].contains(&c)
     {
-        return Err(ApiError::invalid("channel", "use email, sms or whatsapp"));
+        return Err(ApiError::invalid(
+            "channel",
+            "use email, sms, whatsapp or portal",
+        ));
     }
     let search = q.q.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let mut tx = begin(state, ctx).await?;
@@ -884,6 +887,18 @@ pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult
     core_db::inbox::lock(&mut tx, id).await?;
     if let Some(channel) = thread.messaging_channel_id {
         let view = super::messaging::reply(state, &mut tx, ctx, &thread, channel, r).await?;
+        tx.commit().await?;
+        return Ok(view);
+    }
+    if thread.channel == "portal" {
+        let message = super::portal::reply_in(state, &mut tx, ctx, id, r).await?;
+        let t = load(&mut tx, ctx, id).await?;
+        let view = detail(state, &mut tx, t)
+            .await?
+            .messages
+            .into_iter()
+            .find(|m| m.id == message)
+            .ok_or(ApiError::NotFound)?;
         tx.commit().await?;
         return Ok(view);
     }
@@ -1880,6 +1895,12 @@ pub async fn make_enquiry(
     let mut tx = begin(state, ctx).await?;
     let before = load(&mut tx, ctx, id).await?;
     core_db::inbox::lock(&mut tx, id).await?;
+    if before.channel == "portal" {
+        return Err(ApiError::conflict(
+            "portal_thread",
+            "this is a conversation with your own talent, not a client",
+        ));
+    }
     if let Some(e) = before.enquiry_id {
         return Err(ApiError::conflict(
             "thread_has_enquiry",

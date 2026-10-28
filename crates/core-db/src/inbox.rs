@@ -81,7 +81,8 @@ pub async fn list(conn: &mut PgConnection, f: Filter<'_>) -> Result<(Vec<Thread>
              AND ($6::uuid IS NULL OR t.enquiry_id = $6)
              AND ($7::uuid IS NULL OR t.booking_id = $7)
              AND ($8::uuid IS NULL OR t.assigned_to = $8)
-             AND (NOT $9 OR (t.contact_id IS NULL AND t.enquiry_id IS NULL AND t.booking_id IS NULL))
+             AND (NOT $9 OR (t.contact_id IS NULL AND t.enquiry_id IS NULL AND t.booking_id IS NULL
+                           AND t.channel <> 'portal'))
              AND (NOT $10 OR t.unread)
              AND ($11::text IS NULL OR t.search_text LIKE '%' || $11 || '%')
              AND ($14::text IS NULL OR t.channel = $14)

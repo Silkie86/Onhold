@@ -92,6 +92,29 @@ test("a talent confirms a pending date and the agent is told", async ({ page, br
   await phone.goto("/bookings");
   await expect(phone.getByRole("heading", { name: "Your dates" })).toBeVisible();
 
+  // They write to the agency; the agent answers from the inbox.
+  await phone.getByRole("link", { name: "Messages" }).first().click();
+  await expect(phone.getByRole("heading", { name: "Messages" })).toBeVisible();
+  await phone.getByLabel("Your message").fill("Can I bring a plus one?");
+  await phone.getByRole("button", { name: "Send" }).click();
+  await expect(phone.getByRole("list", { name: "Conversation" }).getByText("Can I bring a plus one?")).toBeVisible();
+  await page.goto("/inbox?channel=portal");
+  await page.getByText("Can I bring a plus one?").first().click();
+  await expect(page.getByRole("heading", { name: "Portal messages with Nova Reyes" })).toBeVisible();
+  await page.getByLabel("Reply").fill("Yes, you're both on the list.");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("Yes, you're both on the list.").first()).toBeVisible();
+  await phone.reload();
+  await expect(phone.getByRole("list", { name: "Conversation" }).getByText("Yes, you're both on the list.")).toBeVisible();
+  await phone.screenshot({ path: info.outputPath("messages.png"), fullPage: true });
+
+  // And keep their own bio.
+  await phone.goto("/portal/profile");
+  await phone.getByLabel("Based in").fill("Manchester");
+  await phone.getByRole("button", { name: "Save" }).click();
+  await expect(phone.getByText(/Saved/)).toBeVisible();
+  await phone.goto("/portal");
+
   // Paid extras show padlocked, with a preview built from their own dates.
   await phone.getByRole("link", { name: "Unlock features" }).first().click();
   await expect(phone.getByRole("heading", { name: "Unlock the full app" })).toBeVisible();

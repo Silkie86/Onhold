@@ -72,9 +72,9 @@ function NotKept({ className }: { className?: string }) {
 const STATUSES = ["open", "snoozed", "resolved"] as const;
 type Status = (typeof STATUSES)[number];
 
-const CHANNELS = ["email", "sms", "whatsapp"] as const;
+const CHANNELS = ["email", "sms", "whatsapp", "portal"] as const;
 type Channel = (typeof CHANNELS)[number];
-const CHANNEL_NAMES: Record<string, string> = { email: "Email", sms: "SMS", whatsapp: "WhatsApp" };
+const CHANNEL_NAMES: Record<string, string> = { email: "Email", sms: "SMS", whatsapp: "WhatsApp", portal: "Portal" };
 
 /** How long after their last message WhatsApp lets a business write freely. */
 const WHATSAPP_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -126,6 +126,7 @@ export function useNumbers() {
 
 /** A conversation's heading: its subject, or for a text, which kind. */
 function heading(t: ThreadView): string {
+  if (t.channel === "portal") return `Portal messages with ${t.subject ?? "talent"}`;
   if (t.channel !== "email") return `${CHANNEL_NAMES[t.channel] ?? "Text"} with ${who(t)}`;
   return t.subject ?? "(no subject)";
 }
@@ -196,16 +197,14 @@ export function InboxPage() {
         >
           <Input aria-label="Search conversations" placeholder="Search subject or people…" value={q} onChange={(e) => setQ(e.target.value)} />
         </form>
-        {((numbers.data?.length ?? 0) > 0 || search.channel) && (
-          <NativeSelect aria-label="Channel" className="w-auto" value={search.channel ?? ""} onChange={(e) => set({ channel: (e.target.value || undefined) as Channel | undefined })}>
-            <option value="">Email and texts</option>
-            {CHANNELS.map((c) => (
-              <option key={c} value={c}>
-                {CHANNEL_NAMES[c]}
-              </option>
-            ))}
-          </NativeSelect>
-        )}
+        <NativeSelect aria-label="Channel" className="w-auto" value={search.channel ?? ""} onChange={(e) => set({ channel: (e.target.value || undefined) as Channel | undefined })}>
+          <option value="">All channels</option>
+          {CHANNELS.map((c) => (
+            <option key={c} value={c}>
+              {CHANNEL_NAMES[c]}
+            </option>
+          ))}
+        </NativeSelect>
         {(setup.data?.mailboxes.length ?? 0) > 1 && (
           <NativeSelect aria-label="Mailbox" className="w-auto" value={search.mailbox ?? ""} onChange={(e) => set({ mailbox: e.target.value || undefined })}>
             <option value="">All mailboxes</option>
@@ -277,7 +276,7 @@ export function InboxPage() {
                   >
                     <span className="flex items-center gap-2">
                       {t.unread && <span className="size-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />}
-                      <span className={cn("min-w-0 flex-1 truncate", t.unread && "font-semibold")}>{who(t)}</span>
+                      <span className={cn("min-w-0 flex-1 truncate", t.unread && "font-semibold")}>{t.channel === "portal" ? (t.subject ?? "Talent") : who(t)}</span>
                       <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(t.last_message_at)}</span>
                     </span>
                     <span className={cn("flex items-center gap-1.5 truncate", t.unread && "font-medium")}>
@@ -285,7 +284,7 @@ export function InboxPage() {
                       <span className="truncate">{t.channel === "email" ? (t.subject ?? "(no subject)") : t.preview}</span>
                     </span>
                     {t.channel === "email" && <span className="truncate text-xs text-muted-foreground">{t.preview}</span>}
-                    {!t.contact_id && !t.enquiry_id && !t.booking_id && (
+                    {t.channel !== "portal" && !t.contact_id && !t.enquiry_id && !t.booking_id && (
                       <span className="text-xs text-warning">Not linked yet</span>
                     )}
                   </button>
@@ -834,7 +833,7 @@ function ReplyBox({ thread, mailbox, to }: { thread: ThreadView; mailbox: string
 
 /** The longest text the server takes on a channel. */
 function textLimit(channel: string): number {
-  return channel === "sms" ? 1600 : 4096;
+  return channel === "sms" ? 1600 : channel === "portal" ? 4000 : 4096;
 }
 
 /** How many texts an SMS is sent as: 160 plain characters (153 when split), 70 (67) with any other. */
@@ -909,7 +908,7 @@ function TextReplyBox({ thread }: { thread: ThreadView }) {
       {open ? (
         <>
           <Label htmlFor="reply">Reply</Label>
-          <Textarea id="reply" rows={3} maxLength={textLimit(thread.channel)} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write a text…" />
+          <Textarea id="reply" rows={3} maxLength={textLimit(thread.channel)} value={body} onChange={(e) => setBody(e.target.value)} placeholder={thread.channel === "portal" ? "Write a message…" : "Write a text…"} />
         </>
       ) : (
         <>
@@ -939,7 +938,9 @@ function TextReplyBox({ thread }: { thread: ThreadView }) {
         </Button>
         <span className="text-xs text-muted-foreground">
           {thread.channel === "sms" && smsParts(body) > 1 ? `${smsParts(body)} texts long. ` : ""}
-          Sends from your {CHANNEL_NAMES[thread.channel]} number.
+          {thread.channel === "portal"
+            ? "Shows in their portal at once, and they get an email saying so."
+            : `Sends from your ${CHANNEL_NAMES[thread.channel]} number.`}
         </span>
       </div>
       {notice && <Alert tone="success">{notice}</Alert>}

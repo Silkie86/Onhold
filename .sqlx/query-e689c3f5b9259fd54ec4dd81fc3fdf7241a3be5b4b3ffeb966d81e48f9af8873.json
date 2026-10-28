@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE threads SET portal_read_at = greatest(portal_read_at, $2)\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND channel = 'portal'\n             AND portal_user_id = app_user_id()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e689c3f5b9259fd54ec4dd81fc3fdf7241a3be5b4b3ffeb966d81e48f9af8873"
+}

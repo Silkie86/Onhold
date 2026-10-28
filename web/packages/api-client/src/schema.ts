@@ -2932,6 +2932,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portal/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The talent's conversation with the agency, latest messages last.
+         *     Opening it marks it read.
+         */
+        get: operations["portal_messages"];
+        put?: never;
+        /** Write to the agency. The conversation shows in the agency's inbox. */
+        post: operations["send_portal_message"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/money": {
         parameters: {
             query?: never;
@@ -2942,6 +2963,40 @@ export interface paths {
         /** The talent's statements: what each date paid them, and what was paid out. */
         get: operations["portal_money"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The talent's own records: name, bio and where they are based. */
+        get: operations["portal_profiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/profile/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change their bio and where they are based. */
+        put: operations["update_portal_profile"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3991,6 +4046,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/talent/{id}/portal/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write to a talent through their portal; they get an email saying so.
+         *     Starts their conversation in the inbox if it has not begun.
+         */
+        post: operations["write_to_talent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/talent/{id}/timeline": {
         parameters: {
             query?: never;
@@ -4733,6 +4808,9 @@ export interface components {
             days_31_60: components["schemas"]["Money"];
             days_61_90: components["schemas"]["Money"];
             over_90: components["schemas"]["Money"];
+        };
+        AgencyMessageInput: {
+            body?: string;
         };
         AllocationInput: {
             /**
@@ -7412,6 +7490,17 @@ export interface components {
              */
             talent_id?: string | null;
         };
+        /** @description A talent record's conversation with the agency. */
+        PortalConversation: {
+            /** @description The latest messages, oldest first. */
+            messages: components["schemas"]["PortalMessage"][];
+            /**
+             * Format: uuid
+             * @description None for someone with no talent record open here.
+             */
+            talent_id?: string | null;
+            talent_name: string;
+        };
         /** @description One of the talent's dates. */
         PortalDate: {
             all_day: boolean;
@@ -7489,6 +7578,11 @@ export interface components {
              */
             talent: components["schemas"]["PortalTalent"][];
             /**
+             * Format: int64
+             * @description Messages from the agency they have not read yet.
+             */
+            unread_messages: number;
+            /**
              * @description The website page where they can upgrade to the full app; none until
              *     OnHold's team sets one, or when the agency hides locked features.
              */
@@ -7498,12 +7592,46 @@ export interface components {
         PortalInviteBody: {
             email: string;
         };
+        PortalMessage: {
+            author_name?: string | null;
+            body: string;
+            /** @description Written by the talent (else by someone at the agency). */
+            from_me: boolean;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            sent_at: string;
+        };
+        PortalMessageInput: {
+            body?: string;
+            /** Format: uuid */
+            talent_id?: string | null;
+        };
         PortalNewAvailability: components["schemas"]["NewAvailability"] & {
             /**
              * Format: uuid
              * @description Which of their talent records; needed only when they have several.
              */
             talent_id?: string | null;
+        };
+        PortalProfile: {
+            base_location?: string | null;
+            bio?: string | null;
+            can_edit: boolean;
+            name: string;
+            /** Format: uuid */
+            talent_id: string;
+            /** Format: int64 */
+            version: number;
+        };
+        PortalProfileInput: {
+            base_location?: string | null;
+            bio?: string | null;
+            /**
+             * Format: int64
+             * @description The record's version as read; a change made since is not overwritten.
+             */
+            version: number;
         };
         /**
          * @description What a workspace lets its talent see and do in the portal. Everything
@@ -7523,10 +7651,21 @@ export interface components {
              */
             edit_availability: boolean;
             /**
+             * @description Change their own bio and where they are based.
+             * @default true
+             */
+            edit_profile: boolean;
+            /**
              * @description Hide the paid features shown locked in the free viewer.
              * @default false
              */
             hide_locked: boolean;
+            /**
+             * @description Write to the agency from the portal; the conversation sits in the
+             *     agency's inbox.
+             * @default true
+             */
+            messages: boolean;
             /**
              * @description Contracts, advance sheets, riders and the like on their dates and record.
              * @default true
@@ -9327,6 +9466,13 @@ export interface components {
             version: number;
             /** @description Its own words, per module: `{"crm": {"talent": {"one": "DJ", "many": "DJs"}}}`. */
             vocabulary: Record<string, never>;
+        };
+        WrittenToTalent: {
+            /**
+             * Format: uuid
+             * @description The conversation in the inbox.
+             */
+            thread_id: string;
         };
     };
     responses: never;
@@ -17647,6 +17793,88 @@ export interface operations {
             };
         };
     };
+    portal_messages: {
+        parameters: {
+            query?: {
+                /** @description Which of their talent records; needed only when they have several. */
+                talent_id?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalConversation"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_portal_message: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalMessageInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalMessage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     portal_money: {
         parameters: {
             query?: never;
@@ -17667,6 +17895,87 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_profiles: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalProfile"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_portal_profile: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalProfileInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalProfile"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -20707,6 +21016,66 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    write_to_talent: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgencyMessageInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WrittenToTalent"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

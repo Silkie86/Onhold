@@ -47,6 +47,11 @@ pub struct PortalSettings {
     pub show_money: bool,
     /// Hide the paid features shown locked in the free viewer.
     pub hide_locked: bool,
+    /// Write to the agency from the portal; the conversation sits in the
+    /// agency's inbox.
+    pub messages: bool,
+    /// Change their own bio and where they are based.
+    pub edit_profile: bool,
 }
 
 impl Default for PortalSettings {
@@ -60,6 +65,8 @@ impl Default for PortalSettings {
             show_travel: true,
             show_money: false,
             hide_locked: false,
+            messages: true,
+            edit_profile: true,
         }
     }
 }
@@ -311,6 +318,8 @@ pub struct PortalHome {
     /// The website page where they can upgrade to the full app; none until
     /// OnHold's team sets one, or when the agency hides locked features.
     pub upgrade_url: Option<String>,
+    /// Messages from the agency they have not read yet.
+    pub unread_messages: i64,
 }
 
 /// The talent records opened for the signed-in person (none for staff, keys
@@ -343,6 +352,11 @@ pub async fn home(state: &AppState, ctx: &Ctx) -> ApiResult<PortalHome> {
     } else {
         0
     };
+    let unread_messages = if settings.messages {
+        core_db::portal::unread(&mut tx).await?
+    } else {
+        0
+    };
     let upgrade_url = if settings.hide_locked {
         None
     } else {
@@ -353,6 +367,7 @@ pub async fn home(state: &AppState, ctx: &Ctx) -> ApiResult<PortalHome> {
         workspace_name: workspace.name,
         branding: workspace.branding,
         upgrade_url,
+        unread_messages,
         settings,
         talent: talent
             .into_iter()
@@ -1010,6 +1025,477 @@ pub async fn money(state: &AppState, ctx: &Ctx) -> ApiResult<Vec<PortalStatement
             document_id: r.document_id,
         })
         .collect())
+}
+
+// Messages ------------------------------------------------------------------------------------
+
+/// The longest message either side may write.
+const MESSAGE_MAX: usize = 4000;
+/// Messages the portal shows, the latest ones.
+const MESSAGES_SHOWN: i64 = 200;
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalMessage {
+    pub id: Uuid,
+    /// Written by the talent (else by someone at the agency).
+    pub from_me: bool,
+    pub author_name: Option<String>,
+    pub body: String,
+    pub sent_at: DateTime<Utc>,
+}
+
+/// A talent record's conversation with the agency.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalConversation {
+    /// None for someone with no talent record open here.
+    pub talent_id: Option<Uuid>,
+    pub talent_name: String,
+    /// The latest messages, oldest first.
+    pub messages: Vec<PortalMessage>,
+}
+
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct MessagesQuery {
+    /// Which of their talent records; needed only when they have several.
+    pub talent_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PortalMessageInput {
+    pub talent_id: Option<Uuid>,
+    #[serde(default)]
+    pub body: String,
+}
+
+fn message_view(m: core_db::portal::Message) -> PortalMessage {
+    PortalMessage {
+        id: m.id,
+        from_me: m.inbound,
+        author_name: m.author_name,
+        body: m.body,
+        sent_at: m.sent_at,
+    }
+}
+
+async fn messages_switched_on(tx: &mut Tx) -> ApiResult<()> {
+    if settings_in(tx).await?.messages {
+        Ok(())
+    } else {
+        Err(ApiError::forbidden(
+            "portal_switched_off",
+            "your agency does not take messages here",
+        ))
+    }
+}
+
+/// The talent's conversation with the agency; opening it marks it read.
+pub async fn messages(
+    state: &AppState,
+    ctx: &Ctx,
+    q: &MessagesQuery,
+) -> ApiResult<PortalConversation> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    let mine = mine(&mut tx).await?;
+    if mine.is_empty() && q.talent_id.is_none() {
+        tx.commit().await?;
+        return Ok(PortalConversation {
+            talent_id: None,
+            talent_name: String::new(),
+            messages: Vec::new(),
+        });
+    }
+    let talent_id = pick(&mine, q.talent_id)?;
+    messages_switched_on(&mut tx).await?;
+    let messages = match core_db::portal::thread_of(&mut tx, talent_id).await? {
+        Some(thread) => {
+            let messages = core_db::portal::messages(&mut tx, thread, MESSAGES_SHOWN).await?;
+            // Read up to the latest they are shown, not to the clock: a
+            // reply still being written is not passed over.
+            if let Some(last) = messages.iter().map(|m| m.sent_at).max() {
+                core_db::portal::mark_read(&mut tx, thread, last).await?;
+            }
+            messages
+        }
+        None => Vec::new(),
+    };
+    tx.commit().await?;
+    Ok(PortalConversation {
+        talent_id: Some(talent_id),
+        talent_name: name_of(&mine, talent_id),
+        messages: messages.into_iter().map(message_view).collect(),
+    })
+}
+
+fn name_of(mine: &[(Uuid, String)], talent_id: Uuid) -> String {
+    mine.iter()
+        .find(|(id, _)| *id == talent_id)
+        .map(|(_, n)| n.clone())
+        .unwrap_or_default()
+}
+
+/// The talent writes to the agency. The conversation opens (or reopens)
+/// unread in the agency's inbox.
+pub async fn send_message(
+    state: &AppState,
+    ctx: &Ctx,
+    input: PortalMessageInput,
+) -> ApiResult<PortalMessage> {
+    ctx.authorize(Permission::PortalUse)?;
+    let user = ctx
+        .user_id()
+        .ok_or_else(|| ApiError::forbidden("person_required", "only the talent can write here"))?;
+    let mut tx = begin(state, ctx).await?;
+    let mine = mine(&mut tx).await?;
+    let talent_id = pick(&mine, input.talent_id)?;
+    messages_switched_on(&mut tx).await?;
+    let body = super::required_text("body", &input.body, MESSAGE_MAX)?;
+    let me = core_db::members::list(&mut tx)
+        .await?
+        .into_iter()
+        .find(|m| m.user_id == user)
+        .ok_or(ApiError::NotFound)?;
+    let talent_name = name_of(&mine, talent_id);
+    let thread = core_db::portal::open_thread(&mut tx, talent_id, user, &talent_name).await?;
+    core_db::inbox::lock(&mut tx, thread).await?;
+    let id = core_domain::ids::new_id();
+    let now = Utc::now();
+    core_db::inbox::insert_message(
+        &mut tx,
+        core_db::inbox::NewMessage {
+            id,
+            thread_id: thread,
+            direction: "inbound",
+            integration_id: None,
+            external_id: None,
+            message_id: None,
+            in_reply_to: None,
+            references: &[],
+            from_address: Some(&me.email),
+            from_name: Some(&me.name),
+            reply_to: None,
+            to_addresses: &[],
+            cc_addresses: &[],
+            subject: None,
+            body_text: &body,
+            body_html: None,
+            sent_at: now,
+            status: "received",
+            automatic: false,
+            bulk: false,
+            author_id: Some(user),
+            template_key: None,
+        },
+    )
+    .await?;
+    core_db::inbox::refresh(&mut tx, thread, true).await?;
+    core_db::portal::mark_read(&mut tx, thread, now).await?;
+    record(
+        &mut tx,
+        ctx,
+        Change {
+            topic: "message.received",
+            resource: super::inbox::ENTITY,
+            object_id: Some(thread),
+            before: None,
+            after: Some(json!({
+                "message_id": id,
+                "channel": "portal",
+                "talent_id": talent_id,
+            })),
+            event_extra: None,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(PortalMessage {
+        id,
+        from_me: true,
+        author_name: Some(me.name),
+        body,
+        sent_at: now,
+    })
+}
+
+/// Someone at the agency writes in a talent's conversation (a reply in the
+/// inbox, or a first message from the talent's record). It reaches the
+/// portal at once, and the talent gets an email saying so.
+pub(crate) async fn reply_in(
+    state: &AppState,
+    tx: &mut Tx,
+    ctx: &Ctx,
+    thread: Uuid,
+    r: super::inbox::Reply,
+) -> ApiResult<Uuid> {
+    if !r.attachments.is_empty() || !r.cc.is_empty() || r.to.as_ref().is_some_and(|t| !t.is_empty())
+    {
+        return Err(ApiError::invalid(
+            "body",
+            "a portal message is text only and goes to the talent",
+        ));
+    }
+    let body = match (
+        r.body.as_deref().map(str::trim).filter(|b| !b.is_empty()),
+        &r.template_key,
+    ) {
+        (Some(b), None) => b.to_owned(),
+        _ => return Err(ApiError::invalid("body", "write a message")),
+    };
+    if body.chars().count() > MESSAGE_MAX {
+        return Err(ApiError::invalid(
+            "body",
+            format!("must be at most {MESSAGE_MAX} characters"),
+        ));
+    }
+    let (talent_id, talent_name, with, current) = core_db::portal::thread_talent(tx, thread)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if !current {
+        return Err(ApiError::conflict(
+            "portal_access_ended",
+            "this conversation was with someone whose portal access has ended",
+        ));
+    }
+    if !settings_in(tx).await?.messages {
+        return Err(ApiError::forbidden(
+            "portal_switched_off",
+            "portal messages are switched off in Settings, Talent portal",
+        ));
+    }
+    let members = core_db::members::list(tx).await?;
+    let to = members.iter().find(|m| m.user_id == with).ok_or_else(|| {
+        ApiError::conflict(
+            "no_portal",
+            "their portal is not open; invite them from their record first",
+        )
+    })?;
+    let author = ctx
+        .user_id()
+        .and_then(|u| members.iter().find(|m| m.user_id == u));
+    let author_name = author.map(|m| m.name.clone());
+    let id = core_domain::ids::new_id();
+    core_db::inbox::insert_message(
+        tx,
+        core_db::inbox::NewMessage {
+            id,
+            thread_id: thread,
+            direction: "outbound",
+            integration_id: None,
+            external_id: None,
+            message_id: None,
+            in_reply_to: None,
+            references: &[],
+            from_address: None,
+            from_name: author_name.as_deref(),
+            reply_to: None,
+            to_addresses: std::slice::from_ref(&to.email),
+            cc_addresses: &[],
+            subject: None,
+            body_text: &body,
+            body_html: None,
+            sent_at: Utc::now(),
+            status: "sent",
+            automatic: false,
+            bulk: false,
+            author_id: ctx.user_id(),
+            template_key: None,
+        },
+    )
+    .await?;
+    core_db::inbox::refresh(tx, thread, false).await?;
+    record(
+        tx,
+        ctx,
+        Change {
+            topic: "thread.replied",
+            resource: super::inbox::ENTITY,
+            object_id: Some(thread),
+            before: None,
+            after: Some(json!({ "message_id": id, "channel": "portal", "talent_id": talent_id })),
+            event_extra: None,
+        },
+    )
+    .await?;
+    let preview: String = body.chars().take(300).collect();
+    let url = state
+        .config
+        .public_base_url
+        .join("/portal/messages")
+        .map_err(ApiError::internal)?;
+    super::record_with_secret(
+        tx,
+        ctx,
+        Change {
+            topic: "portal.message_sent",
+            resource: super::inbox::ENTITY,
+            object_id: Some(thread),
+            before: None,
+            after: Some(json!({ "message_id": id, "talent_id": talent_id })),
+            event_extra: Some(json!({
+                "to": to.email,
+                "message": {
+                    "talent": talent_name,
+                    "sender": author_name,
+                    "preview": preview,
+                },
+            })),
+        },
+        &state.config.keyring,
+        &json!({ "url": url.as_str() }),
+    )
+    .await?;
+    Ok(id)
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct AgencyMessageInput {
+    #[serde(default)]
+    pub body: String,
+}
+
+/// From the talent's record: write to them, starting the conversation if
+/// it has not begun. Returns the conversation's id in the inbox.
+pub async fn write_to_talent(
+    state: &AppState,
+    ctx: &Ctx,
+    talent_id: Uuid,
+    input: AgencyMessageInput,
+) -> ApiResult<Uuid> {
+    ctx.authorize(Permission::InboxWrite)?;
+    let mut tx = begin(state, ctx).await?;
+    let talent = core_db::talent::get(&mut tx, talent_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let Some(with) = talent.portal_user_id else {
+        return Err(ApiError::conflict(
+            "no_portal",
+            "their portal is not open; invite them first",
+        ));
+    };
+    let thread =
+        core_db::portal::open_thread(&mut tx, talent_id, UserId(with), &talent.name).await?;
+    core_db::inbox::lock(&mut tx, thread).await?;
+    reply_in(
+        state,
+        &mut tx,
+        ctx,
+        thread,
+        super::inbox::Reply {
+            body: Some(input.body),
+            template_key: None,
+            to: None,
+            cc: Vec::new(),
+            attachments: Vec::new(),
+            signature: false,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(thread)
+}
+
+// Profile -------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PortalProfile {
+    pub talent_id: Uuid,
+    pub version: i64,
+    pub name: String,
+    pub bio: Option<String>,
+    pub base_location: Option<String>,
+    pub can_edit: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PortalProfileInput {
+    pub bio: Option<String>,
+    pub base_location: Option<String>,
+    /// The record's version as read; a change made since is not overwritten.
+    pub version: i64,
+}
+
+fn profile_view(p: core_db::portal::Profile, can_edit: bool) -> PortalProfile {
+    PortalProfile {
+        talent_id: p.id,
+        version: p.version,
+        name: p.name,
+        bio: p.bio,
+        base_location: p.base_location,
+        can_edit,
+    }
+}
+
+/// The talent's own records, as they may see and change them.
+pub async fn profiles(state: &AppState, ctx: &Ctx) -> ApiResult<Vec<PortalProfile>> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    let can_edit = settings_in(&mut tx).await?.edit_profile;
+    let out = core_db::portal::profiles(&mut tx).await?;
+    tx.commit().await?;
+    Ok(out.into_iter().map(|p| profile_view(p, can_edit)).collect())
+}
+
+/// The talent changes their bio and where they are based. The record's
+/// history shows who changed it.
+pub async fn update_profile(
+    state: &AppState,
+    ctx: &Ctx,
+    talent_id: Uuid,
+    input: PortalProfileInput,
+) -> ApiResult<PortalProfile> {
+    ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    let before = core_db::portal::profiles(&mut tx)
+        .await?
+        .into_iter()
+        .find(|p| p.id == talent_id)
+        .ok_or(ApiError::NotFound)?;
+    let user = ctx
+        .user_id()
+        .ok_or_else(|| ApiError::forbidden("person_required", "only the talent can change this"))?;
+    let mut check = Check::default();
+    let bio = check.long("bio", input.bio.as_deref(), 20000);
+    let base_location = check.optional("base_location", input.base_location.as_deref(), 200);
+    check.finish()?;
+    if !settings_in(&mut tx).await?.edit_profile {
+        return Err(ApiError::forbidden(
+            "portal_switched_off",
+            "your agency keeps your profile for you here",
+        ));
+    }
+    if bio == before.bio && base_location == before.base_location {
+        tx.commit().await?;
+        return Ok(profile_view(before, true));
+    }
+    let after = core_db::portal::set_profile(
+        &mut tx,
+        talent_id,
+        bio.as_deref(),
+        base_location.as_deref(),
+        input.version,
+        user,
+    )
+    .await?
+    .ok_or_else(ApiError::version_conflict)?;
+    record(
+        &mut tx,
+        ctx,
+        Change {
+            topic: "talent.updated",
+            resource: "talent",
+            object_id: Some(talent_id),
+            before: Some(json!({ "bio": before.bio, "base_location": before.base_location })),
+            after: Some(json!({
+                "bio": after.bio,
+                "base_location": after.base_location,
+                "by_talent": true,
+            })),
+            event_extra: None,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(profile_view(after, true))
 }
 
 #[cfg(test)]
