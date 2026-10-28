@@ -17,7 +17,7 @@ import {
   MoneyInput,
   Spinner,
   Textarea,
-  applyBrandColour,
+  applyBrandTheme,
   readBranding,
   cn,
   formatMoney,
@@ -468,7 +468,7 @@ export function PublicQuotePage() {
   });
   const [answer, setAnswer] = useState<"accept" | "decline" | null>(null);
   useEffect(() => {
-    if (quote.data) applyBrandColour(readBranding(quote.data.branding).colour);
+    if (quote.data) applyBrandTheme(readBranding(quote.data.branding));
     if (quote.data) document.title = `Quote ${quote.data.reference} · ${quote.data.workspace_name}`;
   }, [quote.data]);
 

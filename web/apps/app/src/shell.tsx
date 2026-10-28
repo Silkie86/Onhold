@@ -46,8 +46,10 @@ import {
   Mic2,
   Monitor,
   Moon,
+  Paintbrush,
   Palette,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
   Sun,
   Workflow,
@@ -55,7 +57,7 @@ import {
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { ENTITIES, entityByPath } from "./api.ts";
+import { ENTITIES, api, entityByPath, setWorkspace } from "./api.ts";
 import { OfflineContext, searchEverything, useSyncStatus } from "./data.ts";
 import { claimFor, forgetMailExcept } from "./offline/store.ts";
 import { OfflineSync } from "./offline/sync.ts";
@@ -113,6 +115,15 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
     ],
   },
 ];
+
+/** OnHold's own team: the full theme, and visiting clients' workspaces. */
+const OPERATOR_NAV = {
+  group: "OnHold team",
+  items: [
+    { to: "/settings/theme", label: "Theme studio", icon: <Paintbrush /> },
+    { to: "/operator", label: "Client workspaces", icon: <ShieldCheck /> },
+  ],
+};
 
 /** Starts keeping the workspace on the device (apps only) for as long as it is open. */
 /** The queries that read the device's copy, refreshed when it changes. */
@@ -196,6 +207,13 @@ export function AppShell() {
     return (
       <div className="mx-auto max-w-md p-6 text-sm">
         You are signed in as {me.data.user.email} but are not a member of any workspace yet. Ask for an invitation.
+        {me.data.user.is_superadmin && (
+          <p className="mt-3">
+            <Link to="/operator" className="underline">
+              Open OnHold&apos;s team tools
+            </Link>
+          </p>
+        )}
       </div>
     );
   }
@@ -214,7 +232,9 @@ function SignedIn({ me }: { me: Session["me"] }) {
   const { workspace, switchWorkspace, signOut } = useSessionActions(me);
   const current = workspace ?? me.workspaces[0];
   // The plan switch is for the apps; the installed website is the website.
-  const sync = useOfflineSync(current && (!IS_APP || current.apps_allowed) ? current.id : undefined, me.user.id);
+  // A visit by OnHold's team keeps nothing of the client's workspace on the device.
+  const visiting = me.impersonation ?? null;
+  const sync = useOfflineSync(current && !visiting && (!IS_APP || current.apps_allowed) ? current.id : undefined, me.user.id);
   // Email kept for a workspace the person has left, or whose plan dropped the apps, goes.
   const keptFor = me.workspaces.filter((w) => !IS_APP || w.apps_allowed).map((w) => w.id).join(",");
   useEffect(() => {
@@ -270,15 +290,18 @@ function SignedIn({ me }: { me: Session["me"] }) {
     .slice(0, 2)
     .toUpperCase();
 
+  const groups = me.user.is_superadmin ? [...NAV, OPERATOR_NAV] : NAV;
   const nav = (
-    <nav aria-label="Main" className="flex flex-col gap-4 p-3">
-      {NAV.map((g) => (
+    <nav aria-label="Main" className="flex flex-col gap-4 overflow-y-auto p-3">
+      {groups.map((g) => (
         <div key={g.group} className="flex flex-col gap-0.5">
           <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">{g.group}</p>
           {g.items.map((i) => (
             <Link
               key={i.to}
               to={i.to}
+              // Also when the link is the page already open.
+              onClick={() => setNavOpen(false)}
               className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent [&_svg]:size-4"
               activeProps={{ className: "bg-accent font-medium text-accent-foreground" }}
             >
@@ -314,6 +337,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
           </div>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
+          {visiting && <VisitBanner name={current?.name ?? ""} expiresAt={visiting.expires_at} />}
           <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3 sm:px-4">
             <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu" onClick={() => setNavOpen(true)}>
               <MenuIcon />
@@ -469,5 +493,33 @@ function SyncIndicator() {
       <span className="hidden sm:inline">{label}</span>
       <span className="sr-only sm:hidden">{label}</span>
     </Link>
+  );
+}
+
+/** Shown on every page while OnHold's team is inside a client's workspace. */
+function VisitBanner({ name, expiresAt }: { name: string; expiresAt: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-2 bg-warning px-3 py-1.5 text-sm text-black sm:px-4">
+      <ShieldCheck className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1">
+        You are visiting <strong>{name}</strong> as OnHold&apos;s team, until{" "}
+        {new Date(expiresAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}. Everything you do is in their audit log.
+      </span>
+      <Button
+        size="sm"
+        variant="outline"
+        className="bg-white/70 text-black"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          await api.DELETE("/api/v1/admin/impersonation").catch(() => undefined);
+          setWorkspace(undefined);
+          window.location.assign("/operator");
+        }}
+      >
+        End visit
+      </Button>
+    </div>
   );
 }
