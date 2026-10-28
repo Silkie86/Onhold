@@ -927,3 +927,186 @@ async fn an_import_can_be_undone_keeping_what_changed_since(pool: PgPool) {
         .await;
     assert_eq!(again.status, axum::http::StatusCode::CONFLICT);
 }
+
+/// The id of the record named `name` in a list.
+fn id_named(list: &Value, name: &str) -> String {
+    list["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"] == name)
+        .unwrap_or_else(|| panic!("no {name} in {list}"))["id"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn undoing_keeps_venues_in_use_and_their_people(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let csv = "Venue,Booker,Email\n\
+               A Hall,Ann A,ann@a.test\n\
+               B Hall,Ben B,ben@b.test\n\
+               C Hall,Cy C,cy@c.test\n\
+               D Hall,Di D,di@d.test\n";
+    let path = h.queue_import(&owner, "organisation", csv, json!({})).await;
+    h.drain().await;
+    let view = h.get(&owner, &path).await;
+    assert_eq!(view["to_undo"], 8, "{view}");
+    let orgs = h.get(&owner, "/api/v1/organisations?sort=name").await;
+
+    // A Hall is an enquiry's venue.
+    let enquiry = h
+        .post(
+            &owner,
+            "/api/v1/enquiries",
+            json!({ "title": "Gig", "venue_id": id_named(&orgs, "A Hall") }),
+        )
+        .await;
+    assert!(enquiry.status.is_success(), "{}", enquiry.body);
+    // B Hall is changed since; its booker is not.
+    let b = id_named(&orgs, "B Hall");
+    let current = h.get(&owner, &format!("/api/v1/organisations/{b}")).await;
+    let res = h
+        .app
+        .patch(&format!("/api/v1/organisations/{b}"))
+        .signed_in(&owner)
+        .header("If-Match", &current["version"].to_string())
+        .json(json!({ "notes": "Called them" }))
+        .send()
+        .await;
+    assert!(res.status.is_success(), "{}", res.body);
+    // C Hall has a task.
+    let task = h
+        .post(
+            &owner,
+            "/api/v1/tasks",
+            json!({ "title": "Chase", "related_entity": "organisation",
+                    "related_id": id_named(&orgs, "C Hall") }),
+        )
+        .await;
+    assert!(task.status.is_success(), "{}", task.body);
+
+    let undo = h.post(&owner, &format!("{path}/undo"), json!({})).await;
+    assert_eq!(undo.body["status"], "undoing", "{}", undo.body);
+    h.drain().await;
+    let view = h.get(&owner, &path).await;
+    assert_eq!(view["status"], "undone", "{view}");
+    // Only D Hall and Di go; the others' bookers stay with them.
+    assert_eq!(
+        (view["undone"].as_i64(), view["kept"].as_i64()),
+        (Some(2), Some(6)),
+        "{view}"
+    );
+    let orgs = h.get(&owner, "/api/v1/organisations?sort=name").await;
+    assert_eq!(names(&orgs["items"]), ["A Hall", "B Hall", "C Hall"]);
+    let people = h.get(&owner, "/api/v1/contacts?sort=name").await;
+    assert_eq!(names(&people["items"]), ["Ann A", "Ben B", "Cy C"]);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_undo_that_gives_up_can_be_tried_again(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let rule = h
+        .post(
+            &owner,
+            "/api/v1/rules",
+            json!({ "name": "Gone", "trigger": { "kind": "event", "topic": "talent.deleted" },
+                    "actions": [{ "type": "create_task", "title": "Talent removed" }] }),
+        )
+        .await
+        .id("/id");
+    let path = h
+        .queue_import(&owner, "talent", "Name\nAct One\nAct Two\n", json!({}))
+        .await;
+    h.drain().await;
+    let id = path.rsplit('/').next().unwrap().to_owned();
+    // An import that stopped partway, having made these two.
+    sqlx::query("UPDATE imports SET status = 'failed', error = 'it stopped' WHERE id = $1::uuid")
+        .bind(&id)
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+
+    // The undo's last attempt times out: the import is as it was.
+    let undo = h.post(&owner, &format!("{path}/undo"), json!({})).await;
+    assert_eq!(undo.body["status"], "undoing", "{}", undo.body);
+    sqlx::query(
+        "UPDATE jobs SET attempts = max_attempts - 1 \
+         WHERE kind = 'crm.import_undo' AND status = 'queued'",
+    )
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    let mut impatient = h.worker.clone();
+    impatient.settings.job_timeout = Duration::ZERO;
+    assert_eq!(impatient.run_jobs_once().await.unwrap(), 1);
+    let view = h.get(&owner, &path).await;
+    assert_eq!(
+        (&view["status"], &view["error"]),
+        (&json!("failed"), &json!("it stopped")),
+        "{view}"
+    );
+    assert!(
+        view["undo_error"].as_str().unwrap().contains("timed out"),
+        "{view}"
+    );
+    assert_eq!(view["to_undo"], 2, "{view}");
+
+    // Tried again, it runs.
+    let undo = h.post(&owner, &format!("{path}/undo"), json!({})).await;
+    assert_eq!(undo.body["status"], "undoing", "{}", undo.body);
+    h.drain().await;
+    let view = h.get(&owner, &path).await;
+    assert_eq!(
+        (
+            &view["status"],
+            &view["undone"],
+            &view["error"],
+            &view["undo_error"]
+        ),
+        (
+            &json!("undone"),
+            &json!(2),
+            &json!("it stopped"),
+            &Value::Null
+        ),
+        "{view}"
+    );
+    assert_eq!(h.get(&owner, "/api/v1/talent").await["total"], 0);
+    // Rules leave the removals alone, as they did the import.
+    let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM rule_runs WHERE rule_id = $1")
+        .bind(rule)
+        .fetch_one(&h.app.owner)
+        .await
+        .unwrap();
+    assert_eq!(runs, 0);
+
+    // An import that noted nothing it made, like those from before undoing
+    // existed, has nothing to undo.
+    let path = h
+        .queue_import(&owner, "talent", "Name\nAct Three\n", json!({}))
+        .await;
+    h.drain().await;
+    sqlx::query("DELETE FROM import_records")
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    let view = h.get(&owner, &path).await;
+    assert_eq!(view["to_undo"], 0, "{view}");
+    let undo = h
+        .app
+        .post(&format!("{path}/undo"))
+        .signed_in(&owner)
+        .send()
+        .await;
+    assert_eq!(
+        undo.status,
+        axum::http::StatusCode::CONFLICT,
+        "{}",
+        undo.body
+    );
+    assert_eq!(h.get(&owner, "/api/v1/talent").await["total"], 1);
+}

@@ -91,12 +91,14 @@ test("a workbook's sheets are summed up in a sentence", () => {
   );
 });
 
-test("only finished imports that created something can be undone", () => {
-  expect(canUndo({ status: "done", created: 3 })).toBe(true);
-  expect(canUndo({ status: "failed", created: 1 })).toBe(true);
-  expect(canUndo({ status: "done", created: 0 })).toBe(false);
-  expect(canUndo({ status: "running", created: 5 })).toBe(false);
-  expect(canUndo({ status: "undone", created: 5 })).toBe(false);
+test("only finished imports with records left to undo can be undone", () => {
+  expect(canUndo({ status: "done", to_undo: 3 })).toBe(true);
+  expect(canUndo({ status: "failed", to_undo: 1 })).toBe(true);
+  // From before undoing existed, or nothing created.
+  expect(canUndo({ status: "done", to_undo: 0 })).toBe(false);
+  expect(canUndo({ status: "running", to_undo: 5 })).toBe(false);
+  expect(canUndo({ status: "undoing", to_undo: 5 })).toBe(false);
+  expect(canUndo({ status: "undone", to_undo: 2 })).toBe(false);
 });
 
 test("rows are named where they can be found", () => {

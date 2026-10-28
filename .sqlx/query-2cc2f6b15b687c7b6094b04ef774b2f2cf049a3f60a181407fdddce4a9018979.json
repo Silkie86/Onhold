@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, entity, filename, status, headers, row_count, mapping, options, created_count,\n                  updated_count, skipped_count, failed_count, processed, issues, error, version, created_at,\n                  updated_at, created_by AS \"created_by: UserId\", started_at, finished_at,\n                  undone_count, kept_count, undone_at\n           FROM imports WHERE workspace_id = app_workspace_id() AND id = $1",
+  "query": "SELECT id, entity, filename, status, headers, row_count, mapping, options, created_count,\n                  updated_count, skipped_count, failed_count, processed, issues, error, version, created_at,\n                  updated_at, created_by AS \"created_by: UserId\", started_at, finished_at,\n                  undone_count, kept_count, undone_at, undo_error,\n                  (SELECT count(*) FROM import_records r\n                   WHERE r.workspace_id = imports.workspace_id AND r.import_id = imports.id)::int AS \"to_undo!\"\n           FROM imports WHERE workspace_id = app_workspace_id() AND id = $1",
   "describe": {
     "columns": [
       {
@@ -266,6 +266,23 @@
             "name": "undone_at"
           }
         }
+      },
+      {
+        "ordinal": 24,
+        "name": "undo_error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "undo_error"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "to_undo!",
+        "type_info": "Int4",
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -297,8 +314,10 @@
       true,
       false,
       false,
-      true
+      true,
+      true,
+      null
     ]
   },
-  "hash": "846d34a723fd9f2ccfaf9dbe8435b5dc4cb8283a4fdfcb81d0bc61a8b8ebfbd0"
+  "hash": "2cc2f6b15b687c7b6094b04ef774b2f2cf049a3f60a181407fdddce4a9018979"
 }

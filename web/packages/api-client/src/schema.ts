@@ -6492,6 +6492,14 @@ export interface components {
             status: string;
             /**
              * Format: int32
+             * @description Records it created that are left to undo; none for imports from
+             *     before undoing existed.
+             */
+            to_undo: number;
+            /** @description Why the last undo gave up, if it did. */
+            undo_error?: string | null;
+            /**
+             * Format: int32
              * @description Undoing it: records taken away, and those kept because they were
              *     changed since or are in use.
              */

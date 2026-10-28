@@ -35,6 +35,9 @@ pub struct Import {
     pub undone_count: i32,
     pub kept_count: i32,
     pub undone_at: Option<DateTime<Utc>>,
+    pub undo_error: Option<String>,
+    /// Records it created that an undo has still to deal with.
+    pub to_undo: i32,
 }
 
 pub struct New<'a> {
@@ -73,7 +76,9 @@ pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<Import>> {
         r#"SELECT id, entity, filename, status, headers, row_count, mapping, options, created_count,
                   updated_count, skipped_count, failed_count, processed, issues, error, version, created_at,
                   updated_at, created_by AS "created_by: UserId", started_at, finished_at,
-                  undone_count, kept_count, undone_at
+                  undone_count, kept_count, undone_at, undo_error,
+                  (SELECT count(*) FROM import_records r
+                   WHERE r.workspace_id = imports.workspace_id AND r.import_id = imports.id)::int AS "to_undo!"
            FROM imports WHERE workspace_id = app_workspace_id() AND id = $1"#,
         id
     )
@@ -103,7 +108,9 @@ pub async fn list(
         r#"SELECT id, entity, filename, status, headers, row_count, mapping, options, created_count,
                   updated_count, skipped_count, failed_count, processed, issues, error, version, created_at,
                   updated_at, created_by AS "created_by: UserId", started_at, finished_at,
-                  undone_count, kept_count, undone_at
+                  undone_count, kept_count, undone_at, undo_error,
+                  (SELECT count(*) FROM import_records r
+                   WHERE r.workspace_id = imports.workspace_id AND r.import_id = imports.id)::int AS "to_undo!"
            FROM imports
            WHERE workspace_id = app_workspace_id() AND ($1::uuid IS NULL OR id < $1)
            ORDER BY id DESC
@@ -206,11 +213,15 @@ pub async fn finish(
     Ok(())
 }
 
-/// Notes a record the import created, for undoing it.
+/// Notes a record the import created, for undoing it, with its version now.
 pub async fn created(conn: &mut PgConnection, id: Uuid, entity: &str, record: Uuid) -> Result<()> {
     sqlx::query!(
-        r#"INSERT INTO import_records (workspace_id, import_id, entity, record_id)
-           VALUES (app_workspace_id(), $1, $2, $3) ON CONFLICT DO NOTHING"#,
+        r#"INSERT INTO import_records (workspace_id, import_id, entity, record_id, version)
+           SELECT app_workspace_id(), $1, $2, $3, v.version
+           FROM (SELECT version FROM talent WHERE $2 = 'talent' AND id = $3
+                 UNION ALL SELECT version FROM organisations WHERE $2 = 'organisation' AND id = $3
+                 UNION ALL SELECT version FROM contacts WHERE $2 = 'contact' AND id = $3) v
+           ON CONFLICT (import_id, record_id) DO UPDATE SET version = EXCLUDED.version"#,
         id,
         entity,
         record
@@ -220,10 +231,40 @@ pub async fn created(conn: &mut PgConnection, id: Uuid, entity: &str, record: Uu
     Ok(())
 }
 
+/// After the import itself changed a record, that version is where it
+/// stands; nothing when the import did not create it.
+pub async fn touched(conn: &mut PgConnection, id: Uuid, record: Uuid) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE import_records r
+           SET version = coalesce(
+               (SELECT version FROM talent WHERE r.entity = 'talent' AND id = r.record_id),
+               (SELECT version FROM organisations WHERE r.entity = 'organisation' AND id = r.record_id),
+               (SELECT version FROM contacts WHERE r.entity = 'contact' AND id = r.record_id),
+               r.version)
+           WHERE r.workspace_id = app_workspace_id() AND r.import_id = $1 AND r.record_id = $2"#,
+        id,
+        record
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// The kinds of record the import created that are still to undo.
+pub async fn recorded_entities(conn: &mut PgConnection, id: Uuid) -> Result<Vec<String>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT DISTINCT entity FROM import_records
+           WHERE workspace_id = app_workspace_id() AND import_id = $1"#,
+        id
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
 /// Starts undoing a finished import. False unless it is `done` or `failed`.
 pub async fn start_undo(conn: &mut PgConnection, id: Uuid) -> Result<bool> {
     let done = sqlx::query!(
-        r#"UPDATE imports SET status = 'undoing', error = NULL
+        r#"UPDATE imports SET undo_from = status, status = 'undoing', undo_error = NULL
            WHERE workspace_id = app_workspace_id() AND id = $1 AND status IN ('done', 'failed')"#,
         id
     )
@@ -232,15 +273,28 @@ pub async fn start_undo(conn: &mut PgConnection, id: Uuid) -> Result<bool> {
     Ok(done.rows_affected() == 1)
 }
 
-/// The next records of one kind the import created, still to undo.
+/// Whether the import is being undone, holding it so one job at a time
+/// works on it.
+pub async fn lock_undoing(conn: &mut PgConnection, id: Uuid) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT status FROM imports WHERE workspace_id = app_workspace_id() AND id = $1 FOR UPDATE"#,
+        id
+    )
+    .fetch_optional(conn)
+    .await?
+    .is_some_and(|s| s == "undoing"))
+}
+
+/// The next records of one kind the import created, still to undo, with
+/// their versions once the import was done with them.
 pub async fn created_records(
     conn: &mut PgConnection,
     id: Uuid,
     entity: &str,
     limit: i64,
-) -> Result<Vec<Uuid>> {
-    Ok(sqlx::query_scalar!(
-        r#"SELECT record_id FROM import_records
+) -> Result<Vec<(Uuid, i64)>> {
+    Ok(sqlx::query!(
+        r#"SELECT record_id, version FROM import_records
            WHERE workspace_id = app_workspace_id() AND import_id = $1 AND entity = $2
            ORDER BY record_id LIMIT $3"#,
         id,
@@ -248,6 +302,25 @@ pub async fn created_records(
         limit
     )
     .fetch_all(conn)
+    .await?
+    .into_iter()
+    .map(|r| (r.record_id, r.version))
+    .collect())
+}
+
+/// The version an import noted for a record it created, if it did.
+pub async fn created_version(
+    conn: &mut PgConnection,
+    id: Uuid,
+    record: Uuid,
+) -> Result<Option<i64>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT version FROM import_records
+           WHERE workspace_id = app_workspace_id() AND import_id = $1 AND record_id = $2"#,
+        id,
+        record
+    )
+    .fetch_optional(conn)
     .await?)
 }
 
@@ -279,12 +352,13 @@ pub async fn undo_progress(
     Ok(())
 }
 
-/// Ends an undo: `undone`, or back to `done` with the error when it gave up.
+/// Ends an undo: `undone`, or when it gave up, back to what it was before
+/// with why, so it can be tried again.
 pub async fn finish_undo(conn: &mut PgConnection, id: Uuid, error: Option<&str>) -> Result<()> {
     sqlx::query!(
         r#"UPDATE imports
-           SET status = CASE WHEN $2::text IS NULL THEN 'undone' ELSE 'done' END,
-               error = $2, undone_at = CASE WHEN $2::text IS NULL THEN now() END
+           SET status = CASE WHEN $2::text IS NULL THEN 'undone' ELSE coalesce(undo_from, 'done') END,
+               undo_error = $2, undone_at = CASE WHEN $2::text IS NULL THEN now() END
            WHERE workspace_id = app_workspace_id() AND id = $1 AND status = 'undoing'"#,
         id,
         error
@@ -294,74 +368,117 @@ pub async fn finish_undo(conn: &mut PgConnection, id: Uuid, error: Option<&str>)
     Ok(())
 }
 
-/// When a live record was last changed, `None` once it is gone.
-pub async fn record_changed_at(
+/// A live record's version, holding it until the transaction ends so it
+/// cannot change while an undo decides on it; `None` once it is gone. For
+/// a contact, also its organisation.
+pub async fn lock_record(
     conn: &mut PgConnection,
     entity: &str,
     id: Uuid,
-) -> Result<Option<DateTime<Utc>>> {
-    let at = match entity {
-        "talent" => {
-            sqlx::query_scalar!(
-                r#"SELECT updated_at FROM talent
-                   WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL"#,
-                id
-            )
-            .fetch_optional(conn)
-            .await?
-        }
-        "organisation" => {
-            sqlx::query_scalar!(
-                r#"SELECT updated_at FROM organisations
-                   WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL"#,
-                id
-            )
-            .fetch_optional(conn)
-            .await?
-        }
-        _ => {
-            sqlx::query_scalar!(
-                r#"SELECT updated_at FROM contacts
-                   WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL"#,
-                id
-            )
-            .fetch_optional(conn)
-            .await?
-        }
-    };
-    Ok(at)
+) -> Result<Option<(i64, Option<Uuid>)>> {
+    Ok(match entity {
+        "talent" => sqlx::query_scalar!(
+            r#"SELECT version FROM talent
+               WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL FOR UPDATE"#,
+            id
+        )
+        .fetch_optional(conn)
+        .await?
+        .map(|v| (v, None)),
+        "organisation" => sqlx::query_scalar!(
+            r#"SELECT version FROM organisations
+               WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL FOR UPDATE"#,
+            id
+        )
+        .fetch_optional(conn)
+        .await?
+        .map(|v| (v, None)),
+        _ => sqlx::query!(
+            r#"SELECT version, organisation_id FROM contacts
+               WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL FOR UPDATE"#,
+            id
+        )
+        .fetch_optional(conn)
+        .await?
+        .map(|r| (r.version, r.organisation_id)),
+    })
 }
 
 /// Whether a record is in use elsewhere, so undoing an import keeps it:
-/// on an enquiry, booking, invoice or conversation, or an organisation
-/// with people left at it.
+/// on an enquiry, booking, invoice, payment, conversation, task or
+/// document; for talent also a calendar, availability, a portal or a
+/// pitching list. People at an organisation are asked separately.
 pub async fn record_in_use(conn: &mut PgConnection, entity: &str, id: Uuid) -> Result<bool> {
     let used = match entity {
         "talent" => sqlx::query_scalar!(
             r#"SELECT EXISTS (SELECT 1 FROM booking_talent WHERE workspace_id = app_workspace_id() AND talent_id = $1)
                    OR EXISTS (SELECT 1 FROM enquiry_talent WHERE workspace_id = app_workspace_id() AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM invoices WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND (issuer_talent_id = $1 OR payer_talent_id = $1))
+                   OR EXISTS (SELECT 1 FROM payments WHERE workspace_id = app_workspace_id() AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM settlements WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM threads WHERE workspace_id = app_workspace_id() AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM availability WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM talent_members WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM talent_calendars WHERE workspace_id = app_workspace_id()
+                              AND disconnected_at IS NULL AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM calendar_pushes WHERE workspace_id = app_workspace_id()
+                              AND disconnected_at IS NULL AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM calendar_feeds WHERE workspace_id = app_workspace_id()
+                              AND revoked_at IS NULL AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM calendar_connect_links WHERE workspace_id = app_workspace_id()
+                              AND revoked_at IS NULL AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM invitations WHERE workspace_id = app_workspace_id()
+                              AND revoked_at IS NULL AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM talent WHERE workspace_id = app_workspace_id() AND id = $1
+                              AND portal_user_id IS NOT NULL)
+                   OR EXISTS (SELECT 1 FROM organisation_items WHERE workspace_id = app_workspace_id() AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM tasks WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND related_id = $1)
+                   OR EXISTS (SELECT 1 FROM documents WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND related_id = $1)
                    AS "used!""#,
             id
         )
         .fetch_one(conn)
         .await?,
         "organisation" => sqlx::query_scalar!(
-            r#"SELECT EXISTS (SELECT 1 FROM contacts WHERE workspace_id = app_workspace_id()
-                              AND organisation_id = $1 AND deleted_at IS NULL)
-                   OR EXISTS (SELECT 1 FROM enquiries WHERE workspace_id = app_workspace_id() AND organisation_id = $1)
-                   OR EXISTS (SELECT 1 FROM bookings WHERE workspace_id = app_workspace_id() AND organisation_id = $1)
-                   OR EXISTS (SELECT 1 FROM invoices WHERE workspace_id = app_workspace_id() AND payer_organisation_id = $1)
+            r#"SELECT EXISTS (SELECT 1 FROM enquiries WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND organisation_id = $1)
+                   OR EXISTS (SELECT 1 FROM enquiries WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND venue_id = $1)
+                   OR EXISTS (SELECT 1 FROM bookings WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND organisation_id = $1)
+                   OR EXISTS (SELECT 1 FROM bookings WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND venue_id = $1)
+                   OR EXISTS (SELECT 1 FROM invoices WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND payer_organisation_id = $1)
+                   OR EXISTS (SELECT 1 FROM payments WHERE workspace_id = app_workspace_id() AND organisation_id = $1)
                    OR EXISTS (SELECT 1 FROM threads WHERE workspace_id = app_workspace_id() AND organisation_id = $1)
+                   OR EXISTS (SELECT 1 FROM tasks WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND related_id = $1)
+                   OR EXISTS (SELECT 1 FROM documents WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND related_id = $1)
                    AS "used!""#,
             id
         )
         .fetch_one(conn)
         .await?,
         _ => sqlx::query_scalar!(
-            r#"SELECT EXISTS (SELECT 1 FROM enquiries WHERE workspace_id = app_workspace_id() AND contact_id = $1)
-                   OR EXISTS (SELECT 1 FROM bookings WHERE workspace_id = app_workspace_id() AND contact_id = $1)
-                   OR EXISTS (SELECT 1 FROM invoices WHERE workspace_id = app_workspace_id() AND payer_contact_id = $1)
+            r#"SELECT EXISTS (SELECT 1 FROM enquiries WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND contact_id = $1)
+                   OR EXISTS (SELECT 1 FROM bookings WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND contact_id = $1)
+                   OR EXISTS (SELECT 1 FROM invoices WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND payer_contact_id = $1)
                    OR EXISTS (SELECT 1 FROM threads WHERE workspace_id = app_workspace_id() AND contact_id = $1)
+                   OR EXISTS (SELECT 1 FROM tasks WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND related_id = $1)
+                   OR EXISTS (SELECT 1 FROM documents WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND related_id = $1)
                    AS "used!""#,
             id
         )
@@ -369,6 +486,17 @@ pub async fn record_in_use(conn: &mut PgConnection, entity: &str, id: Uuid) -> R
         .await?,
     };
     Ok(used)
+}
+
+/// Whether anyone is left at an organisation.
+pub async fn has_people(conn: &mut PgConnection, organisation: Uuid) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT EXISTS (SELECT 1 FROM contacts WHERE workspace_id = app_workspace_id()
+                          AND organisation_id = $1 AND deleted_at IS NULL) AS "people!""#,
+        organisation
+    )
+    .fetch_one(conn)
+    .await?)
 }
 
 /// Worker cleanup: uploads that were never run, older than `before`.

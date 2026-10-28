@@ -445,12 +445,17 @@ pub(crate) async fn update_in_tx(
 pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::TalentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    delete_in_tx(&mut tx, ctx, id).await?;
+    delete_in_tx(&mut tx, ctx, id, None).await?;
     tx.commit().await?;
     Ok(())
 }
 
-pub(crate) async fn delete_in_tx(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
+pub(crate) async fn delete_in_tx(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    id: Uuid,
+    event_extra: Option<Value>,
+) -> ApiResult<()> {
     let before = load(tx, id).await?.ok_or(ApiError::NotFound)?;
     super::portal::end_access_in(tx, ctx, id).await?;
     core_db::talent::soft_delete(tx, id, ctx.user_id()).await?;
@@ -464,7 +469,7 @@ pub(crate) async fn delete_in_tx(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<
             object_id: Some(id),
             before: Some(to_json(&before)),
             after: None,
-            event_extra: None,
+            event_extra,
         },
     )
     .await?;

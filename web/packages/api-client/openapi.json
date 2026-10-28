@@ -32099,7 +32099,8 @@
           "issues",
           "created_at",
           "undone",
-          "kept"
+          "kept",
+          "to_undo"
         ],
         "properties": {
           "created": {
@@ -32200,6 +32201,18 @@
           "status": {
             "type": "string",
             "description": "`uploaded`, `queued`, `running`, `done` or `failed`; then `undoing`\nand `undone` when it is undone."
+          },
+          "to_undo": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Records it created that are left to undo; none for imports from\nbefore undoing existed."
+          },
+          "undo_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last undo gave up, if it did."
           },
           "undone": {
             "type": "integer",
