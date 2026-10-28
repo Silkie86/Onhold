@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE sender_domains SET removed_at = now(), in_use = false, next_check_at = NULL\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND removed_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2eb65ed463b922f717c1499e7ee0c81e06dea1d07db494d4083bf4c3178ae684"
+}

@@ -39,15 +39,20 @@ struct DohAnswer {
     status: u32,
     #[serde(rename = "Answer", default)]
     answer: Vec<DohRecord>,
+    #[serde(rename = "Authority", default)]
+    authority: Vec<DohRecord>,
 }
 
 #[derive(Deserialize)]
 struct DohRecord {
+    #[serde(default)]
+    name: String,
     #[serde(rename = "type")]
     kind: u16,
     data: String,
 }
 
+const SOA: u16 = 6;
 const TXT: u16 = 16;
 /// NXDOMAIN: the name does not exist.
 const NO_SUCH_NAME: u32 = 3;
@@ -85,18 +90,35 @@ impl Doh {
         })
     }
 
-    /// The TXT records at `name`; none when it does not exist.
-    pub async fn txt(&self, name: &str) -> Result<Vec<String>, ProviderError> {
+    async fn query(&self, name: &str, kind: &str) -> Result<DohAnswer, ProviderError> {
         let mut url = self.base.clone();
         url.query_pairs_mut()
             .append_pair("name", name)
-            .append_pair("type", "TXT");
-        let answer: DohAnswer = provider::send_json(
+            .append_pair("type", kind);
+        provider::send_json(
             self.http
                 .get(url)
                 .header(reqwest::header::ACCEPT, "application/dns-json"),
         )
-        .await?;
+        .await
+    }
+
+    /// The zone `name` is in (where its DNS is managed): the owner of the
+    /// SOA record the answer, or its authority section, names.
+    pub async fn zone(&self, name: &str) -> Result<Option<String>, ProviderError> {
+        let answer = self.query(name, "SOA").await?;
+        Ok(answer
+            .answer
+            .iter()
+            .chain(&answer.authority)
+            .find(|r| r.kind == SOA)
+            .map(|r| r.name.trim_end_matches('.').to_ascii_lowercase())
+            .filter(|z| z.contains('.') && (name == z || name.ends_with(&format!(".{z}")))))
+    }
+
+    /// The TXT records at `name`; none when it does not exist.
+    pub async fn txt(&self, name: &str) -> Result<Vec<String>, ProviderError> {
+        let answer = self.query(name, "TXT").await?;
         match answer.status {
             0 => Ok(answer
                 .answer

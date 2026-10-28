@@ -117,20 +117,39 @@ fn dns_provider_of(d: &SenderDomain) -> Option<DnsProvider> {
         .and_then(|v| serde_json::from_value(v).ok())
 }
 
-/// The record's name relative to the zone the domain sits in, which is
-/// what DNS providers' forms ask for. Without a known zone, relative to
-/// the domain.
-fn view_record(r: &DnsRecord, domain: &str, host_label: &str) -> RecordView {
-    let host = if host_label.is_empty() {
-        r.name.clone()
-    } else {
-        format!("{}.{host_label}", r.name)
-    };
+/// A record's full name. The provider gives it relative to the domain
+/// (`send`) or, for a subdomain, relative to the zone the subdomain is in
+/// (`send.mail` for mail.acme.com); both come out as `send.mail.acme.com`.
+fn full_name(name: &str, domain: &str) -> String {
+    let name = name.trim_end_matches('.').to_ascii_lowercase();
+    if name == domain || name.ends_with(&format!(".{domain}")) {
+        return name;
+    }
+    let labels: Vec<&str> = domain.split('.').collect();
+    for k in (1..labels.len().saturating_sub(1)).rev() {
+        if name.ends_with(&format!(".{}", labels[..k].join("."))) {
+            return format!("{name}.{}", labels[k..].join("."));
+        }
+    }
+    format!("{name}.{domain}")
+}
+
+/// `full` without `.base` on the end, or all of it when it is not under `base`.
+fn relative(full: &str, base: &str) -> String {
+    full.strip_suffix(&format!(".{base}"))
+        .unwrap_or(full)
+        .to_owned()
+}
+
+/// A record as the page shows it: the full name, and the name relative to
+/// the domain's zone, which is what most DNS providers' forms ask for.
+fn view_record(r: &DnsRecord, domain: &str, zone: Option<&str>) -> RecordView {
+    let name = full_name(&r.name, domain);
     RecordView {
         purpose: r.record.clone(),
         kind: r.kind.clone(),
-        host,
-        name: format!("{}.{domain}", r.name),
+        host: zone.map_or_else(|| name.clone(), |z| relative(&name, z)),
+        name,
         value: r.value.clone(),
         priority: r.priority,
         found: r.status == "verified",
@@ -140,7 +159,11 @@ fn view_record(r: &DnsRecord, domain: &str, host_label: &str) -> RecordView {
 impl From<&SenderDomain> for SenderDomainView {
     fn from(d: &SenderDomain) -> Self {
         let dns = dns_provider_of(d);
-        let label = dns.as_ref().map(|p| p.host.clone()).unwrap_or_default();
+        let records = records_of(d);
+        let zone = dns
+            .as_ref()
+            .map(|p| p.zone.clone())
+            .or_else(|| d.zone.clone());
         let dmarc = DnsRecord {
             record: "DMARC".into(),
             name: "_dmarc".into(),
@@ -153,25 +176,24 @@ impl From<&SenderDomain> for SenderDomainView {
             id: d.id,
             domain: d.domain.clone(),
             status: d.status.clone(),
-            records: records_of(d)
+            records: records
                 .iter()
-                .map(|r| view_record(r, &d.domain, &label))
+                .map(|r| view_record(r, &d.domain, zone.as_deref()))
                 .collect(),
-            dmarc_record: (!d.dmarc).then(|| view_record(&dmarc, &d.domain, &label)),
+            dmarc_record: (!d.dmarc).then(|| view_record(&dmarc, &d.domain, zone.as_deref())),
             from_address: format!("{}@{}", d.local_part, d.domain),
             local_part: d.local_part.clone(),
             in_use: d.in_use,
             sending: d.in_use && d.status == "verified",
-            automatic_setup: (d.status != "verified")
-                .then_some(dns)
-                .flatten()
-                .map(|p| p.name),
+            automatic_setup: (d.status != "verified"
+                && template_values(&records, &d.domain).is_some())
+            .then_some(dns)
+            .flatten()
+            .map(|p| p.name),
             checked_at: d.checked_at,
             verified_at: d.verified_at,
-            remove_after: d
-                .verified_at
-                .is_none()
-                .then(|| d.created_at + Duration::days(UNVERIFIED_DAYS)),
+            remove_after: (d.status != "verified")
+                .then(|| d.verified_at.unwrap_or(d.created_at) + Duration::days(UNVERIFIED_DAYS)),
             created_at: d.created_at,
             version: d.version,
         }
@@ -310,12 +332,8 @@ pub async fn add(state: &AppState, ctx: &Ctx, req: AddSenderDomain) -> ApiResult
         )
     };
     let mut tx = begin(state, ctx).await?;
-    let existing = core_db::sender_domains::list(&mut tx).await?;
-    if existing.len() >= MAX_DOMAINS {
-        return Err(ApiError::conflict(
-            "too_many_domains",
-            format!("a workspace can have up to {MAX_DOMAINS} sending domains; remove one first"),
-        ));
+    if core_db::sender_domains::count(&mut tx).await? >= MAX_DOMAINS as i64 {
+        return Err(too_many());
     }
     if core_db::sender_domains::taken(&mut tx, &domain).await? {
         return Err(taken(()));
@@ -334,8 +352,18 @@ pub async fn add(state: &AppState, ctx: &Ctx, req: AddSenderDomain) -> ApiResult
     let id = Uuid::now_v7();
     let now = Utc::now();
     let records = serde_json::to_value(&created.records).map_err(ApiError::internal)?;
+    // Resend looks for the records only once asked.
+    if let Err(e) = cfg.resend.verify(&created.id).await {
+        tracing::info!(domain = %domain, error = %e, "asking the mail provider to look for records failed");
+    }
     let saved = async {
         let mut tx = begin(state, ctx).await?;
+        // Counted again under the workspace's lock: adds at the same time
+        // cannot pass the limit together.
+        core_db::sender_domains::lock_workspace(&mut tx).await?;
+        if core_db::sender_domains::count(&mut tx).await? >= MAX_DOMAINS as i64 {
+            return Err(too_many());
+        }
         let insert = core_db::sender_domains::insert(
             &mut tx,
             NewSenderDomain {
@@ -344,9 +372,8 @@ pub async fn add(state: &AppState, ctx: &Ctx, req: AddSenderDomain) -> ApiResult
                 provider_id: &created.id,
                 records: &records,
                 local_part: &local_part,
-                // Looked at straight away by the job below, which sets
-                // the next time.
-                next_check_at: None,
+                // The worker's sweep looks at it straight away.
+                next_check_at: Some(now),
             },
         )
         .await;
@@ -357,7 +384,6 @@ pub async fn add(state: &AppState, ctx: &Ctx, req: AddSenderDomain) -> ApiResult
                 e.into()
             });
         }
-        queue_check(&mut tx, ctx.workspace_id, id, now).await?;
         let saved = core_db::sender_domains::get(&mut tx, id)
             .await?
             .ok_or(ApiError::NotFound)?;
@@ -390,19 +416,11 @@ pub async fn add(state: &AppState, ctx: &Ctx, req: AddSenderDomain) -> ApiResult
     }
 }
 
-async fn queue_check(
-    tx: &mut core_db::Tx,
-    ws: WorkspaceId,
-    id: Uuid,
-    at: DateTime<Utc>,
-) -> ApiResult<()> {
-    let payload = json!({ "domain_id": id, "at": at });
-    core_db::jobs::enqueue(
-        tx,
-        core_db::jobs::NewJob::new(Some(ws), JOB_CHECK, &payload).dedupe(&check_key(id, at)),
+fn too_many() -> ApiError {
+    ApiError::conflict(
+        "too_many_domains",
+        format!("a workspace can have up to {MAX_DOMAINS} sending domains; remove one first"),
     )
-    .await?;
-    Ok(())
 }
 
 /// One check per domain and due time.
@@ -447,6 +465,17 @@ pub async fn update(
         None => before.local_part.clone(),
     };
     let in_use = patch.in_use.unwrap_or(before.in_use);
+    if in_use && !before.in_use && before.status != "verified" {
+        let sending = core_db::sender_domains::sending_address(&mut tx).await?;
+        if let Some(address) = sending {
+            return Err(ApiError::conflict(
+                "domain_not_verified",
+                format!(
+                    "email is going out from {address}; switch to this domain once it is verified"
+                ),
+            ));
+        }
+    }
     core_db::sender_domains::set_preferences(&mut tx, id, &local_part, in_use).await?;
     let after = core_db::sender_domains::get(&mut tx, id)
         .await?
@@ -512,13 +541,13 @@ pub async fn automatic_setup(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult
     let unavailable = || {
         ApiError::conflict(
             "automatic_setup_unavailable",
-            "this domain's DNS provider cannot add the records itself; add them by hand",
+            "these records cannot be added in one step for this domain; add them by hand",
         )
     };
     let (Some(dc), Some(provider)) = (&cfg.domain_connect, dns_provider_of(&d)) else {
         return Err(unavailable());
     };
-    let values = template_values(&records_of(&d)).ok_or_else(unavailable)?;
+    let values = template_values(&records_of(&d), &d.domain).ok_or_else(unavailable)?;
     let mut groups = vec!["send"];
     if !d.dmarc {
         groups.push("dmarc");
@@ -537,18 +566,19 @@ pub async fn automatic_setup(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult
 
 /// The template's values for the provider's records, when they are the
 /// ones the template has room for.
-fn template_values(records: &[DnsRecord]) -> Option<Vec<(&'static str, String)>> {
+fn template_values(records: &[DnsRecord], domain: &str) -> Option<Vec<(&'static str, String)>> {
     let find = |purpose: &str, kind: &str| {
         records
             .iter()
             .find(|r| r.record == purpose && r.kind == kind)
     };
+    let host = |r: &DnsRecord| relative(&full_name(&r.name, domain), domain);
     let dkim = find("DKIM", "TXT")?;
     let mx = find("SPF", "MX")?;
     let spf = find("SPF", "TXT")?;
-    let fits = dkim.name == TEMPLATE_DKIM_HOST
-        && mx.name == TEMPLATE_SEND_HOST
-        && spf.name == TEMPLATE_SEND_HOST
+    let fits = host(dkim) == TEMPLATE_DKIM_HOST
+        && host(mx) == TEMPLATE_SEND_HOST
+        && host(spf) == TEMPLATE_SEND_HOST
         && spf.value == TEMPLATE_SPF
         && records.len() == 3;
     fits.then(|| vec![("dkim", dkim.value.clone()), ("mx", mx.value.clone())])
@@ -561,7 +591,7 @@ pub async fn remove(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     let before = core_db::sender_domains::lock(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    core_db::sender_domains::delete(&mut tx, id).await?;
+    core_db::sender_domains::remove(&mut tx, id).await?;
     queue_forget(&mut tx, ctx.workspace_id, &before.provider_id).await?;
     record(
         &mut tx,
@@ -583,7 +613,7 @@ pub async fn remove(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
 /// Removes every domain of a workspace that is closing, so the domains are
 /// free for whoever owns them next.
 pub(crate) async fn remove_all(tx: &mut core_db::Tx, ctx: &Ctx) -> ApiResult<()> {
-    for (id, provider_id) in core_db::sender_domains::delete_all(tx).await? {
+    for (id, provider_id) in core_db::sender_domains::remove_all(tx).await? {
         queue_forget(tx, ctx.workspace_id, &provider_id).await?;
         record(
             tx,
@@ -608,7 +638,11 @@ pub(crate) async fn remove_all(tx: &mut core_db::Tx, ctx: &Ctx) -> ApiResult<()>
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CheckOutcome {
     Gone,
-    Checked { status: String },
+    Checked {
+        status: String,
+    },
+    /// The provider could not be asked; tried again at the next check.
+    Unreachable(String),
     Expired,
 }
 
@@ -617,7 +651,10 @@ impl std::fmt::Display for CheckOutcome {
         match self {
             Self::Gone => write!(f, "the domain was removed"),
             Self::Checked { status } => write!(f, "the domain is {status}"),
-            Self::Expired => write!(f, "never verified, so removed"),
+            Self::Unreachable(e) => {
+                write!(f, "the provider could not be asked ({e}); trying later")
+            }
+            Self::Expired => write!(f, "its records were not found in time, so it was removed"),
         }
     }
 }
@@ -632,8 +669,11 @@ fn next_check(status: &str, created_at: DateTime<Utc>, now: DateTime<Utc>) -> Da
     now + (age / 4).clamp(Duration::minutes(1), Duration::hours(6))
 }
 
-fn status_from(p: &ProviderDomain) -> &'static str {
-    if p.verified() {
+/// What the provider's answer means here. A domain already verified stays
+/// so while the provider cannot see its records for a moment (it tries
+/// again for three days before giving up).
+fn status_from(p: &ProviderDomain, was: &str) -> &'static str {
+    if p.verified() || (p.status == "temporary_failure" && was == "verified") {
         "verified"
     } else if p.failed() || p.status == "partially_failed" {
         "failed"
@@ -642,53 +682,104 @@ fn status_from(p: &ProviderDomain) -> &'static str {
     }
 }
 
+/// Whether a domain not verified now has gone too long without being: two
+/// weeks since it was added, or since its records were last found.
+fn lapsed(d: &SenderDomain, status: &str, now: DateTime<Utc>) -> bool {
+    status != "verified"
+        && now - d.verified_at.unwrap_or(d.created_at) > Duration::days(UNVERIFIED_DAYS)
+}
+
+/// Removes a domain the worker gave up on, here and at the provider.
+async fn expire(state: &AppState, ctx: &Ctx, d: &SenderDomain, reason: &str) -> ApiResult<()> {
+    let mut tx = begin(state, ctx).await?;
+    if core_db::sender_domains::remove(&mut tx, d.id).await? {
+        queue_forget(&mut tx, ctx.workspace_id, &d.provider_id).await?;
+        record(
+            &mut tx,
+            ctx,
+            Change {
+                topic: "sender_domain.removed",
+                resource: ENTITY,
+                object_id: Some(d.id),
+                before: Some(audit_json(d)),
+                after: None,
+                event_extra: Some(json!({ "reason": reason })),
+            },
+        )
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
 /// Asks the provider about a domain and keeps what it says, with whether a
 /// DMARC policy covers it and, until one is found, its DNS provider's
-/// Domain Connect. A domain never verified within [`UNVERIFIED_DAYS`] is
-/// removed.
+/// Domain Connect. The provider is asked to look again whenever it has not
+/// started or has given up. A domain whose records are not found for
+/// [`UNVERIFIED_DAYS`] is removed.
+///
+/// The next check is booked before anything else, so a check that fails
+/// part way (the provider down, a refused key) is simply tried again then,
+/// and provider failures never fail the job.
 pub async fn check(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<CheckOutcome> {
     let ctx = Ctx::system(ws);
     let cfg = configured(state)?;
+    let now = Utc::now();
     let mut tx = begin(state, &ctx).await?;
-    let Some(d) = core_db::sender_domains::get(&mut tx, id).await? else {
+    let Some(d) = core_db::sender_domains::lock(&mut tx, id).await? else {
         return Ok(CheckOutcome::Gone);
     };
+    let booked = next_check(&d.status, d.created_at, now);
+    core_db::sender_domains::set_next_check(&mut tx, id, Some(booked)).await?;
     tx.commit().await?;
-    let now = Utc::now();
 
     let found = match cfg.resend.get(&d.provider_id).await {
-        Ok(p) => Some(p),
-        // The provider no longer has it: it can only be added again.
-        Err(ProviderError::Refused { status: 404, .. }) => None,
-        Err(e) if e.is_temporary() => return Err(provider_error("The mail provider", e)),
-        Err(e) => return Err(ApiError::internal(e)),
-    };
-    let status = found.as_ref().map_or("failed", status_from);
-    if d.verified_at.is_none()
-        && status != "verified"
-        && now - d.created_at > Duration::days(UNVERIFIED_DAYS)
-    {
-        let mut tx = begin(state, &ctx).await?;
-        if core_db::sender_domains::delete(&mut tx, id).await? {
-            queue_forget(&mut tx, ws, &d.provider_id).await?;
-            record(
-                &mut tx,
-                &ctx,
-                Change {
-                    topic: "sender_domain.removed",
-                    resource: ENTITY,
-                    object_id: Some(id),
-                    before: Some(audit_json(&d)),
-                    after: None,
-                    event_extra: Some(json!({ "reason": "never_verified" })),
-                },
-            )
-            .await?;
+        Ok(p) => p,
+        Err(ProviderError::Refused { status: 404, .. }) => {
+            // The provider no longer has it, so it can only be added again.
+            if d.verified_at.is_none() || lapsed(&d, "failed", now) {
+                expire(state, &ctx, &d, "gone_at_provider").await?;
+                return Ok(CheckOutcome::Expired);
+            }
+            return finish_check(state, &ctx, &d, None, "failed", now, booked).await;
         }
-        tx.commit().await?;
+        Err(e) => {
+            tracing::warn!(domain = %d.domain, error = %e, "asking the mail provider about a domain failed");
+            if lapsed(&d, &d.status, now) {
+                expire(state, &ctx, &d, "never_verified").await?;
+                return Ok(CheckOutcome::Expired);
+            }
+            return Ok(CheckOutcome::Unreachable(e.to_string()));
+        }
+    };
+    let status = status_from(&found, &d.status);
+    if lapsed(&d, status, now) {
+        expire(state, &ctx, &d, "never_verified").await?;
         return Ok(CheckOutcome::Expired);
     }
+    // Resend looks for the records only once asked, and stops after three
+    // days; ask again until it finds them.
+    if matches!(
+        found.status.as_str(),
+        "not_started" | "failed" | "partially_failed"
+    ) && let Err(e) = cfg.resend.verify(&d.provider_id).await
+    {
+        tracing::info!(domain = %d.domain, error = %e, "asking the mail provider to look for records failed");
+    }
+    finish_check(state, &ctx, &d, Some(&found), status, now, booked).await
+}
 
+/// Keeps what a check found.
+async fn finish_check(
+    state: &AppState,
+    ctx: &Ctx,
+    d: &SenderDomain,
+    found: Option<&ProviderDomain>,
+    status: &'static str,
+    now: DateTime<Utc>,
+    booked: DateTime<Utc>,
+) -> ApiResult<CheckOutcome> {
+    let cfg = configured(state)?;
     // DNS answers only add detail: a failed lookup keeps what was known.
     let mut dns_provider = d.dns_provider.clone();
     let mut dmarc = d.dmarc;
@@ -703,6 +794,15 @@ pub async fn check(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<Che
             }
         }
     }
+    let mut zone = d.zone.clone();
+    if zone.is_none() {
+        match cfg.doh.zone(&d.domain).await {
+            Ok(z) => zone = z,
+            Err(e) => {
+                tracing::info!(domain = %d.domain, error = %e, "looking for a domain's DNS zone failed");
+            }
+        }
+    }
     match cfg.doh.has_dmarc(&d.domain).await {
         Ok(has) => dmarc = has,
         Err(e) => {
@@ -710,46 +810,50 @@ pub async fn check(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<Che
         }
     }
 
-    let records = match &found {
+    let records = match found {
         Some(p) => serde_json::to_value(&p.records).map_err(ApiError::internal)?,
         None => d.records.clone(),
     };
-    let next = found
-        .as_ref()
-        .map(|_| next_check(status, d.created_at, now));
-    let mut tx = begin(state, &ctx).await?;
-    let Some(locked) = core_db::sender_domains::lock(&mut tx, id).await? else {
+    let next = next_check(status, d.created_at, now);
+    let mut tx = begin(state, ctx).await?;
+    let Some(locked) = core_db::sender_domains::lock(&mut tx, d.id).await? else {
         return Ok(CheckOutcome::Gone);
     };
-    // A check asked for in the meantime keeps its earlier time.
-    let next = match (locked.next_check_at, next) {
-        (Some(asked), Some(n)) if asked > now && asked < n => Some(asked),
-        (_, n) => n,
+    // A check asked for in the meantime ("Check now") keeps its time.
+    let next = match locked.next_check_at {
+        Some(asked) if asked != booked && asked > now && asked < next => asked,
+        _ => next,
     };
     core_db::sender_domains::set_checked(
         &mut tx,
-        id,
+        d.id,
         Checked {
             status,
             records: &records,
             dmarc,
+            zone: zone.as_deref(),
             dns_provider: dns_provider.as_ref(),
-            next_check_at: next,
+            next_check_at: Some(next),
         },
     )
     .await?;
     if status != locked.status {
-        // The first domain verified is the one sent from.
-        if status == "verified" && !core_db::sender_domains::any_in_use(&mut tx).await? {
-            core_db::sender_domains::set_preferences(&mut tx, id, &locked.local_part, true).await?;
+        // The first time a domain is verified, it is sent from unless
+        // another already is; later it keeps the owner's choice.
+        if status == "verified"
+            && locked.verified_at.is_none()
+            && !core_db::sender_domains::any_in_use(&mut tx).await?
+        {
+            core_db::sender_domains::set_preferences(&mut tx, d.id, &locked.local_part, true)
+                .await?;
         }
         record(
             &mut tx,
-            &ctx,
+            ctx,
             Change {
                 topic: "sender_domain.status_changed",
                 resource: ENTITY,
-                object_id: Some(id),
+                object_id: Some(d.id),
                 before: Some(json!({ "status": locked.status })),
                 after: Some(json!({ "status": status })),
                 event_extra: Some(json!({ "domain": d.domain })),
@@ -766,10 +870,14 @@ pub async fn check(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<Che
 /// Removes a domain from the provider's account.
 pub async fn forget(state: &AppState, provider_id: &str) -> ApiResult<()> {
     let cfg = configured(state)?;
-    cfg.resend
-        .delete(provider_id)
-        .await
-        .map_err(|e| provider_error("The mail provider", e))
+    // Every failure is worth trying again: until the provider lets go of
+    // the domain, nobody can add it.
+    cfg.resend.delete(provider_id).await.map_err(|e| {
+        ApiError::unavailable(
+            "provider_unavailable",
+            format!("removing the domain at the mail provider failed: {e}"),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -838,9 +946,47 @@ mod tests {
             rec("SPF", "send", "MX", "feedback-smtp.eu-west-1.amazonses.com"),
             rec("SPF", "send", "TXT", TEMPLATE_SPF),
         ];
-        let values = template_values(&records).expect("fits");
+        let values = template_values(&records, "acme.com").expect("fits");
         assert_eq!(values[0], ("dkim", "p=MIGf".to_owned()));
+        // A subdomain's records named relative to its zone fit as well.
+        for r in &mut records {
+            r.name = format!("{}.mail", r.name);
+        }
+        assert!(template_values(&records, "mail.acme.com").is_some());
         records[0].name = "other._domainkey".into();
-        assert!(template_values(&records).is_none());
+        assert!(template_values(&records, "mail.acme.com").is_none());
+    }
+
+    #[test]
+    fn record_names_are_given_in_full_and_for_the_zone() {
+        assert_eq!(full_name("send", "acme.com"), "send.acme.com");
+        assert_eq!(full_name("send", "mail.acme.com"), "send.mail.acme.com");
+        assert_eq!(
+            full_name("send.mail", "mail.acme.com"),
+            "send.mail.acme.com"
+        );
+        assert_eq!(
+            full_name("resend._domainkey.mail", "mail.acme.co.uk"),
+            "resend._domainkey.mail.acme.co.uk"
+        );
+        assert_eq!(
+            full_name("send.mail.acme.com.", "mail.acme.com"),
+            "send.mail.acme.com"
+        );
+        let r = DnsRecord {
+            record: "SPF".into(),
+            name: "send.mail".into(),
+            kind: "MX".into(),
+            value: "feedback-smtp.eu-west-1.amazonses.com".into(),
+            priority: Some(10),
+            status: "pending".into(),
+        };
+        let v = view_record(&r, "mail.acme.com", Some("acme.com"));
+        assert_eq!(
+            (v.host.as_str(), v.name.as_str()),
+            ("send.mail", "send.mail.acme.com")
+        );
+        let v = view_record(&r, "mail.acme.com", None);
+        assert_eq!(v.host, "send.mail.acme.com");
     }
 }

@@ -126,6 +126,15 @@ async fn stand_ins() -> (Url, Shared) {
             "/dns-query",
             get(
                 |State(w): State<Shared>, Query(q): Query<HashMap<String, String>>| async move {
+                    if q["type"] == "SOA" {
+                        // Every stand-in domain's zone is its last two labels.
+                        let labels: Vec<&str> = q["name"].split('.').collect();
+                        let zone = labels[labels.len() - 2..].join(".");
+                        return axum::Json(json!({ "Status": 0, "Authority": [
+                            { "name": format!("{zone}."), "type": 6, "TTL": 300,
+                              "data": format!("ns1.{zone}. hostmaster.{zone}. 1 7200 3600 1209600 300") }
+                        ] }));
+                    }
                     assert_eq!(q["type"], "TXT");
                     let w = w.lock().unwrap();
                     match w.txt.get(&q["name"]) {
@@ -335,10 +344,13 @@ async fn email_goes_out_from_a_verified_domain(pool: PgPool) {
         .await
         .expect(StatusCode::FORBIDDEN, "permission_denied");
 
-    // The first check finds its DNS provider, and no DMARC policy.
-    h.drain().await;
+    // The first check finds its DNS provider and zone, and no DMARC policy,
+    // and asks Resend to start looking for the records.
+    h.check_all().await;
     let d = &h.domains(&owner).await["domains"][0];
     assert_eq!(d["automatic_setup"], "Example DNS", "{d}");
+    assert_eq!(d["records"][0]["host"], "resend._domainkey");
+    assert!(h.world.lock().unwrap().verify_calls.len() >= 2);
     assert_eq!(d["dmarc_record"]["value"], "v=DMARC1; p=none;");
     assert_eq!(d["dmarc_record"]["name"], "_dmarc.acme.test");
     assert!(d["checked_at"].is_string());
@@ -398,7 +410,14 @@ async fn email_goes_out_from_a_verified_domain(pool: PgPool) {
         .ok()
         .body;
     assert_eq!(asked["status"], "pending");
-    assert_eq!(h.world.lock().unwrap().verify_calls, vec!["d1".to_owned()]);
+    assert!(
+        h.world
+            .lock()
+            .unwrap()
+            .verify_calls
+            .iter()
+            .all(|id| id == "d1")
+    );
     h.check_all().await;
     let d = h.domains(&owner).await["domains"][0].clone();
     assert_eq!(d["status"], "verified", "{d}");
@@ -409,6 +428,32 @@ async fn email_goes_out_from_a_verified_domain(pool: PgPool) {
     assert!(d["dmarc_record"].is_null());
     assert!(d["remove_after"].is_null());
     assert!(d["automatic_setup"].is_null());
+
+    // Choosing a second domain that is not verified yet would stop the
+    // first sending for nothing, so it waits until it is verified.
+    let beta = h
+        .app
+        .post("/api/v1/inbox/domains")
+        .signed_in(&owner)
+        .json(json!({ "domain": "beta.test" }))
+        .send()
+        .await
+        .ok()
+        .id("/id");
+    h.app
+        .patch(&format!("/api/v1/inbox/domains/{beta}"))
+        .signed_in(&owner)
+        .json(json!({ "in_use": true }))
+        .send()
+        .await
+        .expect(StatusCode::CONFLICT, "domain_not_verified");
+    let res = h
+        .app
+        .delete(&format!("/api/v1/inbox/domains/{beta}"))
+        .signed_in(&owner)
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT);
 
     h.app
         .post("/api/v1/invitations")
@@ -453,7 +498,10 @@ async fn email_goes_out_from_a_verified_domain(pool: PgPool) {
         .await;
     assert_eq!(res.status, StatusCode::NO_CONTENT);
     h.drain().await;
-    assert_eq!(h.world.lock().unwrap().deleted, vec!["d1".to_owned()]);
+    assert_eq!(
+        h.world.lock().unwrap().deleted,
+        vec!["d2".to_owned(), "d1".to_owned()]
+    );
     assert_eq!(h.domains(&owner).await["domains"], json!([]));
     h.app
         .post("/api/v1/inbox/domains")
@@ -487,7 +535,7 @@ async fn domains_never_verified_are_removed(pool: PgPool) {
         .await
         .ok()
         .body;
-    h.drain().await;
+    h.check_all().await;
     // No Domain Connect for this one: its records are added by hand.
     let d = &h.domains(&owner).await["domains"][0];
     assert!(d["automatic_setup"].is_null(), "{d}");
@@ -514,4 +562,16 @@ async fn domains_never_verified_are_removed(pool: PgPool) {
             .iter()
             .any(|a| a == "sender_domain.removed")
     );
+
+    // One the provider has lost can only be added again, so it goes at once.
+    h.app
+        .post("/api/v1/inbox/domains")
+        .signed_in(&owner)
+        .json(json!({ "domain": "gone.test" }))
+        .send()
+        .await
+        .ok();
+    h.world.lock().unwrap().domains.clear();
+    h.check_all().await;
+    assert_eq!(h.domains(&owner).await["domains"], json!([]));
 }

@@ -276,6 +276,7 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "fx_rates",
         "integrations",
         "threads",
+        "sender_domains",
     ];
     for table in tables(&app.owner).await {
         let read =
@@ -308,6 +309,9 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "SELECT subject FROM threads",
         "SELECT participants FROM threads",
         "UPDATE threads SET status = 'open'",
+        "SELECT domain FROM sender_domains",
+        "SELECT provider_id FROM sender_domains",
+        "UPDATE sender_domains SET next_check_at = now()",
         "SELECT total_minor FROM invoices",
         "UPDATE invoices SET status = 'paid'",
     ] {

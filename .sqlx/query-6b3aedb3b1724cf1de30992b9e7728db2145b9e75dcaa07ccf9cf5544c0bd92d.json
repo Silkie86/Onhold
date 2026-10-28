@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "DELETE FROM sender_domains WHERE workspace_id = app_workspace_id() RETURNING id, provider_id",
+  "query": "UPDATE sender_domains SET removed_at = now(), in_use = false, next_check_at = NULL\n           WHERE workspace_id = app_workspace_id() AND removed_at IS NULL\n           RETURNING id, provider_id",
   "describe": {
     "columns": [
       {
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "1341e1550b4cbf8ff8877e4e943adb18d0a5b7754c1b4e8c972876bb41531aef"
+  "hash": "6b3aedb3b1724cf1de30992b9e7728db2145b9e75dcaa07ccf9cf5544c0bd92d"
 }

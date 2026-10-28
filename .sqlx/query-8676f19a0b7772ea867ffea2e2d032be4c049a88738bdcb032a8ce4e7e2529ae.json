@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT EXISTS (SELECT 1 FROM sender_domains WHERE workspace_id = app_workspace_id() AND in_use) AS \"any!\"",
+  "query": "SELECT EXISTS (SELECT 1 FROM sender_domains WHERE workspace_id = app_workspace_id() AND in_use AND removed_at IS NULL) AS \"any!\"",
   "describe": {
     "columns": [
       {
@@ -17,5 +17,5 @@
       null
     ]
   },
-  "hash": "f7904fe331d4bdaff9cca7389ee27dccc6b71de873a84c3fe8d789feef76d710"
+  "hash": "8676f19a0b7772ea867ffea2e2d032be4c049a88738bdcb032a8ce4e7e2529ae"
 }
