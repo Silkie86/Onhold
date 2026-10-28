@@ -544,6 +544,7 @@ async fn world(app: &TestApp) -> World {
     let all = json!([
         "workspace:read",
         "workspace:update",
+        "portal:use",
         "member:read",
         "member:invite",
         "member:update",
@@ -726,6 +727,10 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
         ("PATCH", "/api/v1/workspace") => json!({ "name": "Taken over" }),
         ("POST", "/api/v1/workspace/close") => json!({ "confirm_slug": "bravo" }),
         ("PATCH", p) if p.starts_with("/api/v1/members/") => json!({ "role": "viewer" }),
+        ("POST", p) if p.starts_with("/api/v1/talent/") && p.ends_with("/portal") => {
+            json!({ "email": "intruder@alpha.test" })
+        }
+        ("POST", p) if p.starts_with("/api/v1/portal/dates/") => json!({ "answer": "confirmed" }),
         ("POST", "/api/v1/invitations") => {
             json!({ "email": "intruder@alpha.test", "role": "admin" })
         }

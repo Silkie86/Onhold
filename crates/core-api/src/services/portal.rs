@@ -269,22 +269,17 @@ pub struct PortalTalent {
 pub struct PortalHome {
     pub workspace_name: String,
     pub settings: PortalSettings,
-    /// The talent records opened for this person here (usually one).
+    /// The talent records opened for this person here (usually one; none
+    /// once the agency ends their access).
     pub talent: Vec<PortalTalent>,
     /// Dates waiting for their answer.
     pub awaiting_answer: i64,
 }
 
-/// The talent records opened for the signed-in person; refuses when none.
+/// The talent records opened for the signed-in person (none for staff, keys
+/// and anyone whose access ended, who then see an empty portal).
 async fn mine(tx: &mut Tx) -> ApiResult<Vec<(Uuid, String)>> {
-    let mine = core_db::portal::my_talent(tx).await?;
-    if mine.is_empty() {
-        return Err(ApiError::forbidden(
-            "no_portal",
-            "no talent record is open for you in this workspace",
-        ));
-    }
-    Ok(mine)
+    Ok(core_db::portal::my_talent(tx).await?)
 }
 
 pub async fn home(state: &AppState, ctx: &Ctx) -> ApiResult<PortalHome> {
@@ -584,6 +579,7 @@ async fn detail_in(tx: &mut Tx, id: Uuid, s: &PortalSettings) -> ApiResult<Porta
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct AnswerInput {
     /// `confirmed` or `declined`.
+    #[serde(default)]
     pub answer: String,
     /// Which of their talent records answers; needed only when several of
     /// theirs are on the date.
@@ -601,6 +597,11 @@ pub async fn answer(
     input: AnswerInput,
 ) -> ApiResult<PortalDateDetail> {
     ctx.authorize(Permission::PortalUse)?;
+    let mut tx = begin(state, ctx).await?;
+    mine(&mut tx).await?;
+    let s = settings_in(&mut tx).await?;
+    // A date that is not theirs does not exist, whatever the body says.
+    let before = detail_in(&mut tx, id, &s).await?;
     let user = ctx
         .user_id()
         .ok_or_else(|| ApiError::forbidden("person_required", "only the talent can answer"))?;
@@ -611,17 +612,12 @@ pub async fn answer(
     }
     let note = check.optional("note", input.note.as_deref(), 500);
     check.finish()?;
-
-    let mut tx = begin(state, ctx).await?;
-    mine(&mut tx).await?;
-    let s = settings_in(&mut tx).await?;
     if !s.answer_dates {
         return Err(ApiError::forbidden(
             "portal_switched_off",
             "your agency answers dates for you here",
         ));
     }
-    let before = detail_in(&mut tx, id, &s).await?;
     let entry = match input.talent_id {
         Some(t) => before.entries.iter().find(|e| e.talent_id == t),
         None if before.entries.len() == 1 => before.entries.first(),
@@ -691,10 +687,14 @@ pub async fn answer(
     Ok(after)
 }
 
+/// How far ahead the portal lists availability: holidays and tours are
+/// often planned well over a year out.
+const AVAILABILITY_DAYS_AHEAD: i64 = 3 * 366;
+
 /// The talent's availability and busy times from their own calendars.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct PortalAvailability {
-    /// From a month ago to a year ahead.
+    /// From a month ago to three years ahead.
     pub entries: Vec<AvailabilityView>,
     /// Their connected calendars.
     pub calendars: Vec<TalentCalendarView>,
@@ -708,11 +708,17 @@ pub async fn availability(state: &AppState, ctx: &Ctx) -> ApiResult<PortalAvaila
     let ids: Vec<Uuid> = mine(&mut tx).await?.into_iter().map(|(id, _)| id).collect();
     let s = settings_in(&mut tx).await?;
     let from = Utc::now() - Duration::days(31);
-    let entries = core_db::availability::list(&mut tx, &ids, from, from + Duration::days(397), &[])
-        .await?
-        .into_iter()
-        .map(Into::into)
-        .collect();
+    let to = Utc::now() + Duration::days(AVAILABILITY_DAYS_AHEAD);
+    // An empty list would mean every talent's.
+    let entries = if ids.is_empty() {
+        Vec::new()
+    } else {
+        core_db::availability::list(&mut tx, &ids, from, to, &[])
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect()
+    };
     let mut calendars = Vec::new();
     for id in &ids {
         calendars.extend(
@@ -902,11 +908,10 @@ pub async fn money(state: &AppState, ctx: &Ctx) -> ApiResult<Vec<PortalStatement
     ctx.authorize(Permission::PortalUse)?;
     let mut tx = begin(state, ctx).await?;
     mine(&mut tx).await?;
+    // Not shared: nothing to show (the portal hides the page too).
     if !settings_in(&mut tx).await?.show_money {
-        return Err(ApiError::forbidden(
-            "portal_switched_off",
-            "your agency has not shared statements here",
-        ));
+        tx.commit().await?;
+        return Ok(Vec::new());
     }
     let rows = core_db::portal::statements(&mut tx, 200).await?;
     tx.commit().await?;

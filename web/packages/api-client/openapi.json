@@ -26333,9 +26333,6 @@
       },
       "AnswerInput": {
         "type": "object",
-        "required": [
-          "answer"
-        ],
         "properties": {
           "answer": {
             "type": "string",
@@ -35142,7 +35139,7 @@
             "items": {
               "$ref": "#/components/schemas/AvailabilityView"
             },
-            "description": "From a month ago to a year ahead."
+            "description": "From a month ago to three years ahead."
           }
         }
       },
@@ -35370,7 +35367,7 @@
             "items": {
               "$ref": "#/components/schemas/PortalTalent"
             },
-            "description": "The talent records opened for this person here (usually one)."
+            "description": "The talent records opened for this person here (usually one; none\nonce the agency ends their access)."
           },
           "workspace_name": {
             "type": "string"

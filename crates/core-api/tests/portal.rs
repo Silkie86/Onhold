@@ -261,9 +261,8 @@ async fn a_talent_sees_their_own_dates_and_answers_them(pool: PgPool) {
     res.expect(StatusCode::FORBIDDEN, "portal_switched_off");
 
     // Statements stay hidden until the agency shares them.
-    get(&app, &me, "/api/v1/portal/money")
-        .await
-        .expect(StatusCode::FORBIDDEN, "portal_switched_off");
+    let money = get(&app, &me, "/api/v1/portal/money").await.ok();
+    assert_eq!(money.body, json!([]));
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -353,9 +352,10 @@ async fn a_talent_keeps_their_availability_and_access_can_end(pool: PgPool) {
     assert!(access.body["user"].is_null());
 
     // A staff member is never a portal user unless a record is opened for them.
-    get(&app, &owner, "/api/v1/portal")
-        .await
-        .expect(StatusCode::FORBIDDEN, "no_portal");
+    let home = get(&app, &owner, "/api/v1/portal").await.ok();
+    assert_eq!(home.body["talent"], json!([]));
+    let dates = get(&app, &owner, "/api/v1/portal/dates").await.ok();
+    assert_eq!(dates.body, json!([]));
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]

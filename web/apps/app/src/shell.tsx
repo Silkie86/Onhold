@@ -59,11 +59,12 @@ import {
   Sun,
   Workflow,
   X,
+  UserRoundCheck,
   Route as RouteIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { ENTITIES, api, entityByPath, ok, setWorkspace } from "./api.ts";
+import { type ReactNode, Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { ENTITIES, api, currentWorkspace, entityByPath, ok, setWorkspace } from "./api.ts";
 import { OfflineContext, searchEverything, useSyncStatus } from "./data.ts";
 import { claimFor, forgetMailExcept } from "./offline/store.ts";
 import { OfflineSync } from "./offline/sync.ts";
@@ -73,6 +74,9 @@ import { GoTo } from "./go-to.tsx";
 import { useInstallOffer } from "./install.ts";
 import { useSetup } from "./setup.ts";
 import { type Session, SessionContext, useMe, useSessionActions } from "./session.tsx";
+
+// Talent see their portal instead of the staff app; it loads only for them.
+const PortalShell = lazy(() => import("./pages/portal.tsx").then((m) => ({ default: m.PortalShell })));
 
 type NavItem = {
   to: string;
@@ -126,6 +130,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { to: "/settings/setup", label: "Your setup", icon: <ListChecks /> },
       { to: "/settings/branding", label: "Branding", icon: <Palette /> },
+      { to: "/settings/portal", label: "Talent portal", icon: <UserRoundCheck /> },
       { to: "/settings/email", label: "Email accounts", icon: <AtSign />, module: "messaging" },
       { to: "/settings/texts", label: "Text messages", icon: <MessageSquare />, module: "messaging" },
       { to: "/settings/follow-ups", label: "Follow-ups", icon: <BellRing /> },
@@ -247,6 +252,20 @@ export function AppShell() {
         The desktop and mobile apps are not part of your workspace&apos;s plan. You can use OnHold in your browser at{" "}
         {serverUrl() || "your OnHold address"}.
       </div>
+    );
+  }
+  const current = me.data.workspaces.find((w) => w.id === currentWorkspace()) ?? me.data.workspaces[0];
+  if (current?.role === "talent" && !me.data.impersonation) {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex h-dvh items-center justify-center">
+            <Spinner className="size-6" />
+          </div>
+        }
+      >
+        <PortalShell me={me.data} />
+      </Suspense>
     );
   }
   return <SignedIn me={me.data} />;

@@ -308,7 +308,9 @@ export function AcceptInvitationPage() {
     <AuthCard title={`Join ${inv.workspace_name}`} logo={brand?.logo}>
       <form className="flex flex-col gap-4" onSubmit={accept}>
         <p className="text-sm text-muted-foreground">
-          You have been invited as {inv.role === "admin" || inv.role === "agent" ? "an" : "a"} {inv.role}, using {inv.email}.
+          {inv.role === "talent"
+            ? `${inv.workspace_name} invited you to see your dates: times, travel and documents in one place, free. You'll sign in as ${inv.email}.`
+            : `You have been invited as ${inv.role === "admin" || inv.role === "agent" ? "an" : "a"} ${inv.role}, using ${inv.email}.`}
         </p>
         {me.data ? (
           <p className="text-sm">Signed in as {me.data.user.email}.</p>

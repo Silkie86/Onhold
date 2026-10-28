@@ -4759,7 +4759,7 @@ export interface components {
         };
         AnswerInput: {
             /** @description `confirmed` or `declined`. */
-            answer: string;
+            answer?: string;
             /** @description A few words for the agent, e.g. why they cannot do it. */
             note?: string | null;
             /**
@@ -7402,7 +7402,7 @@ export interface components {
             calendars: components["schemas"]["TalentCalendarView"][];
             /** @description Whether they may change it here. */
             can_edit: boolean;
-            /** @description From a month ago to a year ahead. */
+            /** @description From a month ago to three years ahead. */
             entries: components["schemas"]["AvailabilityView"][];
         };
         PortalCalendarLink: {
@@ -7481,7 +7481,10 @@ export interface components {
              */
             awaiting_answer: number;
             settings: components["schemas"]["PortalSettings"];
-            /** @description The talent records opened for this person here (usually one). */
+            /**
+             * @description The talent records opened for this person here (usually one; none
+             *     once the agency ends their access).
+             */
             talent: components["schemas"]["PortalTalent"][];
             workspace_name: string;
         };

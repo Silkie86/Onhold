@@ -2,7 +2,7 @@
 // responses (`/sign-in`, `/auth/magic`, `/auth/mfa`, `/invitations/accept`,
 // `/link-app`, `/crm/<entity>/<id>`, `/quote/<token>`, `/bookings/<id>`,
 // `/enquiries/<id>`, `/tasks`, `/invoice/<token>`, `/sign/<token>`,
-// `/finance/invoices/<id>`, `/documents/<id>`) must keep working.
+// `/finance/invoices/<id>`, `/documents/<id>`, `/portal`) must keep working.
 
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -225,6 +225,31 @@ const sendingDomain = createRoute({
 
 const sync = createRoute({ getParentRoute: () => app, path: "/sync", component: SyncPage });
 
+// The talent portal: what an invited artist sees in place of the staff app.
+const portalPage = () => import("./pages/portal.tsx");
+const portalDates = createRoute({ getParentRoute: () => app, path: "/portal", component: lazyRouteComponent(portalPage, "PortalDatesPage") });
+const portalDate = createRoute({
+  getParentRoute: () => app,
+  path: "/portal/dates/$id",
+  component: lazyRouteComponent(portalPage, "PortalDatePage"),
+});
+const portalAvailability = createRoute({
+  getParentRoute: () => app,
+  path: "/portal/availability",
+  component: lazyRouteComponent(portalPage, "PortalAvailabilityPage"),
+});
+const portalDocuments = createRoute({
+  getParentRoute: () => app,
+  path: "/portal/documents",
+  component: lazyRouteComponent(portalPage, "PortalDocumentsPage"),
+});
+const portalMoney = createRoute({ getParentRoute: () => app, path: "/portal/money", component: lazyRouteComponent(portalPage, "PortalMoneyPage") });
+const portalSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/portal",
+  component: lazyRouteComponent(() => import("./pages/portal-settings.tsx"), "PortalSettingsPage"),
+});
+
 const invoices = createRoute({ getParentRoute: () => app, path: "/finance/invoices", component: InvoicesPage });
 const invoice = createRoute({ getParentRoute: () => app, path: "/finance/invoices/$id", component: InvoicePage });
 const payments = createRoute({ getParentRoute: () => app, path: "/finance/payments", component: PaymentsPage });
@@ -315,6 +340,12 @@ const tree = root.addChildren([
     streamline,
     themeStudio,
     sync,
+    portalDates,
+    portalDate,
+    portalAvailability,
+    portalDocuments,
+    portalMoney,
+    portalSettings,
     invoices,
     invoice,
     payments,
