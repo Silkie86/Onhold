@@ -64,6 +64,7 @@ const SECRET_SEGMENTS_AFTER: &[&str] = &[
     "/public/quotes/",
     "/public/calendar/",
     "/public/calendar-connect/",
+    "/hooks/messaging/",
 ];
 
 /// The request path as it goes into logs, with secret segments replaced.
@@ -256,6 +257,7 @@ fn api_router() -> OpenApiRouter<AppState> {
             .merge(routes::finance::router())
             .merge(routes::stripe::router())
             .merge(routes::inbox::router())
+            .merge(routes::messaging::router())
             .merge(routes::events::router())
             .merge(routes::webhooks::router())
             .merge(routes::jobs::router())

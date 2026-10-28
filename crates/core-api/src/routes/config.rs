@@ -24,8 +24,9 @@ use crate::error::{ApiError, ApiResult, ErrorBody};
 use crate::extract::{IfMatch, WsCtx};
 use crate::services::automation::{ActionResult, DryRun};
 use crate::services::context::Variable;
+use crate::services::follow_ups::{FollowUp, SetFollowUp};
 use crate::services::templates::{Preview, PreviewWith};
-use crate::services::{automation, fields, pipelines, rules, templates};
+use crate::services::{automation, fields, follow_ups, pipelines, rules, templates};
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -43,6 +44,8 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(dry_run_rule))
         .routes(routes!(rule_log))
         .routes(routes!(get_automations, set_automations))
+        .routes(routes!(list_follow_ups))
+        .routes(routes!(set_follow_up))
 }
 
 // Custom fields --------------------------------------------------------------------------
@@ -837,6 +840,31 @@ async fn update_rule(
     };
     let r = rules::update(&state, &ctx, id, patch, if_match).await?;
     Ok(with_etag(r.version, RuleView::from(r)))
+}
+
+/// The ready-made follow-ups and whether each is on.
+#[utoipa::path(get, path = "/follow-ups", tag = "rules", params(WorkspaceHeader),
+    responses((status = 200, body = Vec<FollowUp>)), security(("session" = []), ("api_key" = [])))]
+async fn list_follow_ups(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<Vec<FollowUp>>> {
+    Ok(Json(follow_ups::list(&state, &ctx).await?))
+}
+
+/// Switch a ready-made follow-up on (installing its rules and any missing
+/// templates) or off (deleting its rules; templates stay).
+#[utoipa::path(put, path = "/follow-ups/{key}", tag = "rules", params(WorkspaceHeader, IdempotencyHeader, ("key" = String, Path)),
+    request_body = SetFollowUp,
+    responses((status = 200, body = FollowUp), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn set_follow_up(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(key): Path<String>,
+    Json(b): Json<SetFollowUp>,
+) -> ApiResult<Json<FollowUp>> {
+    Ok(Json(follow_ups::set(&state, &ctx, &key, b.on).await?))
 }
 
 #[utoipa::path(delete, path = "/rules/{id}", tag = "rules", params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path)),

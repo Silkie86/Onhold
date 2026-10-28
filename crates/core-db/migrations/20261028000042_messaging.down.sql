@@ -1,0 +1,14 @@
+DROP INDEX rules_preset;
+ALTER TABLE rules DROP COLUMN preset;
+DROP FUNCTION messaging_channel_for_hook(text);
+DROP INDEX thread_messages_messaging;
+ALTER TABLE thread_messages DROP CONSTRAINT thread_messages_messaging_channel_fk;
+ALTER TABLE thread_messages DROP COLUMN messaging_channel_id;
+DROP INDEX threads_messaging;
+ALTER TABLE threads DROP CONSTRAINT threads_messaging_check;
+ALTER TABLE threads DROP CONSTRAINT threads_messaging_channel_fk;
+ALTER TABLE threads DROP COLUMN messaging_channel_id;
+ALTER TABLE threads DROP CONSTRAINT threads_channel_check;
+ALTER TABLE threads ADD CONSTRAINT threads_channel_check CHECK (channel IN ('email'));
+DROP TABLE messaging_opt_outs;
+DROP TABLE messaging_channels;

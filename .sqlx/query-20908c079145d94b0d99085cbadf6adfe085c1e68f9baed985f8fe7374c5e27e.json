@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT t.id, t.channel, t.integration_id, t.external_id, t.subject, t.contact_id, t.organisation_id,\n                  t.enquiry_id, t.booking_id, t.status, t.snoozed_until, t.assigned_to, t.unread,\n                  t.message_count, t.participants, t.preview, t.last_message_at, t.last_inbound_at,\n                  t.last_outbound_at, t.created_at, t.version\n           FROM threads t\n           LEFT JOIN integrations i ON i.workspace_id = t.workspace_id AND i.id = t.integration_id\n           WHERE t.workspace_id = app_workspace_id() AND t.id = $1\n             AND ($2::uuid IS NULL OR t.integration_id IS NULL OR i.shared OR i.owner_id = $2)",
+  "query": "SELECT t.id, t.channel, t.integration_id, t.messaging_channel_id, t.external_id, t.subject,\n                  t.contact_id, t.organisation_id,\n                  t.enquiry_id, t.booking_id, t.status, t.snoozed_until, t.assigned_to, t.unread,\n                  t.message_count, t.participants, t.preview, t.last_message_at, t.last_inbound_at,\n                  t.last_outbound_at, t.created_at, t.version, count(*) OVER () AS \"total!\"\n           FROM threads t\n           LEFT JOIN integrations i ON i.workspace_id = t.workspace_id AND i.id = t.integration_id\n           WHERE t.workspace_id = app_workspace_id()\n             AND ($1::uuid IS NULL OR t.integration_id IS NULL OR i.shared OR i.owner_id = $1)\n             AND ($2::text IS NULL OR t.status = $2)\n             AND ($3::uuid IS NULL OR t.integration_id = $3)\n             AND ($4::uuid IS NULL OR t.contact_id = $4)\n             AND ($5::uuid IS NULL OR t.organisation_id = $5)\n             AND ($6::uuid IS NULL OR t.enquiry_id = $6)\n             AND ($7::uuid IS NULL OR t.booking_id = $7)\n             AND ($8::uuid IS NULL OR t.assigned_to = $8)\n             AND (NOT $9 OR (t.contact_id IS NULL AND t.enquiry_id IS NULL AND t.booking_id IS NULL))\n             AND (NOT $10 OR t.unread)\n             AND ($11::text IS NULL OR t.search_text LIKE '%' || $11 || '%')\n             AND ($14::text IS NULL OR t.channel = $14)\n           ORDER BY t.last_message_at DESC, t.id DESC\n           OFFSET $12 LIMIT $13",
   "describe": {
     "columns": [
       {
@@ -38,6 +38,17 @@
       },
       {
         "ordinal": 3,
+        "name": "messaging_channel_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "messaging_channel_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "external_id",
         "type_info": "Text",
         "origin": {
@@ -48,7 +59,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "subject",
         "type_info": "Text",
         "origin": {
@@ -59,7 +70,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "contact_id",
         "type_info": "Uuid",
         "origin": {
@@ -70,7 +81,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "organisation_id",
         "type_info": "Uuid",
         "origin": {
@@ -81,7 +92,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "enquiry_id",
         "type_info": "Uuid",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "booking_id",
         "type_info": "Uuid",
         "origin": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "status",
         "type_info": "Text",
         "origin": {
@@ -114,7 +125,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "snoozed_until",
         "type_info": "Timestamptz",
         "origin": {
@@ -125,7 +136,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "assigned_to",
         "type_info": "Uuid",
         "origin": {
@@ -136,7 +147,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "unread",
         "type_info": "Bool",
         "origin": {
@@ -147,7 +158,7 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "message_count",
         "type_info": "Int4",
         "origin": {
@@ -158,7 +169,7 @@
         }
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "participants",
         "type_info": "TextArray",
         "origin": {
@@ -169,7 +180,7 @@
         }
       },
       {
-        "ordinal": 15,
+        "ordinal": 16,
         "name": "preview",
         "type_info": "Text",
         "origin": {
@@ -180,7 +191,7 @@
         }
       },
       {
-        "ordinal": 16,
+        "ordinal": 17,
         "name": "last_message_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -191,7 +202,7 @@
         }
       },
       {
-        "ordinal": 17,
+        "ordinal": 18,
         "name": "last_inbound_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -202,7 +213,7 @@
         }
       },
       {
-        "ordinal": 18,
+        "ordinal": 19,
         "name": "last_outbound_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -213,7 +224,7 @@
         }
       },
       {
-        "ordinal": 19,
+        "ordinal": 20,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -224,7 +235,7 @@
         }
       },
       {
-        "ordinal": 20,
+        "ordinal": 21,
         "name": "version",
         "type_info": "Int8",
         "origin": {
@@ -233,12 +244,30 @@
             "name": "version"
           }
         }
+      },
+      {
+        "ordinal": 22,
+        "name": "total!",
+        "type_info": "Int8",
+        "origin": "Expression"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
-        "Uuid"
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Bool",
+        "Bool",
+        "Text",
+        "Int8",
+        "Int8",
+        "Text"
       ]
     },
     "nullable": [
@@ -251,19 +280,21 @@
       true,
       true,
       true,
-      false,
-      true,
-      true,
-      false,
-      false,
-      false,
       true,
       false,
       true,
       true,
       false,
-      false
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      null
     ]
   },
-  "hash": "470de79d8abe09f2bb6967a266c90b11adef3f7f9b65ea5ea31f1ec5f6dca8c5"
+  "hash": "20908c079145d94b0d99085cbadf6adfe085c1e68f9baed985f8fe7374c5e27e"
 }

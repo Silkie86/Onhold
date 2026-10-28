@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT preset AS \"preset!\", id, enabled FROM rules\n           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL AND preset IS NOT NULL\n           ORDER BY preset",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "preset!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "rules",
+            "name": "preset"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "rules",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "rules",
+            "name": "enabled"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "8bbbd2c542fe5c8bd78603afc75dde351a2238a084f3b31ac40b1d043c9bc6d2"
+}

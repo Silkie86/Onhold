@@ -15,6 +15,10 @@ pub struct Thread {
     pub id: Uuid,
     pub channel: String,
     pub integration_id: Option<Uuid>,
+    /// The workspace's SMS or WhatsApp number it is on.
+    pub messaging_channel_id: Option<Uuid>,
+    /// The provider's conversation id; for SMS and WhatsApp, the other
+    /// side's number.
     pub external_id: Option<String>,
     pub subject: Option<String>,
     pub contact_id: Option<Uuid>,
@@ -41,6 +45,8 @@ pub struct Filter<'a> {
     /// `None` sees every mailbox; else the viewer's own and shared ones.
     pub viewer: Option<UserId>,
     pub status: Option<&'a str>,
+    /// `email`, `sms` or `whatsapp`.
+    pub channel: Option<&'a str>,
     pub integration_id: Option<Uuid>,
     pub contact_id: Option<Uuid>,
     pub organisation_id: Option<Uuid>,
@@ -59,7 +65,8 @@ pub struct Filter<'a> {
 /// Newest activity first.
 pub async fn list(conn: &mut PgConnection, f: Filter<'_>) -> Result<(Vec<Thread>, i64)> {
     let rows = sqlx::query!(
-        r#"SELECT t.id, t.channel, t.integration_id, t.external_id, t.subject, t.contact_id, t.organisation_id,
+        r#"SELECT t.id, t.channel, t.integration_id, t.messaging_channel_id, t.external_id, t.subject,
+                  t.contact_id, t.organisation_id,
                   t.enquiry_id, t.booking_id, t.status, t.snoozed_until, t.assigned_to, t.unread,
                   t.message_count, t.participants, t.preview, t.last_message_at, t.last_inbound_at,
                   t.last_outbound_at, t.created_at, t.version, count(*) OVER () AS "total!"
@@ -77,6 +84,7 @@ pub async fn list(conn: &mut PgConnection, f: Filter<'_>) -> Result<(Vec<Thread>
              AND (NOT $9 OR (t.contact_id IS NULL AND t.enquiry_id IS NULL AND t.booking_id IS NULL))
              AND (NOT $10 OR t.unread)
              AND ($11::text IS NULL OR t.search_text LIKE '%' || $11 || '%')
+             AND ($14::text IS NULL OR t.channel = $14)
            ORDER BY t.last_message_at DESC, t.id DESC
            OFFSET $12 LIMIT $13"#,
         f.viewer.map(|v| v.0),
@@ -91,7 +99,8 @@ pub async fn list(conn: &mut PgConnection, f: Filter<'_>) -> Result<(Vec<Thread>
         f.unread,
         f.q.map(|q| q.to_lowercase().replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")),
         f.offset,
-        f.limit
+        f.limit,
+        f.channel
     )
     .fetch_all(conn)
     .await?;
@@ -102,6 +111,7 @@ pub async fn list(conn: &mut PgConnection, f: Filter<'_>) -> Result<(Vec<Thread>
             id: r.id,
             channel: r.channel,
             integration_id: r.integration_id,
+            messaging_channel_id: r.messaging_channel_id,
             external_id: r.external_id,
             subject: r.subject,
             contact_id: r.contact_id,
@@ -133,7 +143,8 @@ pub async fn get(
 ) -> Result<Option<Thread>> {
     Ok(sqlx::query_as!(
         Thread,
-        r#"SELECT t.id, t.channel, t.integration_id, t.external_id, t.subject, t.contact_id, t.organisation_id,
+        r#"SELECT t.id, t.channel, t.integration_id, t.messaging_channel_id, t.external_id, t.subject,
+                  t.contact_id, t.organisation_id,
                   t.enquiry_id, t.booking_id, t.status, t.snoozed_until, t.assigned_to, t.unread,
                   t.message_count, t.participants, t.preview, t.last_message_at, t.last_inbound_at,
                   t.last_outbound_at, t.created_at, t.version
@@ -713,7 +724,8 @@ pub async fn for_timeline(
 ) -> Result<Vec<Thread>> {
     Ok(sqlx::query_as!(
         Thread,
-        r#"SELECT t.id, t.channel, t.integration_id, t.external_id, t.subject, t.contact_id, t.organisation_id,
+        r#"SELECT t.id, t.channel, t.integration_id, t.messaging_channel_id, t.external_id, t.subject,
+                  t.contact_id, t.organisation_id,
                   t.enquiry_id, t.booking_id, t.status, t.snoozed_until, t.assigned_to, t.unread,
                   t.message_count, t.participants, t.preview, t.last_message_at, t.last_inbound_at,
                   t.last_outbound_at, t.created_at, t.version

@@ -11,7 +11,8 @@
 //! When people are busy comes from their own calendars ([`calendars`]:
 //! Google, Microsoft or an iCal link), and bookings go into members' own
 //! calendars ([`calendar_events`]). A workspace's books are kept in Xero or
-//! QuickBooks ([`accounting`]). Messaging providers follow.
+//! QuickBooks ([`accounting`]), and text messages go through the
+//! workspace's own Twilio and WhatsApp numbers ([`messaging`]).
 
 pub mod accounting;
 pub mod calendar_events;
@@ -25,6 +26,7 @@ pub mod http;
 pub mod imap;
 pub mod mail;
 pub mod mailbox;
+pub mod messaging;
 pub mod oauth;
 pub mod provider;
 pub mod storage;

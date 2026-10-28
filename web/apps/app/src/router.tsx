@@ -259,6 +259,16 @@ const accountingSettings = createRoute({
   }),
   component: lazyRouteComponent(() => import("./pages/accounting-settings.tsx"), "AccountingSettingsPage"),
 });
+const textsSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/texts",
+  component: lazyRouteComponent(() => import("./pages/texts-settings.tsx"), "TextsSettingsPage"),
+});
+const followUpsSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/follow-ups",
+  component: lazyRouteComponent(() => import("./pages/follow-ups-settings.tsx"), "FollowUpsSettingsPage"),
+});
 const financeSettings = createRoute({
   getParentRoute: () => app,
   path: "/settings/finance",
@@ -297,6 +307,8 @@ const tree = root.addChildren([
     pipelines,
     calendarSettings,
     accountingSettings,
+    textsSettings,
+    followUpsSettings,
     sendingDomain,
     brandingSettings,
     setupSettings,

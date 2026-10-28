@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO messaging_channels (id, workspace_id, kind, provider, sender, account_id, display_name,\n                                           secret, hook_token, connected_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, left($6, 200), $7, $8, $9)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bytea",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6a79028cd7e47b081f941fb8a7b031d94dd2ff00b4d912c4cb71e39eebef2fdc"
+}

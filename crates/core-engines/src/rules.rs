@@ -102,6 +102,34 @@ pub enum Action {
     /// Change the booking's status (`confirmed`, `completed`…), with the same
     /// checks as a person doing it.
     SetBookingStatus { status: String },
+    /// Text a contact from an SMS template, on the workspace's SMS number:
+    /// only contacts who agreed to texts and have not texted STOP.
+    SendSms {
+        template: String,
+        /// Where the contact's id is, e.g. `booking.contact_id`. Default:
+        /// the contact the record is with.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to: Option<String>,
+    },
+    /// Send a contact an approved WhatsApp template, on the workspace's
+    /// WhatsApp number, on the same terms as [`Action::SendSms`].
+    SendWhatsapp {
+        template: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to: Option<String>,
+    },
+}
+
+/// Where the contact a record is with is, by entity: what a text goes to
+/// when a rule names no other.
+pub fn default_contact_path(entity: &str) -> Option<&'static str> {
+    match entity {
+        "contact" => Some("contact.id"),
+        "enquiry" => Some("enquiry.contact_id"),
+        "booking" => Some("booking.contact_id"),
+        "invoice" => Some("invoice.payer_contact_id"),
+        _ => None,
+    }
 }
 
 /// What a create-invoice action may draft.
@@ -114,7 +142,9 @@ impl Action {
             | Action::MoveStage { .. }
             | Action::GenerateDocument { .. }
             | Action::CreateInvoice { .. }
-            | Action::SetBookingStatus { .. } => true,
+            | Action::SetBookingStatus { .. }
+            | Action::SendSms { .. }
+            | Action::SendWhatsapp { .. } => true,
             Action::SendEmail { to, .. } => matches!(to, Recipient::Field { .. }),
             Action::CallWebhook { .. } | Action::CreateTask { .. } => false,
         }
@@ -135,6 +165,8 @@ pub trait Catalog {
     /// Entities that support date-offset triggers, with their date fields.
     fn date_fields(&self, entity: &str) -> Option<Vec<String>>;
     fn template_exists(&self, key: &str) -> bool;
+    /// Whether there is an `sms` or `whatsapp` template with this key.
+    fn text_template_exists(&self, kind: &str, key: &str) -> bool;
     fn is_valid_timezone(&self, tz: &str) -> bool;
 }
 
@@ -211,7 +243,7 @@ pub fn parse(
         Issue::new(
             "actions",
             format!(
-                "must be a list of send_email, set_field, move_stage, call_webhook or create_task actions ({e})"
+                "must be a list of send_email, send_sms, send_whatsapp, set_field, move_stage, call_webhook or create_task actions ({e})"
             ),
         )
     })?;
@@ -255,6 +287,25 @@ pub fn parse(
                         ));
                     }
                     _ => {}
+                }
+            }
+            Action::SendSms { template, to } | Action::SendWhatsapp { template, to } => {
+                let kind = if matches!(action, Action::SendSms { .. }) {
+                    "sms"
+                } else {
+                    "whatsapp"
+                };
+                if !catalog.text_template_exists(kind, template) {
+                    return Err(Issue::new(
+                        at("template"),
+                        format!("there is no {kind} template `{template}`"),
+                    ));
+                }
+                if to.as_deref().is_some_and(|p| !path::is_valid(p)) {
+                    return Err(Issue::new(
+                        at("to"),
+                        "use a dotted path such as `booking.contact_id`",
+                    ));
                 }
             }
             Action::SetField { field, .. } => {
@@ -335,6 +386,9 @@ mod tests {
         }
         fn template_exists(&self, key: &str) -> bool {
             key == "welcome"
+        }
+        fn text_template_exists(&self, kind: &str, key: &str) -> bool {
+            kind == "sms" && key == "reminder"
         }
         fn is_valid_timezone(&self, tz: &str) -> bool {
             tz.parse::<chrono_tz::Tz>().is_ok()
@@ -466,5 +520,26 @@ mod tests {
             let err = parse_rule(trigger.clone(), actions).expect_err("invalid");
             assert_eq!(err.field, field, "{trigger}: {}", err.message);
         }
+    }
+
+    #[test]
+    fn texts_need_a_template_of_their_kind() {
+        let trigger = json!({ "kind": "event", "topic": "booking.created" });
+        let ok = json!([{ "type": "send_sms", "template": "reminder" }]);
+        parse_rule(trigger.clone(), ok).expect("an SMS template of that key");
+        let wrong = json!([{ "type": "send_whatsapp", "template": "reminder" }]);
+        assert_eq!(
+            parse_rule(trigger.clone(), wrong)
+                .expect_err("no WhatsApp template")
+                .field,
+            "actions[0].template"
+        );
+        let to = json!([{ "type": "send_sms", "template": "reminder", "to": "not a path" }]);
+        assert_eq!(
+            parse_rule(trigger.clone(), to)
+                .expect_err("not a path")
+                .field,
+            "actions[0].to"
+        );
     }
 }

@@ -389,3 +389,48 @@ pub async fn lapsed(
     .fetch_all(conn)
     .await?)
 }
+
+/// When an open quote's date (plus the offset) is reached.
+#[derive(Debug, Clone)]
+pub struct Reached {
+    pub id: Uuid,
+    pub at: DateTime<Utc>,
+}
+
+/// Quotes sent and not yet decided whose `field` (`sent_at`, or the day
+/// `valid_until` begins in `timezone`) plus the offset falls in
+/// (`from`, `to`]: for date-offset rules.
+#[allow(clippy::too_many_arguments)]
+pub async fn date_between(
+    conn: &mut PgConnection,
+    field: &str,
+    timezone: &str,
+    offset_minutes: i64,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+    limit: i64,
+) -> Result<Vec<Reached>> {
+    Ok(sqlx::query_as!(
+        Reached,
+        r#"SELECT id AS "id!", at AS "at!" FROM (
+               SELECT id,
+                      CASE WHEN $1 = 'sent_at' THEN sent_at
+                           ELSE valid_until::timestamp AT TIME ZONE $2
+                      END + make_interval(mins => $3::int) AS at
+               FROM quotes
+               WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                 AND status IN ('sent', 'viewed')
+           ) t
+           WHERE at > $4 AND at <= $5
+           ORDER BY at, id
+           LIMIT $6"#,
+        field,
+        timezone,
+        offset_minutes as i32,
+        from,
+        to,
+        limit
+    )
+    .fetch_all(conn)
+    .await?)
+}

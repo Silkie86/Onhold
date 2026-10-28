@@ -21,6 +21,7 @@ import {
 } from "@onhold/ui";
 import {
   Building2,
+  BellRing,
   BookOpenCheck,
   CalendarCheck,
   CalendarDays,
@@ -31,6 +32,7 @@ import {
   Inbox,
   ListChecks,
   Mail,
+  MessageSquare,
   AtSign,
   CloudOff,
   Download,
@@ -125,6 +127,8 @@ export const NAV: { group: string; items: NavItem[] }[] = [
       { to: "/settings/setup", label: "Your setup", icon: <ListChecks /> },
       { to: "/settings/branding", label: "Branding", icon: <Palette /> },
       { to: "/settings/email", label: "Email accounts", icon: <AtSign />, module: "messaging" },
+      { to: "/settings/texts", label: "Text messages", icon: <MessageSquare />, module: "messaging" },
+      { to: "/settings/follow-ups", label: "Follow-ups", icon: <BellRing /> },
       { to: "/settings/fields", label: "Custom fields", icon: <SlidersHorizontal />, extra: "advanced" },
       { to: "/settings/pipelines", label: "Pipelines", icon: <Workflow />, extra: "advanced" },
       { to: "/settings/calendar", label: "Calendar settings", icon: <CalendarCog />, module: "calendar" },

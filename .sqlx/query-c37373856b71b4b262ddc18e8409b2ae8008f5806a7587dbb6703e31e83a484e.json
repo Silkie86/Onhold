@@ -1,0 +1,184 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, kind, provider, sender, account_id, display_name, secret, hook_token, status,\n                      last_error, last_error_at, connected_by AS \"connected_by: UserId\", connected_at,\n                      disconnected_at\n               FROM messaging_channels\n               WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "provider",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "sender",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "sender"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "account_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "display_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "secret",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "secret"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "hook_token",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "hook_token"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "last_error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "last_error"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "last_error_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "last_error_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "connected_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "connected_by"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "connected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "connected_at"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "disconnected_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "messaging_channels",
+            "name": "disconnected_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "c37373856b71b4b262ddc18e8409b2ae8008f5806a7587dbb6703e31e83a484e"
+}

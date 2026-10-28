@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT opted_out FROM messaging_opt_outs\n           WHERE workspace_id = app_workspace_id() AND kind = $1 AND phone = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "opted_out",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "messaging_opt_outs",
+            "name": "opted_out"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5d1a39b90e66af668471fb589de6ddaa0d50ec49f716466bad42ea823ce0a8cd"
+}

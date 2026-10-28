@@ -67,8 +67,13 @@ impl Kind {
         matches!(self, Kind::Email | Kind::Partial | Kind::Document)
     }
 
+    /// A WhatsApp template's subject names the template approved in
+    /// WhatsApp Manager that it fills in.
     pub fn has_subject(self) -> bool {
-        matches!(self, Kind::Email | Kind::Notification | Kind::Document)
+        matches!(
+            self,
+            Kind::Email | Kind::Notification | Kind::Document | Kind::Whatsapp
+        )
     }
 }
 
@@ -207,6 +212,14 @@ fn environment(
         }
     });
     env.set_loader(move |name| Ok(partials.get(name).cloned()));
+    // A field with no value prints nothing, not "none".
+    env.set_formatter(|out, state, value| {
+        if value.is_none() {
+            Ok(())
+        } else {
+            minijinja::escape_formatter(out, state, value)
+        }
+    });
 
     let locale = opts.locale.clone();
     env.add_filter(
@@ -522,6 +535,18 @@ mod tests {
         )
         .expect("chainable undefined");
         assert_eq!(out.body, "[]");
+        let mut with_null = ctx();
+        with_null["thing"]["custom"]["empty"] = Value::Null;
+        let out = render(
+            Kind::Email,
+            None,
+            "[{{ thing.custom.empty }}]",
+            BTreeMap::new(),
+            &with_null,
+            &opts(),
+        )
+        .expect("renders");
+        assert_eq!(out.body, "[]", "a field with no value prints nothing");
         let missing = missing_variables(
             Kind::Email,
             Some("{{ thing.name }}"),

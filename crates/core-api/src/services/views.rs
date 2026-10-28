@@ -520,12 +520,12 @@ fn core_fields(entity: &str) -> Vec<(Core<'static>, Vec<SelectOption>, Option<&'
                 None,
             ),
             (
-                core("sms_opt_in", "SMS marketing", T::Boolean),
+                core("sms_opt_in", "Agreed to texts", T::Boolean),
                 vec![],
                 None,
             ),
             (
-                core("whatsapp_opt_in", "WhatsApp marketing", T::Boolean),
+                core("whatsapp_opt_in", "Agreed to WhatsApp", T::Boolean),
                 vec![],
                 None,
             ),

@@ -436,11 +436,15 @@ fn core_targets(entity: &str) -> Vec<CoreTarget> {
                 "Email marketing",
                 &["email opt in", "newsletter", "marketing"],
             ),
-            t("sms_opt_in", "SMS marketing", &["sms opt in"]),
+            t(
+                "sms_opt_in",
+                "Agreed to texts",
+                &["sms opt in", "sms marketing"],
+            ),
             t(
                 "whatsapp_opt_in",
-                "WhatsApp marketing",
-                &["whatsapp opt in"],
+                "Agreed to WhatsApp",
+                &["whatsapp opt in", "whatsapp marketing"],
             ),
             NOTES,
             TAGS,
