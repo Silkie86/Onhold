@@ -49,6 +49,23 @@ export const meQuery = {
     try {
       const me = await ok(api.GET("/api/v1/auth/me"));
       setCsrfToken(me.session.csrf_token);
+      const visit = me.impersonation;
+      if (visit) {
+        // OnHold's team visiting a client's workspace: it is the one shown,
+        // with every permission, for as long as the visit lasts. Nothing of
+        // it is kept on the device.
+        setWorkspace(visit.workspace_id);
+        const w = await ok(api.GET("/api/v1/workspace")).catch(() => null);
+        const visited = {
+          id: visit.workspace_id,
+          slug: w?.slug ?? "",
+          name: w?.name ?? "Client workspace",
+          status: w?.status ?? "active",
+          role: "owner" as const,
+          apps_allowed: true,
+        };
+        return { ...me, workspaces: [visited, ...me.workspaces.filter((x) => x.id !== visit.workspace_id)] };
+      }
       const ids = me.workspaces.map((w) => w.id);
       const stored = currentWorkspace();
       if (!stored || !ids.includes(stored)) setWorkspace(ids[0]);

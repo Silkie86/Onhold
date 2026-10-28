@@ -213,6 +213,79 @@ pub struct WorkspacePatch {
     pub hold_days: Option<i32>,
 }
 
+/// Design tokens a theme may set, in light and dark mode.
+pub const THEME_TOKENS: &[&str] = &[
+    "background",
+    "foreground",
+    "card",
+    "muted",
+    "muted-foreground",
+    "border",
+    "input",
+    "ring",
+    "primary",
+    "primary-foreground",
+    "secondary",
+    "secondary-foreground",
+    "accent",
+    "accent-foreground",
+    "destructive",
+    "destructive-foreground",
+];
+
+/// Typefaces a theme may use: system font stacks, so nothing is downloaded.
+pub const THEME_FONTS: &[&str] = &[
+    "default",
+    "system",
+    "humanist",
+    "geometric",
+    "serif",
+    "rounded",
+    "mono",
+];
+
+/// A theme: `light` and `dark` maps of token → hex colour, `font` from
+/// [`THEME_FONTS`] and `radius` in pixels (0 to 24). Nothing else.
+fn validate_theme(theme: &Value) -> ApiResult<()> {
+    let bad = |m: &str| Err(ApiError::invalid("branding", format!("theme: {m}")));
+    let Some(t) = theme.as_object() else {
+        return bad("must be an object");
+    };
+    for (key, value) in t {
+        match key.as_str() {
+            "light" | "dark" => {
+                let Some(tokens) = value.as_object() else {
+                    return bad("light and dark must be objects of colours");
+                };
+                for (token, colour) in tokens {
+                    if !THEME_TOKENS.contains(&token.as_str()) {
+                        return bad(&format!("unknown colour {token}"));
+                    }
+                    if colour
+                        .as_str()
+                        .and_then(core_engines::documents::colour)
+                        .is_none()
+                    {
+                        return bad(&format!("{token} must be a hex colour"));
+                    }
+                }
+            }
+            "font" => {
+                if !value.as_str().is_some_and(|f| THEME_FONTS.contains(&f)) {
+                    return bad(&format!("font must be one of {}", THEME_FONTS.join(", ")));
+                }
+            }
+            "radius" => {
+                if !value.as_u64().is_some_and(|r| r <= 24) {
+                    return bad("radius must be 0 to 24 pixels");
+                }
+            }
+            other => return bad(&format!("unknown setting {other}")),
+        }
+    }
+    Ok(())
+}
+
 pub async fn update_workspace(
     state: &AppState,
     ctx: &Ctx,
@@ -277,10 +350,10 @@ pub async fn update_workspace(
                 field: Some(field),
             });
         }
-        if value.to_string().len() > 16 * 1024 {
+        if value.to_string().len() > 24 * 1024 {
             return Err(ApiError::BadRequest {
                 code: "invalid_input",
-                message: "must be under 16 KiB".into(),
+                message: "must be under 24 KiB".into(),
                 field: Some(field),
             });
         }
@@ -307,6 +380,29 @@ pub async fn update_workspace(
                 "branding",
                 "logo must be a PNG, JPEG, GIF, WebP or SVG image as a base64 data URI",
             ));
+        }
+    }
+    // The full theme is OnHold's to set (at onboarding, or visiting the
+    // workspace later); members keep it as it is.
+    if branding.get("theme") != before.branding.get("theme") {
+        let operator = match ctx.user_id() {
+            Some(id) if ctx.impersonator().is_some() => Some(id),
+            Some(id) => core_db::users::get(&mut tx, id)
+                .await?
+                .filter(|u| u.is_superadmin && u.totp_enabled_at.is_some())
+                .map(|u| u.id),
+            None => None,
+        };
+        if operator.is_none() {
+            return Err(ApiError::forbidden(
+                "theme_is_operator_only",
+                "only OnHold's team can change the full theme; use the logo, name and brand colour instead",
+            ));
+        }
+        if let Some(theme) = branding.get("theme")
+            && !theme.is_null()
+        {
+            validate_theme(theme)?;
         }
     }
     // An uploaded logo is kept for as long as the branding uses it.

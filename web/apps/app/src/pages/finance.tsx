@@ -21,7 +21,7 @@ import {
   NativeSelect,
   Spinner,
   Textarea,
-  applyBrandColour,
+  applyBrandTheme,
   readBranding,
   cn,
   formatMoney,
@@ -1483,7 +1483,7 @@ export function PublicInvoicePage() {
     refetchInterval: (q) => (waiting && q.state.data && q.state.data.outstanding.minor > 0 ? 5000 : false),
   });
   useEffect(() => {
-    if (invoice.data) applyBrandColour(readBranding(invoice.data.branding).colour);
+    if (invoice.data) applyBrandTheme(readBranding(invoice.data.branding));
     if (invoice.data) document.title = `${invoice.data.kind === "credit_note" ? "Credit note" : "Invoice"} ${invoice.data.reference} · ${invoice.data.workspace_name}`;
   }, [invoice.data]);
   if (invoice.isPending) {

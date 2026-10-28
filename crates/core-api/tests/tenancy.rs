@@ -588,8 +588,8 @@ async fn branding_takes_a_colour_and_a_logo(pool: PgPool) {
         .ok();
     assert!(res.body["branding"]["logo"].is_null());
 
-    // Too big for the branding (16 KiB).
-    let big = format!("data:image/png;base64,{}", "A".repeat(20_000));
+    // Too big for the branding (24 KiB).
+    let big = format!("data:image/png;base64,{}", "A".repeat(30_000));
     app.patch("/api/v1/workspace")
         .signed_in(&owner)
         .json(json!({ "branding": { "logo": big } }))
@@ -1292,4 +1292,69 @@ async fn ordinary_users_cannot_impersonate(pool: PgPool) {
         .send()
         .await
         .expect(StatusCode::FORBIDDEN, "superadmin_required");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn the_full_theme_is_for_operators_only(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (customer, owner) = app.workspace_with_owner("acme").await;
+    let theme = json!({ "light": { "primary": "#c0392b", "background": "#fffaf5" },
+                        "dark": { "primary": "#f1948a" }, "font": "serif", "radius": 12 });
+
+    // The workspace's own owner sets the basics, but not the theme.
+    app.patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "primary_color": "#c0392b", "theme": theme } }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "theme_is_operator_only");
+
+    // OnHold's team, visiting the workspace, does.
+    let ops = operator(&app).await;
+    app.post("/api/v1/admin/impersonation")
+        .signed_in(&ops)
+        .json(json!({ "workspace_id": customer, "reason": "onboarding: theme" }))
+        .send()
+        .await
+        .ok();
+    let in_customer = ops.clone().in_workspace(customer);
+    for bad in [
+        json!({ "light": { "primary": "red" } }),
+        json!({ "light": { "sidebar": "#ffffff" } }),
+        json!({ "font": "Comic Sans" }),
+        json!({ "radius": 99 }),
+        json!({ "script": "x" }),
+    ] {
+        let res = app
+            .patch("/api/v1/workspace")
+            .signed_in(&in_customer)
+            .json(json!({ "branding": { "theme": bad } }))
+            .send()
+            .await;
+        assert_eq!(res.status, StatusCode::BAD_REQUEST, "{bad} → {}", res.body);
+    }
+    let res = app
+        .patch("/api/v1/workspace")
+        .signed_in(&in_customer)
+        .json(json!({ "branding": { "theme": theme } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(res.body["branding"]["theme"]["font"], "serif");
+
+    // Members can still change the basics; the theme stays as it is.
+    let res = app
+        .patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "primary_color": "#123456", "theme": theme } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(res.body["branding"]["theme"]["radius"], 12);
+    app.patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "primary_color": "#123456" } }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "theme_is_operator_only");
 }

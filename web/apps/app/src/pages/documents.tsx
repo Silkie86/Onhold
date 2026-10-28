@@ -7,7 +7,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import type { Schemas } from "@onhold/api-client";
-import { Alert, Badge, Button, Card, Checkbox, Dialog, Input, Label, NativeSelect, Spinner, Textarea, applyBrandColour, readBranding, cn, formatMoney } from "@onhold/ui";
+import { Alert, Badge, Button, Card, Checkbox, Dialog, Input, Label, NativeSelect, Spinner, Textarea, applyBrandTheme, readBranding, cn, formatMoney } from "@onhold/ui";
 import { Download, FilePlus2, FileSignature, FileUp, PackageOpen, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
@@ -850,7 +850,7 @@ export function PublicSigningPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (page.data) applyBrandColour(readBranding(page.data.branding).colour);
+    if (page.data) applyBrandTheme(readBranding(page.data.branding));
     if (page.data) {
       document.title = `${page.data.document_title} · ${page.data.workspace_name}`;
       setName((n) => n || page.data.signer_name);

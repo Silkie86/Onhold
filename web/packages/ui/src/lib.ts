@@ -78,25 +78,108 @@ export function darkBrandColour(hex: string): string | null {
 
 const STYLE_ID = "onhold-brand";
 
+/** Design tokens a full theme may set (the server allows the same). */
+export const THEME_TOKENS = [
+  "background",
+  "foreground",
+  "card",
+  "muted",
+  "muted-foreground",
+  "border",
+  "input",
+  "ring",
+  "primary",
+  "primary-foreground",
+  "secondary",
+  "secondary-foreground",
+  "accent",
+  "accent-foreground",
+  "destructive",
+  "destructive-foreground",
+] as const;
+export type ThemeToken = (typeof THEME_TOKENS)[number];
+
+/** Typefaces a theme may use: system font stacks, so nothing is downloaded. */
+export const THEME_FONTS = {
+  default: '"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  system: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  humanist: 'Seravek, "Gill Sans Nova", Ubuntu, Calibri, "DejaVu Sans", source-sans-pro, sans-serif',
+  geometric: 'Avenir, Montserrat, Corbel, "URW Gothic", source-sans-pro, sans-serif',
+  serif: 'Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif',
+  rounded: 'ui-rounded, "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, Manjari, "Arial Rounded MT", Calibri, sans-serif',
+  mono: 'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace',
+} as const;
+export type ThemeFont = keyof typeof THEME_FONTS;
+
+/** A full theme, set by OnHold's team: colours per mode, a typeface and a corner radius. */
+export interface BrandTheme {
+  light?: Partial<Record<ThemeToken, string>>;
+  dark?: Partial<Record<ThemeToken, string>>;
+  font?: ThemeFont;
+  radius?: number;
+}
+
+/** The theme's valid parts only. */
+export function readTheme(value: unknown): BrandTheme | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const colours = (m: unknown) => {
+    const out: Partial<Record<ThemeToken, string>> = {};
+    if (m && typeof m === "object") {
+      for (const t of THEME_TOKENS) {
+        const c = hexColour((m as Record<string, unknown>)[t]);
+        if (c) out[t] = c;
+      }
+    }
+    return out;
+  };
+  const theme: BrandTheme = { light: colours(v.light), dark: colours(v.dark) };
+  if (typeof v.font === "string" && v.font in THEME_FONTS) theme.font = v.font as ThemeFont;
+  if (typeof v.radius === "number" && v.radius >= 0 && v.radius <= 24) theme.radius = Math.round(v.radius);
+  return theme;
+}
+
 /**
- * Colours the app in a brand colour, in light and dark mode alike: a style
- * element rather than inline styles, so the dark theme gets its own, lighter
- * shade and stays readable.
+ * Puts a workspace's look on the page, in light and dark mode alike: its
+ * brand colour, then any full theme on top. A style element rather than
+ * inline styles, so the dark theme gets its own shades and stays readable.
  */
-export function applyBrandColour(hex: string | null, doc: Document = document) {
+export function applyBrandTheme(look: { colour: string | null; theme?: BrandTheme | null }, doc: Document = document) {
   doc.getElementById(STYLE_ID)?.remove();
-  const light = hex ? brandColours(hex) : {};
-  const dark = hex ? darkBrandColour(hex) : null;
-  if (!light.primary || !dark) return;
-  const tokens = (b: Branding) =>
+  const light: Record<string, string> = { ...(look.colour ? brandColours(look.colour) : {}) };
+  const darkColour = look.colour ? darkBrandColour(look.colour) : null;
+  const dark: Record<string, string> = { ...(darkColour ? brandColours(darkColour) : {}) };
+  const t = look.theme;
+  Object.assign(light, t?.light ?? {});
+  Object.assign(dark, t?.dark ?? {});
+  const shared: Record<string, string> = {};
+  if (t?.font) shared["font-sans"] = THEME_FONTS[t.font];
+  if (t?.radius !== undefined) shared.radius = `${t.radius}px`;
+  if (!Object.keys(light).length && !Object.keys(dark).length && !Object.keys(shared).length) return;
+  const tokens = (b: Record<string, string>) =>
     Object.entries(b)
       .map(([k, v]) => `--${k}: ${v};`)
       .join(" ");
-  const darkTokens = tokens(brandColours(dark));
   const style = doc.createElement("style");
   style.id = STYLE_ID;
-  style.textContent = `:root { ${tokens(light)} } @media (prefers-color-scheme: dark) { :root:not(.light) { ${darkTokens} } } :root.dark { ${darkTokens} }`;
+  // Light colours only where the page is light, so a token set for light
+  // alone never shows in dark mode; dark ones as styles.css switches.
+  style.textContent =
+    `:root { ${tokens(shared)} } :root.light { ${tokens(light)} } @media (prefers-color-scheme: light) { :root:not(.dark) { ${tokens(light)} } } ` +
+    `@media (prefers-color-scheme: dark) { :root:not(.light) { ${tokens(dark)} } } :root.dark { ${tokens(dark)} }`;
   doc.head.appendChild(style);
+}
+
+/** Colours the page in a brand colour (see `applyBrandTheme`). */
+export function applyBrandColour(hex: string | null, doc: Document = document) {
+  applyBrandTheme({ colour: hex }, doc);
+}
+
+/** Contrast ratio of two hex colours, 1 to 21. */
+export function contrastRatio(a: string, b: string): number {
+  const x = hexColour(a);
+  const y = hexColour(b);
+  return x && y ? contrast(luminance(x), luminance(y)) : 1;
 }
 
 /** A logo the page may show: an image data URI only. */
@@ -104,10 +187,10 @@ export function logoSource(value: unknown): string | null {
   return typeof value === "string" && /^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(value) ? value : null;
 }
 
-/** A workspace's stored branding: its logo and brand colour, if valid. */
-export function readBranding(branding: unknown): { logo: string | null; colour: string | null } {
+/** A workspace's stored branding: its logo, brand colour and full theme, if valid. */
+export function readBranding(branding: unknown): { logo: string | null; colour: string | null; theme: BrandTheme | null } {
   const b = (branding && typeof branding === "object" ? branding : {}) as Record<string, unknown>;
-  return { logo: logoSource(b.logo), colour: hexColour(b.primary_color) ?? hexColour(b.primary) };
+  return { logo: logoSource(b.logo), colour: hexColour(b.primary_color) ?? hexColour(b.primary), theme: readTheme(b.theme) };
 }
 
 export type Theme = "light" | "dark" | "system";
