@@ -238,7 +238,14 @@ export function fetchThread(sync: OfflineSync | null, id: string): Promise<Fetch
  * there is one. A reply to a conversation that already has one waiting
  * queues behind it, so they arrive in order.
  */
-export async function sendReply(sync: OfflineSync | null, threadId: string, body: string, label: string): Promise<{ queued: boolean }> {
+export async function sendReply(
+  sync: OfflineSync | null,
+  threadId: string,
+  body: string,
+  label: string,
+  /** Who the writer saw it would go to; a reply that waits is sent to them. */
+  to: string[],
+): Promise<{ queued: boolean }> {
   const send = (headers: Record<string, string>) =>
     ok(api.POST("/api/v1/inbox/threads/{id}/reply", { params: { path: { id: threadId } }, headers, body: { body } }));
   if (!sync) {
@@ -257,7 +264,9 @@ export async function sendReply(sync: OfflineSync | null, threadId: string, body
       // It may have arrived: it goes again with the same key, which the server recognises.
     }
   }
-  await sync.queueReply(threadId, { body }, label, key, sent);
+  // Sent once already, it goes again exactly as it was; otherwise it names
+  // who it is for, as the conversation may have moved on by the time it goes.
+  await sync.queueReply(threadId, sent || to.length === 0 ? { body } : { body, to }, label, key, sent);
   return { queued: true };
 }
 

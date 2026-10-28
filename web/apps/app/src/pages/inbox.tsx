@@ -39,7 +39,7 @@ import {
   sendReply,
   useOffline,
 } from "../data.ts";
-import type { KeptDetail } from "../offline/mail.ts";
+import { type KeptDetail, replyRecipients } from "../offline/mail.ts";
 import { isNetworkError } from "../offline/sync.ts";
 import { useSession } from "../session.tsx";
 import { saveDownload } from "./finance.tsx";
@@ -483,6 +483,7 @@ export function ThreadPane({ id, onBack }: { id: string; onBack?: () => void }) 
             <Card className="flex flex-col gap-2 border-primary/30 bg-primary/5 p-4 text-sm">
               <div className="flex flex-wrap items-baseline gap-2">
                 <span className="font-medium">You</span>
+                {Array.isArray(w.body.to) && <span className="text-muted-foreground">to {(w.body.to as string[]).join(", ")}</span>}
                 <Badge className="border">{w.state === "pending" ? "Waiting for a connection" : "Not sent"}</Badge>
                 <span className="ml-auto text-xs text-muted-foreground">{relativeTime(w.createdAt)}</span>
               </div>
@@ -499,7 +500,7 @@ export function ThreadPane({ id, onBack }: { id: string; onBack?: () => void }) 
           </li>
         ))}
       </ol>
-      {canWrite && <ReplyBox thread={thread} mailbox={mailbox ?? null} />}
+      {canWrite && <ReplyBox thread={thread} mailbox={mailbox ?? null} to={replyRecipients(messages)} />}
       {making && (
         <MakeEnquiryDialog
           thread={thread}
@@ -723,7 +724,7 @@ function MessageCard({ threadId, message: m, offline }: { threadId: string; mess
   );
 }
 
-function ReplyBox({ thread, mailbox }: { thread: ThreadView; mailbox: string | null }) {
+function ReplyBox({ thread, mailbox, to }: { thread: ThreadView; mailbox: string | null; to: string[] }) {
   const qc = useQueryClient();
   const sync = useOffline();
   const [body, setBody] = useState("");
@@ -735,7 +736,7 @@ function ReplyBox({ thread, mailbox }: { thread: ThreadView; mailbox: string | n
     setError(null);
     setNotice(null);
     try {
-      const { queued } = await sendReply(sync, thread.id, body, `Reply: ${thread.subject ?? "(no subject)"}`);
+      const { queued } = await sendReply(sync, thread.id, body, `Reply: ${thread.subject ?? "(no subject)"}`, to);
       setBody("");
       if (queued) {
         setNotice("Saved on this device. It sends when you are back online.");

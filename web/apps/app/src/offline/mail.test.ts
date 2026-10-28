@@ -10,15 +10,27 @@ import {
   type ThreadView,
   localThreads,
   overflow,
+  replyRecipients,
   trimDetail,
   withoutQuote,
 } from "./mail.ts";
-import { allMail, getMeta, keepMailKey, outbox, setMeta, wipe, wipeAllButQueue } from "./store.ts";
+import {
+  allMail,
+  forgetMailExcept,
+  getMeta,
+  keepMailKey,
+  outbox,
+  putMail,
+  setMeta,
+  wipe,
+  wipeAllButQueue,
+} from "./store.ts";
 import { OfflineSync } from "./sync.ts";
 
 interface Seen {
   method: string;
   path: string;
+  query: URLSearchParams;
   key: string | null;
   body: unknown;
 }
@@ -37,6 +49,7 @@ vi.mock("../api.ts", async (original) => {
     server.seen.push({
       method: input.method,
       path: url.pathname,
+      query: url.searchParams,
       key: input.headers.get("Idempotency-Key"),
       body: text ? JSON.parse(text) : undefined,
     });
@@ -89,6 +102,7 @@ function message(id: string, text: string, fields: Partial<ThreadDetail["message
     from_name: "Ada",
     to: ["me@example.com"],
     cc: [],
+    reply_to: null,
     subject: null,
     text,
     html: `<p>${text}</p>`,
@@ -213,7 +227,7 @@ describe("what a message keeps", () => {
     const now = Date.now();
     const big = MAIL_MAX_BYTES / 2 - 10;
     const t = (id: string, days: number, bytes: number) => ({ ws: "w1", id, detail: {}, at: ago(days), version: 1, bytes });
-    expect(overflow([t("old", 15, 10), t("a", 1, big), t("b", 3, big), t("c", 2, big), t("new", 0, 10)], now).sort()).toEqual(["b", "old"]);
+    expect(overflow([t("old", 15, 10), t("a", 1, big), t("b", 3, big), t("c", 2, big), t("new", 0, 10)], now).map((r) => r.id).sort()).toEqual(["b", "old"]);
   });
 
   it("filters kept conversations the way the API does", () => {
@@ -229,6 +243,20 @@ describe("what a message keeps", () => {
     expect(localThreads(list, { contact_id: "c1" }).items.map((t) => t.id)).toEqual(["b"]);
     expect(localThreads(list, { q: "LEEDS" }).items.map((t) => t.id)).toEqual(["a"]);
     expect(localThreads(list, { q: "grace" }).items.map((t) => t.id)).toEqual(["c"]);
+  });
+});
+
+describe("who a reply goes to", () => {
+  it("is whoever wrote last from outside, where they asked answers to go", () => {
+    expect(
+      replyRecipients([
+        message("1", "a", { from_address: "ada@example.com" }),
+        message("2", "b", { from_address: "bookings@site.example", reply_to: "bea@example.com" }),
+        message("3", "c", { direction: "outbound", to: ["bea@example.com"] }),
+        message("4", "Out of office", { from_address: "carl@example.com", automatic: true }),
+      ]),
+    ).toEqual(["bea@example.com"]);
+    expect(replyRecipients([message("1", "a", { direction: "outbound", to: ["dan@example.com"] })])).toEqual(["dan@example.com"]);
   });
 });
 
@@ -291,6 +319,74 @@ describe("keeping recent email", () => {
     await setMeta("w1:mail:listedAt", 1);
     await engine.syncNow();
     expect((await allMail("w1")).map((t) => t.id)).toEqual(["t1"]);
+  });
+
+  it("does not let a refresh still running put mail back once turned off", async () => {
+    const engine = new OfflineSync("w1");
+    await engine.mail.setEnabled(true);
+    await engine.mail.setEnabled(false);
+    const late = { ws: "w1", id: "t1", detail: {}, at: ago(1), version: 1, bytes: 10 };
+    expect(await putMail(late)).toBe(false);
+    expect(await allMail("w1")).toEqual([]);
+  });
+
+  it("reads only what fits when two weeks of email is more than the device keeps", async () => {
+    // About 400 KB each once trimmed: 15 are more than 5 MB.
+    const long = (id: string) => Array.from({ length: 20 }, (_, i) => message(`${id}-${i}`, `${i} ${"x".repeat(19_990)}`));
+    for (let i = 0; i < 15; i++) put(`t${i}`, { last_message_at: ago(i / 2) }, long(`t${i}`));
+    const engine = new OfflineSync("w1");
+    await engine.mail.setEnabled(true);
+    await engine.syncNow();
+    const kept = await allMail("w1");
+    expect(kept.length).toBeLessThan(15);
+    expect(kept.reduce((n, t) => n + t.bytes, 0)).toBeLessThanOrEqual(5 * 1024 * 1024);
+    // The newest are the ones kept, and the list opens offline.
+    expect(kept.map((t) => t.id)).toContain("t0");
+    expect((await engine.mail.list({}))?.total).toBe(kept.length);
+
+    // The next listing does not fetch again what was let go for room.
+    server.seen = [];
+    await setMeta("w1:mail:listedAt", 1);
+    await engine.syncNow();
+    expect(listings()).toBeGreaterThan(0);
+    expect(reads()).toBe(0);
+  });
+
+  it("does not read conversations the feed names that are not in the person's own list", async () => {
+    put("t1");
+    const engine = new OfflineSync("w1");
+    await engine.mail.setEnabled(true);
+    await engine.syncNow();
+    server.seen = [];
+    // A colleague's private conversation: not in this person's list.
+    events.push({ seq: 1, topic: "message.received", object_id: "private" });
+    // And a new one of their own.
+    put("t2");
+    events.push({ seq: 2, topic: "message.received", object_id: "t2" });
+    await engine.syncNow();
+    expect(reads("private")).toBe(0);
+    expect(reads("t2")).toBe(1);
+    expect((await allMail("w1")).map((t) => t.id).sort()).toEqual(["t1", "t2"]);
+  });
+
+  it("asks the feed about conversations only when it keeps email", async () => {
+    const topics = () => server.seen.filter((s) => s.path === "/api/v1/events").at(-1)?.query.get("topics") ?? "";
+    const engine = new OfflineSync("w1");
+    await engine.syncNow();
+    expect(topics()).not.toContain("thread.*");
+    await engine.mail.setEnabled(true);
+    await engine.syncNow();
+    expect(topics()).toContain("thread.*");
+  });
+
+  it("forgets the email of a workspace the person has left", async () => {
+    put("t1");
+    const engine = new OfflineSync("w1");
+    await engine.mail.setEnabled(true);
+    await engine.syncNow();
+    await forgetMailExcept(["w2"]);
+    expect(await allMail("w1")).toEqual([]);
+    expect(await getMeta(keepMailKey("w1"))).toBeUndefined();
   });
 
   it("deletes everything kept when turned off", async () => {

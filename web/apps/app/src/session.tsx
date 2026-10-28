@@ -28,6 +28,19 @@ function remember(me: Me | null) {
   }
 }
 
+/**
+ * Signed out in an ordinary browser tab, which keeps nothing itself: the
+ * website installed on this same computer shares its storage, and its copy
+ * (and any email kept) goes too, so it cannot open offline as the person
+ * who signed out. Not waited for, since an open installed window holds the
+ * database; its unsent changes stay, as when a session expires.
+ */
+function forgetInstalledCopy() {
+  if (IS_APP || !rememberedMe()) return;
+  remember(null);
+  void wipeAllButQueue().catch(() => undefined);
+}
+
 export const meQuery = {
   queryKey: ["me"],
   queryFn: async (): Promise<Me | null> => {
@@ -49,7 +62,7 @@ export const meQuery = {
           // leaves this one. Unsent changes wait for the same person's next sign-in.
           remember(null);
           await wipeAllButQueue().catch(() => undefined);
-        }
+        } else forgetInstalledCopy();
         return null;
       }
       if (KEEPS_OFFLINE_COPY && isNetworkError(e)) {
@@ -99,7 +112,8 @@ export function useSessionActions(me: Me) {
     },
     signOut: async () => {
       if (KEEPS_OFFLINE_COPY) {
-        const waiting = (await Promise.all(me.workspaces.map((w) => outbox(w.id)))).flat().length;
+        const queues = await Promise.all(me.workspaces.map((w) => outbox(w.id))).catch(() => []);
+        const waiting = queues.flat().length;
         const unsent = `${waiting} ${waiting === 1 ? "change has" : "changes have"} not been sent yet and will be lost.`;
         if (waiting > 0 && !window.confirm(`${unsent} Sign out anyway?`)) return;
       }
@@ -109,8 +123,8 @@ export function useSessionActions(me: Me) {
       if (KEEPS_OFFLINE_COPY) {
         remember(null);
         // Nothing of the workspace stays on the device.
-        await wipe();
-      }
+        await wipe().catch(() => undefined);
+      } else forgetInstalledCopy();
       qc.clear();
       window.location.assign("/sign-in");
     },

@@ -8,7 +8,8 @@
 // - In between, the changes feed names the conversations that had news, and
 //   only those are fetched again.
 // - Conversations that fall out of the two weeks, or out of what the person
-//   may see, are deleted from the device.
+//   may see, are deleted from the device, and so is the email of a
+//   workspace the person no longer belongs to.
 //
 // Replies written offline are queued with the other changes (see `sync.ts`).
 
@@ -17,8 +18,10 @@ import { ApiFailure, api, ok } from "../api.ts";
 import {
   type StoredThread,
   allMail,
+  allMailEverywhere,
   clearMail,
   deleteMail,
+  deleteMailRows,
   getMail,
   getMeta,
   keepMailKey,
@@ -39,7 +42,7 @@ export interface KeptDetail extends ThreadDetail {
 
 /** How far back conversations are kept, by their latest message. */
 export const MAIL_DAYS = 14;
-/** The most room the email on a device may take. */
+/** The most room the email on a device may take, for all its workspaces together. */
 export const MAIL_MAX_BYTES = 5 * 1024 * 1024;
 /** The latest messages kept of each conversation… */
 const MESSAGES_PER_THREAD = 20;
@@ -141,21 +144,35 @@ function unsettled(t: StoredThread): boolean {
 
 /**
  * Which kept conversations stay: those in the window, newest first, as many
- * as fit. Returns the ids of the rest.
+ * as fit. Returns the rest.
  */
-export function overflow(threads: StoredThread[], now: number): string[] {
+export function overflow(threads: StoredThread[], now: number): StoredThread[] {
   const cutoff = now - MAIL_DAYS * DAY_MS;
   const sorted = [...threads].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  const drop: string[] = [];
+  const drop: StoredThread[] = [];
   let used = 0;
   for (const t of sorted) {
     if (Date.parse(t.at) < cutoff || used + t.bytes > MAIL_MAX_BYTES) {
-      drop.push(t.id);
+      drop.push(t);
       continue;
     }
     used += t.bytes;
   }
   return drop;
+}
+
+/**
+ * Who a reply goes to by default, worked out from the messages on screen the
+ * way the server does: whoever wrote last from outside (or where they asked
+ * answers to go), else whoever was last written to. A reply that waits on
+ * the device names them, so it cannot go to someone who wrote in meanwhile.
+ */
+export function replyRecipients(messages: ThreadDetail["messages"]): string[] {
+  const latest = [...messages].reverse();
+  const inbound = latest.find((m) => m.direction === "inbound" && !m.automatic);
+  const from = inbound?.reply_to ?? inbound?.from_address;
+  if (from) return [from];
+  return latest.find((m) => m.direction === "outbound")?.to ?? [];
 }
 
 export interface ThreadParams {
@@ -229,10 +246,11 @@ export class MailCopy {
     return (await getMail(this.ws, id))?.detail as KeptDetail | undefined;
   }
 
-  /** The kept conversations a list would show; undefined when nothing is kept. */
+  /** The kept conversations a list would show; undefined when nothing is kept yet. */
   async list(p: ThreadParams): Promise<{ items: ThreadView[]; total: number } | undefined> {
-    if (!(await this.enabled()) || !(await getMeta<number>(listedKey(this.ws)))) return undefined;
+    if (!(await this.enabled())) return undefined;
     const all = await allMail(this.ws);
+    if (!all.length && !(await getMeta<number>(listedKey(this.ws)))) return undefined;
     return localThreads(
       all.map((t) => (t.detail as KeptDetail).thread),
       p,
@@ -241,46 +259,55 @@ export class MailCopy {
 
   /** Keeps a conversation the person just opened, when it is one the device keeps. */
   async remember(detail: ThreadDetail, now = Date.now()): Promise<void> {
-    if (!(await this.enabled())) return;
     if (Date.parse(detail.thread.last_message_at) < now - MAIL_DAYS * DAY_MS) return;
-    await putMail(storedThread(this.ws, detail));
-    await this.fit(now);
-  }
-
-  /** Reads one conversation again, after a reply to it went. */
-  async reread(id: string): Promise<void> {
-    if (await this.enabled()) await this.refresh(new Set([id]));
+    if (await putMail(storedThread(this.ws, detail))) await this.fit(now);
   }
 
   /**
    * Brings the kept email up to date: the whole list when it is due, and
-   * the conversations in `touched` (named by the changes feed). Returns
-   * true when anything changed.
+   * the conversations in `touched` (named by the changes feed). Ids it has
+   * dealt with are taken out of `touched`; the rest wait for the next run.
+   * Returns true when anything changed.
    */
   async refresh(touched: Set<string>, now = Date.now()): Promise<boolean> {
-    if (!(await this.enabled())) return false;
+    if (!(await this.enabled())) {
+      touched.clear();
+      return false;
+    }
     const stored = new Map((await allMail(this.ws)).map((t) => [t.id, t]));
     const cutoff = now - MAIL_DAYS * DAY_MS;
     const due = now - ((await getMeta<number>(listedKey(this.ws))) ?? 0) > LIST_EVERY_MS;
+    // Conversations the feed names that are not kept yet may be a colleague's
+    // private ones, or old ones: only those in the person's own list are read.
+    const unknown = [...touched].filter((id) => !stored.has(id));
+    for (const id of unknown) touched.delete(id);
     const toRead = new Set<string>();
     let changed = false;
-    if (due) {
-      const listed = await this.recent(cutoff);
+    if (due || unknown.length) {
+      const listed = await this.recent(cutoff, due ? MAX_THREADS : PAGE);
       if (listed === null) {
         // No longer allowed to read the inbox.
         await clearMail(this.ws);
         await setMeta(listedKey(this.ws), now);
+        touched.clear();
         return stored.size > 0;
       }
-      const seen = new Set(listed.map((t) => t.id));
-      const missing = [...stored.keys()].filter((id) => !seen.has(id));
-      if (missing.length) {
-        await deleteMail(this.ws, missing);
-        for (const id of missing) stored.delete(id);
-        changed = true;
+      if (due) {
+        const seen = new Set(listed.map((t) => t.id));
+        const missing = [...stored.keys()].filter((id) => !seen.has(id));
+        if (missing.length) {
+          await deleteMail(this.ws, missing);
+          for (const id of missing) stored.delete(id);
+          changed = true;
+        }
       }
+      // Newest first, only as many as fit: the rest would be let go again straight away.
+      const average = stored.size ? [...stored.values()].reduce((n, t) => n + t.bytes, 0) / stored.size : 8 * 1024;
+      let room = MAIL_MAX_BYTES;
       for (const t of listed) {
         const s = stored.get(t.id);
+        room -= s?.bytes ?? average;
+        if (room < 0) break;
         if (!s || s.version !== t.version) toRead.add(t.id);
       }
     }
@@ -295,7 +322,11 @@ export class MailCopy {
       try {
         const detail = await ok(api.GET("/api/v1/inbox/threads/{id}", { ...this.req(), params: { path: { id } } }));
         if (Date.parse(detail.thread.last_message_at) >= cutoff) {
-          await putMail(storedThread(this.ws, detail));
+          // Not written if the person turned it off meanwhile.
+          if (!(await putMail(storedThread(this.ws, detail)))) {
+            touched.clear();
+            return true;
+          }
           changed = true;
         } else if (stored.has(id)) {
           await deleteMail(this.ws, [id]);
@@ -308,23 +339,29 @@ export class MailCopy {
           changed = true;
         }
       }
+      touched.delete(id);
     }
-    // Listed again on the next run until every conversation has been read.
-    if (due && reads === toRead.size) await setMeta(listedKey(this.ws), now);
-    return (await this.fit(now)) || changed;
+    const dropped = await this.fit(now);
+    // Listed again on the next run until every conversation that fits has been read.
+    if (due && (reads === toRead.size || dropped)) await setMeta(listedKey(this.ws), now);
+    return dropped || changed;
   }
 
-  /** Lets go of what is too old, or does not fit. */
+  /**
+   * Lets go of what is too old, or does not fit. The limit is for the whole
+   * device, so email kept for several workspaces shares it, and the window
+   * applies to a workspace not open just now too.
+   */
   private async fit(now: number): Promise<boolean> {
-    const drop = overflow(await allMail(this.ws), now);
-    if (drop.length) await deleteMail(this.ws, drop);
-    return drop.length > 0;
+    const drop = overflow(await allMailEverywhere(), now);
+    if (drop.length) await deleteMailRows(drop);
+    return drop.some((t) => t.ws === this.ws);
   }
 
   /** The conversations with news in the window, newest first; null when the inbox is not this person's to read. */
-  private async recent(cutoff: number): Promise<ThreadView[] | null> {
+  private async recent(cutoff: number, max: number): Promise<ThreadView[] | null> {
     const found: ThreadView[] = [];
-    for (let offset = 0; found.length < MAX_THREADS; offset += PAGE) {
+    for (let offset = 0; found.length < max; offset += PAGE) {
       let page;
       try {
         page = await ok(api.GET("/api/v1/inbox/threads", { ...this.req(), params: { query: { offset, limit: PAGE } } }));
@@ -336,6 +373,6 @@ export class MailCopy {
       found.push(...recent);
       if (recent.length < page.items.length || page.items.length < PAGE) break;
     }
-    return found.slice(0, MAX_THREADS);
+    return found.slice(0, max);
   }
 }

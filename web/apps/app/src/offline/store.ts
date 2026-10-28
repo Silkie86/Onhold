@@ -82,10 +82,21 @@ interface OfflineDb extends DBSchema {
 }
 
 const DB_NAME = "onhold-offline";
+/** How long to wait for another window of the app to let go of an older version of the database. */
+const OPEN_WAIT_MS = 10_000;
 let opened: Promise<IDBPDatabase<OfflineDb>> | null = null;
 
 function db(): Promise<IDBPDatabase<OfflineDb>> {
-  opened ??= openDB<OfflineDb>(DB_NAME, 2, {
+  if (opened) return opened;
+  const opening = openDB<OfflineDb>(DB_NAME, 2, {
+    // A newer version of the app opened in another window: make way for it.
+    blocking() {
+      void opening.then((d) => d.close());
+      if (opened === attempt) opened = null;
+    },
+    terminated() {
+      if (opened === attempt) opened = null;
+    },
     upgrade(d, oldVersion) {
       if (oldVersion < 1) {
         const records = d.createObjectStore("records", { keyPath: ["ws", "entity", "id"] });
@@ -100,7 +111,24 @@ function db(): Promise<IDBPDatabase<OfflineDb>> {
       }
     },
   });
-  return opened;
+  // An older version open in another window may hold the upgrade up: rather
+  // than wait for ever (and with it signing out), give up and try again later.
+  const attempt: Promise<IDBPDatabase<OfflineDb>> = withWait(opening);
+  attempt.catch(() => {
+    if (opened === attempt) opened = null;
+    void opening.then((d) => d.close()).catch(() => undefined);
+  });
+  opened = attempt;
+  return attempt;
+}
+
+/** `p`, or a failure once another window has held it up for too long. */
+function withWait<T>(p: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const wait = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new DOMException("another window holds the offline copy", "TimeoutError")), OPEN_WAIT_MS);
+  });
+  return Promise.race([p, wait]).finally(() => clearTimeout(timer));
 }
 
 export const LOCAL_PREFIX = "local-";
@@ -160,8 +188,45 @@ export async function getMail(ws: string, id: string): Promise<StoredThread | un
   return (await db()).get("mail", [ws, id]);
 }
 
-export async function putMail(thread: StoredThread): Promise<void> {
-  await (await db()).put("mail", thread);
+/**
+ * Keeps a conversation, but only while the device keeps email for its
+ * workspace: the check and the write are one transaction, so a refresh
+ * still running when the person turns it off cannot put mail back.
+ */
+export async function putMail(thread: StoredThread): Promise<boolean> {
+  const tx = (await db()).transaction(["meta", "mail"], "readwrite");
+  const keep = (await tx.objectStore("meta").get(keepMailKey(thread.ws))) === true;
+  if (keep) await tx.objectStore("mail").put(thread);
+  await tx.done;
+  return keep;
+}
+
+/** Every conversation kept on the device, whatever the workspace. */
+export async function allMailEverywhere(): Promise<StoredThread[]> {
+  return (await db()).getAll("mail");
+}
+
+export async function deleteMailRows(rows: { ws: string; id: string }[]): Promise<void> {
+  const tx = (await db()).transaction("mail", "readwrite");
+  await Promise.all([...rows.map((r) => tx.store.delete([r.ws, r.id])), tx.done]);
+}
+
+/**
+ * Forgets the email kept for any workspace not in `workspaces` (the person
+ * left it, or its plan no longer includes the apps), and the choice to keep it.
+ */
+export async function forgetMailExcept(workspaces: string[]): Promise<void> {
+  const d = await db();
+  const allowed = new Set(workspaces);
+  const tx = d.transaction(["meta", "mail"], "readwrite");
+  for (const key of await tx.objectStore("mail").getAllKeys()) {
+    if (!allowed.has(key[0])) await tx.objectStore("mail").delete(key);
+  }
+  for (const key of await tx.objectStore("meta").getAllKeys()) {
+    const ws = /^(.+):mail:/.exec(key)?.[1];
+    if (ws !== undefined && !allowed.has(ws)) await tx.objectStore("meta").delete(key);
+  }
+  await tx.done;
 }
 
 export async function deleteMail(ws: string, ids: string[]): Promise<void> {
@@ -237,9 +302,10 @@ export async function claimFor(userId: string): Promise<void> {
 
 /** Everything on the device, for signing out. */
 export async function wipe(): Promise<void> {
-  if (opened) (await opened).close();
+  const open = opened;
   opened = null;
-  await deleteDB(DB_NAME);
+  if (open) (await open.catch(() => null))?.close();
+  await withWait(deleteDB(DB_NAME));
 }
 
 // Queuing changes ---------------------------------------------------------------------------

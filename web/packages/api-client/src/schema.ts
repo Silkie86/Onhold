@@ -5028,6 +5028,8 @@ export interface components {
             html?: string | null;
             /** Format: uuid */
             id: string;
+            /** @description Where the sender asked answers to go, when not to `from_address`. */
+            reply_to?: string | null;
             /** Format: date-time */
             sent_at: string;
             /** @description `received`, or for messages written here `queued`, `sent` or `failed`. */

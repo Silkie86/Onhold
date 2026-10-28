@@ -119,6 +119,8 @@ pub struct MessageView {
     pub direction: String,
     pub from_address: Option<String>,
     pub from_name: Option<String>,
+    /// Where the sender asked answers to go, when not to `from_address`.
+    pub reply_to: Option<String>,
     pub to: Vec<String>,
     pub cc: Vec<String>,
     pub subject: Option<String>,
@@ -198,6 +200,7 @@ async fn detail(state: &AppState, tx: &mut core_db::Tx, t: Thread) -> ApiResult<
             direction: m.direction,
             from_address: m.from_address,
             from_name: m.from_name,
+            reply_to: m.reply_to,
             to: m.to_addresses,
             cc: m.cc_addresses,
             subject: m.subject,

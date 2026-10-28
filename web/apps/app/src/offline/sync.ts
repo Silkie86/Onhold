@@ -74,7 +74,9 @@ interface Downloaded {
 }
 
 const TOPICS =
-  "contact.*,organisation.*,talent.*,custom_field.*,enquiry.*,booking.*,task.*,availability.*,pipeline.*,thread.*,message.*";
+  "contact.*,organisation.*,talent.*,custom_field.*,enquiry.*,booking.*,task.*,availability.*,pipeline.*";
+/** Also read when the device keeps email: which conversations had news. */
+const MAIL_TOPICS = `${TOPICS},thread.*,message.*`;
 const PAGE = 500;
 const EVERY_MS = 20_000;
 /**
@@ -219,13 +221,16 @@ export class OfflineSync {
 
   /** Brings the email kept on the device up to date; a failure here leaves the rest alone. */
   private async refreshMail() {
-    const touched = new Set(this.mailTouched);
+    const before = [...this.mailTouched];
+    const touched = new Set(before);
     try {
       if (await this.mail.refresh(touched)) this.notifyChanged();
-      for (const id of touched) this.mailTouched.delete(id);
     } catch (e) {
       if (isNetworkError(e) || this.stopping.signal.aborted) throw e;
       console.warn("email sync failed", e);
+    } finally {
+      // What was dealt with; the rest is read on the next run.
+      for (const id of before) if (!touched.has(id)) this.mailTouched.delete(id);
     }
   }
 
@@ -376,6 +381,7 @@ export class OfflineSync {
 
   private async pullChanges(cursor: number): Promise<void> {
     let after = cursor;
+    const topics = (await this.mail.enabled()) ? MAIL_TOPICS : TOPICS;
     const touched = new Map<string, EntityName | "enquiry" | "booking" | "task">();
     let fieldsChanged = false;
     let availabilityChanged = false;
@@ -383,7 +389,7 @@ export class OfflineSync {
     for (;;) {
       let page;
       try {
-        page = await ok(api.GET("/api/v1/events", { ...this.req, params: { query: { after, topics: TOPICS, limit: PAGE } } }));
+        page = await ok(api.GET("/api/v1/events", { ...this.req, params: { query: { after, topics, limit: PAGE } } }));
       } catch (e) {
         if (e instanceof ApiFailure && e.status === 410) {
           await this.downloadAll();
@@ -533,7 +539,7 @@ export class OfflineSync {
    * online. `sent` when it was sent once already and may have arrived: it
    * then goes again with the same key, which the server recognises.
    */
-  async queueReply(threadId: string, body: { body: string }, label: string, key: string, sent = false): Promise<void> {
+  async queueReply(threadId: string, body: { body: string; to?: string[] }, label: string, key: string, sent = false): Promise<void> {
     const item: OutboxItem = {
       ws: this.ws,
       entity: "reply",
@@ -596,7 +602,8 @@ export class OfflineSync {
           }),
         );
         await removeOutbox(item.seq as number);
-        await this.mail.reread(item.id).catch(() => undefined);
+        // Read again with the feed's news, once the rest of the queue has gone.
+        this.mailTouched.add(item.id);
       } else if (item.op === "create") {
         const created = (await ok(
           api.POST(P(item.entity), { headers, signal, body: item.body as never }),
