@@ -450,6 +450,7 @@ A new client's "custom app" is the core plus, in order of preference: configurat
 - Nothing is locked in: a "Your setup" page lets them re-run or edit it any time, and it opens at first sign-in.
 - A **live price estimate** beside the answers updates as they tick (a base price plus a price per feature and per extra seat). The price list is data OnHold's team edits, with placeholder numbers until pricing is decided. Nothing is charged from it.
 - Comments and the setup show on the Client workspaces page, with "Mark done" for requests.
+- **Streamline** (master admin, per client): on top of what the presets give, OnHold's team can hide any menu item, page section, button or optional field for one client. These choices are kept apart from the questionnaire answers, so they survive re-running it, and anything can be unhidden with one click. Hiding never deletes data, and fields that invoices or contracts depend on (amounts, dates, the payer's name) stay required behind the scenes.
 
 | Client asks for | Layer | Example |
 | --- | --- | --- |
@@ -468,7 +469,7 @@ A new client's "custom app" is the core plus, in order of preference: configurat
 
 **Operator admin area** (superadmin only): the master admin is inside the same app, not a separate one. OnHold's team sees an "OnHold team" section in the menu:
 
-- **Client workspaces**: every client with status and plan, their setup and questionnaire answers, their comments and requests, and the price list behind the estimate. A **Visit** button goes into a client's workspace to help: it needs a reason, is time-boxed and shows to the client in their audit log (it reuses superadmin impersonation).
+- **Client workspaces**: every client with status and plan, their setup and questionnaire answers, their comments and requests, a Streamline panel for hiding parts of their app (see Onboarding questionnaire), and the price list behind the estimate. A **Visit** button goes into a client's workspace to help: it needs a reason, is time-boxed and shows to the client in their audit log (it reuses superadmin impersonation).
 - **Theme studio**: each client's full theme, with contrast checks.
 
 Still to come (M8): health, last activity and usage counters; create and suspend workspaces from the browser; failing jobs and integrations across all tenants; feature flags per workspace; export and backups; release notes broadcast.
