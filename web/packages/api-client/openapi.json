@@ -2912,6 +2912,172 @@
         ]
       }
     },
+    "/api/v1/bookings/{id}/money": {
+      "get": {
+        "tags": [
+          "travel"
+        ],
+        "summary": "Whether a booking pays: the fee and other income, less commission,\ntravel and other costs, in the fee's currency, with warnings.",
+        "operationId": "money_check",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoneyCheck"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "travel"
+        ],
+        "summary": "Add income (a buyout) or a cost to a booking.",
+        "operationId": "create_line",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoneyLineInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoneyLineView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/bookings/{id}/pack": {
       "get": {
         "tags": [
@@ -3407,6 +3573,175 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TimelinePage"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/bookings/{id}/travel": {
+      "get": {
+        "tags": [
+          "travel"
+        ],
+        "summary": "A booking's travel, in time order.",
+        "operationId": "list_travel",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TravelView"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "travel"
+        ],
+        "summary": "Add a flight, train, ride or hotel to a booking.",
+        "operationId": "create_travel",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TravelInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -11802,6 +12137,176 @@
             }
           },
           "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/money-lines/{id}": {
+      "put": {
+        "tags": [
+          "travel"
+        ],
+        "summary": "Change an income or cost line; every field is replaced.",
+        "operationId": "update_line",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoneyLineInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoneyLineView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "travel"
+        ],
+        "operationId": "delete_line",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -20317,6 +20822,176 @@
         ]
       }
     },
+    "/api/v1/travel/{id}": {
+      "put": {
+        "tags": [
+          "travel"
+        ],
+        "summary": "Change a travel item; every field is replaced.",
+        "operationId": "update_travel",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TravelInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "travel"
+        ],
+        "operationId": "delete_travel",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/views": {
       "get": {
         "tags": [
@@ -28110,6 +28785,239 @@
         },
         "additionalProperties": false
       },
+      "MoneyCheck": {
+        "type": "object",
+        "description": "Whether a booking pays: income less commission and costs, all in one\ncurrency.",
+        "required": [
+          "booking_id",
+          "currency",
+          "income",
+          "commission",
+          "costs",
+          "total_income",
+          "total_commission",
+          "total_costs",
+          "net",
+          "warnings",
+          "lines"
+        ],
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "commission": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MoneyItem"
+            }
+          },
+          "costs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MoneyItem"
+            }
+          },
+          "currency": {
+            "type": "string",
+            "description": "The fee's currency, or the workspace's when there is no fee."
+          },
+          "income": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MoneyItem"
+            }
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MoneyLineView"
+            },
+            "description": "The income and cost lines themselves, to edit."
+          },
+          "net": {
+            "$ref": "#/components/schemas/Money",
+            "description": "What is left: income less commission and costs."
+          },
+          "total_commission": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "total_costs": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "total_income": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            }
+          }
+        }
+      },
+      "MoneyItem": {
+        "type": "object",
+        "description": "One amount in the money check, in the check's currency.",
+        "required": [
+          "category",
+          "description",
+          "amount"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money",
+            "description": "In the check's currency."
+          },
+          "category": {
+            "type": "string",
+            "description": "`fee`, `commission`, `travel`, or a money line's category."
+          },
+          "description": {
+            "type": "string"
+          },
+          "original": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money",
+                "description": "The amount as entered, when it was in another currency."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The travel item or money line it comes from."
+          }
+        }
+      },
+      "MoneyLineInput": {
+        "type": "object",
+        "description": "A money line, as given when adding or changing one. Changing replaces\nevery field.",
+        "required": [
+          "direction",
+          "category",
+          "description",
+          "amount"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "description": "`income` or `cost`."
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spent_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          }
+        }
+      },
+      "MoneyLineView": {
+        "type": "object",
+        "required": [
+          "id",
+          "booking_id",
+          "direction",
+          "category",
+          "description",
+          "amount",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "booking_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "category": {
+            "type": "string",
+            "description": "Income: `buyout`, `merchandise`, `other`. Cost: `travel`,\n`accommodation`, `ground`, `per_diem`, `crew`, `production`, `visa`,\n`marketing`, `other`."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "description": "`income` or `cost`."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spent_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "MyWorkspaceView": {
         "type": "object",
         "required": [
@@ -33981,6 +34889,285 @@
           }
         }
       },
+      "TravelInput": {
+        "type": "object",
+        "description": "A travel item, as given when adding or changing one. Changing replaces\nevery field.",
+        "required": [
+          "kind",
+          "starts_at"
+        ],
+        "properties": {
+          "carrier": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cost": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end_tz": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default: the departure's zone."
+          },
+          "ends_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "from_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An IATA airport code; any case."
+          },
+          "from_place": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "number": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "paid_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default `us`."
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "start_tz": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default: the booking's zone."
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default `planned`."
+          },
+          "to_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to_place": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "travellers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TravelView": {
+        "type": "object",
+        "required": [
+          "id",
+          "booking_id",
+          "kind",
+          "status",
+          "starts_at",
+          "start_tz",
+          "travellers",
+          "paid_by",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "booking_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "carrier": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The airline, rail company, driver or hotel."
+          },
+          "cost": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end_tz": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ends_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Arrival, or check-out for a hotel."
+          },
+          "from_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IATA airport code."
+          },
+          "from_place": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`flight`, `train`, `bus`, `car`, `ferry`, `taxi`, `hotel` or `other`."
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "number": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A flight or train number, e.g. `BA 1442`."
+          },
+          "paid_by": {
+            "type": "string",
+            "description": "`us` (a cost against the fee) or `buyer` (the client provides it)."
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The booking reference or confirmation code."
+          },
+          "start_tz": {
+            "type": "string",
+            "description": "The IANA zone of the departure."
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Departure, or check-in for a hotel."
+          },
+          "status": {
+            "type": "string",
+            "description": "`planned`, `booked` or `cancelled`."
+          },
+          "to_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to_place": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where to; for a hotel, the hotel's address."
+          },
+          "travellers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "UpdateMemberRequest": {
         "type": "object",
         "required": [
@@ -34211,6 +35398,33 @@
             ]
           }
         }
+      },
+      "Warning": {
+        "type": "object",
+        "required": [
+          "level",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "`loss`, `high_costs`, `no_income`, `unconverted`, `unpriced`."
+          },
+          "level": {
+            "$ref": "#/components/schemas/WarningLevel"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "WarningLevel": {
+        "type": "string",
+        "enum": [
+          "caution",
+          "loss"
+        ]
       },
       "WebhookPatchRequest": {
         "type": "object",
@@ -34591,6 +35805,10 @@
     {
       "name": "bookings",
       "description": "Holds and bookings, with clash checks"
+    },
+    {
+      "name": "travel",
+      "description": "Travel on a booking (flights, trains, rides, hotels), its buyouts and costs, and whether it pays"
     },
     {
       "name": "quotes",

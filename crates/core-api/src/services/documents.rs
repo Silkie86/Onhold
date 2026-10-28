@@ -511,6 +511,15 @@ pub(crate) async fn booking_context(
         }),
         None => None,
     };
+    // Where the venue is, for the people going there; its own organisation.
+    if let Some(id) = b.venue_id {
+        let address = super::organisations::load(tx, id)
+            .await?
+            .and_then(|o| o.addresses.first().cloned());
+        if let Some(o) = booking.as_object_mut() {
+            o.insert("venue_address".into(), json!(address));
+        }
+    }
     let contact = match b.contact_id {
         Some(id) => super::contacts::load(tx, id)
             .await?
@@ -526,12 +535,39 @@ pub(crate) async fn booking_context(
         .or_else(|| quotes.first())
         .cloned()
         .map(|q| super::quotes::to_json(&q.into()));
+    // Travel for the people going; what it costs stays off the page.
+    let travel: Vec<Value> = super::travel::travel_of(tx, booking_id)
+        .await?
+        .into_iter()
+        .filter(|t| t.status != "cancelled")
+        .map(|t| {
+            json!({
+                "kind": t.kind,
+                "status": t.status,
+                "label": super::travel::travel_title(&t),
+                "carrier": t.carrier,
+                "number": t.number,
+                "reference": t.reference,
+                "from_place": t.from_place,
+                "from_code": t.from_code,
+                "to_place": t.to_place,
+                "to_code": t.to_code,
+                "starts_at": t.starts_at,
+                "start_tz": t.start_tz,
+                "ends_at": t.ends_at,
+                "end_tz": t.end_tz,
+                "travellers": t.travellers,
+                "notes": t.notes,
+            })
+        })
+        .collect();
     Ok(json!({
         "booking": booking,
         "talent": talent,
         "organisation": organisation,
         "contact": contact,
         "quote": quote,
+        "travel": travel,
     }))
 }
 
