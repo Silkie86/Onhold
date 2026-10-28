@@ -13,6 +13,7 @@ pub mod inbox;
 pub mod jobs;
 pub mod stripe;
 pub mod things;
+pub mod travel;
 pub mod webhooks;
 pub mod workspace;
 

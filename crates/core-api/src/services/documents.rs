@@ -526,12 +526,38 @@ pub(crate) async fn booking_context(
         .or_else(|| quotes.first())
         .cloned()
         .map(|q| super::quotes::to_json(&q.into()));
+    // Travel for the people going; what it costs stays off the page.
+    let travel: Vec<Value> = super::travel::travel_of(tx, booking_id)
+        .await?
+        .into_iter()
+        .filter(|t| t.status != "cancelled")
+        .map(|t| {
+            json!({
+                "kind": t.kind,
+                "label": super::travel::travel_title(&t),
+                "carrier": t.carrier,
+                "number": t.number,
+                "reference": t.reference,
+                "from_place": t.from_place,
+                "from_code": t.from_code,
+                "to_place": t.to_place,
+                "to_code": t.to_code,
+                "starts_at": t.starts_at,
+                "start_tz": t.start_tz,
+                "ends_at": t.ends_at,
+                "end_tz": t.end_tz,
+                "travellers": t.travellers,
+                "notes": t.notes,
+            })
+        })
+        .collect();
     Ok(json!({
         "booking": booking,
         "talent": talent,
         "organisation": organisation,
         "contact": contact,
         "quote": quote,
+        "travel": travel,
     }))
 }
 

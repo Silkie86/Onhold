@@ -63,6 +63,7 @@ import { BookingFinancePanel } from "./finance.tsx";
 import { BookingDocumentsPanel } from "./documents.tsx";
 import { RelatedTasks } from "./tasks.tsx";
 import { RelatedConversations } from "./inbox.tsx";
+import { BookingMoneyPanel, BookingTravelPanel } from "./travel.tsx";
 
 type Money = Schemas["Money"];
 
@@ -589,6 +590,15 @@ export function BookingPage() {
     return result;
   };
 
+  // Travel and the money check: beside the details on a wide screen, above
+  // them on a phone, where they are what people open a booking for.
+  const trip = (
+    <>
+      <BookingTravelPanel booking={b} />
+      <BookingMoneyPanel booking={b} />
+    </>
+  );
+
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-2">
@@ -662,6 +672,7 @@ export function BookingPage() {
       {error && <Alert>{error}</Alert>}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section className="flex flex-col gap-6" aria-label="Details">
+          <div className="flex flex-col gap-6 lg:hidden">{trip}</div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="booking-talent-edit">Talent</Label>
             <TalentPicker
@@ -704,7 +715,8 @@ export function BookingPage() {
           <BookingFinancePanel booking={b} />
           <BookingDocumentsPanel booking={b} />
         </section>
-        <section aria-label="Tasks and activity" className="flex flex-col gap-6">
+        <section aria-label="Travel, tasks and activity" className="flex flex-col gap-6">
+          <div className="hidden flex-col gap-6 lg:flex">{trip}</div>
           <RelatedTasks entity="booking" id={id} />
           <RelatedConversations filter={{ booking_id: id }} />
           <RecordTimeline path="bookings" id={id} schema={schema.data} offline={offline} />

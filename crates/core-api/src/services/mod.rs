@@ -44,6 +44,7 @@ pub mod tasks;
 pub mod templates;
 pub mod tenancy;
 pub mod things;
+pub mod travel;
 pub mod views;
 pub mod webhooks;
 

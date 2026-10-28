@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT version FROM travel_items\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL\n           FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "travel_items",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e85ad8918f9a84c9d61ce4347c40d395a04ecbd83ed02ae59acc2d6bf616c604"
+}

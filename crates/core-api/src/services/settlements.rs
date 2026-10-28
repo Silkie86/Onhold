@@ -124,7 +124,7 @@ pub async fn get(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<SettlementV
 }
 
 /// Each talent's gross share of a booking, net of tax.
-async fn shares(
+pub(crate) async fn shares(
     tx: &mut Tx,
     booking: &super::bookings::BookingView,
 ) -> ApiResult<(String, Vec<(Uuid, i64)>)> {

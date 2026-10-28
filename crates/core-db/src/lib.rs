@@ -52,6 +52,7 @@ pub mod talent_calendars;
 pub mod tasks;
 pub mod templates;
 pub mod things;
+pub mod travel;
 pub mod users;
 pub mod views;
 pub mod webhooks;

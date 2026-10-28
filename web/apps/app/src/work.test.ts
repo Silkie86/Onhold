@@ -1,4 +1,17 @@
-import { addDays, dayKey, daysBetween, formatWhen, monthGrid, nextStatuses, onDay, parseDayKey, shiftByDays, startOfWeek } from "./work.ts";
+import {
+  addDays,
+  dayKey,
+  daysBetween,
+  formatWhen,
+  fromZonedInput,
+  monthGrid,
+  nextStatuses,
+  onDay,
+  parseDayKey,
+  shiftByDays,
+  startOfWeek,
+  toZonedInput,
+} from "./work.ts";
 import { lineAmount, lineDrafts, lineInputs } from "./pages/quotes.tsx";
 import { validateCalendarSearch, viewRange } from "./pages/calendar.tsx";
 
@@ -90,4 +103,15 @@ test("calendar addresses and ranges", () => {
   expect(dayKey(week.from)).toBe("2031-06-02");
   expect(dayKey(week.to)).toBe("2031-06-09");
   expect(week.days).toHaveLength(7);
+});
+
+describe("times in a place's own zone", () => {
+  it("reads and writes the clock of the zone, not the browser's", () => {
+    // 06:10 UTC in June is 07:10 in London and 08:10 in Barcelona.
+    expect(toZonedInput("2031-06-14T06:10:00Z", "Europe/London")).toBe("2031-06-14T07:10");
+    expect(toZonedInput("2031-06-14T06:10:00Z", "Europe/Madrid")).toBe("2031-06-14T08:10");
+    expect(fromZonedInput("2031-06-14T10:25", "Europe/Madrid")).toBe("2031-06-14T08:25:00.000Z");
+    expect(fromZonedInput("2031-01-14T10:25", "America/New_York")).toBe("2031-01-14T15:25:00.000Z");
+    expect(fromZonedInput("", "UTC")).toBeNull();
+  });
 });

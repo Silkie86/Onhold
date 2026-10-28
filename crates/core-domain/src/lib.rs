@@ -46,6 +46,7 @@ pub mod crypto;
 pub mod finance;
 pub mod ids;
 pub mod money;
+pub mod touring;
 pub mod workspace;
 
 pub use authz::{Actor, AuthzError, Ctx, Permission, Role};

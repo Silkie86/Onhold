@@ -262,6 +262,7 @@ pub struct BuiltIn {
 pub const CONTRACT: &str = "document.contract";
 pub const CONFIRMATION: &str = "document.confirmation";
 pub const ADVANCE_SHEET: &str = "document.advance_sheet";
+pub const DAY_SHEET: &str = "document.day_sheet";
 pub const INVOICE: &str = "document.invoice";
 pub const CREDIT_NOTE: &str = "document.credit_note";
 pub const STATEMENT: &str = "document.statement";
@@ -314,7 +315,25 @@ const CONFIRMATION_BODY: &str = concat!(
 <p>{{ issuer.name }}{% if issuer.email %} · {{ issuer.email }}{% endif %}{% if issuer.phone %} · {{ issuer.phone }}{% endif %}</p>"#
 );
 
-const ADVANCE_SHEET_BODY: &str = r#"<h1>{{ document.title }}</h1>
+/// Travel and hotels, shared by the advance sheet and the day sheet.
+macro_rules! travel_part {
+    () => {
+        r#"{% if travel %}<h2>Travel</h2>
+<table><tr><th>When</th><th>What</th><th>From</th><th>To</th><th>Reference</th></tr>
+{% for t in travel %}{% if t.kind != "hotel" %}<tr><td>{{ t.starts_at | datetime("%a %-d %b, %H:%M", t.start_tz) }}{% if t.ends_at %} – {{ t.ends_at | datetime("%H:%M", t.end_tz) }}{% endif %}</td><td>{{ t.label }}{% if t.travellers %}<br><span class="note">{{ t.travellers | join(", ") }}</span>{% endif %}</td><td>{{ t.from_code or "" }}{% if t.from_code and t.from_place %} · {% endif %}{{ t.from_place or "" }}</td><td>{{ t.to_code or "" }}{% if t.to_code and t.to_place %} · {% endif %}{{ t.to_place or "" }}</td><td>{{ t.reference or "" }}</td></tr>{% endif %}{% endfor %}
+</table>
+{% for t in travel %}{% if t.kind == "hotel" %}<h2>Hotel</h2>
+<table><tr><th>Hotel</th><td>{{ t.carrier or "To be confirmed" }}{% if t.to_place %}<br>{{ t.to_place }}{% endif %}</td></tr>
+<tr><th>Check-in</th><td>{{ t.starts_at | datetime("%a %-d %b, %H:%M", t.start_tz) }}</td></tr>
+{% if t.ends_at %}<tr><th>Check-out</th><td>{{ t.ends_at | datetime("%a %-d %b, %H:%M", t.end_tz) }}</td></tr>{% endif %}
+{% if t.reference %}<tr><th>Reference</th><td>{{ t.reference }}</td></tr>{% endif %}
+{% if t.travellers %}<tr><th>Guests</th><td>{{ t.travellers | join(", ") }}</td></tr>{% endif %}
+{% if t.notes %}<tr><th>Notes</th><td class="pre">{{ t.notes }}</td></tr>{% endif %}</table>{% endif %}{% endfor %}{% endif %}"#
+    };
+}
+
+const ADVANCE_SHEET_BODY: &str = concat!(
+    r#"<h1>{{ document.title }}</h1>
 <div class="meta">
   <div><span class="label">Engagement</span>{{ booking.title }}</div>
   <div><span class="label">Date</span>{{ booking.starts_at | date(none, booking.timezone) }}</div>
@@ -331,8 +350,38 @@ const ADVANCE_SHEET_BODY: &str = r#"<h1>{{ document.title }}</h1>
   <tr><th>Agency</th><td>{{ issuer.name }}{% if issuer.phone %} · {{ issuer.phone }}{% endif %}{% if issuer.email %} · {{ issuer.email }}{% endif %}</td></tr>
 </table>
 {% if talent.members %}<h2>Party</h2><table><tr><th>Name</th><th>Role</th></tr>{% for m in talent.members %}<tr><td>{{ m.name }}</td><td>{{ m.role }}</td></tr>{% endfor %}</table>{% endif %}
+"#,
+    travel_part!(),
+    r#"
 <h2>Notes</h2>
-<p class="pre">{{ booking.notes or "Parking, load-in access, hospitality and anything else the artist should know." }}</p>"#;
+<p class="pre">{{ booking.notes or "Parking, load-in access, hospitality and anything else the artist should know." }}</p>"#
+);
+
+/// One day on the road, for the people travelling: where to be and when,
+/// how they get there, where they sleep and who to call.
+const DAY_SHEET_BODY: &str = concat!(
+    r#"<h1>{{ document.title }}</h1>
+<div class="meta">
+  <div><span class="label">Day</span>{{ booking.starts_at | date(none, booking.timezone) }}</div>
+  <div><span class="label">Engagement</span>{{ booking.title }}</div>
+  <div><span class="label">Venue</span>{{ booking.venue or "To be confirmed" }}{% if organisation.address %}<br>{{ organisation.address | address }}{% endif %}</div>
+  <div><span class="label">Who</span>{{ booking.talent_names or talent.name }}</div>
+</div>
+<h2>Schedule</h2>
+<table><tr><th>Time</th><th>What</th></tr>
+{% for s in booking.schedule %}<tr><td>{{ s.at | datetime("%H:%M", booking.timezone) }}</td><td>{{ s.label }}</td></tr>{% else %}<tr><td>{% if not booking.all_day %}{{ booking.starts_at | datetime("%H:%M", booking.timezone) }}{% endif %}</td><td>Start</td></tr><tr><td>{% if not booking.all_day %}{{ booking.ends_at | datetime("%H:%M", booking.timezone) }}{% endif %}</td><td>Finish</td></tr>{% endfor %}
+</table>
+"#,
+    travel_part!(),
+    r#"
+<h2>Contacts</h2>
+<table>
+  {% if contact.name %}<tr><th>On the day</th><td>{{ contact.name }}{% if contact.phones %} · {{ contact.phones[0] }}{% endif %}{% if contact.emails %} · {{ contact.emails[0] }}{% endif %}</td></tr>{% endif %}
+  <tr><th>Office</th><td>{{ issuer.name }}{% if issuer.phone %} · {{ issuer.phone }}{% endif %}{% if issuer.email %} · {{ issuer.email }}{% endif %}</td></tr>
+</table>
+{% if talent.members %}<h2>Party</h2><table><tr><th>Name</th><th>Role</th></tr>{% for m in talent.members %}<tr><td>{{ m.name }}</td><td>{{ m.role }}</td></tr>{% endfor %}</table>{% endif %}
+{% if booking.notes %}<h2>Notes</h2><p class="pre">{{ booking.notes }}</p>{% endif %}"#
+);
 
 const INVOICE_BODY: &str = r#"<h1>{% if invoice.kind == "credit_note" %}Credit note{% else %}Invoice{% endif %} {{ invoice.reference }}</h1>
 <div class="parties">
@@ -404,6 +453,14 @@ pub const BUILT_IN: &[BuiltIn] = &[
         entity: "booking",
         subject: "Advance sheet: {{ booking.title }}",
         body: ADVANCE_SHEET_BODY,
+    },
+    BuiltIn {
+        key: DAY_SHEET,
+        kind: "day_sheet",
+        name: "Day sheet",
+        entity: "booking",
+        subject: "Day sheet: {{ booking.title }}",
+        body: DAY_SHEET_BODY,
     },
     BuiltIn {
         key: INVOICE,
@@ -510,6 +567,15 @@ mod tests {
                          "fee": { "minor": 250000, "currency": "GBP" }, "deposit_bps": 5000, "status": "pending",
                          "schedule": [{ "label": "Load-in", "at": "2031-06-14T16:00:00Z" }] },
             "talent": { "name": "The Rock Lobsters" },
+            "travel": [
+                { "kind": "flight", "label": "Flight · BA 1442", "from_code": "LHR", "from_place": "London Heathrow",
+                  "to_code": "BCN", "to_place": null, "starts_at": "2031-06-14T06:10:00Z", "start_tz": "Europe/London",
+                  "ends_at": "2031-06-14T08:25:00Z", "end_tz": "Europe/Madrid", "reference": "X7YQ2P",
+                  "travellers": ["Ada", "Grace"], "notes": null },
+                { "kind": "hotel", "label": "Hotel", "carrier": "Hotel Arts", "to_place": "Carrer de la Marina 19",
+                  "starts_at": "2031-06-14T13:00:00Z", "start_tz": "Europe/Madrid", "ends_at": "2031-06-15T10:00:00Z",
+                  "end_tz": "Europe/Madrid", "reference": null, "travellers": [], "notes": "Late check-out agreed" }
+            ],
             "organisation": { "name": "Party Co" },
             "contact": { "name": "Ada", "emails": ["ada@example.test"], "phones": [] },
             "invoice": { "kind": "invoice", "reference": "INV-2031-0001", "issue_date": "2031-06-01", "due_date": "2031-06-15",
@@ -542,6 +608,24 @@ mod tests {
             assert!(!out.body.trim().is_empty(), "{}", b.key);
             assert!(out.subject.is_some_and(|s| !s.is_empty()), "{}", b.key);
         }
+        let day = render(
+            Kind::Document,
+            None,
+            DAY_SHEET_BODY,
+            BTreeMap::new(),
+            &ctx,
+            &opts,
+        )
+        .expect("renders");
+        // Each end of a flight reads in its own zone, as on the ticket.
+        assert!(
+            day.body.contains("Sat 14 Jun, 07:10 – 10:25"),
+            "{}",
+            day.body
+        );
+        assert!(day.body.contains("Flight · BA 1442"));
+        assert!(day.body.contains("Hotel Arts"));
+        assert!(day.body.contains("Ada, Grace"));
         let invoice = render(
             Kind::Document,
             None,
