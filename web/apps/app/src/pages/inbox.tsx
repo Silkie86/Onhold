@@ -29,7 +29,18 @@ import {
 import { AlarmClock, ArrowLeft, CheckCheck, Mail, MailOpen, Paperclip, PenSquare, RotateCcw, Send, Settings, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
-import { fetchBookings, fetchEnquiries, fetchMembers, useOffline } from "../data.ts";
+import {
+  NotOnDevice,
+  fetchBookings,
+  fetchEnquiries,
+  fetchMembers,
+  fetchThread,
+  fetchThreads,
+  sendReply,
+  useOffline,
+} from "../data.ts";
+import type { KeptDetail } from "../offline/mail.ts";
+import { isNetworkError } from "../offline/sync.ts";
 import { useSession } from "../session.tsx";
 import { saveDownload } from "./finance.tsx";
 import { RecordPicker } from "./pickers.tsx";
@@ -40,7 +51,21 @@ type MessageView = Schemas["MessageView"];
 type Mailbox = Schemas["IntegrationView"];
 
 function failure(e: unknown): string {
+  if (isNetworkError(e)) return "You are offline. This needs a connection; replies can still be written and go when you are back online.";
   return e instanceof ApiFailure || e instanceof Error ? e.message : "Something went wrong.";
+}
+
+/** Offline, with no email kept on this device: how to change that. */
+function NotKept({ className }: { className?: string }) {
+  return (
+    <Alert tone="info" className={className}>
+      You are offline, and this email is not kept on this device.{" "}
+      <Link to="/settings/email" search={{}} className="underline">
+        Keep recent email on this device
+      </Link>{" "}
+      to read and answer it without a connection.
+    </Alert>
+  );
 }
 
 const STATUSES = ["open", "snoozed", "resolved"] as const;
@@ -96,6 +121,7 @@ function who(t: ThreadView): string {
 }
 
 export function InboxPage() {
+  const sync = useOffline();
   const search = useSearch({ from: "/app/inbox" });
   const navigate = useNavigate({ from: "/inbox" });
   const setup = useMailSetup();
@@ -106,20 +132,14 @@ export function InboxPage() {
   const threads = useQuery({
     queryKey: ["threads", status, search.mailbox, search.unlinked, search.unread, search.q],
     queryFn: () =>
-      ok(
-        api.GET("/api/v1/inbox/threads", {
-          params: {
-            query: {
-              status,
-              integration_id: search.mailbox,
-              unlinked: search.unlinked,
-              unread: search.unread,
-              q: search.q,
-              limit: 100,
-            },
-          },
-        }),
-      ),
+      fetchThreads(sync, {
+        status,
+        integration_id: search.mailbox,
+        unlinked: search.unlinked,
+        unread: search.unread,
+        q: search.q,
+        limit: 100,
+      }),
     refetchInterval: 60_000,
   });
   const set = (patch: Partial<InboxSearch>) => void navigate({ search: (s) => ({ ...s, ...patch }) });
@@ -187,17 +207,26 @@ export function InboxPage() {
           aria-label="Conversations"
           className={cn("min-h-0 w-full overflow-y-auto border-r md:w-96 md:shrink-0", search.thread && "hidden md:block")}
         >
+          {threads.data?.offline && (
+            <p className="border-b bg-muted px-3 py-2 text-xs text-muted-foreground">
+              Offline: the last two weeks of email kept on this device.
+            </p>
+          )}
           {threads.isPending ? (
             <div className="flex justify-center p-6">
               <Spinner />
             </div>
           ) : threads.isError ? (
-            <Alert className="m-3">{threads.error.message}</Alert>
-          ) : threads.data.items.length === 0 ? (
+            threads.error instanceof NotOnDevice ? (
+              <NotKept className="m-3" />
+            ) : (
+              <Alert className="m-3">{threads.error.message}</Alert>
+            )
+          ) : threads.data.data.items.length === 0 ? (
             <EmptyInbox setup={setup.data} filtered={Boolean(search.q || search.unlinked || search.unread || search.mailbox) || status !== "open"} />
           ) : (
             <ul className="divide-y">
-              {threads.data.items.map((t) => (
+              {threads.data.data.items.map((t) => (
                 <li key={t.id}>
                   <button
                     type="button"
@@ -222,9 +251,9 @@ export function InboxPage() {
               ))}
             </ul>
           )}
-          {threads.data && threads.data.total > threads.data.items.length && (
+          {threads.data && threads.data.data.total > threads.data.data.items.length && (
             <p className="p-3 text-xs text-muted-foreground">
-              Showing the latest {threads.data.items.length} of {threads.data.total}. Search to find older ones.
+              Showing the latest {threads.data.data.items.length} of {threads.data.data.total}. Search to find older ones.
             </p>
           )}
         </section>
@@ -273,12 +302,37 @@ function EmptyInbox({ setup, filtered }: { setup?: Schemas["MailSetup"]; filtere
 // One conversation ---------------------------------------------------------------------
 
 function useThread(id: string) {
+  const sync = useOffline();
   return useQuery({
     queryKey: ["thread", id],
-    queryFn: () => ok(api.GET("/api/v1/inbox/threads/{id}", { params: { path: { id } } })),
+    queryFn: () => fetchThread(sync, id),
     // Replies are sent in the background: look again while one is on its way.
-    refetchInterval: (q) => (q.state.data?.messages.some((m) => m.status === "queued" || m.status === "sending") ? 3000 : 60_000),
+    refetchInterval: (q) =>
+      q.state.data?.data.messages.some((m) => m.status === "queued" || m.status === "sending") ? 3000 : 60_000,
   });
+}
+
+/** Replies written to this conversation on this device that are waiting for a connection. */
+function useWaitingReplies(id: string) {
+  const sync = useOffline();
+  const qc = useQueryClient();
+  const waiting = useQuery({
+    queryKey: ["outbox", sync?.ws],
+    queryFn: () => sync?.queued() ?? Promise.resolve([]),
+    enabled: !!sync,
+    select: (items) => items.filter((i) => i.entity === "reply" && i.id === id),
+  });
+  // The queue changes as the device works through it; a reply that went shows in the conversation.
+  useEffect(() => {
+    if (!sync) return;
+    let pending = sync.current.pending;
+    return sync.subscribe((s) => {
+      void qc.invalidateQueries({ queryKey: ["outbox", sync.ws] });
+      if (s.pending < pending) void qc.invalidateQueries({ queryKey: ["thread", id] });
+      pending = s.pending;
+    });
+  }, [sync, qc, id]);
+  return waiting.data ?? [];
 }
 
 function snoozeTimes(): { label: string; at: Date }[] {
@@ -307,25 +361,26 @@ export function ThreadPane({ id, onBack }: { id: string; onBack?: () => void }) 
   const [making, setMaking] = useState(false);
   const marked = useRef(false);
 
+  const waiting = useWaitingReplies(id);
   const patch = async (body: Schemas["ThreadPatch"]) => {
     setError(null);
     try {
       const d = await ok(api.PATCH("/api/v1/inbox/threads/{id}", { params: { path: { id } }, body }));
-      qc.setQueryData(["thread", id], d);
+      qc.setQueryData(["thread", id], { data: d, offline: false });
       void qc.invalidateQueries({ queryKey: ["threads"] });
     } catch (e) {
       setError(failure(e));
     }
   };
 
-  // Opening a conversation marks it read.
+  // Opening a conversation marks it read (once online, if it was opened offline).
   useEffect(() => {
-    if (detail.data?.thread.unread && !marked.current) {
+    if (detail.data?.data.thread.unread && !detail.data.offline && !marked.current) {
       marked.current = true;
       void patch({ unread: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detail.data?.thread.unread]);
+  }, [detail.data?.data.thread.unread, detail.data?.offline]);
 
   if (detail.isPending) {
     return (
@@ -334,8 +389,11 @@ export function ThreadPane({ id, onBack }: { id: string; onBack?: () => void }) 
       </div>
     );
   }
-  if (detail.isError) return <Alert className="m-4">{detail.error.message}</Alert>;
-  const { thread, messages, mailbox } = detail.data;
+  if (detail.isError) {
+    return detail.error instanceof NotOnDevice ? <NotKept className="m-4" /> : <Alert className="m-4">{detail.error.message}</Alert>;
+  }
+  const { thread, messages, mailbox, left_out, shortened }: KeptDetail = detail.data.data;
+  const offline = detail.data.offline;
 
   return (
     <article className="mx-auto flex max-w-4xl flex-col gap-4 p-4">
@@ -401,12 +459,43 @@ export function ThreadPane({ id, onBack }: { id: string; onBack?: () => void }) 
           </div>
         )}
         <Links thread={thread} canWrite={canWrite} onLink={patch} />
+        {offline && (
+          <Alert tone="info">
+            Offline: the copy kept on this device, as text only.
+            {shortened && " Earlier messages quoted in replies are left out."} Attachments open once you are back online.
+          </Alert>
+        )}
         {error && <Alert>{error}</Alert>}
       </header>
+      {offline && left_out ? (
+        <p className="text-xs text-muted-foreground">
+          {left_out} earlier {left_out === 1 ? "message is" : "messages are"} not kept on this device.
+        </p>
+      ) : null}
       <ol className="flex flex-col gap-3">
         {messages.map((m) => (
           <li key={m.id}>
-            <MessageCard threadId={thread.id} message={m} />
+            <MessageCard threadId={thread.id} message={m} offline={offline} />
+          </li>
+        ))}
+        {waiting.map((w) => (
+          <li key={w.seq}>
+            <Card className="flex flex-col gap-2 border-primary/30 bg-primary/5 p-4 text-sm">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="font-medium">You</span>
+                <Badge className="border">{w.state === "pending" ? "Waiting for a connection" : "Not sent"}</Badge>
+                <span className="ml-auto text-xs text-muted-foreground">{relativeTime(w.createdAt)}</span>
+              </div>
+              {w.state !== "pending" && (
+                <Alert>
+                  {w.error ?? "The server did not take this reply."}{" "}
+                  <Link to="/sync" className="underline">
+                    Sort it out on the Sync page
+                  </Link>
+                </Alert>
+              )}
+              <p className="whitespace-pre-wrap break-words">{String(w.body.body ?? "")}</p>
+            </Card>
           </li>
         ))}
       </ol>
@@ -583,7 +672,7 @@ export function MailBody({ html }: { html: string }) {
   );
 }
 
-function MessageCard({ threadId, message: m }: { threadId: string; message: MessageView }) {
+function MessageCard({ threadId, message: m, offline }: { threadId: string; message: MessageView; offline: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const outbound = m.direction === "outbound";
   return (
@@ -614,6 +703,8 @@ function MessageCard({ threadId, message: m }: { threadId: string; message: Mess
                 <Button
                   size="sm"
                   variant="outline"
+                  disabled={offline}
+                  title={offline ? "Opens once you are back online" : undefined}
                   onClick={() =>
                     saveDownload(
                       api.GET("/api/v1/inbox/threads/{id}/files/{file_id}", { params: { path: { id: threadId, file_id: f.id } }, parseAs: "blob" }),
@@ -634,17 +725,25 @@ function MessageCard({ threadId, message: m }: { threadId: string; message: Mess
 
 function ReplyBox({ thread, mailbox }: { thread: ThreadView; mailbox: string | null }) {
   const qc = useQueryClient();
+  const sync = useOffline();
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const send = async () => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
-      await ok(api.POST("/api/v1/inbox/threads/{id}/reply", { params: { path: { id: thread.id } }, body: { body } }));
+      const { queued } = await sendReply(sync, thread.id, body, `Reply: ${thread.subject ?? "(no subject)"}`);
       setBody("");
-      void qc.invalidateQueries({ queryKey: ["thread", thread.id] });
-      void qc.invalidateQueries({ queryKey: ["threads"] });
+      if (queued) {
+        setNotice("Saved on this device. It sends when you are back online.");
+        void qc.invalidateQueries({ queryKey: ["outbox", sync?.ws] });
+      } else {
+        void qc.invalidateQueries({ queryKey: ["thread", thread.id] });
+        void qc.invalidateQueries({ queryKey: ["threads"] });
+      }
     } catch (e) {
       setError(failure(e));
     } finally {
@@ -669,6 +768,7 @@ function ReplyBox({ thread, mailbox }: { thread: ThreadView; mailbox: string | n
           {mailbox ? `Sends from ${mailbox}.` : "Sends through OnHold in your workspace's name; answers come to you."}
         </span>
       </div>
+      {notice && <Alert tone="success">{notice}</Alert>}
       {error && <Alert>{error}</Alert>}
     </form>
   );
@@ -740,6 +840,7 @@ export function ComposeDialog({
   onSent: (d: ThreadDetail) => void;
 }) {
   const { me } = useSession();
+  const qc = useQueryClient();
   const usable = mailboxes.filter((m) => m.status !== "reconnect" && m.owner_id === me.user.id);
   const [from, setFrom] = useState(usable.length === 1 ? (usable[0]?.id ?? "") : "");
   const [to, setTo] = useState(initial?.to ?? "");
@@ -772,6 +873,7 @@ export function ComposeDialog({
                 },
               }),
             );
+            void qc.invalidateQueries({ queryKey: ["threads"] });
             onSent(d);
           } catch (err) {
             setError(failure(err));
@@ -817,9 +919,10 @@ export function ComposeDialog({
 
 /** The conversations about one contact, organisation, enquiry or booking. */
 export function RelatedConversations({ filter }: { filter: { contact_id?: string; organisation_id?: string; enquiry_id?: string; booking_id?: string } }) {
+  const sync = useOffline();
   const threads = useQuery({
     queryKey: ["threads", "related", filter],
-    queryFn: () => ok(api.GET("/api/v1/inbox/threads", { params: { query: { ...filter, limit: 20 } } })),
+    queryFn: async () => (await fetchThreads(sync, { ...filter, limit: 20 })).data,
   });
   const [open, setOpen] = useState<string | null>(null);
   if (threads.isError) return null;

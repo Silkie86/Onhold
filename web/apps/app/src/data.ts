@@ -33,6 +33,7 @@ import {
   putRecords,
   setMeta,
 } from "./offline/store.ts";
+import type { KeptDetail, ThreadParams } from "./offline/mail.ts";
 import { type OfflineSync, type SyncStatus, isNetworkError } from "./offline/sync.ts";
 
 export const OfflineContext = createContext<OfflineSync | null>(null);
@@ -208,6 +209,56 @@ export function fetchWorkspace(sync: OfflineSync | null): Promise<Fetched<Schema
     () => getMeta<Schemas["WorkspaceView"]>(`${sync?.ws}:workspace`),
     (w) => setMeta(`${sync?.ws}:workspace`, w),
   );
+}
+
+// Email ------------------------------------------------------------------------------------
+
+/** Conversations: from the server, or offline from the recent email the device keeps, if it keeps any. */
+export function fetchThreads(sync: OfflineSync | null, params: ThreadParams): Promise<Fetched<Schemas["ThreadPage"]>> {
+  return serverOrDevice(
+    sync,
+    () => ok(api.GET("/api/v1/inbox/threads", { params: { query: params } })),
+    async () => sync?.mail.list(params),
+  );
+}
+
+export function fetchThread(sync: OfflineSync | null, id: string): Promise<Fetched<KeptDetail>> {
+  return serverOrDevice<KeptDetail>(
+    sync,
+    () => ok(api.GET("/api/v1/inbox/threads/{id}", { params: { path: { id } } })),
+    async () => sync?.mail.read(id),
+    async (d) => {
+      if (sync) await sync.mail.remember(d);
+    },
+  );
+}
+
+/**
+ * Sends a reply, or with no connection queues it on the device to go when
+ * there is one. A reply to a conversation that already has one waiting
+ * queues behind it, so they arrive in order.
+ */
+export async function sendReply(sync: OfflineSync | null, threadId: string, body: string, label: string): Promise<{ queued: boolean }> {
+  const send = (headers: Record<string, string>) =>
+    ok(api.POST("/api/v1/inbox/threads/{id}/reply", { params: { path: { id: threadId } }, headers, body: { body } }));
+  if (!sync) {
+    await send({});
+    return { queued: false };
+  }
+  const key = crypto.randomUUID();
+  let sent = false;
+  if (navigator.onLine && !(await sync.hasQueued(threadId))) {
+    sent = true;
+    try {
+      await withTimeout(send({ "Idempotency-Key": key }));
+      return { queued: false };
+    } catch (e) {
+      if (!isNetworkError(e)) throw e;
+      // It may have arrived: it goes again with the same key, which the server recognises.
+    }
+  }
+  await sync.queueReply(threadId, { body }, label, key, sent);
+  return { queued: true };
 }
 
 // Changes -----------------------------------------------------------------------------------
