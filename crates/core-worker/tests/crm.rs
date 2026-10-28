@@ -581,6 +581,7 @@ async fn a_pitching_workbook_imports_every_sheet_with_its_people(pool: PgPool) {
             "follow_up_on",
             "notes",
             "region",
+            null,
             "status"
         ])
     );
@@ -601,6 +602,14 @@ async fn a_pitching_workbook_imports_every_sheet_with_its_people(pool: PgPool) {
         (&json!(4), &json!(1), &json!(0), &json!(4)),
         "{d}"
     );
+    // Rows are found again in their own sheets.
+    let places: Vec<&str> = d["to_check"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["at"].as_str().unwrap())
+        .collect();
+    assert_eq!(places, ["UK & Ireland, row 4", "UK & Ireland, row 5"]);
     let to_check: Vec<(i64, String)> = d["to_check"]
         .as_array()
         .unwrap()
@@ -780,4 +789,49 @@ async fn a_pitching_workbook_imports_every_sheet_with_its_people(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(count, 1);
+
+    // A contact field a list of venues cannot fill leaves the person out,
+    // never the venue.
+    let field = h
+        .post(
+            &owner,
+            "/api/v1/custom-fields",
+            json!({ "entity": "contact", "key": "source", "label": "Source", "field_type": "text", "required": true }),
+        )
+        .await;
+    assert!(field.status.is_success(), "{}", field.body);
+    let csv = "Venue,Territory,Booker,Email\nNew Hall,Europe,Ann New,ann@newhall.test\n";
+    let upload = h
+        .post(
+            &owner,
+            "/api/v1/imports",
+            json!({ "entity": "organisation", "csv": csv }),
+        )
+        .await;
+    let id = upload.id("/import/id");
+    let dry = h
+        .post(
+            &owner,
+            &format!("/api/v1/imports/{id}/dry-run"),
+            json!({ "columns": upload.body["suggested"] }),
+        )
+        .await;
+    assert_eq!(
+        (
+            &dry.body["create"],
+            &dry.body["fail"],
+            &dry.body["new_contacts"]
+        ),
+        (&json!(1), &json!(0), &json!(0)),
+        "{}",
+        dry.body
+    );
+    assert!(
+        dry.body["to_check"][0]["issues"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("source is required"),
+        "{}",
+        dry.body
+    );
 }

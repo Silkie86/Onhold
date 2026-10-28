@@ -150,8 +150,14 @@ pub struct ImportTarget {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImportIssue {
-    /// The spreadsheet row (the header is row 1).
+    /// The row in the file as uploaded (the header is row 1). For a
+    /// workbook of several sheets read together, the row in the joined
+    /// table; `at` says where it is in its own sheet.
     pub row: usize,
+    /// Where the row is in its workbook when several sheets were read:
+    /// `Europe, row 5`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
     /// The field at fault, when there is one.
     pub field: Option<String>,
     pub message: String,
@@ -265,13 +271,16 @@ pub struct DryRunResult {
     /// Contacts an organisation import would add: the person each row
     /// names, unless they are already there.
     pub new_contacts: usize,
-    /// Rows that import, but are worth a look first (up to 100): notes
-    /// saying a place closed or not to contact them, a contact with no
-    /// name. Leave them out with `skip_rows`.
+    /// Rows that would write something, but are worth a look first (up to
+    /// 100): notes saying a place closed or not to contact them, a contact
+    /// with no name or left out. Leave them out with `skip_rows`.
     pub to_check: Vec<ProblemRow>,
+    /// All the rows to check, of which `to_check` holds the first.
+    pub to_check_total: usize,
     /// How values that needed reading were read, each once with the rows
-    /// giving it (up to 100): `Amber` as a status, a sheet name as a
-    /// region, `Holland` as the Netherlands.
+    /// giving it (up to 100 read, and up to 100 that could not be):
+    /// `Amber` as a status, a sheet name as a region, `Holland` as the
+    /// Netherlands.
     pub readings: Vec<ValueReading>,
 }
 
@@ -290,8 +299,11 @@ const MAX_READINGS: usize = 100;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ProblemRow {
-    /// The spreadsheet row (the header is row 1).
+    /// The row in the file as uploaded (the header is row 1), as
+    /// corrections and `skip_rows` give it.
     pub row: usize,
+    /// Where it is in its workbook when several sheets were read.
+    pub at: Option<String>,
     /// Its cells, in column order.
     pub cells: Vec<String>,
     /// What is wrong with it.
@@ -1060,6 +1072,7 @@ impl Record {
 type RowNote = (Option<String>, String);
 
 /// How a cell was read.
+#[derive(Clone)]
 struct ValueRead {
     field: String,
     text: String,
@@ -1098,14 +1111,25 @@ struct Reader<'a> {
     settings: &'a PitchingSettings,
     /// Talent by name key, for the talent an organisation is interested in.
     talent: &'a HashMap<String, Uuid>,
+    /// Cells already read, by field and text: a list repeats its regions,
+    /// colours and countries on every row.
+    memo: std::cell::RefCell<HashMap<(&'static str, String), Memo>>,
 }
+
+/// A cell read once: the key it gives, and how it was read.
+type Memo = (Option<String>, Option<ValueRead>);
+
+/// The most distinct cells remembered while reading.
+const MAX_MEMO: usize = 10_000;
 
 fn joined(values: &[&str]) -> String {
     values.join(" ")
 }
 
-/// Links in cells, separated by spaces, semicolons, commas or bars.
+/// Links in cells, separated by spaces, semicolons, commas or bars. Far
+/// more than a contact holds stops early: the check refuses them anyway.
 fn split_links(cells: Option<&Vec<&str>>) -> Vec<String> {
+    let mut seen: HashSet<&str> = HashSet::new();
     let mut out: Vec<String> = Vec::new();
     for link in cells
         .into_iter()
@@ -1113,11 +1137,20 @@ fn split_links(cells: Option<&Vec<&str>>) -> Vec<String> {
         .flat_map(|c| c.split(|ch: char| ch.is_whitespace() || matches!(ch, ';' | ',' | '|')))
         .filter(|l| !l.is_empty())
     {
-        if !out.iter().any(|o| o == link) {
+        if seen.insert(link) {
             out.push(link.to_owned());
+            if out.len() > 2 * contacts::MAX_LINKS {
+                break;
+            }
         }
     }
     out
+}
+
+/// Whether a contact's name only stands in for one: an email address or a
+/// number, as a person with no name is called.
+fn is_stand_in(name: &str) -> bool {
+    name.contains('@') || !name.chars().any(char::is_alphabetic)
 }
 
 /// Phrases in a row's notes that say not to contact them.
@@ -1172,7 +1205,8 @@ fn scan_notes(notes: &str) -> (bool, Option<&'static str>) {
         )
     };
     let text = words(notes);
-    let has = |p: &str| text.contains(&words(p));
+    // The phrases are written as `words` leaves them.
+    let has = |p: &str| text.contains(&format!(" {p} "));
     (
         DO_NOT_CONTACT_PHRASES.iter().any(|p| has(p)),
         CHECK_PHRASES.iter().find(|p| has(p)).copied(),
@@ -1205,7 +1239,7 @@ fn status_named<'s>(settings: &'s PitchingSettings, raw: &str) -> Option<&'s Sta
     settings
         .statuses
         .iter()
-        .find(|s| s.key == raw.trim() || name_key(&s.label) == key)
+        .find(|s| s.key == key.replace(' ', "_") || name_key(&s.label) == key)
         .or_else(|| {
             settings
                 .statuses
@@ -1268,6 +1302,20 @@ fn country_read(raw: &str) -> Option<ValueRead> {
 }
 
 impl Reader<'_> {
+    /// Reads a cell of a field once, reusing what it gave before.
+    fn memo(&self, field: &'static str, raw: &str, read: impl FnOnce() -> Memo) -> Memo {
+        let key = (field, raw.to_owned());
+        if let Some(m) = self.memo.borrow().get(&key) {
+            return m.clone();
+        }
+        let m = read();
+        let mut memo = self.memo.borrow_mut();
+        if memo.len() < MAX_MEMO {
+            memo.insert(key, m.clone());
+        }
+        m
+    }
+
     #[allow(clippy::too_many_lines)]
     fn read(&self, row: &[String]) -> ReadRow {
         let mut cells: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -1388,7 +1436,10 @@ impl Reader<'_> {
                     postcode: text("address.postcode"),
                     country: text("address.country"),
                 };
-                if let Some(read) = address.country.as_deref().and_then(country_read) {
+                if let Some(raw) = &address.country
+                    && let (_, Some(read)) =
+                        self.memo("address.country", raw, || (None, country_read(raw)))
+                {
                     readings.push(read);
                 }
                 let payment_terms_days = text("payment_terms_days").and_then(|raw| {
@@ -1406,50 +1457,52 @@ impl Reader<'_> {
                 } else {
                     vec![address]
                 };
-                let (country, _) = organisations::place(&json!(addresses));
-                let from_country = self
-                    .settings
-                    .region_of(country.as_deref(), None)
-                    .map(|r| r.key.clone());
-                let region = text("region").and_then(|raw| match region_named(self.settings, &raw) {
-                    Some(r) => {
-                        readings.push(value_read("region", &raw, Some(r.name.clone()), None));
-                        // The region its country gives anyway is left to
-                        // follow the country.
-                        (Some(&r.key) != from_country.as_ref()).then(|| r.key.clone())
+                let mut by_memo = |field: &'static str, raw: String, read: &dyn Fn() -> Memo| {
+                    let (key, how) = self.memo(field, &raw, read);
+                    readings.extend(how);
+                    if key.is_none() {
+                        present.remove(field);
                     }
-                    None => {
-                        let is_country = core_engines::countries::find(&raw).is_some_and(|f| {
-                            f.how == core_engines::countries::How::Name && f.others.is_empty()
-                        });
-                        readings.push(value_read(
-                            "region",
-                            &raw,
-                            None,
-                            Some(if is_country {
+                    key
+                };
+                // A region the country gives anyway is let go when the
+                // organisation is created, so it follows the country.
+                let region = text("region").and_then(|raw| {
+                    by_memo("region", raw.clone(), &|| match region_named(self.settings, &raw) {
+                        Some(r) => (
+                            Some(r.key.clone()),
+                            Some(value_read("region", &raw, Some(r.name.clone()), None)),
+                        ),
+                        None => {
+                            let is_country =
+                                core_engines::countries::find(&raw).is_some_and(|f| {
+                                    f.how == core_engines::countries::How::Name
+                                        && f.others.is_empty()
+                                });
+                            let hint = if is_country {
                                 "a country, not a region: import this column as Country instead"
                             } else {
                                 "not one of your regions: add it in Settings \u{2192} Pitching, or leave it"
-                            }),
-                        ));
-                        present.remove("region");
-                        None
-                    }
+                            };
+                            (None, Some(value_read("region", &raw, None, Some(hint))))
+                        }
+                    })
                 });
                 let status = text("status").and_then(|raw| {
-                    let found = status_named(self.settings, &raw);
-                    readings.push(value_read(
-                        "status",
-                        &raw,
-                        found.map(|s| s.label.clone()),
-                        found.is_none().then_some(
-                            "not one of your statuses: add it in Settings \u{2192} Pitching, or leave it",
-                        ),
-                    ));
-                    if found.is_none() {
-                        present.remove("status");
-                    }
-                    found.map(|s| s.key.clone())
+                    by_memo("status", raw.clone(), &|| {
+                        let found = status_named(self.settings, &raw);
+                        (
+                            found.map(|s| s.key.clone()),
+                            Some(value_read(
+                                "status",
+                                &raw,
+                                found.map(|s| s.label.clone()),
+                                found.is_none().then_some(
+                                    "not one of your statuses: add it in Settings \u{2192} Pitching, or leave it",
+                                ),
+                            )),
+                        )
+                    })
                 });
                 let relationship = text("relationship").and_then(|raw| {
                     let found = relationship_named(&raw);
@@ -1615,6 +1668,9 @@ struct Index {
     by_name_at: HashMap<(String, Uuid), Uuid>,
     /// Organisations by name, for contacts.
     organisations: HashMap<String, Uuid>,
+    /// Contacts' name keys, and whether the name stands in for one (an
+    /// email or number), to tell people sharing an address apart.
+    names: HashMap<Uuid, (String, bool)>,
 }
 
 impl Index {
@@ -1655,6 +1711,8 @@ impl Index {
                     .entry((name_key(&k.name), org))
                     .or_insert(k.id);
             }
+            self.names
+                .insert(k.id, (name_key(&k.name), is_stand_in(&k.name)));
         }
         Ok(())
     }
@@ -1675,7 +1733,37 @@ impl Index {
             .copied()
     }
 
+    /// The person a row names at an organisation: by name there, else by
+    /// an email or number when the names agree (or either is only a stand
+    /// in), since a venue's people often share its address and number.
+    fn find_person(&self, c: &NewContact, organisation: Uuid) -> Option<Uuid> {
+        let key = name_key(&c.name);
+        if let Some(id) = self.by_name_at.get(&(key.clone(), organisation)) {
+            return Some(*id);
+        }
+        let row_stand_in = is_stand_in(&c.name);
+        c.emails
+            .iter()
+            .filter_map(|e| self.by_email.get(&email_key(e)))
+            .chain(
+                c.phones
+                    .iter()
+                    .filter_map(|p| phone_key(p))
+                    .filter_map(|k| self.by_phone.get(&k)),
+            )
+            .copied()
+            .find(|id| {
+                row_stand_in
+                    || self
+                        .names
+                        .get(id)
+                        .is_none_or(|(name, stand_in)| *stand_in || *name == key)
+            })
+    }
+
     fn add_contact(&mut self, c: &NewContact, organisation: Option<Uuid>, id: Uuid) {
+        self.names
+            .insert(id, (name_key(&c.name), is_stand_in(&c.name)));
         for e in &c.emails {
             self.by_email.entry(email_key(e)).or_insert(id);
         }
@@ -1879,6 +1967,7 @@ impl Setup {
             extra_tags: self.extra_tags.clone(),
             settings: &self.settings,
             talent: &self.talent,
+            memo: std::cell::RefCell::default(),
         }
     }
 
@@ -1890,15 +1979,30 @@ impl Setup {
         index: &Index,
         row: &[String],
     ) -> (Plan, Vec<RowNote>, Vec<ValueRead>) {
-        let read = reader.read(row);
+        let mut read = reader.read(row);
         let mut issues = read.issues;
-        let check = match &read.record {
+        let check = match &mut read.record {
             Record::Talent(n) => talent::check_new(n, &self.defs).1,
             Record::Organisation(n, person) => {
                 let mut c = organisations::check_new(n, &self.defs, &self.settings).1;
                 if let Some(p) = person {
-                    for i in contacts::check_new(p, &self.contact_defs).1.issues {
-                        c.issue(format!("contact.{}", i.field), i.message);
+                    let found = contacts::check_new(p, &self.contact_defs).1.issues;
+                    // Contact fields a sheet of organisations cannot fill
+                    // leave the person out, not the organisation.
+                    if let Some(i) = found.iter().find(|i| i.field.starts_with("custom")) {
+                        read.notes.push((
+                            Some("contact.name".into()),
+                            format!(
+                                "{} was left out: their {} is required for every contact",
+                                p.name,
+                                i.field.trim_start_matches("custom.")
+                            ),
+                        ));
+                        *person = None;
+                    } else {
+                        for i in found {
+                            c.issue(format!("contact.{}", i.field), i.message);
+                        }
                     }
                 }
                 c
@@ -1922,7 +2026,21 @@ impl Setup {
                     _ => None,
                 }),
                 (Some(id), OnMatch::Update) => Plan::Update(id, read.record, read.present),
-                _ => Plan::Create(read.record),
+                (_, _) => {
+                    let mut record = read.record;
+                    // A new organisation follows its country's region
+                    // unless the sheet gives another.
+                    if let Record::Organisation(n, _) = &mut record
+                        && n.region.is_some()
+                    {
+                        let (country, _) = organisations::place(&json!(n.addresses));
+                        let from_country = self.settings.region_of(country.as_deref(), None);
+                        if from_country.map(|r| &r.key) == n.region.as_ref() {
+                            n.region = None;
+                        }
+                    }
+                    Plan::Create(record)
+                }
             }
         } else {
             Plan::Fail(issues)
@@ -1931,14 +2049,34 @@ impl Setup {
     }
 }
 
-fn issues_for(row: usize, list: Vec<(Option<String>, String)>) -> Vec<ImportIssue> {
+fn issues_for(
+    row: usize,
+    at: Option<&String>,
+    list: Vec<(Option<String>, String)>,
+) -> Vec<ImportIssue> {
     list.into_iter()
         .map(|(field, message)| ImportIssue {
             row,
+            at: at.cloned(),
             field,
             message,
         })
         .collect()
+}
+
+/// The columns a workbook of several sheets gains for where each row came
+/// from: its sheet, and its row there.
+fn sheet_columns(headers: &[String]) -> Option<(usize, usize)> {
+    let row = headers
+        .iter()
+        .rposition(|h| h == core_engines::workbook::SHEET_ROW_COLUMN)?;
+    Some((row.checked_sub(1)?, row))
+}
+
+/// Where a row is in its workbook: `Europe, row 5`.
+fn place_of(columns: Option<(usize, usize)>, row: &[String]) -> Option<String> {
+    let (sheet, number) = columns?;
+    Some(format!("{}, row {}", row.get(sheet)?, row.get(number)?))
 }
 
 fn record_json(record: &Record) -> Value {
@@ -2056,6 +2194,7 @@ pub async fn dry_run(
 
     let table = engine::parse_csv(&csv).map_err(|m| ApiError::invalid("csv", m))?;
     let reader = setup.reader();
+    let sheet_columns = sheet_columns(&table.headers);
     let mut out = DryRunResult {
         create: 0,
         update: 0,
@@ -2067,9 +2206,13 @@ pub async fn dry_run(
         problem_rows: Vec::new(),
         new_contacts: 0,
         to_check: Vec::new(),
+        to_check_total: 0,
         readings: Vec::new(),
     };
     let mut reading_at: HashMap<(String, String), usize> = HashMap::new();
+    // Values that could not be read have room of their own, so plenty of
+    // ones that could never crowd them out.
+    let (mut read_kept, mut unread_kept) = (0, 0);
     for (i, row) in table.rows.iter().enumerate() {
         let number = table.row_numbers[i];
         let Some(row) = setup.row(number, row) else {
@@ -2080,7 +2223,17 @@ pub async fn dry_run(
         for r in reads {
             match reading_at.get(&(r.field.clone(), r.text.clone())) {
                 Some(&k) => out.readings[k].rows += 1,
-                None if out.readings.len() < MAX_READINGS => {
+                None if (if r.read_as.is_some() {
+                    read_kept
+                } else {
+                    unread_kept
+                }) < MAX_READINGS =>
+                {
+                    if r.read_as.is_some() {
+                        read_kept += 1;
+                    } else {
+                        unread_kept += 1;
+                    }
                     reading_at.insert((r.field.clone(), r.text.clone()), out.readings.len());
                     out.readings.push(ValueReading {
                         field: r.field,
@@ -2093,15 +2246,27 @@ pub async fn dry_run(
                 None => {}
             }
         }
-        if !notes.is_empty()
-            && !matches!(plan, Plan::Fail(_))
-            && out.to_check.len() < MAX_PROBLEM_ROWS
-        {
-            out.to_check.push(ProblemRow {
-                row: number,
-                cells: row.to_vec(),
-                issues: issues_for(number, notes),
-            });
+        let at = place_of(sheet_columns, &row);
+        // Notes are about what the row would write: all of them for a new
+        // or updated record, only its person's for one left alone.
+        let notes: Vec<RowNote> = match &plan {
+            Plan::Create(_) | Plan::Update(..) => notes,
+            Plan::Skip(Some(_)) => notes
+                .into_iter()
+                .filter(|(f, _)| f.as_deref().is_some_and(|f| f.starts_with("contact.")))
+                .collect(),
+            Plan::Skip(None) | Plan::Fail(_) => Vec::new(),
+        };
+        if !notes.is_empty() {
+            out.to_check_total += 1;
+            if out.to_check.len() < MAX_PROBLEM_ROWS {
+                out.to_check.push(ProblemRow {
+                    row: number,
+                    at: at.clone(),
+                    cells: row.to_vec(),
+                    issues: issues_for(number, at.as_ref(), notes),
+                });
+            }
         }
         match plan {
             Plan::Create(record) | Plan::Update(_, record, _) => {
@@ -2120,7 +2285,7 @@ pub async fn dry_run(
             Plan::Skip(None) => out.skip += 1,
             Plan::Fail(list) => {
                 out.fail += 1;
-                let issues = issues_for(number, list);
+                let issues = issues_for(number, at.as_ref(), list);
                 if out.issues.len() < MAX_DRY_RUN_ISSUES {
                     out.issues.extend(issues.iter().cloned());
                     out.issues.truncate(MAX_DRY_RUN_ISSUES);
@@ -2128,6 +2293,7 @@ pub async fn dry_run(
                 if out.problem_rows.len() < MAX_PROBLEM_ROWS {
                     out.problem_rows.push(ProblemRow {
                         row: number,
+                        at,
                         cells: row.into_owned(),
                         issues,
                     });
@@ -2177,7 +2343,7 @@ fn count_person(
     org: Uuid,
     person: &NewContact,
 ) -> bool {
-    if index.find_contact(person, Some(org)).is_some() {
+    if index.find_person(person, org).is_some() {
         return setup.options.on_match == OnMatch::Update;
     }
     out.new_contacts += 1;
@@ -2263,6 +2429,17 @@ fn merged(current: &[String], extra: &[String]) -> Vec<String> {
     out
 }
 
+/// Lists in the row added to the record's own, unless that makes more than
+/// it may hold.
+fn merged_upto(current: &[String], extra: &[String], max: usize) -> Vec<String> {
+    let out = merged(current, extra);
+    if out.len() > max {
+        current.to_vec()
+    } else {
+        out
+    }
+}
+
 /// Some(value) for the fields the row gave, so updates touch nothing else.
 fn given<T: Clone>(present: &HashSet<String>, key: &str, value: &Option<T>) -> Option<Option<T>> {
     present.contains(key).then(|| value.clone())
@@ -2346,19 +2523,33 @@ async fn add_person(
     on_match: OnMatch,
     extra: &Value,
 ) -> ApiResult<bool> {
-    let id = match index.find_contact(person, Some(org)) {
+    let id = match index.find_person(person, org) {
         Some(_) if on_match != OnMatch::Update => return Ok(false),
         Some(id) => {
             ctx.authorize(Permission::ContactWrite)?;
             let current = contacts::load(tx, id).await?.ok_or(ApiError::NotFound)?;
             let emails: Vec<String> = person.emails.iter().map(|e| email_key(e)).collect();
+            // Lists that would grow past what a contact holds stay as they
+            // are, so the organisation written before is never left without
+            // its row.
             let patch = ContactPatch {
+                // Named at last, when they went by their email or number.
+                name: (is_stand_in(&current.name) && !is_stand_in(&person.name))
+                    .then(|| person.name.clone()),
                 organisation_id: current.organisation_id.is_none().then_some(Some(org)),
-                emails: Some(merged(&current.emails, &emails)),
-                phones: Some(merged(&current.phones, &person.phones)),
-                links: Some(merged(&current.links, &person.links)),
+                emails: Some(merged_upto(&current.emails, &emails, contacts::MAX_EMAILS)),
+                phones: Some(merged_upto(
+                    &current.phones,
+                    &person.phones,
+                    contacts::MAX_PHONES,
+                )),
+                links: Some(merged_upto(
+                    &current.links,
+                    &person.links,
+                    contacts::MAX_LINKS,
+                )),
                 role: person.role.clone().map(Some),
-                tags: Some(merged(&current.tags, &person.tags)),
+                tags: Some(merged_upto(&current.tags, &person.tags, crm::MAX_TAGS)),
                 ..Default::default()
             };
             contacts::update_in_tx(tx, ctx, id, patch, None, Some(extra.clone())).await?;
@@ -2495,7 +2686,9 @@ async fn update(
                 payment_terms_days: given(present, "payment_terms_days", &n.payment_terms_days),
                 notes: given(present, "notes", &n.notes),
                 tags: Some(merged(&current.tags, &n.tags)),
-                region: given(present, "region", &n.region),
+                // A region it is in anyway, by its country, is not pinned.
+                region: given(present, "region", &n.region)
+                    .filter(|r| current.region_picked || *r != current.region),
                 relationship: given(present, "relationship", &n.relationship),
                 status: given(present, "status", &n.status),
                 follow_up_on: given(present, "follow_up_on", &n.follow_up_on),
@@ -2612,6 +2805,7 @@ pub async fn execute(
 
     let extra = json!({ "import": { "id": id, "run_rules": setup.options.run_rules } });
     let reader = setup.reader();
+    let sheet_columns = sheet_columns(&table.headers);
     let mut stored = i32::try_from(import.issues.as_array().map_or(0, Vec::len)).unwrap_or(0);
     let start = usize::try_from(import.processed).unwrap_or(0);
 
@@ -2653,7 +2847,8 @@ pub async fn execute(
                 Err(list) => {
                     counts.failed += 1;
                     if stored < MAX_STORED_ISSUES {
-                        let found = issues_for(table.row_numbers[i], list);
+                        let at = place_of(sheet_columns, &row);
+                        let found = issues_for(table.row_numbers[i], at.as_ref(), list);
                         stored += i32::try_from(found.len()).unwrap_or(0);
                         issues.extend(found);
                     }
@@ -2740,6 +2935,7 @@ mod tests {
         let s = PitchingSettings::default();
         let status = |raw: &str| status_named(&s, raw).map(|x| x.key.as_str());
         assert_eq!(status("talking"), Some("talking"));
+        assert_eq!(status("Booked"), Some("booked"));
         assert_eq!(status("Booked or worked with"), Some("booked"));
         assert_eq!(status("Orange"), Some("talking"));
         assert_eq!(status("gray"), Some("inactive"));
@@ -2754,6 +2950,37 @@ mod tests {
         assert_eq!(relationship_named("Lead"), Some(Relationship::Prospect));
         assert_eq!(relationship_named("existing"), Some(Relationship::Client));
         assert_eq!(relationship_named("maybe"), None);
+    }
+
+    #[test]
+    fn people_sharing_a_venues_address_are_told_apart() {
+        let grand = Uuid::from_u128(1);
+        let mut index = Index::default();
+        let person = |name: &str, email: &str| NewContact {
+            name: name.into(),
+            emails: vec![email.into()],
+            ..Default::default()
+        };
+        index.add_contact(
+            &person("Alice", "bookings@grand.test"),
+            Some(grand),
+            Uuid::from_u128(2),
+        );
+        index.add_contact(
+            &person("owl@bar.test", "owl@bar.test"),
+            None,
+            Uuid::from_u128(3),
+        );
+        let found = |p: NewContact| index.find_person(&p, grand).map(|id| id.as_u128());
+        assert_eq!(found(person("Bob", "bookings@grand.test")), None);
+        assert_eq!(found(person("alice", "bookings@grand.test")), Some(2));
+        assert_eq!(found(person("Alice", "alice@home.test")), Some(2));
+        // A stand-in name on either side matches by address.
+        assert_eq!(
+            found(person("bookings@grand.test", "bookings@grand.test")),
+            Some(2)
+        );
+        assert_eq!(found(person("Jane Owl", "owl@bar.test")), Some(3));
     }
 
     #[test]

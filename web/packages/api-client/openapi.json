@@ -30170,6 +30170,7 @@
           "problem_rows",
           "new_contacts",
           "to_check",
+          "to_check_total",
           "readings"
         ],
         "properties": {
@@ -30212,7 +30213,7 @@
             "items": {
               "$ref": "#/components/schemas/ValueReading"
             },
-            "description": "How values that needed reading were read, each once with the rows\ngiving it (up to 100): `Amber` as a status, a sheet name as a\nregion, `Holland` as the Netherlands."
+            "description": "How values that needed reading were read, each once with the rows\ngiving it (up to 100 read, and up to 100 that could not be):\n`Amber` as a status, a sheet name as a region, `Holland` as the\nNetherlands."
           },
           "sample": {
             "type": "array",
@@ -30230,7 +30231,12 @@
             "items": {
               "$ref": "#/components/schemas/ProblemRow"
             },
-            "description": "Rows that import, but are worth a look first (up to 100): notes\nsaying a place closed or not to contact them, a contact with no\nname. Leave them out with `skip_rows`."
+            "description": "Rows that would write something, but are worth a look first (up to\n100): notes saying a place closed or not to contact them, a contact\nwith no name or left out. Leave them out with `skip_rows`."
+          },
+          "to_check_total": {
+            "type": "integer",
+            "description": "All the rows to check, of which `to_check` holds the first.",
+            "minimum": 0
           },
           "update": {
             "type": "integer",
@@ -31762,6 +31768,13 @@
           "message"
         ],
         "properties": {
+          "at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the row is in its workbook when several sheets were read:\n`Europe, row 5`."
+          },
           "field": {
             "type": [
               "string",
@@ -31774,7 +31787,7 @@
           },
           "row": {
             "type": "integer",
-            "description": "The spreadsheet row (the header is row 1).",
+            "description": "The row in the file as uploaded (the header is row 1). For a\nworkbook of several sheets read together, the row in the joined\ntable; `at` says where it is in its own sheet.",
             "minimum": 0
           }
         }
@@ -37168,6 +37181,13 @@
           "issues"
         ],
         "properties": {
+          "at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where it is in its workbook when several sheets were read."
+          },
           "cells": {
             "type": "array",
             "items": {
@@ -37184,7 +37204,7 @@
           },
           "row": {
             "type": "integer",
-            "description": "The spreadsheet row (the header is row 1).",
+            "description": "The row in the file as uploaded (the header is row 1), as\ncorrections and `skip_rows` give it.",
             "minimum": 0
           }
         }

@@ -1,5 +1,5 @@
 import { safeRedirect } from "./auth.tsx";
-import { decodeFile, isWorkbook, needsResaving, sheetsSummary, stripCardAttachments } from "./imports.tsx";
+import { decodeFile, isWorkbook, needsResaving, rowLabel, sheetsSummary, stripCardAttachments } from "./imports.tsx";
 import { dialable, validateListSearch } from "./crm.tsx";
 import { keyFor, newKey } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
@@ -87,6 +87,11 @@ test("a workbook's sheets are summed up in a sentence", () => {
       { name: "Notes", rows: 1, included: false },
     ]),
   ).toBe(
-    "Read 2 sheets: UK & Ireland (4 rows), Europe (1 row). Each row's sheet is in the Sheet column, which can go into Region. Left out, as their columns are different: Notes.",
+    "Read 2 sheets: UK & Ireland (4 rows), Europe (1 row). Each row's sheet is in the Sheet column, which can go into Region, and its row there in the Sheet row column. Left out, as their columns are different: Notes.",
   );
+});
+
+test("rows are named where they can be found", () => {
+  expect(rowLabel({ row: 7 })).toBe("Row 7");
+  expect(rowLabel({ row: 7, at: "Europe, row 2" })).toBe("Europe, row 2");
 });

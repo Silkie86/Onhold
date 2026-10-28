@@ -5879,19 +5879,22 @@ export interface components {
             problem_rows: components["schemas"]["ProblemRow"][];
             /**
              * @description How values that needed reading were read, each once with the rows
-             *     giving it (up to 100): `Amber` as a status, a sheet name as a
-             *     region, `Holland` as the Netherlands.
+             *     giving it (up to 100 read, and up to 100 that could not be):
+             *     `Amber` as a status, a sheet name as a region, `Holland` as the
+             *     Netherlands.
              */
             readings: components["schemas"]["ValueReading"][];
             /** @description The first records as they would be saved. */
             sample: Record<string, never>[];
             skip: number;
             /**
-             * @description Rows that import, but are worth a look first (up to 100): notes
-             *     saying a place closed or not to contact them, a contact with no
-             *     name. Leave them out with `skip_rows`.
+             * @description Rows that would write something, but are worth a look first (up to
+             *     100): notes saying a place closed or not to contact them, a contact
+             *     with no name or left out. Leave them out with `skip_rows`.
              */
             to_check: components["schemas"]["ProblemRow"][];
+            /** @description All the rows to check, of which `to_check` holds the first. */
+            to_check_total: number;
             update: number;
         };
         /** @description A record that may be the one being entered. */
@@ -6346,10 +6349,19 @@ export interface components {
             workspace_id: components["schemas"]["WorkspaceId"];
         };
         ImportIssue: {
+            /**
+             * @description Where the row is in its workbook when several sheets were read:
+             *     `Europe, row 5`.
+             */
+            at?: string | null;
             /** @description The field at fault, when there is one. */
             field?: string | null;
             message: string;
-            /** @description The spreadsheet row (the header is row 1). */
+            /**
+             * @description The row in the file as uploaded (the header is row 1). For a
+             *     workbook of several sheets read together, the row in the joined
+             *     table; `at` says where it is in its own sheet.
+             */
             row: number;
         };
         ImportOptions: {
@@ -8044,11 +8056,16 @@ export interface components {
             upgrade_url?: string | null;
         };
         ProblemRow: {
+            /** @description Where it is in its workbook when several sheets were read. */
+            at?: string | null;
             /** @description Its cells, in column order. */
             cells: string[];
             /** @description What is wrong with it. */
             issues: components["schemas"]["ImportIssue"][];
-            /** @description The spreadsheet row (the header is row 1). */
+            /**
+             * @description The row in the file as uploaded (the header is row 1), as
+             *     corrections and `skip_rows` give it.
+             */
             row: number;
         };
         ProjectOverview: {
