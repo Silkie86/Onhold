@@ -35788,7 +35788,7 @@
               "string",
               "null"
             ],
-            "description": "The website page where people upgrade, e.g. from the talent portal's\n\"Unlock features\". Plans are sold there, never inside the app."
+            "description": "The website page where people upgrade, e.g. from the talent portal's\n\"Unlock features\". Plans are sold there, never inside the app.\nLeft out when unset, so a list saved without one still reads in a\nrelease from before it existed."
           }
         },
         "additionalProperties": false

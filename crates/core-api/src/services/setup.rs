@@ -38,7 +38,9 @@ pub struct PriceList {
     pub team: BTreeMap<String, u32>,
     /// The website page where people upgrade, e.g. from the talent portal's
     /// "Unlock features". Plans are sold there, never inside the app.
-    #[serde(default)]
+    /// Left out when unset, so a list saved without one still reads in a
+    /// release from before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upgrade_url: Option<String>,
 }
 
@@ -100,13 +102,13 @@ pub fn validate_price_list(p: &PriceList) -> ApiResult<()> {
     Ok(())
 }
 
-/// The stored list, or the example one; a stored list from an older
-/// release that no longer reads falls back too.
 /// Where people upgrade, if OnHold's team has set it.
 pub(crate) async fn upgrade_url(conn: &mut sqlx::PgConnection) -> ApiResult<Option<String>> {
     Ok(read_price_list(core_db::platform_settings::get(conn, PRICE_LIST).await?).upgrade_url)
 }
 
+/// The stored list, or the example one; a stored list from an older
+/// release that no longer reads falls back too.
 fn read_price_list(stored: Option<Value>) -> PriceList {
     stored
         .and_then(|v| serde_json::from_value(v).ok())

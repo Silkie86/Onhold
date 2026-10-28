@@ -192,13 +192,13 @@ export function PortalShell({ me }: { me: Session["me"] }) {
             <span className="truncate text-sm font-semibold">{home.data?.talent.map((t) => t.name).join(", ") || me.user.name}</span>
             <span className="truncate text-xs text-muted-foreground">with {workspace.name}</span>
           </div>
-          <nav aria-label="Portal" className="hidden gap-1 sm:flex">
+          <nav aria-label="Portal" className="hidden min-w-0 gap-1 overflow-x-auto sm:flex">
             {shown.map((t) => (
               <Link
                 key={t.to}
                 to={t.to}
                 activeOptions={{ exact: t.to === "/portal" }}
-                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-accent [&_svg]:size-4"
+                className="flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-accent [&_svg]:size-4"
                 activeProps={{ className: "bg-accent font-medium" }}
               >
                 {t.icon}
@@ -208,11 +208,12 @@ export function PortalShell({ me }: { me: Session["me"] }) {
             {locked && (
               <Link
                 to="/portal/unlock"
-                className="flex items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-sm hover:bg-accent [&_svg]:size-4"
+                aria-label="Unlock features"
+                className="flex shrink-0 items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-sm hover:bg-accent [&_svg]:size-4"
                 activeProps={{ className: "bg-accent font-medium" }}
               >
                 <Sparkles />
-                Unlock features
+                <span className="hidden lg:inline">Unlock features</span>
               </Link>
             )}
           </nav>
@@ -931,9 +932,12 @@ export function PortalUnlockPage() {
     enabled: hidden === false,
   });
   if (!home.data || hidden) return <Spinner />;
-  const coming = (upcoming.data ?? []).filter((d) => d.status !== "cancelled");
+  // A date with several of their acts on it is still one date.
+  const once = (xs: PortalDate[]) => [...new Map(xs.map((d) => [d.id, d])).values()];
+  const coming = once((upcoming.data ?? []).filter((d) => d.status !== "cancelled"));
   const yearAgo = Date.now() - 365 * 24 * 3600 * 1000;
-  const lastYear = (past.data ?? []).filter((d) => d.status !== "cancelled" && Date.parse(d.starts_at) >= yearAgo);
+  const lastYear = once((past.data ?? []).filter((d) => d.status !== "cancelled" && Date.parse(d.starts_at) >= yearAgo));
+  const failed = upcoming.isError || past.isError;
   const venues = new Set([...coming, ...lastYear].map((d) => d.venue).filter(Boolean)).size;
   const url = home.data.upgrade_url;
   return (
@@ -958,12 +962,15 @@ export function PortalUnlockPage() {
           ].map((s) => (
             <div key={s.label} className="rounded-md bg-secondary px-2 py-2">
               <dt className="sr-only">{s.label}</dt>
-              <dd className="text-lg font-semibold tabular-nums">{upcoming.isPending || past.isPending ? "…" : s.n}</dd>
-              <dd className="text-xs text-muted-foreground">{s.label}</dd>
+              <dd className="text-lg font-semibold tabular-nums">{failed ? "–" : upcoming.isPending || past.isPending ? "…" : s.n}</dd>
+              <dd className="text-xs text-muted-foreground" aria-hidden>
+                {s.label}
+              </dd>
             </div>
           ))}
         </dl>
-        <div className="grid gap-2 sm:grid-cols-3" aria-label="Your bookings board">
+        {failed && <Alert>Your dates could not be loaded just now.</Alert>}
+        <section className="grid gap-2 sm:grid-cols-3" aria-label="Your bookings board">
           {BOARD.map((col) => {
             const items = coming.filter((d) => d.status === col.status);
             return (
@@ -973,7 +980,7 @@ export function PortalUnlockPage() {
                   <span className="tabular-nums text-muted-foreground">{items.length}</span>
                 </span>
                 {items.slice(0, 3).map((d) => (
-                  <div key={`${d.id}-${d.talent_id}`} className="rounded border bg-background px-2 py-1.5 text-xs">
+                  <div key={d.id} className="rounded border bg-background px-2 py-1.5 text-xs">
                     <span className="block truncate font-medium">{d.title}</span>
                     <span className="text-muted-foreground">{when(d).day}</span>
                   </div>
@@ -985,7 +992,7 @@ export function PortalUnlockPage() {
               </div>
             );
           })}
-        </div>
+        </section>
       </section>
 
       <ul className="grid gap-2 sm:grid-cols-2" aria-label="Locked features">
@@ -1006,7 +1013,13 @@ export function PortalUnlockPage() {
       <Card className="flex flex-col gap-2 p-4">
         {url ? (
           <>
-            <Button onClick={() => void openInBrowser(`${url}${url.includes("?") ? "&" : "?"}from=portal`)}>
+            <Button
+              onClick={() => {
+                const link = new URL(url);
+                link.searchParams.set("from", "portal");
+                void openInBrowser(link.toString());
+              }}
+            >
               Upgrade on the website <ExternalLink />
             </Button>
             <p className="text-center text-xs text-muted-foreground">

@@ -7663,6 +7663,8 @@ export interface components {
             /**
              * @description The website page where people upgrade, e.g. from the talent portal's
              *     "Unlock features". Plans are sold there, never inside the app.
+             *     Left out when unset, so a list saved without one still reads in a
+             *     release from before it existed.
              */
             upgrade_url?: string | null;
         };
