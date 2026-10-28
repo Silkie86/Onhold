@@ -60,13 +60,13 @@ export function useSenderDomains(enabled = true) {
 function StatusBadge({ d }: { d: Domain }) {
   if (d.sending)
     return (
-      <Badge className="border-emerald-600 bg-emerald-600 text-white">
+      <Badge className="border-success bg-success text-success-foreground">
         Sending from it
       </Badge>
     );
   if (d.status === "verified")
     return (
-      <Badge className="border border-emerald-600 text-emerald-700 dark:text-emerald-300">
+      <Badge className="border border-success text-success">
         Verified
       </Badge>
     );
@@ -77,7 +77,7 @@ function StatusBadge({ d }: { d: Domain }) {
       </Badge>
     );
   return (
-    <Badge className="border border-amber-500 text-amber-800 dark:text-amber-300">
+    <Badge className="border border-warning text-warning">
       Waiting for its records
     </Badge>
   );
@@ -111,11 +111,11 @@ function RecordRow({ r, optional }: { r: DnsRecord; optional?: boolean }) {
         {optional ? (
           <span className="text-xs text-muted-foreground">Recommended</span>
         ) : r.found ? (
-          <span className="flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300">
+          <span className="flex items-center gap-1 text-xs text-success">
             <Check className="size-3" /> Found
           </span>
         ) : (
-          <span className="text-xs text-amber-800 dark:text-amber-300">
+          <span className="text-xs text-warning">
             Not found yet
           </span>
         )}
