@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT count(*) AS \"n!\" FROM thread_messages m\n           JOIN threads th ON th.workspace_id = m.workspace_id AND th.id = m.thread_id\n           JOIN talent t ON t.workspace_id = th.workspace_id AND t.id = th.talent_id\n           WHERE m.workspace_id = app_workspace_id() AND th.channel = 'portal'\n             AND th.portal_user_id = app_user_id()\n             AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL\n             AND m.direction = 'outbound' AND m.status = 'sent'\n             AND (th.portal_read_at IS NULL OR m.sent_at > th.portal_read_at)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "n!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "7a2f27c03623c3f2f2f7531229009a8bc696ee66eeb800df8ad0c6178b443d6e"
+}

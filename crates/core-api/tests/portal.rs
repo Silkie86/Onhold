@@ -550,3 +550,202 @@ async fn portal_links_are_made_only_by_invitation(pool: PgPool) {
     let res = get(&app, &me, "/api/v1/portal").await;
     assert!(!res.status.is_success());
 }
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_talent_and_their_agent_message_each_other(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let agent = app.add_member(&owner, "agent@acme.test", "agent").await;
+    let ada = talent(&app, &agent, "Ada").await;
+    let other = talent(&app, &agent, "Grace").await;
+
+    // Writing before their portal is open has nowhere to go.
+    let res = post(
+        &app,
+        &agent,
+        &format!("/api/v1/talent/{ada}/portal/messages"),
+        json!({ "body": "Hello" }),
+    )
+    .await;
+    res.expect(StatusCode::CONFLICT, "no_portal");
+
+    let me = invite_talent(&app, &agent, ws, ada, "ada@artist.test").await;
+    let convo = get(&app, &me, "/api/v1/portal/messages").await.ok();
+    assert_eq!(convo.body["talent_name"], "Ada");
+    assert_eq!(convo.body["messages"], json!([]));
+
+    // The talent writes; it lands unread in the agency's inbox.
+    let sent = post(
+        &app,
+        &me,
+        "/api/v1/portal/messages",
+        json!({ "body": "Can I bring a plus one?" }),
+    )
+    .await
+    .ok();
+    assert_eq!(sent.body["from_me"], true);
+    let inbox = get(&app, &agent, "/api/v1/inbox/threads?channel=portal")
+        .await
+        .ok();
+    assert_eq!(inbox.body["total"], 1);
+    let thread = &inbox.body["items"][0];
+    assert_eq!(thread["channel"], "portal");
+    assert_eq!(thread["subject"], "Ada");
+    assert_eq!(thread["unread"], true);
+    let thread_id = thread["id"].as_str().unwrap().to_owned();
+
+    // The agent answers from the inbox; the talent sees it and is emailed.
+    let reply = post(
+        &app,
+        &agent,
+        &format!("/api/v1/inbox/threads/{thread_id}/reply"),
+        json!({ "body": "Yes, you're both on the list." }),
+    )
+    .await
+    .ok();
+    assert_eq!(reply.body["status"], "sent");
+    let home = get(&app, &me, "/api/v1/portal").await.ok();
+    assert_eq!(home.body["unread_messages"], 1);
+    let convo = get(&app, &me, "/api/v1/portal/messages").await.ok();
+    let messages = convo.body["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[1]["from_me"], false);
+    assert_eq!(messages[1]["body"], "Yes, you're both on the list.");
+    let home = get(&app, &me, "/api/v1/portal").await.ok();
+    assert_eq!(home.body["unread_messages"], 0);
+    let to: String =
+        sqlx::query_scalar("SELECT payload->>'to' FROM outbox WHERE topic = 'portal.message_sent'")
+            .fetch_one(&app.owner)
+            .await
+            .unwrap();
+    assert_eq!(to, "ada@artist.test");
+
+    // Writing from the talent's record joins the same conversation.
+    let written = post(
+        &app,
+        &agent,
+        &format!("/api/v1/talent/{ada}/portal/messages"),
+        json!({ "body": "Soundcheck moved to 5pm." }),
+    )
+    .await
+    .ok();
+    assert_eq!(written.body["thread_id"], thread_id.as_str());
+
+    // Someone else's conversation does not exist for them.
+    let res = get(
+        &app,
+        &me,
+        &format!("/api/v1/portal/messages?talent_id={other}"),
+    )
+    .await;
+    res.expect(StatusCode::NOT_FOUND, "not_found");
+
+    // Someone invited later starts afresh and never sees what went before.
+    app.delete(&format!("/api/v1/talent/{ada}/portal"))
+        .signed_in(&agent)
+        .send()
+        .await
+        .ok();
+    let next = invite_talent(&app, &agent, ws, ada, "ada.new@artist.test").await;
+    let convo = get(&app, &next, "/api/v1/portal/messages").await.ok();
+    assert_eq!(convo.body["messages"], json!([]));
+    let home = get(&app, &next, "/api/v1/portal").await.ok();
+    assert_eq!(home.body["unread_messages"], 0);
+    let res = post(
+        &app,
+        &agent,
+        &format!("/api/v1/inbox/threads/{thread_id}/reply"),
+        json!({ "body": "Still there?" }),
+    )
+    .await;
+    res.expect(StatusCode::CONFLICT, "portal_access_ended");
+    let fresh = post(
+        &app,
+        &agent,
+        &format!("/api/v1/talent/{ada}/portal/messages"),
+        json!({ "body": "Welcome!" }),
+    )
+    .await
+    .ok();
+    assert_ne!(fresh.body["thread_id"], thread_id.as_str());
+
+    // The agency can keep messages off the portal, both ways.
+    app.put("/api/v1/workspace/portal")
+        .signed_in(&owner)
+        .json(json!({ "messages": false }))
+        .send()
+        .await
+        .ok();
+    let res = post(
+        &app,
+        &next,
+        "/api/v1/portal/messages",
+        json!({ "body": "Hello?" }),
+    )
+    .await;
+    res.expect(StatusCode::FORBIDDEN, "portal_switched_off");
+    let res = post(
+        &app,
+        &agent,
+        &format!("/api/v1/talent/{ada}/portal/messages"),
+        json!({ "body": "Hello?" }),
+    )
+    .await;
+    res.expect(StatusCode::FORBIDDEN, "portal_switched_off");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_talent_keeps_their_own_bio(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let agent = app.add_member(&owner, "agent@acme.test", "agent").await;
+    let ada = talent(&app, &agent, "Ada").await;
+    let other = talent(&app, &agent, "Grace").await;
+    let me = invite_talent(&app, &agent, ws, ada, "ada@artist.test").await;
+
+    let profiles = get(&app, &me, "/api/v1/portal/profile").await.ok();
+    assert_eq!(profiles.body.as_array().unwrap().len(), 1);
+    assert_eq!(profiles.body[0]["can_edit"], true);
+    let version = profiles.body[0]["version"].clone();
+
+    let res = app
+        .put(&format!("/api/v1/portal/profile/{ada}"))
+        .signed_in(&me)
+        .json(
+            json!({ "bio": "DJ and producer.\n\nResident at Hidden.", "base_location": "Manchester",
+                      "version": version }),
+        )
+        .send()
+        .await
+        .ok();
+    assert_eq!(res.body["base_location"], "Manchester");
+    let record = get(&app, &agent, &format!("/api/v1/talent/{ada}"))
+        .await
+        .ok();
+    assert_eq!(
+        record.body["bio"],
+        "DJ and producer.\n\nResident at Hidden."
+    );
+
+    let res = app
+        .put(&format!("/api/v1/portal/profile/{other}"))
+        .signed_in(&me)
+        .json(json!({ "bio": "Not mine", "version": 1 }))
+        .send()
+        .await;
+    res.expect(StatusCode::NOT_FOUND, "not_found");
+
+    app.put("/api/v1/workspace/portal")
+        .signed_in(&owner)
+        .json(json!({ "edit_profile": false }))
+        .send()
+        .await
+        .ok();
+    let res = app
+        .put(&format!("/api/v1/portal/profile/{ada}"))
+        .signed_in(&me)
+        .json(json!({ "bio": "Changed", "version": 1 }))
+        .send()
+        .await;
+    res.expect(StatusCode::FORBIDDEN, "portal_switched_off");
+}

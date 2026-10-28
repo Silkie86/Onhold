@@ -14,6 +14,7 @@ import {
   Button,
   Card,
   EmptyState,
+  Input,
   Menu,
   MenuContent,
   MenuItem,
@@ -42,18 +43,21 @@ import {
   Link2,
   Lock,
   LogOut,
+  MessageCircle,
   MapPin,
   Monitor,
   Moon,
   Plus,
   Receipt,
   Route,
+  Send,
   Sparkles,
   Sun,
   Trash2,
+  UserRound,
   Wallet,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
 import { useWorkspaceBranding } from "../branding.ts";
 import { openInBrowser } from "../platform.ts";
@@ -76,7 +80,13 @@ function failure(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-const homeQuery = { queryKey: ["portal"], queryFn: () => ok(api.GET("/api/v1/portal")), staleTime: 60_000 };
+const homeQuery = {
+  queryKey: ["portal"],
+  queryFn: () => ok(api.GET("/api/v1/portal")),
+  staleTime: 60_000,
+  // Keeps the unread badge fresh while the portal is open.
+  refetchInterval: 120_000,
+};
 
 /** The portal's own home data: whose dates, and what the agency shares. */
 function usePortal() {
@@ -169,11 +179,20 @@ export function PortalShell({ me }: { me: Session["me"] }) {
   const tabs: { to: string; label: string; icon: ReactNode; shown: boolean }[] = [
     { to: "/portal", label: "Dates", icon: <CalendarCheck />, shown: true },
     { to: "/portal/availability", label: "Availability", icon: <CalendarClock />, shown: true },
+    { to: "/portal/messages", label: "Messages", icon: <MessageCircle />, shown: !!settings?.messages },
     { to: "/portal/documents", label: "Documents", icon: <FileText />, shown: !!settings?.show_documents },
     { to: "/portal/money", label: "Money", icon: <Wallet />, shown: !!settings?.show_money },
   ];
   const shown = tabs.filter((t) => t.shown);
   const locked = !!settings && !settings.hide_locked;
+  const unread = home.data?.unread_messages ?? 0;
+  const badge = (to: string) =>
+    to === "/portal/messages" && unread > 0 ? (
+      <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold leading-4 text-primary-foreground">
+        {unread}
+        <span className="sr-only"> unread</span>
+      </span>
+    ) : null;
   const initials = me.user.name
     .split(/\s+/)
     .map((p) => p[0])
@@ -203,6 +222,7 @@ export function PortalShell({ me }: { me: Session["me"] }) {
               >
                 {t.icon}
                 {t.label}
+                {badge(t.to)}
               </Link>
             ))}
             {locked && (
@@ -241,6 +261,15 @@ export function PortalShell({ me }: { me: Session["me"] }) {
                 </>
               )}
               <MenuSeparator />
+              <MenuItem onSelect={() => void navigate({ to: "/portal/profile" })}>
+                <UserRound className="size-4" /> Your profile
+              </MenuItem>
+              {locked && (
+                <MenuItem onSelect={() => void navigate({ to: "/portal/unlock" })}>
+                  <Sparkles className="size-4" /> Unlock features
+                </MenuItem>
+              )}
+              <MenuSeparator />
               <MenuItem onSelect={() => setTheme("light")}>
                 <Sun className="size-4" /> Light {theme === "light" && "✓"}
               </MenuItem>
@@ -276,23 +305,14 @@ export function PortalShell({ me }: { me: Session["me"] }) {
               key={t.to}
               to={t.to}
               activeOptions={{ exact: t.to === "/portal" }}
-              className="flex flex-1 flex-col items-center gap-0.5 py-2 text-xs text-muted-foreground [&_svg]:size-5"
+              className="relative flex flex-1 flex-col items-center gap-0.5 py-2 text-xs text-muted-foreground [&_svg]:size-5"
               activeProps={{ className: "text-foreground font-medium" }}
             >
               {t.icon}
               {t.label}
+              <span className="absolute right-1/4 top-1">{badge(t.to)}</span>
             </Link>
           ))}
-          {locked && (
-            <Link
-              to="/portal/unlock"
-              className="flex flex-1 flex-col items-center gap-0.5 py-2 text-xs text-muted-foreground [&_svg]:size-5"
-              activeProps={{ className: "text-foreground font-medium" }}
-            >
-              <Sparkles />
-              Unlock
-            </Link>
-          )}
         </nav>
       </div>
     </SessionContext.Provider>
@@ -1033,5 +1053,192 @@ export function PortalUnlockPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+// Messages ----------------------------------------------------------------------------------------
+
+/** The talent's conversation with their agency, which sits in the agency's inbox. */
+export function PortalMessagesPage() {
+  const home = usePortal();
+  const qc = useQueryClient();
+  const talent = home.data?.talent ?? [];
+  const [chosen, setChosen] = useState<string | null>(null);
+  const talentId = chosen ?? talent[0]?.id ?? null;
+  const convo = useQuery({
+    queryKey: ["portal", "messages", talentId],
+    queryFn: () => ok(api.GET("/api/v1/portal/messages", { params: { query: { talent_id: talentId! } } })),
+    enabled: !!talentId && !!home.data?.settings.messages,
+    refetchInterval: 60_000,
+  });
+  // Opening the conversation reads it.
+  const read = convo.dataUpdatedAt;
+  useEffect(() => {
+    if (read) void qc.invalidateQueries({ queryKey: ["portal"], exact: true });
+  }, [read, qc]);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const end = useRef<HTMLLIElement>(null);
+  const last = convo.data?.messages.at(-1)?.id;
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [last]);
+  if (!home.data) return <Spinner />;
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold">Messages</h1>
+        {talent.length > 1 && (
+          <select
+            aria-label="Which act"
+            className="rounded-md border bg-background px-2 py-1 text-sm"
+            value={talentId ?? ""}
+            onChange={(e) => setChosen(e.target.value)}
+          >
+            {talent.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      {!home.data.settings.messages ? (
+        <Alert tone="info">{home.data.workspace_name} has switched messages off here. Get in touch with them the usual way.</Alert>
+      ) : !talentId ? (
+        <EmptyState title="Nothing to message about yet">Messages open once {home.data.workspace_name} links you to your record.</EmptyState>
+      ) : (
+        <>
+      <p className="text-sm text-muted-foreground">Write to {home.data.workspace_name}. They answer here, and you get an email when they do.</p>
+      {convo.isPending ? (
+        <Spinner />
+      ) : convo.isError ? (
+        <Alert>{convo.error.message}</Alert>
+      ) : convo.data.messages.length === 0 ? (
+        <EmptyState title="No messages yet">Ask about a date, send a change of plan, or say hello.</EmptyState>
+      ) : (
+        <ol className="flex flex-col gap-2" aria-label="Conversation">
+          {convo.data.messages.map((m) => (
+            <li key={m.id} className={cn("flex", m.from_me ? "justify-end" : "justify-start")}>
+              <div
+                className={cn(
+                  "max-w-[85%] rounded-lg px-3 py-2 text-sm",
+                  m.from_me ? "bg-primary text-primary-foreground" : "border bg-secondary",
+                )}
+              >
+                {!m.from_me && m.author_name && <span className="block text-xs font-medium">{m.author_name}</span>}
+                <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                <span className={cn("block text-right text-[10px]", m.from_me ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                  {new Date(m.sent_at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+            </li>
+          ))}
+          <li ref={end} aria-hidden className="scroll-mb-20" />
+        </ol>
+      )}
+      <form
+        className="flex flex-col gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!body.trim() || !talentId) return;
+          setBusy(true);
+          setError(null);
+          try {
+            await ok(api.POST("/api/v1/portal/messages", { body: { talent_id: talentId, body } }));
+            setBody("");
+            await qc.invalidateQueries({ queryKey: ["portal", "messages", talentId] });
+          } catch (err) {
+            setError(failure(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <Textarea aria-label="Your message" rows={3} maxLength={4000} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write a message…" />
+        <div className="flex justify-end">
+          <Button type="submit" disabled={busy || !body.trim()}>
+            <Send /> Send
+          </Button>
+        </div>
+      </form>
+      {error && <Alert>{error}</Alert>}
+        </>
+      )}
+    </div>
+  );
+}
+
+// Profile -----------------------------------------------------------------------------------------
+
+/** What the agency shows of them: their bio and where they are based, which they may keep up to date. */
+export function PortalProfilePage() {
+  const qc = useQueryClient();
+  const profiles = useQuery({ queryKey: ["portal", "profile"], queryFn: () => ok(api.GET("/api/v1/portal/profile")) });
+  if (profiles.isPending) return <Spinner />;
+  if (profiles.isError) return <Alert>{profiles.error.message}</Alert>;
+  return (
+    <div className="flex flex-col gap-4">
+      <h1 className="text-xl font-semibold">Your profile</h1>
+      {profiles.data.map((p) => (
+        <ProfileForm key={p.talent_id} p={p} onSaved={() => void qc.invalidateQueries({ queryKey: ["portal", "profile"] })} />
+      ))}
+    </div>
+  );
+}
+
+function ProfileForm({ p, onSaved }: { p: Schemas["PortalProfile"]; onSaved: () => void }) {
+  const [bio, setBio] = useState(p.bio ?? "");
+  const [base, setBase] = useState(p.base_location ?? "");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const changed = bio !== (p.bio ?? "") || base !== (p.base_location ?? "");
+  return (
+    <Card className="flex flex-col gap-3 p-4">
+      <h2 className="font-semibold">{p.name}</h2>
+      {!p.can_edit && <Alert tone="info">Your agency keeps this up to date for you. Message them with any changes.</Alert>}
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setMessage(null);
+          try {
+            await ok(
+              api.PUT("/api/v1/portal/profile/{id}", {
+                params: { path: { id: p.talent_id } },
+                body: { bio: bio.trim() || null, base_location: base.trim() || null, version: p.version },
+              }),
+            );
+            setBio(bio.trim());
+            setBase(base.trim());
+            setMessage({ ok: true, text: "Saved. Your agency sees it straight away." });
+            onSaved();
+          } catch (err) {
+            setMessage({ ok: false, text: failure(err) });
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
+          Based in
+          <Input maxLength={200} disabled={!p.can_edit} value={base} onChange={(e) => setBase(e.target.value)} />
+        </label>
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
+          Bio
+          <Textarea rows={8} maxLength={20000} disabled={!p.can_edit} value={bio} onChange={(e) => setBio(e.target.value)} />
+        </label>
+        {message && <Alert tone={message.ok ? "success" : "error"}>{message.text}</Alert>}
+        {p.can_edit && (
+          <div className="flex justify-end">
+            <Button type="submit" disabled={busy || !changed}>
+              Save
+            </Button>
+          </div>
+        )}
+      </form>
+    </Card>
   );
 }

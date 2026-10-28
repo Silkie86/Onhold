@@ -28,8 +28,10 @@ Runs end to end in `web/apps/app/e2e/portal.spec.ts` on desktop and phone: an ag
 - **API**: `/api/v1/portal…` for talent (`portal:use`), `/api/v1/workspace/portal` and `/api/v1/talent/{id}/portal` for staff.
 - **What talent never see**: the talent role holds only `portal:use` (no staff endpoint, not even the workspace's rules or templates). On a booking with several acts, the shared fee is never shown and travel shows only items naming one of their acts. While fees are hidden, so are contracts and confirmations, which carry them. A record's portal opens only through the invitation (not by editing the record), not for a colleague whose role has no portal, and deleting the record ends it.
 
+- **Messages** (Messages tab, switch "Messages"): one conversation per talent record, which sits in the agency's inbox as a Portal conversation beside email and texts (unread, assign, snooze, link as usual). The talent writes from their page; staff answer from the inbox or with "Write to them" on the talent's record, and the talent gets an email (`system.portal_message`) with a link back. The tab shows how many are unread.
+- **Profile** (account menu, switch "Edit their profile"): the talent keeps their bio and where they are based on their record; the change is recorded as theirs (`talent.updated`, `by_talent`).
+
 ### Not yet
 
-- Messages with the agent and profile edits (PR 3); padlocked features and the preview (PR 2).
 - No email or push to the agent beyond the task; a rule on `booking.talent_answered` can send one.
 - The portal keeps nothing on the device for offline use; dates need a connection.

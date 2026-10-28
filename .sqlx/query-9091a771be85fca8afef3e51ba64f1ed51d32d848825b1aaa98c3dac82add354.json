@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO threads (id, workspace_id, channel, talent_id, portal_user_id, subject, unread, last_message_at)\n           VALUES ($1, app_workspace_id(), 'portal', $2, $3, left($4, 1000), false, now())\n           ON CONFLICT (workspace_id, talent_id, portal_user_id) WHERE channel = 'portal' DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9091a771be85fca8afef3e51ba64f1ed51d32d848825b1aaa98c3dac82add354"
+}

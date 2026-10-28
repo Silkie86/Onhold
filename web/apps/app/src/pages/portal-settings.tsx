@@ -3,8 +3,9 @@
 
 import type { Schemas } from "@onhold/api-client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Checkbox, Input, Label, Spinner } from "@onhold/ui";
-import { MailPlus, UserRoundX } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Alert, Button, Checkbox, Input, Label, Spinner, Textarea } from "@onhold/ui";
+import { MailPlus, MessageCircle, UserRoundX } from "lucide-react";
 import { useState } from "react";
 import { api, ok } from "../api.ts";
 import { useSession } from "../session.tsx";
@@ -17,16 +18,23 @@ function failure(e: unknown): string {
 
 /** On a talent's page: who their portal opens for, and inviting them. */
 export function PortalAccessCard({ talentId, canWrite }: { talentId: string; canWrite: boolean }) {
+  // Writing to them is a message from the inbox, which viewers only read.
+  const canMessage = useSession().workspace.role !== "viewer";
   const qc = useQueryClient();
   const key = ["portal-access", talentId];
   const access = useQuery({
     queryKey: key,
     queryFn: () => ok(api.GET("/api/v1/talent/{id}/portal", { params: { path: { id: talentId } } })),
   });
+  const portal = useQuery({ queryKey: ["portal-settings"], queryFn: () => ok(api.GET("/api/v1/workspace/portal")) });
+  const messagesOn = portal.data?.messages ?? false;
   const [email, setEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [writing, setWriting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const act = async (call: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
@@ -65,6 +73,11 @@ export function PortalAccessCard({ talentId, canWrite }: { talentId: string; can
           <span className="min-w-0 flex-1">
             Open for <strong>{a.user.name}</strong> <span className="text-muted-foreground">({a.user.email})</span>
           </span>
+          {canMessage && messagesOn && !writing && (
+            <Button variant="outline" size="sm" onClick={() => setWriting(true)}>
+              <MessageCircle /> Write to them
+            </Button>
+          )}
           {canWrite && (
             <Button
               variant="ghost"
@@ -99,6 +112,48 @@ export function PortalAccessCard({ talentId, canWrite }: { talentId: string; can
         </div>
       ) : (
         <p className="text-sm">Not invited yet.</p>
+      )}
+      {writing && messagesOn && a?.user && (
+        <form
+          className="flex flex-col gap-2 rounded-md border p-3"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            setError(null);
+            try {
+              const r = await ok(
+                api.POST("/api/v1/talent/{id}/portal/messages", { params: { path: { id: talentId } }, body: { body: message } }),
+              );
+              setSentTo(r.thread_id);
+              setMessage("");
+              setWriting(false);
+            } catch (err) {
+              setError(failure(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Label htmlFor={`portal-message-${talentId}`}>Message to {a.user.name}</Label>
+          <Textarea id={`portal-message-${talentId}`} rows={3} required maxLength={4000} value={message} onChange={(e) => setMessage(e.target.value)} />
+          <p className="text-xs text-muted-foreground">It shows in their portal and they get an email. Their answers come to your inbox.</p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setWriting(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={busy || !message.trim()}>
+              Send
+            </Button>
+          </div>
+        </form>
+      )}
+      {sentTo && (
+        <Alert tone="success">
+          Sent.{" "}
+          <Link to="/inbox" search={{ thread: sentTo }} className="underline">
+            Open the conversation
+          </Link>
+        </Alert>
       )}
       {inviting && (
         <form
@@ -140,6 +195,8 @@ const SWITCHES: { key: keyof Settings; label: string; hint: string }[] = [
   { key: "show_documents", label: "Show documents", hint: "Contracts, advance sheets, riders and stage plots on their dates and record." },
   { key: "edit_availability", label: "Mark their own availability", hint: "Unavailable and tentative times, and connecting their own calendar." },
   { key: "show_money", label: "Show statements", hint: "What each settled date paid them, and what was paid out." },
+  { key: "messages", label: "Messages", hint: "They can write to you from their page; the conversation sits in your inbox." },
+  { key: "edit_profile", label: "Edit their profile", hint: "Their bio and where they are based, on their talent record." },
   {
     key: "hide_locked",
     label: "Hide locked features",

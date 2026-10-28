@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT th.id FROM threads th\n           JOIN talent t ON t.workspace_id = th.workspace_id AND t.id = th.talent_id\n           WHERE th.workspace_id = app_workspace_id() AND th.channel = 'portal' AND th.talent_id = $1\n             AND th.portal_user_id = app_user_id()\n             AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "de14c504fd764a3f89db070c264bc6deebbd3a52ab93a1da40caa9133e82d147"
+}

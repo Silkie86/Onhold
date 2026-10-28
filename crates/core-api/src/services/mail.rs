@@ -25,6 +25,7 @@ pub const SYSTEM_MAGIC_LINK: &str = "system.magic_link";
 pub const SYSTEM_QUOTE: &str = "system.quote";
 pub const SYSTEM_INVOICE: &str = "system.invoice";
 pub const SYSTEM_SIGNATURE: &str = "system.signature_request";
+pub const SYSTEM_PORTAL_MESSAGE: &str = "system.portal_message";
 
 /// Event topics that become platform mail.
 pub const SYSTEM_TOPICS: &[&str] = &[
@@ -33,7 +34,13 @@ pub const SYSTEM_TOPICS: &[&str] = &[
     "quote.sent",
     "invoice.sent",
     "document.signature_requested",
+    "portal.message_sent",
 ];
+
+const PORTAL_MESSAGE_SUBJECT: &str = "New message from {{ workspace.name }}";
+const PORTAL_MESSAGE_BODY: &str = r#"<p>{% if message.sender %}{{ message.sender }} at {% endif %}{{ workspace.name }} wrote to you{% if message.talent %} about {{ message.talent }}{% endif %}:</p>
+<blockquote>{{ message.preview }}</blockquote>
+<p><a href="{{ link.url }}">Read and reply</a></p>"#;
 
 const INVOICE_SUBJECT: &str = "{% if invoice.kind == 'credit_note' %}Credit note{% else %}Invoice{% endif %} {{ invoice.reference }} from {{ workspace.name }}";
 const INVOICE_BODY: &str = r#"<p>Hello,</p>
@@ -434,6 +441,35 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 }),
                 url,
                 actor(&event),
+            )
+            .await?;
+            tx.commit().await?;
+            Ok(out)
+        }
+        "portal.message_sent" => {
+            let ws = job
+                .workspace_id
+                .ok_or_else(|| permanent("portal message without a workspace"))?;
+            let to = event
+                .get("to")
+                .and_then(Value::as_str)
+                .ok_or_else(|| permanent("portal message without an address"))?
+                .to_owned();
+            let mut tx = core_db::begin(&state.db, Some(ws), None).await?;
+            let out = workspace_mail(
+                state,
+                &mut tx,
+                job.id,
+                ws,
+                &to,
+                SYSTEM_PORTAL_MESSAGE,
+                (PORTAL_MESSAGE_SUBJECT, PORTAL_MESSAGE_BODY),
+                json!({
+                    "message": event.get("message"),
+                    "link": { "url": LINK_PLACEHOLDER },
+                }),
+                url,
+                None,
             )
             .await?;
             tx.commit().await?;

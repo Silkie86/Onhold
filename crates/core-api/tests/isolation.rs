@@ -731,6 +731,12 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
             json!({ "email": "intruder@alpha.test" })
         }
         ("POST", p) if p.starts_with("/api/v1/portal/dates/") => json!({ "answer": "confirmed" }),
+        ("PUT", p) if p.starts_with("/api/v1/portal/profile/") => {
+            json!({ "bio": "Taken over", "version": 1 })
+        }
+        ("POST", p) if p.starts_with("/api/v1/talent/") && p.ends_with("/portal/messages") => {
+            json!({ "body": "Taken over" })
+        }
         ("POST", "/api/v1/invitations") => {
             json!({ "email": "intruder@alpha.test", "role": "admin" })
         }

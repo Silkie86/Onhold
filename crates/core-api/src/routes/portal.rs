@@ -6,7 +6,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -19,9 +19,10 @@ use crate::error::{ApiResult, ErrorBody};
 use crate::extract::WsCtx;
 use crate::services::availability::AvailabilityView;
 use crate::services::portal::{
-    self, AnswerInput, DatesQuery, PortalAccess, PortalAvailability, PortalCalendarLink,
-    PortalDate, PortalDateDetail, PortalDocument, PortalHome, PortalNewAvailability,
-    PortalSettings, PortalStatement,
+    self, AgencyMessageInput, AnswerInput, DatesQuery, MessagesQuery, PortalAccess,
+    PortalAvailability, PortalCalendarLink, PortalConversation, PortalDate, PortalDateDetail,
+    PortalDocument, PortalHome, PortalMessage, PortalMessageInput, PortalNewAvailability,
+    PortalProfile, PortalProfileInput, PortalSettings, PortalStatement,
 };
 use crate::services::talent_calendars::CreatedConnectLink;
 
@@ -43,6 +44,10 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(portal_documents))
         .routes(routes!(download_portal_document))
         .routes(routes!(portal_money))
+        .routes(routes!(portal_messages, send_portal_message))
+        .routes(routes!(portal_profiles))
+        .routes(routes!(update_portal_profile))
+        .routes(routes!(write_to_talent))
 }
 
 // For the agency --------------------------------------------------------------------------------
@@ -260,4 +265,82 @@ async fn portal_money(
     WsCtx(ctx): WsCtx,
 ) -> ApiResult<Json<Vec<PortalStatement>>> {
     Ok(Json(portal::money(&state, &ctx).await?))
+}
+
+/// The talent's conversation with the agency, latest messages last.
+/// Opening it marks it read.
+#[utoipa::path(get, path = "/portal/messages", tag = "portal", params(WorkspaceHeader, MessagesQuery),
+    responses((status = 200, body = PortalConversation), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody)),
+    security(("session" = [])))]
+async fn portal_messages(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Query(q): Query<MessagesQuery>,
+) -> ApiResult<Json<PortalConversation>> {
+    Ok(Json(portal::messages(&state, &ctx, &q).await?))
+}
+
+/// Write to the agency. The conversation shows in the agency's inbox.
+#[utoipa::path(post, path = "/portal/messages", tag = "portal", params(WorkspaceHeader, IdempotencyHeader),
+    request_body = PortalMessageInput,
+    responses((status = 201, body = PortalMessage), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody)),
+    security(("session" = [])))]
+async fn send_portal_message(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Json(b): Json<PortalMessageInput>,
+) -> ApiResult<(StatusCode, Json<PortalMessage>)> {
+    Ok((
+        StatusCode::CREATED,
+        Json(portal::send_message(&state, &ctx, b).await?),
+    ))
+}
+
+/// The talent's own records: name, bio and where they are based.
+#[utoipa::path(get, path = "/portal/profile", tag = "portal", params(WorkspaceHeader),
+    responses((status = 200, body = Vec<PortalProfile>), (status = 403, body = ErrorBody)),
+    security(("session" = [])))]
+async fn portal_profiles(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<Vec<PortalProfile>>> {
+    Ok(Json(portal::profiles(&state, &ctx).await?))
+}
+
+/// Change their bio and where they are based.
+#[utoipa::path(put, path = "/portal/profile/{id}", tag = "portal",
+    params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path)), request_body = PortalProfileInput,
+    responses((status = 200, body = PortalProfile), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody),
+        (status = 404, body = ErrorBody)),
+    security(("session" = [])))]
+async fn update_portal_profile(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+    Json(b): Json<PortalProfileInput>,
+) -> ApiResult<Json<PortalProfile>> {
+    Ok(Json(portal::update_profile(&state, &ctx, id, b).await?))
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WrittenToTalent {
+    /// The conversation in the inbox.
+    pub thread_id: Uuid,
+}
+
+/// Write to a talent through their portal; they get an email saying so.
+/// Starts their conversation in the inbox if it has not begun.
+#[utoipa::path(post, path = "/talent/{id}/portal/messages", tag = "portal",
+    params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path)), request_body = AgencyMessageInput,
+    responses((status = 201, body = WrittenToTalent), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody),
+        (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn write_to_talent(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+    Json(b): Json<AgencyMessageInput>,
+) -> ApiResult<(StatusCode, Json<WrittenToTalent>)> {
+    let thread_id = portal::write_to_talent(&state, &ctx, id, b).await?;
+    Ok((StatusCode::CREATED, Json(WrittenToTalent { thread_id })))
 }

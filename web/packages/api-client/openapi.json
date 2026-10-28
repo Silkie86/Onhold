@@ -16021,6 +16021,152 @@
         ]
       }
     },
+    "/api/v1/portal/messages": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "The talent's conversation with the agency, latest messages last.\nOpening it marks it read.",
+        "operationId": "portal_messages",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "talent_id",
+            "in": "query",
+            "description": "Which of their talent records; needed only when they have several.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalConversation"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Write to the agency. The conversation shows in the agency's inbox.",
+        "operationId": "send_portal_message",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalMessageInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalMessage"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/portal/money": {
       "get": {
         "tags": [
@@ -16056,6 +16202,153 @@
             }
           },
           "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/profile": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "The talent's own records: name, bio and where they are based.",
+        "operationId": "portal_profiles",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PortalProfile"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/profile/{id}": {
+      "put": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Change their bio and where they are based.",
+        "operationId": "update_portal_profile",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalProfileInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -21932,6 +22225,114 @@
         ]
       }
     },
+    "/api/v1/talent/{id}/portal/messages": {
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Write to a talent through their portal; they get an email saying so.\nStarts their conversation in the inbox if it has not begun.",
+        "operationId": "write_to_talent",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgencyMessageInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WrittenToTalent"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/talent/{id}/timeline": {
       "get": {
         "tags": [
@@ -26266,6 +26667,14 @@
           },
           "over_90": {
             "$ref": "#/components/schemas/Money"
+          }
+        }
+      },
+      "AgencyMessageInput": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string"
           }
         }
       },
@@ -35156,6 +35565,34 @@
           }
         }
       },
+      "PortalConversation": {
+        "type": "object",
+        "description": "A talent record's conversation with the agency.",
+        "required": [
+          "talent_name",
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortalMessage"
+            },
+            "description": "The latest messages, oldest first."
+          },
+          "talent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "None for someone with no talent record open here."
+          },
+          "talent_name": {
+            "type": "string"
+          }
+        }
+      },
       "PortalDate": {
         "type": "object",
         "description": "One of the talent's dates.",
@@ -35352,7 +35789,8 @@
           "branding",
           "settings",
           "talent",
-          "awaiting_answer"
+          "awaiting_answer",
+          "unread_messages"
         ],
         "properties": {
           "awaiting_answer": {
@@ -35373,6 +35811,11 @@
               "$ref": "#/components/schemas/PortalTalent"
             },
             "description": "The talent records opened for this person here (usually one; none\nonce the agency ends their access)."
+          },
+          "unread_messages": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Messages from the agency they have not read yet."
           },
           "upgrade_url": {
             "type": [
@@ -35397,6 +35840,53 @@
           }
         }
       },
+      "PortalMessage": {
+        "type": "object",
+        "required": [
+          "id",
+          "from_me",
+          "body",
+          "sent_at"
+        ],
+        "properties": {
+          "author_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "from_me": {
+            "type": "boolean",
+            "description": "Written by the talent (else by someone at the agency)."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PortalMessageInput": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "talent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
       "PortalNewAvailability": {
         "allOf": [
           {
@@ -35417,6 +35907,68 @@
           }
         ]
       },
+      "PortalProfile": {
+        "type": "object",
+        "required": [
+          "talent_id",
+          "version",
+          "name",
+          "can_edit"
+        ],
+        "properties": {
+          "base_location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "can_edit": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "talent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PortalProfileInput": {
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "properties": {
+          "base_location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The record's version as read; a change made since is not overwritten."
+          }
+        }
+      },
       "PortalSettings": {
         "type": "object",
         "description": "What a workspace lets its talent see and do in the portal. Everything\nis a switch the owner or an admin sets; a cautious agency can start with\nread-only dates.",
@@ -35431,10 +35983,20 @@
             "description": "Add and remove their own unavailable or tentative times, and connect\ntheir own calendar.",
             "default": true
           },
+          "edit_profile": {
+            "type": "boolean",
+            "description": "Change their own bio and where they are based.",
+            "default": true
+          },
           "hide_locked": {
             "type": "boolean",
             "description": "Hide the paid features shown locked in the free viewer.",
             "default": false
+          },
+          "messages": {
+            "type": "boolean",
+            "description": "Write to the agency from the portal; the conversation sits in the\nagency's inbox.",
+            "default": true
           },
           "show_documents": {
             "type": "boolean",
@@ -41142,6 +41704,19 @@
           "vocabulary": {
             "type": "object",
             "description": "Its own words, per module: `{\"crm\": {\"talent\": {\"one\": \"DJ\", \"many\": \"DJs\"}}}`."
+          }
+        }
+      },
+      "WrittenToTalent": {
+        "type": "object",
+        "required": [
+          "thread_id"
+        ],
+        "properties": {
+          "thread_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The conversation in the inbox."
           }
         }
       }

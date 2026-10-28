@@ -1,0 +1,59 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT t.id, t.name, th.portal_user_id AS \"with!\",\n                  (t.portal_user_id IS NOT DISTINCT FROM th.portal_user_id) AS \"current!\"\n           FROM threads th\n           JOIN talent t ON t.workspace_id = th.workspace_id AND t.id = th.talent_id\n           WHERE th.workspace_id = app_workspace_id() AND th.id = $1 AND th.channel = 'portal'\n             AND t.deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "with!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "portal_user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "current!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      null
+    ]
+  },
+  "hash": "fa8f600237469c19129acda5f6f513811827e85ff81a4c017449ab23d86e3ce8"
+}

@@ -457,3 +457,199 @@ pub async fn unlink_user(conn: &mut PgConnection, user: UserId, by: Option<UserI
     .await?
     .rows_affected())
 }
+
+// Messages ---------------------------------------------------------------------------------------
+
+/// The signed-in user's conversation for one of their talent records, if
+/// it has begun.
+pub async fn thread_of(conn: &mut PgConnection, talent_id: Uuid) -> Result<Option<Uuid>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT th.id FROM threads th
+           JOIN talent t ON t.workspace_id = th.workspace_id AND t.id = th.talent_id
+           WHERE th.workspace_id = app_workspace_id() AND th.channel = 'portal' AND th.talent_id = $1
+             AND th.portal_user_id = app_user_id()
+             AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL"#,
+        talent_id
+    )
+    .fetch_optional(conn)
+    .await?)
+}
+
+/// Starts the conversation between a talent record and the person its
+/// portal is open for (agency side or the talent's), or finds the one
+/// already there.
+pub async fn open_thread(
+    conn: &mut PgConnection,
+    talent_id: Uuid,
+    portal_user: UserId,
+    subject: &str,
+) -> Result<Uuid> {
+    let id = core_domain::ids::new_id();
+    sqlx::query!(
+        r#"INSERT INTO threads (id, workspace_id, channel, talent_id, portal_user_id, subject, unread, last_message_at)
+           VALUES ($1, app_workspace_id(), 'portal', $2, $3, left($4, 1000), false, now())
+           ON CONFLICT (workspace_id, talent_id, portal_user_id) WHERE channel = 'portal' DO NOTHING"#,
+        id,
+        talent_id,
+        portal_user.0,
+        subject
+    )
+    .execute(&mut *conn)
+    .await?;
+    Ok(sqlx::query_scalar!(
+        r#"SELECT id FROM threads
+           WHERE workspace_id = app_workspace_id() AND channel = 'portal' AND talent_id = $1
+             AND portal_user_id = $2"#,
+        talent_id,
+        portal_user.0
+    )
+    .fetch_one(conn)
+    .await?)
+}
+
+/// A portal conversation's talent record, and whether the person it is
+/// with is still the one its portal is open for.
+pub async fn thread_talent(
+    conn: &mut PgConnection,
+    thread_id: Uuid,
+) -> Result<Option<(Uuid, String, UserId, bool)>> {
+    Ok(sqlx::query!(
+        r#"SELECT t.id, t.name, th.portal_user_id AS "with!",
+                  (t.portal_user_id IS NOT DISTINCT FROM th.portal_user_id) AS "current!"
+           FROM threads th
+           JOIN talent t ON t.workspace_id = th.workspace_id AND t.id = th.talent_id
+           WHERE th.workspace_id = app_workspace_id() AND th.id = $1 AND th.channel = 'portal'
+             AND t.deleted_at IS NULL"#,
+        thread_id
+    )
+    .fetch_optional(conn)
+    .await?
+    .map(|r| (r.id, r.name, UserId(r.with), r.current)))
+}
+
+#[derive(Debug, Clone)]
+pub struct Message {
+    pub id: Uuid,
+    pub inbound: bool,
+    pub author_name: Option<String>,
+    pub body: String,
+    pub sent_at: DateTime<Utc>,
+}
+
+/// A conversation's latest messages, oldest first. Only messages that
+/// reached the conversation (not ones that failed) are shown to the talent.
+pub async fn messages(
+    conn: &mut PgConnection,
+    thread_id: Uuid,
+    limit: i64,
+) -> Result<Vec<Message>> {
+    let mut rows = sqlx::query!(
+        r#"SELECT m.id, m.direction, m.from_name, m.body_text, m.sent_at FROM thread_messages m
+           WHERE m.workspace_id = app_workspace_id() AND m.thread_id = $1
+             AND m.status IN ('received', 'sent')
+           ORDER BY m.sent_at DESC, m.id DESC
+           LIMIT $2"#,
+        thread_id,
+        limit
+    )
+    .fetch_all(conn)
+    .await?;
+    rows.reverse();
+    Ok(rows
+        .into_iter()
+        .map(|r| Message {
+            id: r.id,
+            inbound: r.direction == "inbound",
+            author_name: r.from_name,
+            body: r.body_text,
+            sent_at: r.sent_at,
+        })
+        .collect())
+}
+
+/// The talent has read their conversation up to the message sent `upto`
+/// (the latest they were shown), never moving back.
+pub async fn mark_read(
+    conn: &mut PgConnection,
+    thread_id: Uuid,
+    upto: DateTime<Utc>,
+) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE threads SET portal_read_at = greatest(portal_read_at, $2)
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND channel = 'portal'
+             AND portal_user_id = app_user_id()"#,
+        thread_id,
+        upto
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Messages from the agency the user has not read yet, over all their
+/// talent records.
+pub async fn unread(conn: &mut PgConnection) -> Result<i64> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT count(*) AS "n!" FROM thread_messages m
+           JOIN threads th ON th.workspace_id = m.workspace_id AND th.id = m.thread_id
+           JOIN talent t ON t.workspace_id = th.workspace_id AND t.id = th.talent_id
+           WHERE m.workspace_id = app_workspace_id() AND th.channel = 'portal'
+             AND th.portal_user_id = app_user_id()
+             AND t.portal_user_id = app_user_id() AND t.deleted_at IS NULL
+             AND m.direction = 'outbound' AND m.status = 'sent'
+             AND (th.portal_read_at IS NULL OR m.sent_at > th.portal_read_at)"#
+    )
+    .fetch_one(conn)
+    .await?)
+}
+
+// Profile ----------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct Profile {
+    pub id: Uuid,
+    pub name: String,
+    pub bio: Option<String>,
+    pub base_location: Option<String>,
+    pub version: i64,
+}
+
+/// The user's talent records as they may see and edit them.
+pub async fn profiles(conn: &mut PgConnection) -> Result<Vec<Profile>> {
+    Ok(sqlx::query_as!(
+        Profile,
+        r#"SELECT id, name, bio, base_location, version FROM talent
+           WHERE workspace_id = app_workspace_id() AND portal_user_id = app_user_id()
+             AND deleted_at IS NULL
+           ORDER BY name, id"#
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
+/// Changes the parts of their record a talent may change. `None` when the
+/// record is not theirs.
+/// `None` too when the record changed since `version` was read.
+pub async fn set_profile(
+    conn: &mut PgConnection,
+    talent_id: Uuid,
+    bio: Option<&str>,
+    base_location: Option<&str>,
+    version: i64,
+    by: UserId,
+) -> Result<Option<Profile>> {
+    Ok(sqlx::query_as!(
+        Profile,
+        r#"UPDATE talent SET bio = $2, base_location = $3, updated_by = $4
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND version = $5
+             AND portal_user_id = app_user_id() AND deleted_at IS NULL
+           RETURNING id, name, bio, base_location, version"#,
+        talent_id,
+        bio,
+        base_location,
+        by.0,
+        version
+    )
+    .fetch_optional(conn)
+    .await?)
+}
