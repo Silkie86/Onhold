@@ -86,6 +86,39 @@ pub struct Outgoing {
     pub redact: Vec<String>,
 }
 
+/// A workspace's look in its emails.
+#[derive(Debug, Clone, Default)]
+pub struct MailBrand {
+    pub name: String,
+    /// Links, the top rule and the name: a shade that reads on white.
+    pub colour: Option<String>,
+    /// A public address for the logo; mail apps do not show data URIs.
+    pub logo_url: Option<String>,
+}
+
+/// The current workspace's look for its emails: the full theme's light
+/// primary or its brand colour, and its logo.
+async fn mail_brand(
+    state: &AppState,
+    tx: &mut core_db::Tx,
+    ws: WorkspaceId,
+) -> ApiResult<MailBrand> {
+    let w = core_db::workspaces::get(tx, ws)
+        .await?
+        .ok_or_else(|| permanent("the workspace is gone"))?;
+    let b = &w.branding;
+    let colour = b
+        .pointer("/theme/light/primary")
+        .or_else(|| b.get("primary_color"))
+        .and_then(Value::as_str)
+        .and_then(core_engines::documents::readable_on_white);
+    Ok(MailBrand {
+        logo_url: super::tenancy::email_logo_url(state, ws, b),
+        name: w.name,
+        colour,
+    })
+}
+
 /// Wraps a body in a plain, widely compatible HTML document unless it is one already.
 pub fn layout(body: &str, footer: &str) -> String {
     if body.to_ascii_lowercase().contains("<html") {
@@ -95,6 +128,34 @@ pub fn layout(body: &str, footer: &str) -> String {
         "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"></head>\
          <body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1a1a1a;line-height:1.5\">\
          <div style=\"max-width:600px;margin:0 auto;background:#ffffff;padding:24px;border-radius:6px\">{body}</div>\
+         <p style=\"max-width:600px;margin:12px auto 0;font-size:12px;color:#777\">{footer}</p></body></html>",
+        footer = html_escape(footer),
+    )
+}
+
+/// [`layout`] with the workspace's logo (or name) at the top and its colour
+/// on the top rule and links. Inline styles only, as mail apps need.
+pub fn branded_layout(body: &str, footer: &str, brand: &MailBrand) -> String {
+    if body.to_ascii_lowercase().contains("<html") {
+        return body.to_owned();
+    }
+    let colour = brand.colour.as_deref().unwrap_or("#1a1a1a");
+    let name = html_escape(&brand.name);
+    let mark = match &brand.logo_url {
+        Some(url) => format!(
+            "<img src=\"{}\" alt=\"{name}\" height=\"40\" style=\"display:block;height:40px;width:auto;max-width:200px;border:0\">",
+            html_escape(url)
+        ),
+        None => {
+            format!("<div style=\"font-size:18px;font-weight:600;color:{colour}\">{name}</div>")
+        }
+    };
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\
+         <style>a{{color:{colour}}}</style></head>\
+         <body style=\"margin:0;padding:24px;background:#f6f6f6;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1a1a1a;line-height:1.5\">\
+         <div style=\"max-width:600px;margin:0 auto;background:#ffffff;border-radius:6px;border-top:4px solid {colour}\">\
+         <div style=\"padding:20px 24px 0\">{mark}</div><div style=\"padding:16px 24px 24px\">{body}</div></div>\
          <p style=\"max-width:600px;margin:12px auto 0;font-size:12px;color:#777\">{footer}</p></body></html>",
         footer = html_escape(footer),
     )
@@ -194,6 +255,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 }
             };
             let from_address = core_db::sender_domains::sending_address(&mut tx).await?;
+            let brand = mail_brand(state, &mut tx, ws).await?;
             tx.commit().await?;
             let rendered = place_link(rendered, &url);
             let name = workspace
@@ -221,6 +283,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 SYSTEM_INVITATION,
                 None,
                 vec![url, token],
+                Some(brand),
             );
             out.email.from_address = from_address;
             Ok(out)
@@ -261,6 +324,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 SYSTEM_MAGIC_LINK,
                 None,
                 vec![url],
+                None,
             ))
         }
         "quote.sent" => {
@@ -395,6 +459,7 @@ async fn workspace_mail(
     let rendered =
         super::templates::render_in(tx, Kind::Email, subject, body, &ctx_json, &options).await?;
     let rendered = place_link(rendered, &url);
+    let brand = mail_brand(state, tx, ws).await?;
     let name = workspace
         .get("name")
         .and_then(Value::as_str)
@@ -412,6 +477,7 @@ async fn workspace_mail(
         key,
         None,
         vec![url],
+        Some(brand),
     );
     out.email.from_address = core_db::sender_domains::sending_address(tx).await?;
     Ok(out)
@@ -468,6 +534,7 @@ pub async fn prepare_rule_mail(state: &AppState, job: &Claimed) -> ApiResult<Out
     )
     .await?;
     let from_address = core_db::sender_domains::sending_address(&mut tx).await?;
+    let brand = mail_brand(state, &mut tx, ws).await?;
     tx.commit().await?;
     let name = workspace
         .get("name")
@@ -486,6 +553,7 @@ pub async fn prepare_rule_mail(state: &AppState, job: &Claimed) -> ApiResult<Out
         key,
         rule_id,
         vec![],
+        Some(brand),
     );
     out.email.from_address = from_address;
     Ok(out)
@@ -504,6 +572,7 @@ fn outgoing(
     template_key: &str,
     rule_id: Option<Uuid>,
     redact: Vec<String>,
+    brand: Option<MailBrand>,
 ) -> Outgoing {
     Outgoing {
         email: Email {
@@ -512,7 +581,10 @@ fn outgoing(
             from_address: None,
             reply_to: None,
             subject: rendered.subject.unwrap_or_default(),
-            html: Some(layout(&rendered.body, footer)),
+            html: Some(match &brand {
+                Some(b) => branded_layout(&rendered.body, footer, b),
+                None => layout(&rendered.body, footer),
+            }),
             text: rendered.text,
             message_id: message_id(state, job_id),
             attachments: Vec::new(),
@@ -835,6 +907,32 @@ mod tests {
             )
             .contains("abc")
         );
+    }
+
+    #[test]
+    fn branded_mail_shows_the_logo_or_name_in_a_readable_colour() {
+        let brand = MailBrand {
+            name: "Rock & Roll".into(),
+            colour: Some("#6b3fa0".into()),
+            logo_url: Some("https://app.test/api/v1/public/workspaces/x/logo?v=1&a=b".into()),
+        };
+        let html = branded_layout("<p>Hi</p>", "Sent by Rock & Roll via OnHold.", &brand);
+        assert!(html.contains("border-top:4px solid #6b3fa0"));
+        assert!(html.contains("a{color:#6b3fa0}"));
+        assert!(
+            html.contains("src=\"https://app.test/api/v1/public/workspaces/x/logo?v=1&amp;a=b\"")
+        );
+        assert!(html.contains("alt=\"Rock &amp; Roll\""));
+        let plain = branded_layout(
+            "<p>Hi</p>",
+            "",
+            &MailBrand {
+                name: "<b>".into(),
+                ..Default::default()
+            },
+        );
+        assert!(plain.contains(">&lt;b&gt;</div>"));
+        assert!(plain.contains("#1a1a1a"));
     }
 
     #[test]

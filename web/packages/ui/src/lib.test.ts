@@ -79,5 +79,10 @@ test("a full theme goes on top of the brand colour, per mode, with its font and 
   expect(light).toContain(":root:not(.dark) { --card: #fff8ee; }");
   expect(light).not.toMatch(/^:root \{[^}]*--card/);
   expect(light).toContain(":root.dark {  }");
+  // A danger colour set alone gets readable text, whatever the default text is.
+  applyBrandTheme({ colour: null, theme: { light: {}, dark: { destructive: "#b91c1c" } } });
+  expect(document.getElementById("onhold-brand")?.textContent).toContain("--destructive-foreground: #ffffff;");
+  applyBrandTheme({ colour: null, theme: { light: {}, dark: { destructive: "#fca5a5", "destructive-foreground": "#450a0a" } } });
+  expect(document.getElementById("onhold-brand")?.textContent).toContain("--destructive-foreground: #450a0a;");
   applyBrandTheme({ colour: null });
 });

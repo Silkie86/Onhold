@@ -52,6 +52,12 @@ const LABELS: Record<ThemeToken, string> = {
   "accent-foreground": "Text on highlights",
   destructive: "Danger",
   "destructive-foreground": "Text on danger",
+  success: "Done (paid, confirmed)",
+  "success-foreground": "Text on done",
+  warning: "Needs attention (hold, overdue soon)",
+  "warning-foreground": "Text on needs attention",
+  info: "In progress (sent, pending)",
+  "info-foreground": "Text on in progress",
 };
 
 const FONT_LABELS: Record<ThemeFont, string> = {
@@ -74,6 +80,10 @@ const CHECKS: { label: string; fg: ThemeToken; bg: ThemeToken; min: number }[] =
   { label: "Text on secondary buttons", fg: "secondary-foreground", bg: "secondary", min: 4.5 },
   { label: "Text on highlights", fg: "accent-foreground", bg: "accent", min: 4.5 },
   { label: "Text on danger", fg: "destructive-foreground", bg: "destructive", min: 4.5 },
+  { label: "Text on done badges", fg: "success-foreground", bg: "success", min: 4.5 },
+  { label: "Needs-attention text", fg: "warning", bg: "background", min: 4.5 },
+  { label: "Text on needs-attention banners", fg: "warning-foreground", bg: "warning", min: 4.5 },
+  { label: "In-progress text", fg: "info", bg: "background", min: 4.5 },
   { label: "Focus ring on the page", fg: "ring", bg: "background", min: 3 },
 ];
 
@@ -325,6 +335,11 @@ function ThemeStudio() {
               <Button size="sm" variant="destructive">
                 Cancel
               </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge className="border-success bg-success text-success-foreground">Confirmed</Badge>
+              <Badge className="border border-dashed border-warning bg-warning/10 text-warning">Hold</Badge>
+              <Badge className="border border-info text-info">Sent</Badge>
             </div>
             <Input aria-label="Sample field" placeholder="A field" />
             <a href="#preview" className="text-sm text-primary underline underline-offset-2" onClick={(e) => e.preventDefault()}>

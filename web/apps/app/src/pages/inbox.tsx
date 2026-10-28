@@ -244,7 +244,7 @@ export function InboxPage() {
                     <span className={cn("truncate", t.unread && "font-medium")}>{t.subject ?? "(no subject)"}</span>
                     <span className="truncate text-xs text-muted-foreground">{t.preview}</span>
                     {!t.contact_id && !t.enquiry_id && !t.booking_id && (
-                      <span className="text-xs text-amber-700 dark:text-amber-400">Not linked yet</span>
+                      <span className="text-xs text-warning">Not linked yet</span>
                     )}
                   </button>
                 </li>

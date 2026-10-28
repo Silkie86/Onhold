@@ -378,7 +378,8 @@ async fn check_related(
 // Rendering ------------------------------------------------------------------------------
 
 /// The workspace's look for documents: `branding.logo` (a data URI) or
-/// `branding.logo_file_id` (an uploaded image), and `branding.primary_color`.
+/// `branding.logo_file_id` (an uploaded image), the colour (a full theme's
+/// light primary, else `branding.primary_color`) and the theme's typeface.
 pub(crate) async fn branding(
     state: &AppState,
     tx: &mut Tx,
@@ -422,11 +423,16 @@ pub(crate) async fn branding(
         name,
         logo,
         primary: b
-            .get("primary_color")
+            .pointer("/theme/light/primary")
+            .or_else(|| b.get("primary_color"))
             .or_else(|| b.get("primary"))
             .and_then(Value::as_str)
             .and_then(engine::colour),
         header_line: (!header_line.is_empty()).then_some(header_line),
+        font: b
+            .pointer("/theme/font")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
     })
 }
 

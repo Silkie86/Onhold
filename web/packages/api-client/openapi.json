@@ -13837,6 +13837,51 @@
         }
       }
     },
+    "/api/v1/public/workspaces/{id}/logo": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "A workspace's logo for emails; see [`svc::public_logo`].",
+        "operationId": "public_logo",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/quotes": {
       "get": {
         "tags": [
@@ -25218,9 +25263,14 @@
         "required": [
           "workspace_name",
           "email",
-          "role"
+          "role",
+          "branding"
         ],
         "properties": {
+          "branding": {
+            "type": "object",
+            "description": "The workspace's logo, colour and theme."
+          },
           "email": {
             "type": "string"
           },

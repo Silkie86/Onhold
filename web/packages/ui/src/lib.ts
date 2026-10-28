@@ -96,6 +96,12 @@ export const THEME_TOKENS = [
   "accent-foreground",
   "destructive",
   "destructive-foreground",
+  "success",
+  "success-foreground",
+  "warning",
+  "warning-foreground",
+  "info",
+  "info-foreground",
 ] as const;
 export type ThemeToken = (typeof THEME_TOKENS)[number];
 
@@ -150,8 +156,8 @@ export function applyBrandTheme(look: { colour: string | null; theme?: BrandThem
   const darkColour = look.colour ? darkBrandColour(look.colour) : null;
   const dark: Record<string, string> = { ...(darkColour ? brandColours(darkColour) : {}) };
   const t = look.theme;
-  Object.assign(light, t?.light ?? {});
-  Object.assign(dark, t?.dark ?? {});
+  Object.assign(light, withTextOn(t?.light));
+  Object.assign(dark, withTextOn(t?.dark));
   const shared: Record<string, string> = {};
   if (t?.font) shared["font-sans"] = THEME_FONTS[t.font];
   if (t?.radius !== undefined) shared.radius = `${t.radius}px`;
@@ -168,6 +174,20 @@ export function applyBrandTheme(look: { colour: string | null; theme?: BrandThem
     `:root { ${tokens(shared)} } :root.light { ${tokens(light)} } @media (prefers-color-scheme: light) { :root:not(.dark) { ${tokens(light)} } } ` +
     `@media (prefers-color-scheme: dark) { :root:not(.light) { ${tokens(dark)} } } :root.dark { ${tokens(dark)} }`;
   doc.head.appendChild(style);
+}
+
+/**
+ * A mode's colours, with readable text added on a button colour set without
+ * its own: OnHold's default text for that colour was chosen for its own.
+ */
+function withTextOn(colours: Partial<Record<ThemeToken, string>> | undefined): Record<string, string> {
+  const out: Record<string, string> = { ...colours };
+  for (const bg of ["primary", "destructive", "success", "warning", "info"] as const) {
+    const fg = `${bg}-foreground` as const;
+    const c = colours?.[bg];
+    if (c && !colours?.[fg]) out[fg] = brandColours(c)["primary-foreground"] ?? "#ffffff";
+  }
+  return out;
 }
 
 /** Colours the page in a brand colour (see `applyBrandTheme`). */
