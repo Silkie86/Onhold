@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE talent_calendars\n           SET last_synced_at = now(), status = 'active', failures = 0, last_error = NULL,\n               last_error_at = NULL, next_poll_at = $2, poll_lease_until = NULL\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6ed9882d500698866162da32fbcf522db2ce585d127505278f8bb390cc01af35"
+}

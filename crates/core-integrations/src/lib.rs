@@ -8,8 +8,11 @@
 //! Gmail, Microsoft Graph, IMAP and SMTP), connected through [`oauth`],
 //! and workspaces' own sender domains ([`domains`]: Resend), set up in their
 //! DNS through Domain Connect ([`dns`]).
-//! Calendar, accounting and messaging providers follow.
+//! When people are busy comes from their own calendars ([`calendars`]:
+//! Google, Microsoft or an iCal link). Accounting and messaging providers
+//! follow.
 
+pub mod calendars;
 pub mod dns;
 pub mod domains;
 pub mod fx;

@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id FROM talent_calendars\n           WHERE workspace_id = app_workspace_id() AND disconnected_at IS NULL\n             AND ($1::uuid IS NULL OR talent_id = $1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "talent_calendars",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7bb739f90a628b48e50acb2d3a40eca812ebfd2d0d4ff9f870a3792ba1ce3d23"
+}

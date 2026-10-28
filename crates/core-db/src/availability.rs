@@ -25,7 +25,9 @@ pub struct Availability {
 }
 
 /// Live entries of these talent (all talent when empty) overlapping
-/// `[from, to)`, of any of `kinds` (all kinds when empty).
+/// `[from, to)`, of any of `kinds` (all kinds when empty), with the busy
+/// times read from their own calendars (`source` "external", which cannot
+/// be changed here).
 pub async fn list(
     conn: &mut PgConnection,
     talent: &[Uuid],
@@ -35,14 +37,29 @@ pub async fn list(
 ) -> Result<Vec<Availability>> {
     Ok(sqlx::query_as!(
         Availability,
-        r#"SELECT a.id, a.talent_id, t.name AS talent_name, a.kind AS "kind: AvailabilityKind",
-                  a.starts_at, a.ends_at, a.all_day, a.source, a.note, a.version, a.created_at, a.updated_at
+        r#"SELECT a.id AS "id!", a.talent_id AS "talent_id!", t.name AS "talent_name!",
+                  a.kind AS "kind!: AvailabilityKind", a.starts_at AS "starts_at!", a.ends_at AS "ends_at!",
+                  a.all_day AS "all_day!", a.source AS "source!", a.note, a.version AS "version!",
+                  a.created_at AS "created_at!", a.updated_at AS "updated_at!"
            FROM availability a JOIN talent t ON t.id = a.talent_id
            WHERE a.workspace_id = app_workspace_id() AND a.deleted_at IS NULL
              AND (cardinality($1::uuid[]) = 0 OR a.talent_id = ANY($1))
              AND tstzrange(a.starts_at, a.ends_at, '[)') && tstzrange($2, $3, '[)')
              AND (cardinality($4::availability_kind[]) = 0 OR a.kind = ANY($4))
-           ORDER BY a.starts_at, t.name, a.id
+           UNION ALL
+           -- Busy times from the talent's own calendars, named by whose
+           -- calendar they come from.
+           SELECT b.id, b.talent_id, t.name, CASE WHEN b.tentative THEN 'tentative' ELSE 'unavailable' END::availability_kind,
+                  b.starts_at, b.ends_at, false, 'external', 'Busy in their own calendar (' || coalesce(c.person, c.account) || ')', 1::bigint,
+                  c.connected_at, coalesce(c.last_synced_at, c.connected_at)
+           FROM calendar_busy b JOIN talent t ON t.id = b.talent_id
+                JOIN talent_calendars c ON c.id = b.calendar_id
+           WHERE b.workspace_id = app_workspace_id()
+             AND (cardinality($1::uuid[]) = 0 OR b.talent_id = ANY($1))
+             AND tstzrange(b.starts_at, b.ends_at, '[)') && tstzrange($2, $3, '[)')
+             AND (cardinality($4::availability_kind[]) = 0
+                  OR (CASE WHEN b.tentative THEN 'tentative' ELSE 'unavailable' END)::availability_kind = ANY($4))
+           ORDER BY 5, 3, 1
            LIMIT 5000"#,
         talent,
         from,
@@ -63,6 +80,16 @@ pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<Availabilit
         id
     )
     .fetch_optional(conn)
+    .await?)
+}
+
+/// Whether the id is busy time read from a talent's own calendar.
+pub async fn is_external(conn: &mut PgConnection, id: Uuid) -> Result<bool> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT EXISTS (SELECT 1 FROM calendar_busy WHERE workspace_id = app_workspace_id() AND id = $1) AS "x!""#,
+        id
+    )
+    .fetch_one(conn)
     .await?)
 }
 

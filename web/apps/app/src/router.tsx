@@ -21,6 +21,7 @@ import { EnquiriesPage, EnquiryPage } from "./pages/enquiries.tsx";
 import { PublicQuotePage } from "./pages/quotes.tsx";
 import { FinanceSettingsPage, InvoicePage, InvoicesPage, PaymentsPage, PublicInvoicePage, ReportsPage } from "./pages/finance.tsx";
 import { DocumentPage, DocumentsPage, PdfImportsPage, PublicSigningPage } from "./pages/documents.tsx";
+import { ConnectCalendarPage, ConnectCalendarReturnPage } from "./pages/talent-calendars.tsx";
 import { TasksPage, validateTasksSearch } from "./pages/tasks.tsx";
 import { SyncPage } from "./pages/sync.tsx";
 import { InboxPage, validateInboxSearch } from "./pages/inbox.tsx";
@@ -152,6 +153,24 @@ const brandingSettings = createRoute({
   component: lazyRouteComponent(() => import("./pages/branding-settings.tsx"), "BrandingSettingsPage"),
 });
 
+// A talent connecting their own calendar from the agency's link, and where
+// Google or Microsoft send them back to.
+const connectCalendar = createRoute({
+  getParentRoute: () => root,
+  path: "/connect-calendar/$token",
+  component: ConnectCalendarPage,
+});
+const connectCalendarReturn = createRoute({
+  getParentRoute: () => root,
+  path: "/connect-calendar",
+  validateSearch: (s: Record<string, unknown>): { code?: string; state?: string; error?: string } => ({
+    code: str(s.code),
+    state: str(s.state),
+    error: str(s.error),
+  }),
+  component: ConnectCalendarReturnPage,
+});
+
 const inbox = createRoute({ getParentRoute: () => app, path: "/inbox", validateSearch: validateInboxSearch, component: InboxPage });
 const emailSettings = createRoute({
   getParentRoute: () => app,
@@ -214,6 +233,8 @@ const tree = root.addChildren([
   publicQuote,
   publicInvoice,
   publicSigning,
+  connectCalendar,
+  connectCalendarReturn,
   app.addChildren([
     home,
     inbox,

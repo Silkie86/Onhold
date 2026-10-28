@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE calendar_connect_links SET revoked_at = now()\n           WHERE workspace_id = app_workspace_id() AND revoked_at IS NULL\n             AND ($1::uuid IS NULL OR talent_id = $1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d47393f69748f3a8ea847d49dee9794928fbe7c5277a6a050a5ec149476076df"
+}

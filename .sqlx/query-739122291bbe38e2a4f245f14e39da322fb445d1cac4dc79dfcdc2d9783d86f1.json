@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT count(*) AS \"n!\" FROM talent_calendars\n           WHERE workspace_id = app_workspace_id() AND talent_id = $1 AND disconnected_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "n!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "739122291bbe38e2a4f245f14e39da322fb445d1cac4dc79dfcdc2d9783d86f1"
+}

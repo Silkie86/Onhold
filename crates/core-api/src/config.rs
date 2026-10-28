@@ -60,7 +60,8 @@ pub enum ProxyHeaders {
     Cloudflare,
 }
 
-/// Connecting people's own mailboxes.
+/// Connecting people's own mailboxes, and talent's own calendars through
+/// the same OAuth clients.
 #[derive(Debug, Clone)]
 pub struct MailboxConfig {
     /// Gmail through Google's OAuth; `None` when Google is not set up.
@@ -69,8 +70,12 @@ pub struct MailboxConfig {
     pub microsoft: Option<OAuthApp>,
     pub gmail_api: Url,
     pub graph_api: Url,
+    /// Google's own APIs: the free/busy query and the account's address.
+    pub google_api: Url,
     /// How often each mailbox is read.
     pub poll_every: Duration,
+    /// How often each talent's connected calendar is read.
+    pub calendar_every: Duration,
     /// How far back the first read of a new mailbox goes.
     pub first_read_days: i64,
     pub http: reqwest::Client,
@@ -84,7 +89,9 @@ impl Default for MailboxConfig {
             microsoft: None,
             gmail_api: Url::parse(core_integrations::gmail::API_BASE).expect("static URL"),
             graph_api: Url::parse(core_integrations::graph::API_BASE).expect("static URL"),
+            google_api: Url::parse(core_integrations::calendars::GOOGLE_API).expect("static URL"),
             poll_every: Duration::from_secs(120),
+            calendar_every: Duration::from_secs(15 * 60),
             first_read_days: 30,
             http: core_integrations::provider::http_client().unwrap_or_default(),
         }

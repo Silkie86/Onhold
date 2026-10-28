@@ -179,6 +179,19 @@ pub async fn create(
     Ok(view)
 }
 
+/// Why an entry cannot be changed: busy time read from the talent's own
+/// calendar changes there, or there is no such entry.
+async fn missing(tx: &mut Tx, id: Uuid) -> ApiError {
+    match core_db::availability::is_external(tx, id).await {
+        Ok(true) => ApiError::conflict(
+            "from_their_calendar",
+            "this busy time comes from the talent's own calendar; it changes when their calendar does",
+        ),
+        Ok(false) => ApiError::NotFound,
+        Err(e) => e.into(),
+    }
+}
+
 pub async fn update(
     state: &AppState,
     ctx: &Ctx,
@@ -188,9 +201,9 @@ pub async fn update(
 ) -> ApiResult<AvailabilityView> {
     ctx.authorize(Permission::BookingWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let version = core_db::availability::lock(&mut tx, id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
+    let Some(version) = core_db::availability::lock(&mut tx, id).await? else {
+        return Err(missing(&mut tx, id).await);
+    };
     check_version(version, if_match)?;
     let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
     let mut check = Check::default();
@@ -247,7 +260,9 @@ pub async fn update(
 pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::BookingWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let before = load(&mut tx, id).await?.ok_or(ApiError::NotFound)?;
+    let Some(before) = load(&mut tx, id).await? else {
+        return Err(missing(&mut tx, id).await);
+    };
     core_db::availability::soft_delete(&mut tx, id, ctx.user_id()).await?;
     record(
         &mut tx,

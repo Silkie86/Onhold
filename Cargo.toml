@@ -51,6 +51,7 @@ argon2 = "0.6"
 axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
 chrono-tz = "0.10"
+rrule = "0.14"
 csv = "1"
 data-encoding = "2"
 dotenvy = "0.15"

@@ -13088,6 +13088,236 @@
         ]
       }
     },
+    "/api/v1/public/calendar-connect/finish": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Finishes connecting with what Google or Microsoft sent back.",
+        "operationId": "public_calendar_connect_finish",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinishCalendarConnect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConnected"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/calendar-connect/{token}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "What a talent sees on opening their calendar link. Needs no account;\nthe link is the key.",
+        "operationId": "public_calendar_connect",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicCalendarConnect"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/calendar-connect/{token}/ical": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Connects a calendar by its private iCal address, once it reads.",
+        "operationId": "public_calendar_connect_ical",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IcalConnect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConnected"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/calendar-connect/{token}/start": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Where to send the talent to let OnHold see when they are busy.",
+        "operationId": "public_calendar_connect_start",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartCalendarConnect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConnectStart"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/calendar/{file}": {
       "get": {
         "tags": [
@@ -16399,6 +16629,379 @@
             }
           },
           "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent/{id}/calendar-links": {
+      "post": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "A link to send the talent (or each member of an act) so they can\nconnect their own calendar without an OnHold account. Works for two\nweeks; shown once.",
+        "operationId": "create_calendar_link",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedConnectLink"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent/{id}/calendar-links/{link_id}": {
+      "delete": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "Stops a link working. Calendars already connected through it carry on.",
+        "operationId": "revoke_calendar_link",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent/{id}/calendars": {
+      "get": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "The talent's connected calendars (busy times only) and the links that\nstill work for connecting more.",
+        "operationId": "talent_calendars",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TalentCalendars"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent/{id}/calendars/{calendar_id}": {
+      "delete": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "Stops reading a calendar and forgets its busy times.",
+        "operationId": "disconnect_talent_calendar",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "calendar_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/talent/{id}/calendars/{calendar_id}/sync": {
+      "post": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "Reads a calendar now rather than at its next turn.",
+        "operationId": "sync_talent_calendar",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "calendar_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TalentCalendarView"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
             "content": {
               "application/json": {
                 "schema": {
@@ -20994,6 +21597,47 @@
           }
         }
       },
+      "CalendarConnectStart": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Send the talent here; the provider sends them back to\n`/connect-calendar` with `code` and `state`, which the page passes to\nthe finish call."
+          }
+        }
+      },
+      "CalendarConnected": {
+        "type": "object",
+        "description": "What the talent sees once connected.",
+        "required": [
+          "workspace_name",
+          "branding",
+          "talent_name",
+          "provider",
+          "account"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "The account connected, or the iCal link's host."
+          },
+          "branding": {
+            "type": "object"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "talent_name": {
+            "type": "string"
+          },
+          "workspace_name": {
+            "type": "string"
+          }
+        }
+      },
       "CalendarView": {
         "type": "object",
         "required": [
@@ -21357,6 +22001,40 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "ConnectLinkView": {
+        "type": "object",
+        "required": [
+          "id",
+          "created_by",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -22014,6 +22692,22 @@
           "secret": {
             "type": "string",
             "description": "The key itself. Shown once; store it somewhere safe."
+          }
+        }
+      },
+      "CreatedConnectLink": {
+        "type": "object",
+        "required": [
+          "link",
+          "url"
+        ],
+        "properties": {
+          "link": {
+            "$ref": "#/components/schemas/ConnectLinkView"
+          },
+          "url": {
+            "type": "string",
+            "description": "The link to send the talent. Shown once."
           }
         }
       },
@@ -23782,6 +24476,23 @@
           }
         }
       },
+      "FinishCalendarConnect": {
+        "type": "object",
+        "required": [
+          "code",
+          "state"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "From the provider's redirect."
+          },
+          "state": {
+            "type": "string",
+            "description": "From the provider's redirect, as the start call made it."
+          }
+        }
+      },
       "FinishConnect": {
         "type": "object",
         "required": [
@@ -24024,6 +24735,25 @@
             ],
             "format": "int64",
             "description": "When there are no lines: the total, tax included."
+          }
+        }
+      },
+      "IcalConnect": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "person": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Whose calendar this is, for a band or group: their name."
+          },
+          "url": {
+            "type": "string",
+            "description": "The calendar's private iCal address (`https://` or `webcal://`)."
           }
         }
       },
@@ -27648,6 +28378,61 @@
           }
         }
       },
+      "PublicCalendarConnect": {
+        "type": "object",
+        "description": "What the talent sees on opening their link.",
+        "required": [
+          "workspace_name",
+          "branding",
+          "talent_name",
+          "google",
+          "microsoft",
+          "connected"
+        ],
+        "properties": {
+          "branding": {
+            "type": "object",
+            "description": "The workspace's logo and colours, for a page in its own style."
+          },
+          "connected": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicConnected"
+            },
+            "description": "Calendars already connected for this talent, by whose they are."
+          },
+          "google": {
+            "type": "boolean"
+          },
+          "microsoft": {
+            "type": "boolean"
+          },
+          "talent_name": {
+            "type": "string"
+          },
+          "workspace_name": {
+            "type": "string"
+          }
+        }
+      },
+      "PublicConnected": {
+        "type": "object",
+        "required": [
+          "provider"
+        ],
+        "properties": {
+          "person": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "description": "`google`, `microsoft` or `ical`."
+          }
+        }
+      },
       "PublicInvoice": {
         "type": "object",
         "required": [
@@ -29570,6 +30355,25 @@
           }
         }
       },
+      "StartCalendarConnect": {
+        "type": "object",
+        "required": [
+          "provider"
+        ],
+        "properties": {
+          "person": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Whose calendar this is, for a band or group: their name."
+          },
+          "provider": {
+            "type": "string",
+            "description": "`google` or `microsoft`."
+          }
+        }
+      },
       "StartConnect": {
         "type": "object",
         "required": [
@@ -29751,6 +30555,103 @@
           },
           "tag": {
             "type": "string"
+          }
+        }
+      },
+      "TalentCalendarView": {
+        "type": "object",
+        "description": "A connected calendar as the agency sees it. Never carries the grant.",
+        "required": [
+          "id",
+          "talent_id",
+          "provider",
+          "account",
+          "status",
+          "connected_at"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "The account's address, or the iCal link's host."
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "person": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A band member's name, as they gave it."
+          },
+          "provider": {
+            "type": "string",
+            "description": "`google`, `microsoft` or `ical`."
+          },
+          "status": {
+            "type": "string",
+            "description": "`active`, `failing` (being retried) or `reconnect` (the talent needs\nto connect it again)."
+          },
+          "talent_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "TalentCalendars": {
+        "type": "object",
+        "required": [
+          "calendars",
+          "links",
+          "google",
+          "microsoft"
+        ],
+        "properties": {
+          "calendars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TalentCalendarView"
+            }
+          },
+          "google": {
+            "type": "boolean",
+            "description": "Google calendars can be connected on this server."
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectLinkView"
+            },
+            "description": "Links still working. Each is shown in full only once, when made."
+          },
+          "microsoft": {
+            "type": "boolean",
+            "description": "Microsoft calendars can be connected on this server."
           }
         }
       },

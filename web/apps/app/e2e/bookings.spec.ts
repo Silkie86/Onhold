@@ -30,6 +30,22 @@ test("enquiry to hold to quote to accepted to confirmed, on the calendar, with n
   await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("heading", { name: "The Midnight Owls" })).toBeVisible();
 
+  // Their own calendar: the agency gets a link, and the talent opens it
+  // without an account (Google and Microsoft are not set up on this server).
+  await page.getByRole("button", { name: "Get a link to send" }).click();
+  const calendarLink = await page.getByLabel("Link to send").inputValue();
+  expect(calendarLink).toContain("/connect-calendar/");
+  const talentPage = await context.browser()!.newPage();
+  await talentPage.goto(calendarLink);
+  await expect(talentPage.getByRole("heading", { name: "Connect your calendar" })).toBeVisible();
+  await expect(talentPage.getByText("Only the times you are busy.")).toBeVisible();
+  await expect(talentPage.getByRole("button", { name: "Connect Google Calendar" })).toHaveCount(0);
+  await talentPage.getByLabel(/private iCal link/).fill("https://localhost/calendar.ics");
+  await talentPage.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(talentPage.getByText(/could not be read as a calendar/)).toBeVisible();
+  await talentPage.close();
+  await expect(page.getByText("One link sent")).toBeVisible();
+
   // 1. An enquiry comes in.
   await go("Enquiries");
   await page.getByRole("button", { name: "New enquiry" }).click();

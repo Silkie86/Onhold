@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, starts_at, ends_at, tentative FROM calendar_busy\n           WHERE workspace_id = app_workspace_id() AND calendar_id = $1\n           ORDER BY starts_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "calendar_busy",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "starts_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "calendar_busy",
+            "name": "starts_at"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "ends_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "calendar_busy",
+            "name": "ends_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "tentative",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "calendar_busy",
+            "name": "tentative"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6f28deecc117adb81052c695f06044ec6f83bd0a83b7eef2a1e29c6913b99073"
+}

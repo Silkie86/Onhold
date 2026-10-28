@@ -60,7 +60,9 @@ async fn the_app_role_cannot_bypass_policies(pool: PgPool) {
     .unwrap();
     // Link rows (which talent an enquiry or booking is for) are replaced
     // when the list changes; the parent's audit entry keeps the history.
-    let links = ["enquiry_talent", "booking_talent"];
+    // Busy times copied from a talent's own calendar are replaced as the
+    // calendar changes; the calendar's row keeps the history.
+    let links = ["enquiry_talent", "booking_talent", "calendar_busy"];
     let deletable: Vec<&String> = deletable
         .iter()
         .filter(|t| !links.contains(&t.as_str()))
@@ -277,6 +279,7 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "integrations",
         "threads",
         "sender_domains",
+        "talent_calendars",
     ];
     for table in tables(&app.owner).await {
         let read =
@@ -312,6 +315,10 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "SELECT domain FROM sender_domains",
         "SELECT provider_id FROM sender_domains",
         "UPDATE sender_domains SET next_check_at = now()",
+        "SELECT secret FROM talent_calendars",
+        "SELECT account FROM talent_calendars",
+        "UPDATE talent_calendars SET next_poll_at = now()",
+        "SELECT starts_at FROM calendar_busy",
         "SELECT total_minor FROM invoices",
         "UPDATE invoices SET status = 'paid'",
     ] {

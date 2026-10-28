@@ -2293,6 +2293,77 @@ export interface paths {
         patch: operations["update_pipeline"];
         trace?: never;
     };
+    "/api/v1/public/calendar-connect/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finishes connecting with what Google or Microsoft sent back. */
+        post: operations["public_calendar_connect_finish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/calendar-connect/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a talent sees on opening their calendar link. Needs no account;
+         *     the link is the key.
+         */
+        get: operations["public_calendar_connect"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/calendar-connect/{token}/ical": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connects a calendar by its private iCal address, once it reads. */
+        post: operations["public_calendar_connect_ical"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/calendar-connect/{token}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Where to send the talent to let OnHold see when they are busy. */
+        post: operations["public_calendar_connect_start"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/calendar/{file}": {
         parameters: {
             query?: never;
@@ -2855,6 +2926,98 @@ export interface paths {
          *     (warns) or available only.
          */
         post: operations["create_availability"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/calendar-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A link to send the talent (or each member of an act) so they can
+         *     connect their own calendar without an OnHold account. Works for two
+         *     weeks; shown once.
+         */
+        post: operations["create_calendar_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/calendar-links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stops a link working. Calendars already connected through it carry on. */
+        delete: operations["revoke_calendar_link"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The talent's connected calendars (busy times only) and the links that
+         *     still work for connecting more.
+         */
+        get: operations["talent_calendars"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/calendars/{calendar_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stops reading a calendar and forgets its busy times. */
+        delete: operations["disconnect_talent_calendar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/calendars/{calendar_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reads a calendar now rather than at its next turn. */
+        post: operations["sync_talent_calendar"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3688,6 +3851,23 @@ export interface components {
             /** @description Records left unchanged, and why. */
             failed: components["schemas"]["BulkFailure"][];
         };
+        CalendarConnectStart: {
+            /**
+             * @description Send the talent here; the provider sends them back to
+             *     `/connect-calendar` with `code` and `state`, which the page passes to
+             *     the finish call.
+             */
+            url: string;
+        };
+        /** @description What the talent sees once connected. */
+        CalendarConnected: {
+            /** @description The account connected, or the iCal link's host. */
+            account: string;
+            branding: Record<string, never>;
+            provider: string;
+            talent_name: string;
+            workspace_name: string;
+        };
         CalendarView: {
             /** @description Unavailable, tentative and available-only time in the window. */
             availability: components["schemas"]["AvailabilityView"][];
@@ -3799,6 +3979,18 @@ export interface components {
             related_id?: string | null;
             tags?: string[];
             title?: string | null;
+        };
+        ConnectLinkView: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            created_by: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_used_at?: string | null;
         };
         ConnectStart: {
             /**
@@ -4000,6 +4192,11 @@ export interface components {
             key: components["schemas"]["ApiKeyView"];
             /** @description The key itself. Shown once; store it somewhere safe. */
             secret: string;
+        };
+        CreatedConnectLink: {
+            link: components["schemas"]["ConnectLinkView"];
+            /** @description The link to send the talent. Shown once. */
+            url: string;
         };
         CreatedFeed: {
             feed: components["schemas"]["FeedView"];
@@ -4507,6 +4704,12 @@ export interface components {
             phone?: string | null;
             tax_number?: string | null;
         };
+        FinishCalendarConnect: {
+            /** @description From the provider's redirect. */
+            code: string;
+            /** @description From the provider's redirect, as the start call made it. */
+            state: string;
+        };
         FinishConnect: {
             /** @description From Stripe's redirect. */
             code: string;
@@ -4599,6 +4802,12 @@ export interface components {
              * @description When there are no lines: the total, tax included.
              */
             total_minor?: number | null;
+        };
+        IcalConnect: {
+            /** @description Whose calendar this is, for a band or group: their name. */
+            person?: string | null;
+            /** @description The calendar's private iCal address (`https://` or `webcal://`). */
+            url: string;
         };
         ImapConnect: {
             /** @description The address mail is sent as. */
@@ -5684,6 +5893,22 @@ export interface components {
              */
             thing_id?: string | null;
         };
+        /** @description What the talent sees on opening their link. */
+        PublicCalendarConnect: {
+            /** @description The workspace's logo and colours, for a page in its own style. */
+            branding: Record<string, never>;
+            /** @description Calendars already connected for this talent, by whose they are. */
+            connected: components["schemas"]["PublicConnected"][];
+            google: boolean;
+            microsoft: boolean;
+            talent_name: string;
+            workspace_name: string;
+        };
+        PublicConnected: {
+            person?: string | null;
+            /** @description `google`, `microsoft` or `ical`. */
+            provider: string;
+        };
         PublicInvoice: {
             /** @description How to pay, from the issuer's bank details. */
             bank_account?: Record<string, never> | null;
@@ -6277,6 +6502,12 @@ export interface components {
             /** @description Shown when approving and in the session list, such as "Sam's MacBook". */
             device_name: string;
         };
+        StartCalendarConnect: {
+            /** @description Whose calendar this is, for a band or group: their name. */
+            person?: string | null;
+            /** @description `google` or `microsoft`. */
+            provider: string;
+        };
         StartConnect: {
             /** @description `google` or `microsoft`. */
             provider: string;
@@ -6332,6 +6563,40 @@ export interface components {
              */
             count: number;
             tag: string;
+        };
+        /** @description A connected calendar as the agency sees it. Never carries the grant. */
+        TalentCalendarView: {
+            /** @description The account's address, or the iCal link's host. */
+            account: string;
+            /** Format: date-time */
+            connected_at: string;
+            /** Format: uuid */
+            id: string;
+            last_error?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            /** Format: date-time */
+            last_synced_at?: string | null;
+            /** @description A band member's name, as they gave it. */
+            person?: string | null;
+            /** @description `google`, `microsoft` or `ical`. */
+            provider: string;
+            /**
+             * @description `active`, `failing` (being retried) or `reconnect` (the talent needs
+             *     to connect it again).
+             */
+            status: string;
+            /** Format: uuid */
+            talent_id: string;
+        };
+        TalentCalendars: {
+            calendars: components["schemas"]["TalentCalendarView"][];
+            /** @description Google calendars can be connected on this server. */
+            google: boolean;
+            /** @description Links still working. Each is shown in full only once, when made. */
+            links: components["schemas"]["ConnectLinkView"][];
+            /** @description Microsoft calendars can be connected on this server. */
+            microsoft: boolean;
         };
         TalentDuplicateQuery: {
             /**
@@ -13558,6 +13823,180 @@ export interface operations {
             };
         };
     };
+    public_calendar_connect_finish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishCalendarConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnected"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_calendar_connect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicCalendarConnect"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_calendar_connect_ical: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IcalConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnected"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_calendar_connect_start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartCalendarConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnectStart"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     public_calendar: {
         parameters: {
             query?: never;
@@ -15261,6 +15700,180 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_calendar_link: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedConnectLink"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_calendar_link: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    talent_calendars: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalentCalendars"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disconnect_talent_calendar: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+                calendar_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    sync_talent_calendar: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+                calendar_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalentCalendarView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
