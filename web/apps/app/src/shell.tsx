@@ -46,6 +46,7 @@ import {
   Mic2,
   Monitor,
   Moon,
+  Palette,
   Search,
   SlidersHorizontal,
   Sun,
@@ -59,6 +60,7 @@ import { OfflineContext, searchEverything, useSyncStatus } from "./data.ts";
 import { claimFor, forgetMailExcept } from "./offline/store.ts";
 import { OfflineSync } from "./offline/sync.ts";
 import { IS_APP, KEEPS_OFFLINE_COPY, serverUrl } from "./platform.ts";
+import { useWorkspaceBranding } from "./branding.ts";
 import { GoTo } from "./go-to.tsx";
 import { useInstallOffer } from "./install.ts";
 import { type Session, SessionContext, useMe, useSessionActions } from "./session.tsx";
@@ -101,6 +103,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
   {
     group: "Settings",
     items: [
+      { to: "/settings/branding", label: "Branding", icon: <Palette /> },
       { to: "/settings/email", label: "Email accounts", icon: <AtSign /> },
       { to: "/settings/fields", label: "Custom fields", icon: <SlidersHorizontal /> },
       { to: "/settings/pipelines", label: "Pipelines", icon: <Workflow /> },
@@ -217,6 +220,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
   useEffect(() => {
     if (KEEPS_OFFLINE_COPY) void forgetMailExcept(keptFor.split(",")).catch(() => undefined);
   }, [keptFor]);
+  const logo = useWorkspaceBranding(current?.id ?? "", sync);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(storedTheme);
@@ -292,7 +296,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
       <OfflineContext.Provider value={sync}>
       <div className="flex h-dvh">
         <aside className="hidden w-56 shrink-0 flex-col border-r bg-muted/30 md:flex">
-          <WorkspaceSwitcher session={session} />
+          <WorkspaceSwitcher session={session} logo={logo} />
           {nav}
         </aside>
         {navOpen && (
@@ -300,7 +304,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
             <button type="button" aria-label="Close menu" className="absolute inset-0 bg-black/40" onClick={() => setNavOpen(false)} />
             <aside className="relative flex h-full w-64 flex-col border-r bg-background">
               <div className="flex items-center justify-between pr-2">
-                <WorkspaceSwitcher session={session} />
+                <WorkspaceSwitcher session={session} logo={logo} />
                 <Button variant="ghost" size="icon" aria-label="Close menu" onClick={() => setNavOpen(false)}>
                   <X />
                 </Button>
@@ -404,12 +408,15 @@ function SignedIn({ me }: { me: Session["me"] }) {
   );
 }
 
-function WorkspaceSwitcher({ session }: { session: Session }) {
+function WorkspaceSwitcher({ session, logo }: { session: Session; logo: string | null }) {
   const { me, workspace, switchWorkspace } = session;
   const label = (
-    <span className="flex min-w-0 flex-col text-left">
-      <span className="truncate text-sm font-semibold">{workspace.name}</span>
-      <span className="truncate text-xs text-muted-foreground capitalize">{workspace.role}</span>
+    <span className="flex min-w-0 items-center gap-2">
+      {logo && <img src={logo} alt="" className="h-8 w-auto max-w-24 shrink-0 object-contain" />}
+      <span className="flex min-w-0 flex-col text-left">
+        <span className="truncate text-sm font-semibold">{workspace.name}</span>
+        <span className="truncate text-xs text-muted-foreground capitalize">{workspace.role}</span>
+      </span>
     </span>
   );
   if (me.workspaces.length < 2) {

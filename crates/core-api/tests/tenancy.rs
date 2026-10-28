@@ -534,6 +534,10 @@ async fn workspace_settings_update_with_versions(pool: PgPool) {
         json!({ "default_timezone": "Mars/Base" }),
         json!({ "enabled_modules": ["rocketry"] }),
         json!({ "branding": "red" }),
+        json!({ "branding": { "primary_color": "red" } }),
+        json!({ "branding": { "primary_color": "#abc; background: url(x)" } }),
+        json!({ "branding": { "logo": "https://example.com/logo.png" } }),
+        json!({ "branding": { "logo": "data:text/html;base64,PHNjcmlwdD4=" } }),
         json!({ "name": "  " }),
     ] {
         let res = app
@@ -550,6 +554,48 @@ async fn workspace_settings_update_with_versions(pool: PgPool) {
         actions.iter().filter(|a| *a == "workspace.updated").count(),
         1
     );
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn branding_takes_a_colour_and_a_logo(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let logo = "data:image/png;base64,iVBORw0KGgo=";
+    let res = app
+        .patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "name": "Acme Talent", "branding": { "primary_color": "#C0392B", "logo": logo } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(res.body["name"], "Acme Talent");
+    assert_eq!(res.body["branding"]["primary_color"], "#C0392B");
+    assert_eq!(res.body["branding"]["logo"], logo);
+
+    // The audit log and events record that there is a logo, not the image.
+    let audit = app.get("/api/v1/audit").signed_in(&owner).send().await.ok();
+    let text = audit.body.to_string();
+    assert!(text.contains("(image)"), "{text}");
+    assert!(!text.contains("iVBORw0KGgo"), "{text}");
+
+    // Cleared again with nulls.
+    let res = app
+        .patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "primary_color": null, "logo": null } }))
+        .send()
+        .await
+        .ok();
+    assert!(res.body["branding"]["logo"].is_null());
+
+    // Too big for the branding (16 KiB).
+    let big = format!("data:image/png;base64,{}", "A".repeat(20_000));
+    app.patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "logo": big } }))
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]

@@ -167,10 +167,19 @@ pub async fn create_workspace(
 /// left out: audit readers need not hold `billing:read`, so an update records
 /// only that it changed.
 fn workspace_audit_view(w: &core_db::workspaces::Workspace) -> Value {
+    // The logo is an image of up to 14 kB: the log and events say only
+    // whether there is one, so every change does not copy it again.
+    let mut branding = w.branding.clone();
+    if let Some(b) = branding.as_object_mut()
+        && let Some(logo) = b.get_mut("logo")
+        && !logo.is_null()
+    {
+        *logo = json!("(image)");
+    }
     json!({
         "slug": w.slug, "name": w.name, "plan": w.plan, "status": w.status, "perspective": w.perspective,
         "country": w.country, "default_currency": w.default_currency, "default_timezone": w.default_timezone,
-        "locale": w.locale, "enabled_modules": w.enabled_modules, "branding": w.branding,
+        "locale": w.locale, "enabled_modules": w.enabled_modules, "branding": branding,
         "plugin_slug": w.plugin_slug,
         "require_staff_2fa": w.require_staff_2fa, "hold_days": w.hold_days,
     })
@@ -274,6 +283,30 @@ pub async fn update_workspace(
                 message: "must be under 16 KiB".into(),
                 field: Some(field),
             });
+        }
+    }
+    // The colour and logo print on documents and colour the app, so only a
+    // hex colour and an image data URI are taken.
+    if patch.branding.is_some() {
+        if let Some(c) = branding.get("primary_color")
+            && !c.is_null()
+            && c.as_str()
+                .and_then(core_engines::documents::colour)
+                .is_none()
+        {
+            return Err(ApiError::invalid(
+                "branding",
+                "primary_color must be a hex colour such as #2747c7",
+            ));
+        }
+        if let Some(l) = branding.get("logo")
+            && !l.is_null()
+            && l.as_str().and_then(core_engines::documents::logo).is_none()
+        {
+            return Err(ApiError::invalid(
+                "branding",
+                "logo must be a PNG, JPEG, GIF, WebP or SVG image as a base64 data URI",
+            ));
         }
     }
     // An uploaded logo is kept for as long as the branding uses it.

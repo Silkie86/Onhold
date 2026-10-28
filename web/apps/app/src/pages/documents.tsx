@@ -7,7 +7,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import type { Schemas } from "@onhold/api-client";
-import { Alert, Badge, Button, Card, Checkbox, Dialog, Input, Label, NativeSelect, Spinner, Textarea, applyBranding, type Branding, cn, formatMoney } from "@onhold/ui";
+import { Alert, Badge, Button, Card, Checkbox, Dialog, Input, Label, NativeSelect, Spinner, Textarea, applyBrandColour, readBranding, cn, formatMoney } from "@onhold/ui";
 import { Download, FilePlus2, FileSignature, FileUp, PackageOpen, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
@@ -850,8 +850,7 @@ export function PublicSigningPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    const b = page.data?.branding as { colours?: Branding } | undefined;
-    if (b?.colours) applyBranding(b.colours);
+    if (page.data) applyBrandColour(readBranding(page.data.branding).colour);
     if (page.data) {
       document.title = `${page.data.document_title} · ${page.data.workspace_name}`;
       setName((n) => n || page.data.signer_name);
@@ -889,7 +888,7 @@ export function PublicSigningPage() {
     );
   }
   const p = page.data;
-  const logo = (p.branding as { logo_url?: string } | null)?.logo_url;
+  const logo = readBranding(p.branding).logo;
   const decide = async (sign: boolean) => {
     setError(null);
     setBusy(true);
@@ -910,7 +909,7 @@ export function PublicSigningPage() {
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-5 p-4 sm:p-8">
       <header className="flex items-center gap-3">
-        {logo && <img src={logo} alt="" className="size-10 rounded object-contain" />}
+        {logo && <img src={logo} alt="" className="h-10 w-auto max-w-40 rounded object-contain" />}
         <div>
           <p className="text-sm text-muted-foreground">{p.workspace_name} asks you to sign</p>
           <h1 className="text-2xl font-semibold">{p.document_title}</h1>

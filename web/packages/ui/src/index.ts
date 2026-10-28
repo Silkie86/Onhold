@@ -26,4 +26,17 @@ export { Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuSeparator
 export { Alert, Badge, Card, EmptyState, Spinner } from "./components/misc.tsx";
 export { Timeline, type TimelineEntry, relativeTime } from "./components/timeline.tsx";
 export * from "./format.ts";
-export { type Branding, type Theme, applyBranding, applyTheme, cn } from "./lib.ts";
+export {
+  type Branding,
+  type Theme,
+  applyBrandColour,
+  applyBranding,
+  applyTheme,
+  brandColours,
+  darkBrandColour,
+  clearBranding,
+  cn,
+  hexColour,
+  logoSource,
+  readBranding,
+} from "./lib.ts";

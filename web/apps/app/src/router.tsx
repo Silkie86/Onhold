@@ -134,6 +134,12 @@ const calendarSettings = createRoute({
   component: lazyRouteComponent(() => import("./pages/calendar-settings.tsx"), "CalendarSettingsPage"),
 });
 
+const brandingSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/branding",
+  component: lazyRouteComponent(() => import("./pages/branding-settings.tsx"), "BrandingSettingsPage"),
+});
+
 const inbox = createRoute({ getParentRoute: () => app, path: "/inbox", validateSearch: validateInboxSearch, component: InboxPage });
 const emailSettings = createRoute({
   getParentRoute: () => app,
@@ -200,6 +206,7 @@ const tree = root.addChildren([
     fields,
     pipelines,
     calendarSettings,
+    brandingSettings,
     sync,
     invoices,
     invoice,
