@@ -412,7 +412,7 @@ function WorkspaceSwitcher({ session, logo }: { session: Session; logo: string |
   const { me, workspace, switchWorkspace } = session;
   const label = (
     <span className="flex min-w-0 items-center gap-2">
-      {logo && <img src={logo} alt="" className="h-8 w-auto max-w-16 shrink-0 object-contain" />}
+      {logo && <img src={logo} alt="" className="h-8 w-auto max-w-24 shrink-0 object-contain" />}
       <span className="flex min-w-0 flex-col text-left">
         <span className="truncate text-sm font-semibold">{workspace.name}</span>
         <span className="truncate text-xs text-muted-foreground capitalize">{workspace.role}</span>
