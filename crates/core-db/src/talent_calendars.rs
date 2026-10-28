@@ -189,6 +189,22 @@ pub async fn live_for(
     .await?)
 }
 
+/// The live connection to the same iCal link for this talent, if any.
+pub async fn live_ical(
+    conn: &mut PgConnection,
+    talent_id: Uuid,
+    url_hash: &[u8],
+) -> Result<Option<Calendar>> {
+    Ok(select_calendar!(
+        "AND talent_id = $1 AND provider = 'ical' AND url_hash = $2 AND disconnected_at IS NULL
+         FOR UPDATE",
+        talent_id,
+        url_hash
+    )
+    .fetch_optional(conn)
+    .await?)
+}
+
 pub async fn count_live(conn: &mut PgConnection, talent_id: Uuid) -> Result<i64> {
     Ok(sqlx::query_scalar!(
         r#"SELECT count(*) AS "n!" FROM talent_calendars
@@ -207,20 +223,23 @@ pub struct NewCalendar<'a> {
     pub account: &'a str,
     pub person: Option<&'a str>,
     pub secret: &'a [u8],
+    /// For an iCal link: its hash.
+    pub url_hash: Option<&'a [u8]>,
 }
 
 pub async fn insert(conn: &mut PgConnection, c: NewCalendar<'_>) -> Result<()> {
     sqlx::query!(
         r#"INSERT INTO talent_calendars (id, workspace_id, talent_id, link_id, provider, account, person,
-                                         secret, next_poll_at)
-           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, now())"#,
+                                         secret, url_hash, next_poll_at)
+           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, now())"#,
         c.id,
         c.talent_id,
         c.link_id,
         c.provider,
         c.account,
         c.person,
-        c.secret
+        c.secret,
+        c.url_hash
     )
     .execute(conn)
     .await?;
@@ -328,16 +347,22 @@ pub async fn poll_now(conn: &mut PgConnection, id: Uuid) -> Result<Option<DateTi
     .await?)
 }
 
-/// Stops reading a calendar and forgets when it was busy.
+/// Stops reading a calendar and forgets its grant and when it was busy.
 pub async fn disconnect(conn: &mut PgConnection, id: Uuid) -> Result<()> {
     sqlx::query!(
         r#"UPDATE talent_calendars
-           SET disconnected_at = now(), next_poll_at = NULL, poll_lease_until = NULL
+           SET disconnected_at = now(), next_poll_at = NULL, poll_lease_until = NULL,
+               secret = '\x'::bytea
            WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL"#,
         id
     )
     .execute(&mut *conn)
     .await?;
+    forget_busy(conn, id).await
+}
+
+/// Forgets when a calendar was busy.
+pub async fn forget_busy(conn: &mut PgConnection, id: Uuid) -> Result<()> {
     sqlx::query!(
         "DELETE FROM calendar_busy WHERE workspace_id = app_workspace_id() AND calendar_id = $1",
         id
@@ -347,21 +372,66 @@ pub async fn disconnect(conn: &mut PgConnection, id: Uuid) -> Result<()> {
     Ok(())
 }
 
-/// Disconnects every calendar of a talent, or of the workspace when `None`;
-/// returns their ids.
+/// Disconnects every calendar of a talent, or of the workspace when `None`,
+/// and returns their ids. An iCal link is forgotten at once; a Google or
+/// Microsoft grant is left for the worker to revoke and then forget.
 pub async fn disconnect_all(conn: &mut PgConnection, talent_id: Option<Uuid>) -> Result<Vec<Uuid>> {
     let ids = sqlx::query_scalar!(
-        r#"SELECT id FROM talent_calendars
+        r#"UPDATE talent_calendars
+           SET disconnected_at = now(), next_poll_at = NULL, poll_lease_until = NULL,
+               revoke_at = CASE WHEN provider = 'ical' THEN NULL ELSE now() END,
+               secret = CASE WHEN provider = 'ical' THEN '\x'::bytea ELSE secret END
            WHERE workspace_id = app_workspace_id() AND disconnected_at IS NULL
-             AND ($1::uuid IS NULL OR talent_id = $1)"#,
+             AND ($1::uuid IS NULL OR talent_id = $1)
+           RETURNING id"#,
         talent_id
     )
     .fetch_all(&mut *conn)
     .await?;
-    for id in &ids {
-        disconnect(conn, *id).await?;
+    if !ids.is_empty() {
+        sqlx::query!(
+            "DELETE FROM calendar_busy WHERE workspace_id = app_workspace_id() AND calendar_id = ANY($1)",
+            &ids
+        )
+        .execute(conn)
+        .await?;
     }
     Ok(ids)
+}
+
+/// A disconnected calendar whose grant is still to be revoked, locked.
+pub async fn to_revoke(conn: &mut PgConnection, id: Uuid) -> Result<Option<Calendar>> {
+    Ok(
+        select_calendar!("AND id = $1 AND revoke_at IS NOT NULL FOR UPDATE", id)
+            .fetch_optional(conn)
+            .await?,
+    )
+}
+
+/// The grant has been revoked (or need not be): forget it.
+pub async fn forget_grant(conn: &mut PgConnection, id: Uuid) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE talent_calendars SET secret = '\x'::bytea, revoke_at = NULL
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NOT NULL"#,
+        id
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Disconnected calendars whose grants are still to be revoked, in any
+/// workspace, closed ones included (the worker's sweep).
+pub async fn revokes_due(conn: &mut PgConnection, limit: i64) -> Result<Vec<Due>> {
+    Ok(sqlx::query_as!(
+        Due,
+        r#"SELECT id, workspace_id AS "workspace_id: WorkspaceId", revoke_at AS "at!"
+           FROM talent_calendars WHERE revoke_at IS NOT NULL
+           ORDER BY revoke_at LIMIT $1"#,
+        limit
+    )
+    .fetch_all(conn)
+    .await?)
 }
 
 #[derive(Debug, Clone)]

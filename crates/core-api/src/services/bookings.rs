@@ -159,7 +159,9 @@ pub struct Clash {
     /// `booking` or `availability`.
     pub kind: String,
     /// Whether it stops the booking being confirmed: a confirmed booking or
-    /// unavailable time. Holds, pending bookings and tentative time only warn.
+    /// unavailable time. Holds, pending bookings and tentative time only warn,
+    /// as does busy time in the talent's own calendar lying within this
+    /// booking or another the talent has (most likely that booking itself).
     pub blocking: bool,
     pub talent_id: Uuid,
     pub talent_name: String,
@@ -215,7 +217,15 @@ pub(crate) async fn find_clashes(
             clashes,
         });
     }
+    // Bookings OnHold already knows of, this one included, by talent: busy
+    // time in the talent's own calendar that lies within one is most likely
+    // that booking written there, so it only warns.
+    let mut known: Vec<(Uuid, DateTime<Utc>, DateTime<Utc>)> = match except {
+        Some(_) => talent.iter().map(|t| (*t, starts, ends)).collect(),
+        None => Vec::new(),
+    };
     for o in core_db::bookings::overlapping(tx, talent, starts, ends, except).await? {
+        known.push((o.talent_id, o.starts_at, o.ends_at));
         clashes.push(Clash {
             kind: "booking".into(),
             blocking: o.status == BookingStatus::Confirmed,
@@ -231,9 +241,13 @@ pub(crate) async fn find_clashes(
     }
     let kinds = [AvailabilityKind::Unavailable, AvailabilityKind::Tentative];
     for a in core_db::availability::list(tx, talent, starts, ends, &kinds).await? {
+        let a_booking = a.source == "external"
+            && known
+                .iter()
+                .any(|(t, s, e)| *t == a.talent_id && *s <= a.starts_at && a.ends_at <= *e);
         clashes.push(Clash {
             kind: "availability".into(),
-            blocking: a.kind == AvailabilityKind::Unavailable,
+            blocking: a.kind == AvailabilityKind::Unavailable && !a_booking,
             talent_id: a.talent_id,
             talent_name: a.talent_name,
             booking_id: None,

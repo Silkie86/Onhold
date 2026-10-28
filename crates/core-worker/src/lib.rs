@@ -396,6 +396,17 @@ impl Worker {
             .await?;
             queued += 1;
         }
+        for c in core_db::talent_calendars::revokes_due(tx, DUE_BATCH).await? {
+            let key = format!("revoke:{}", c.id);
+            let payload = json!({ "calendar_id": c.id });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(c.workspace_id), talent_calendars::JOB_REVOKE, &payload)
+                    .dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
         for t in core_db::inbox::snooze_ended(tx, now, DUE_BATCH).await? {
             let key = format!("{}@{}", t.id, t.at.to_rfc3339());
             let payload = json!({ "thread_id": t.id, "at": t.at });

@@ -1477,6 +1477,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "busy time from the talent's own calendar (`from_their_calendar`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1568,6 +1578,16 @@
             }
           },
           "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "busy time from the talent's own calendar (`from_their_calendar`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -21750,7 +21770,7 @@
           },
           "blocking": {
             "type": "boolean",
-            "description": "Whether it stops the booking being confirmed: a confirmed booking or\nunavailable time. Holds, pending bookings and tentative time only warn."
+            "description": "Whether it stops the booking being confirmed: a confirmed booking or\nunavailable time. Holds, pending bookings and tentative time only warn,\nas does busy time in the talent's own calendar lying within this\nbooking or another the talent has (most likely that booking itself)."
           },
           "booking_id": {
             "type": [
@@ -28418,7 +28438,8 @@
       "PublicConnected": {
         "type": "object",
         "required": [
-          "provider"
+          "provider",
+          "status"
         ],
         "properties": {
           "person": {
@@ -28430,6 +28451,10 @@
           "provider": {
             "type": "string",
             "description": "`google`, `microsoft` or `ical`."
+          },
+          "status": {
+            "type": "string",
+            "description": "`active`, `failing` or `reconnect` (it needs connecting again)."
           }
         }
       },

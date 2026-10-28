@@ -3899,7 +3899,9 @@ export interface components {
             availability_id?: string | null;
             /**
              * @description Whether it stops the booking being confirmed: a confirmed booking or
-             *     unavailable time. Holds, pending bookings and tentative time only warn.
+             *     unavailable time. Holds, pending bookings and tentative time only warn,
+             *     as does busy time in the talent's own calendar lying within this
+             *     booking or another the talent has (most likely that booking itself).
              */
             blocking: boolean;
             /** Format: uuid */
@@ -5908,6 +5910,8 @@ export interface components {
             person?: string | null;
             /** @description `google`, `microsoft` or `ical`. */
             provider: string;
+            /** @description `active`, `failing` or `reconnect` (it needs connecting again). */
+            status: string;
         };
         PublicInvoice: {
             /** @description How to pay, from the issuer's bank details. */
@@ -8216,6 +8220,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description busy time from the talent's own calendar (`from_their_calendar`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
         };
     };
     update_availability: {
@@ -8254,6 +8267,15 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description busy time from the talent's own calendar (`from_their_calendar`) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

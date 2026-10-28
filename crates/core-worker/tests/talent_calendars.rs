@@ -42,6 +42,8 @@ struct World {
     ical: String,
     /// The Google grant was withdrawn.
     withdrawn: bool,
+    /// Grants also carry mailbox access given to the same app before.
+    wide: bool,
     freebusy_calls: usize,
     /// What Microsoft was asked to return.
     selects: Vec<String>,
@@ -76,11 +78,15 @@ async fn token(State(w): State<Shared>, body: String) -> Response {
                 .into_response();
         }
     }
-    let scope = if microsoft {
+    let mut scope = if microsoft {
         "Calendars.ReadBasic User.Read profile openid email"
     } else {
         "openid https://www.googleapis.com/auth/calendar.freebusy https://www.googleapis.com/auth/userinfo.email"
-    };
+    }
+    .to_owned();
+    if w.wide {
+        scope.push_str(" https://www.googleapis.com/auth/gmail.readonly");
+    }
     axum::Json(json!({
         "access_token": if microsoft { "ms-access" } else { "google-access" },
         "refresh_token": if microsoft { "ms-refresh" } else { "google-refresh" },
@@ -180,8 +186,8 @@ async fn stand_ins() -> (Url, Shared) {
                     let mut body = json!({ "value": events });
                     if (page + 1) * 2 < w.microsoft.len() {
                         body["@odata.nextLink"] = json!(format!(
-                            "https://graph.microsoft.com/v1.0/me/calendarView?startDateTime={}&endDateTime={}&$select=start,end,showAs,isCancelled&page={}",
-                            q["startDateTime"], q["endDateTime"], page + 1
+                            "https://graph.microsoft.com/v1.0/me/calendarView?startDateTime={}&endDateTime={}&$select={}&page={}",
+                            q["startDateTime"], q["endDateTime"], q["$select"], page + 1
                         ));
                     }
                     axum::Json(body)
@@ -441,6 +447,13 @@ async fn talent_connect_their_calendars_and_busy_times_count_as_clashes(pool: Pg
         scope,
         "openid email https://www.googleapis.com/auth/calendar.freebusy"
     );
+    // ...and never for what the same app was given before.
+    assert!(
+        !start["url"]
+            .as_str()
+            .unwrap()
+            .contains("include_granted_scopes")
+    );
 
     let google = h.connect(&token, "google", " Sam ").await;
     assert_eq!(google["account"], "sam@gmail.test");
@@ -484,8 +497,18 @@ async fn talent_connect_their_calendars_and_busy_times_count_as_clashes(pool: Pg
             .unwrap()
             .selects
             .iter()
-            .all(|s| s == "start,end,showAs,isCancelled")
+            .all(|s| s == "start,end,showAs,isCancelled,isAllDay,originalStartTimeZone")
     );
+    // Pasting the same iCal link again renews that calendar, not a second.
+    h.app
+        .post(&format!("/api/v1/public/calendar-connect/{token}/ical"))
+        .json(json!({ "url": ical_url }))
+        .send()
+        .await
+        .ok();
+    h.drain().await;
+    let cals = h.calendars(&owner, &talent).await;
+    assert_eq!(cals["calendars"].as_array().unwrap().len(), 3, "{cals}");
 
     let busy = h.availability(&owner, &talent).await;
     let row = |src: &str, kind: &str, who: &str, s: DateTime<Utc>, e: DateTime<Utc>| {
@@ -536,6 +559,42 @@ async fn talent_connect_their_calendars_and_busy_times_count_as_clashes(pool: Pg
         clash["clashes"][0]["title"],
         "Busy in their own calendar (Alex)"
     );
+    // Busy time within a booking OnHold knows is most likely that booking,
+    // written into their calendar: it only warns.
+    let booking = h
+        .app
+        .post("/api/v1/bookings")
+        .signed_in(&owner)
+        .json(json!({ "title": "Day show", "talent_ids": [talent],
+            "starts_at": stamp(ahead(5, 8)), "ends_at": stamp(ahead(5, 18)) }))
+        .send()
+        .await
+        .ok()
+        .id("/id")
+        .to_string();
+    let own = h
+        .app
+        .post("/api/v1/bookings/clash-check")
+        .signed_in(&owner)
+        .json(
+            json!({ "talent_ids": [talent], "starts_at": stamp(ahead(5, 8)),
+            "ends_at": stamp(ahead(5, 18)), "except_id": booking }),
+        )
+        .send()
+        .await
+        .ok()
+        .body;
+    assert_eq!(own["blocking"], false, "{own}");
+    assert_eq!(
+        own["clashes"][0]["title"],
+        "Busy in their own calendar (Alex)"
+    );
+    h.app
+        .delete(&format!("/api/v1/bookings/{booking}"))
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
     // Busy time from a calendar changes there, not here.
     let entry = clash["clashes"][0]["availability_id"].as_str().unwrap();
     h.app
@@ -575,7 +634,7 @@ async fn talent_connect_their_calendars_and_busy_times_count_as_clashes(pool: Pg
     assert_eq!(kept, still, "an unchanged stretch is left alone");
 
     // Sam withdraws OnHold's access: the calendar asks to be connected
-    // again, and its last known busy times stay meanwhile.
+    // again, and its busy times stop counting meanwhile.
     h.world.lock().unwrap().withdrawn = true;
     h.read_all().await;
     let cals = h.calendars(&owner, &talent).await;
@@ -591,7 +650,7 @@ async fn talent_connect_their_calendars_and_busy_times_count_as_clashes(pool: Pg
         sam["last_error"].as_str().unwrap().contains("connect"),
         "{sam}"
     );
-    assert_eq!(h.availability(&owner, &talent).await.len(), 5);
+    assert_eq!(h.availability(&owner, &talent).await.len(), 4);
     let sam_id = sam["id"].as_str().unwrap();
     h.app
         .post(&format!("/api/v1/talent/{talent}/calendars/{sam_id}/sync"))
@@ -633,7 +692,48 @@ async fn talent_connect_their_calendars_and_busy_times_count_as_clashes(pool: Pg
         .await
         .expect(StatusCode::NOT_FOUND, "not_found");
 
-    // Disconnecting forgets the busy times, and Google is asked to forget the grant.
+    // A grant carrying more than busy times is refused, and left alone.
+    h.world.lock().unwrap().wide = true;
+    let start = h
+        .app
+        .post(&format!("/api/v1/public/calendar-connect/{token}/start"))
+        .json(json!({ "provider": "google" }))
+        .send()
+        .await
+        .ok()
+        .body;
+    let state = Url::parse(start["url"].as_str().unwrap())
+        .unwrap()
+        .query_pairs()
+        .find(|(k, _)| k == "state")
+        .unwrap()
+        .1
+        .into_owned();
+    h.app
+        .post("/api/v1/public/calendar-connect/finish")
+        .json(json!({ "code": "good-code", "state": state }))
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "scopes_too_wide");
+    h.world.lock().unwrap().wide = false;
+
+    // Sam's calendar also connected for another talent.
+    let solo = h
+        .app
+        .post("/api/v1/talent")
+        .signed_in(&owner)
+        .json(json!({ "name": "Sam Solo" }))
+        .send()
+        .await
+        .ok()
+        .id("/id")
+        .to_string();
+    let solo_token = h.new_link(&owner, &solo).await;
+    h.connect(&solo_token, "google", "").await;
+    h.drain().await;
+
+    // Disconnecting forgets the grant and the busy times; Google keeps the
+    // grant while the other connection uses the account.
     h.app
         .delete(&format!("/api/v1/talent/{talent}/calendars/{sam_id}"))
         .signed_in(&owner)
@@ -646,7 +746,32 @@ async fn talent_connect_their_calendars_and_busy_times_count_as_clashes(pool: Pg
             .iter()
             .all(|r| !r.2.contains("Sam"))
     );
+    assert!(h.world.lock().unwrap().revoked.is_empty());
+    let kept: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM talent_calendars WHERE disconnected_at IS NOT NULL AND length(secret) > 0",
+    )
+    .fetch_one(&h.app.owner)
+    .await
+    .unwrap();
+    assert_eq!(kept, 0, "a disconnected calendar keeps no grant");
+    // Removing the other talent disconnects the last use: the worker asks
+    // Google to forget it.
+    h.app
+        .delete(&format!("/api/v1/talent/{solo}"))
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    h.worker.schedule_once().await.unwrap();
+    h.drain().await;
     assert_eq!(h.world.lock().unwrap().revoked, vec!["google-refresh"]);
+    let kept: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM talent_calendars WHERE disconnected_at IS NOT NULL AND length(secret) > 0",
+    )
+    .fetch_one(&h.app.owner)
+    .await
+    .unwrap();
+    assert_eq!(kept, 0);
 
     // Revoking the link stops it working, even part way through connecting.
     let link_id = cals["links"][0]["id"].as_str().unwrap();
@@ -760,4 +885,10 @@ async fn links_expire_and_removed_talent_take_their_calendars(pool: PgPool) {
             .await
             .unwrap();
     assert_eq!(live, 0);
+    let kept: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM talent_calendars WHERE length(secret) > 0")
+            .fetch_one(&h.app.owner)
+            .await
+            .unwrap();
+    assert_eq!(kept, 0, "the iCal link is forgotten");
 }

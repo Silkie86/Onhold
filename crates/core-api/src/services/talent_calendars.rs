@@ -29,6 +29,9 @@ use crate::error::{ApiError, ApiResult};
 pub const ENTITY: &str = "talent_calendar";
 /// Reads one calendar's busy times (`calendar_id`, `at`: when it was due).
 pub const JOB_READ: &str = "calendar.read";
+/// Revokes and forgets the grant of a calendar disconnected along with
+/// others (`calendar_id`).
+pub const JOB_REVOKE: &str = "calendar.revoke";
 
 /// How long a link works.
 const LINK_DAYS: i64 = 14;
@@ -44,6 +47,23 @@ const PAST: Duration = Duration::days(1);
 const AHEAD: Duration = Duration::days(365);
 /// Failures in a row before a calendar shows as failing.
 const QUIET_FAILURES: i32 = 3;
+/// iCal files read at once across the server, off the async threads, and
+/// how long one may take.
+static ICAL_READS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+const ICAL_READ_SECS: u64 = 20;
+/// Scopes a busy-only grant may carry: anything more (a mailbox granted to
+/// the same app, say) is refused.
+const ALLOWED_SCOPES: &[&str] = &[
+    "openid",
+    "email",
+    "profile",
+    "offline_access",
+    "user.read",
+    "calendars.readbasic",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/calendar.freebusy",
+];
 
 /// What a connection reads with.
 #[derive(Serialize, Deserialize)]
@@ -307,6 +327,12 @@ pub async fn disconnect(state: &AppState, ctx: &Ctx, talent_id: Uuid, id: Uuid) 
     let before = load_for(&mut tx, talent_id, id).await?;
     let grant = open(state, &before).ok();
     core_db::talent_calendars::disconnect(&mut tx, id).await?;
+    // Revoking a Google grant ends every grant OnHold holds for that
+    // account, mailboxes included, so it is left alone while another
+    // connection (here or in another workspace) still uses it.
+    let in_use =
+        core_db::integrations::account_in_use(&mut tx, &before.provider, &before.account, id)
+            .await?;
     record(
         &mut tx,
         ctx,
@@ -322,8 +348,8 @@ pub async fn disconnect(state: &AppState, ctx: &Ctx, talent_id: Uuid, id: Uuid) 
     .await?;
     tx.commit().await?;
     // Best effort, after the fact: OnHold has already forgotten the grant.
-    if let (Some(Grant::OAuth { refresh_token, .. }), Ok(app)) =
-        (grant, oauth_app(state, &before.provider))
+    if let (Some(Grant::OAuth { refresh_token, .. }), Ok(app), false) =
+        (grant, oauth_app(state, &before.provider), in_use)
         && let Err(e) = app
             .revoke(&state.config.mailboxes.http, &refresh_token)
             .await
@@ -334,7 +360,8 @@ pub async fn disconnect(state: &AppState, ctx: &Ctx, talent_id: Uuid, id: Uuid) 
 }
 
 /// Disconnects every calendar of a talent being removed, or of a closing
-/// workspace (`None`), and stops their links.
+/// workspace (`None`), and stops their links. Their Google grants are
+/// revoked by the worker once this commits.
 pub(crate) async fn disconnect_all(
     tx: &mut Tx,
     ctx: &Ctx,
@@ -358,6 +385,37 @@ pub(crate) async fn disconnect_all(
         .await?;
     }
     Ok(())
+}
+
+/// Revokes a grant left by [`disconnect_all`] (the worker's
+/// `calendar.revoke`), unless another connection still uses the account,
+/// and forgets it.
+pub async fn revoke(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<&'static str> {
+    let ctx = Ctx::system(ws);
+    let mut tx = begin(state, &ctx).await?;
+    let Some(c) = core_db::talent_calendars::to_revoke(&mut tx, id).await? else {
+        tx.commit().await?;
+        return Ok("nothing to revoke");
+    };
+    let grant = open(state, &c).ok();
+    let in_use =
+        core_db::integrations::account_in_use(&mut tx, &c.provider, &c.account, id).await?;
+    core_db::talent_calendars::forget_grant(&mut tx, id).await?;
+    tx.commit().await?;
+    match (grant, oauth_app(state, &c.provider), in_use) {
+        (_, _, true) => Ok("forgotten; the account is still connected elsewhere"),
+        (Some(Grant::OAuth { refresh_token, .. }), Ok(app), false) => {
+            if let Err(e) = app
+                .revoke(&state.config.mailboxes.http, &refresh_token)
+                .await
+            {
+                tracing::warn!(calendar_id = %id, error = %e, "revoking a calendar grant failed");
+                return Ok("forgotten; revoking failed");
+            }
+            Ok("revoked and forgotten")
+        }
+        _ => Ok("forgotten"),
+    }
 }
 
 /// Reads a calendar now rather than at its next turn.
@@ -422,6 +480,8 @@ pub struct PublicConnected {
     /// `google`, `microsoft` or `ical`.
     pub provider: String,
     pub person: Option<String>,
+    /// `active`, `failing` or `reconnect` (it needs connecting again).
+    pub status: String,
 }
 
 /// The link's workspace, talent and link id, with a context acting for the
@@ -453,6 +513,11 @@ async fn workspace_working(
         .ok_or(ApiError::NotFound)
 }
 
+/// The workspace's own zone, for calendars that name none.
+fn zone_of(w: &core_db::workspaces::Workspace) -> chrono_tz::Tz {
+    w.default_timezone.parse().unwrap_or(chrono_tz::UTC)
+}
+
 async fn public_view(
     state: &AppState,
     tx: &mut Tx,
@@ -475,6 +540,7 @@ async fn public_view(
             .map(|c| PublicConnected {
                 provider: c.provider.clone(),
                 person: c.person.clone(),
+                status: c.status.clone(),
             })
             .collect(),
     })
@@ -563,8 +629,9 @@ pub async fn public_start(
     let json = serde_json::to_vec(&flow).map_err(ApiError::internal)?;
     let sealed = BASE64URL_NOPAD.encode(&state.config.keyring.encrypt(&json, STATE_AAD));
     Ok(CalendarConnectStart {
+        // Only these scopes: never the mailbox access the same app may hold.
         url: app
-            .authorize(&sealed, &redirect_uri(state), scopes(app.provider), None)
+            .authorize_exact(&sealed, &redirect_uri(state), scopes(app.provider))
             .to_string(),
     })
 }
@@ -643,6 +710,21 @@ pub async fn public_finish(
         return Err(ApiError::bad_request(
             "scopes_missing",
             "OnHold needs to see when you are busy; connect again and allow it",
+        ));
+    }
+    let allowed = |s: &String| {
+        let s = s.to_ascii_lowercase();
+        let short = s.strip_prefix("https://graph.microsoft.com/").unwrap_or(&s);
+        ALLOWED_SCOPES.contains(&short)
+    };
+    if let Some(extra) = tokens.scopes.iter().find(|s| !allowed(s)) {
+        // Not revoked: the grant is the account's, and may be a mailbox's.
+        tracing::info!(scope = %extra, "a calendar grant carried more than busy times");
+        return Err(ApiError::bad_request(
+            "scopes_too_wide",
+            format!(
+                "this {name} account has given OnHold more than your busy times (its mailbox, perhaps), so it cannot be used here; paste your calendar's private iCal link instead"
+            ),
         ));
     }
     let Some(refresh_token) = tokens.refresh_token.clone() else {
@@ -728,7 +810,8 @@ pub async fn public_ical(
             "paste the calendar's iCal address, starting https:// or webcal://",
         )
     })?;
-    let (tx, ctx, link, talent) = open_link(state, token, meta.clone()).await?;
+    let (mut tx, ctx, link, talent) = open_link(state, token, meta.clone()).await?;
+    let tz = zone_of(&workspace_working(&mut tx, ctx.workspace_id).await?);
     tx.commit().await?;
     // Read it once now, so a wrong link is caught while they are here.
     let text = fetch_ical(state, url.as_str()).await.map_err(|e| match e {
@@ -740,12 +823,13 @@ pub async fn public_ical(
             format!("that link could not be read as a calendar: {other}"),
         ),
     })?;
-    let now = Utc::now();
-    calendars::ical_busy(&text, now - PAST, now + AHEAD).map_err(|e| {
-        ApiError::bad_request(
+    let (from, to) = window(Utc::now());
+    ical_busy(text, from, to, tz).await.map_err(|e| match e {
+        ProviderError::Unavailable(_) => provider_error("The calendar", e),
+        other => ApiError::bad_request(
             "calendar_unreadable",
-            format!("that calendar could not be read: {e}"),
-        )
+            format!("that calendar could not be read: {other}"),
+        ),
     })?;
     let account = url.host_str().unwrap_or("calendar").to_ascii_lowercase();
     let flow = ConnectState {
@@ -792,10 +876,13 @@ async fn save(
         .await?
         .ok_or(ApiError::NotFound)?;
     // An iCal link is matched by the link itself, not its host.
-    let existing = if provider == "ical" {
-        None
-    } else {
-        core_db::talent_calendars::live_for(tx, flow.talent, provider, account).await?
+    let url_hash = match grant {
+        Grant::Ical { url } => Some(hash_token(url)),
+        Grant::OAuth { .. } => None,
+    };
+    let existing = match &url_hash {
+        Some(h) => core_db::talent_calendars::live_ical(tx, flow.talent, h).await?,
+        None => core_db::talent_calendars::live_for(tx, flow.talent, provider, account).await?,
     };
     let now = Utc::now();
     let id = match existing {
@@ -837,6 +924,7 @@ async fn save(
                     account,
                     person: flow.person.as_deref(),
                     secret: &seal(state, id, grant)?,
+                    url_hash: url_hash.as_deref(),
                 },
             )
             .await?;
@@ -874,6 +962,43 @@ async fn fetch_ical(state: &AppState, url: &str) -> Result<String, ProviderError
     )
     .map_err(ProviderError::Unavailable)?;
     calendars::fetch_ical(&http, &url, allow_private).await
+}
+
+/// What is read: from the start of yesterday to a year ahead, in whole
+/// days, so the edges move once a day rather than on every read.
+fn window(now: DateTime<Utc>) -> (DateTime<Utc>, DateTime<Utc>) {
+    let day = |at: DateTime<Utc>| at.date_naive().and_time(chrono::NaiveTime::MIN).and_utc();
+    (day(now - PAST), day(now + AHEAD))
+}
+
+/// Reads an iCal file's busy times off the async threads, a couple at a
+/// time across the server, giving up after a while.
+async fn ical_busy(
+    text: String,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+    tz: chrono_tz::Tz,
+) -> Result<Vec<Busy>, ProviderError> {
+    let limit = std::time::Duration::from_secs(ICAL_READ_SECS);
+    let too_long = || ProviderError::Refused {
+        status: 200,
+        message: "the calendar took too long to read".into(),
+    };
+    let permit = tokio::time::timeout(limit, ICAL_READS.acquire())
+        .await
+        .map_err(|_| ProviderError::Unavailable("busy reading other calendars".into()))?
+        .map_err(|e| ProviderError::Unavailable(e.to_string()))?;
+    // The permit goes with the work, so a read given up on still counts
+    // until it ends.
+    let work = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        calendars::ical_busy(&text, from, to, tz)
+    });
+    match tokio::time::timeout(limit, work).await {
+        Ok(Ok(got)) => got,
+        Ok(Err(e)) => Err(ProviderError::Invalid(e.to_string())),
+        Err(_) => Err(too_long()),
+    }
 }
 
 /// A fresh access token for a calendar's grant, stored when refreshed.
@@ -934,15 +1059,15 @@ async fn read_busy(
     state: &AppState,
     ws: WorkspaceId,
     c: &Calendar,
-    from: DateTime<Utc>,
-    to: DateTime<Utc>,
+    (from, to): (DateTime<Utc>, DateTime<Utc>),
+    tz: chrono_tz::Tz,
 ) -> Result<Vec<Busy>, ProviderError> {
     let grant = open(state, c).map_err(|e| ProviderError::Invalid(e.to_string()))?;
     let cfg = &state.config.mailboxes;
     match grant {
         Grant::Ical { url } => {
             let text = fetch_ical(state, &url).await?;
-            calendars::ical_busy(&text, from, to)
+            ical_busy(text, from, to, tz).await
         }
         Grant::OAuth {
             refresh_token,
@@ -969,7 +1094,7 @@ async fn read_busy(
                     }
                     "microsoft" => {
                         GraphBusy::new(cfg.http.clone(), cfg.graph_api.clone(), token.clone())
-                            .busy(from, to)
+                            .busy(from, to, tz)
                             .await
                     }
                     other => Err(ProviderError::Invalid(format!("unknown provider {other}"))),
@@ -1032,6 +1157,9 @@ pub async fn read(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<Read
     let c = core_db::talent_calendars::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
+    let tz = core_db::workspaces::get(&mut tx, ws)
+        .await?
+        .map_or(chrono_tz::UTC, |w| zone_of(&w));
     // A talent removed since: their calendars go with them.
     if core_db::talent::get(&mut tx, c.talent_id).await?.is_none() {
         disconnect_all(&mut tx, &ctx, Some(c.talent_id), "talent_removed").await?;
@@ -1043,8 +1171,7 @@ pub async fn read(state: &AppState, ws: WorkspaceId, id: Uuid) -> ApiResult<Read
     }
     tx.commit().await?;
 
-    let now = Utc::now();
-    let busy = match read_busy(state, ws, &c, now - PAST, now + AHEAD).await {
+    let busy = match read_busy(state, ws, &c, window(Utc::now()), tz).await {
         Ok(b) => b,
         Err(e) => {
             failed(state, &ctx, &c, e).await?;
@@ -1134,8 +1261,8 @@ fn diff(have: &[core_db::talent_calendars::BusyRow], want: &[Busy]) -> (Vec<Uuid
 
 /// Records a failed read and when to try again: soon at first, then less
 /// often (5 minutes doubling to 6 hours). A grant or link that no longer
-/// works waits for the talent to connect again; its busy times stay until
-/// then, as the best known.
+/// works waits for the talent to connect again; its busy times are dropped
+/// meanwhile, as nobody can say they are still true.
 async fn failed(state: &AppState, ctx: &Ctx, c: &Calendar, err: ProviderError) -> ApiResult<()> {
     let wait = match &err {
         ProviderError::RateLimited {
@@ -1162,6 +1289,9 @@ async fn failed(state: &AppState, ctx: &Ctx, c: &Calendar, err: ProviderError) -
     tracing::warn!(calendar_id = %c.id, provider = %c.provider, error = %message, "reading a talent's calendar failed");
     let mut tx = begin(state, ctx).await?;
     core_db::talent_calendars::failed(&mut tx, c.id, status, &message, next).await?;
+    if status == "reconnect" {
+        core_db::talent_calendars::forget_busy(&mut tx, c.id).await?;
+    }
     if status != c.status {
         record(
             &mut tx,

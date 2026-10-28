@@ -44,6 +44,14 @@ function failure(e: unknown): string {
     : "Something went wrong.";
 }
 
+const LINK_GONE =
+  "This link does not work any more. Links last two weeks; ask whoever sent it for a new one.";
+
+/** On the talent's pages, "not found" means the link stopped working. */
+function linkFailure(e: unknown): string {
+  return e instanceof ApiFailure && e.status === 404 ? LINK_GONE : failure(e);
+}
+
 function CopyLink({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -100,6 +108,10 @@ export function TalentCalendarsCard({
 }) {
   const qc = useQueryClient();
   const key = ["talent-calendars", talentId];
+  // Calendars asked to be read now, by how they stood when asked.
+  const [reading, setReading] = useState<Record<string, string>>({});
+  const stood = (c: TalentCalendar) =>
+    `${c.last_synced_at ?? ""}|${c.last_error_at ?? ""}`;
   const data = useQuery({
     queryKey: key,
     queryFn: () =>
@@ -108,7 +120,30 @@ export function TalentCalendarsCard({
           params: { path: { id: talentId } },
         }),
       ),
+    refetchInterval: Object.keys(reading).length > 0 ? 2000 : false,
   });
+  useEffect(() => {
+    const ids = Object.keys(reading);
+    if (!data.data || ids.length === 0) return;
+    const done = ids.filter((id) => {
+      const c = data.data.calendars.find((x) => x.id === id);
+      return !c || stood(c) !== reading[id];
+    });
+    if (done.length === 0) return;
+    setReading((r) =>
+      Object.fromEntries(
+        Object.entries(r).filter(([id]) => !done.includes(id)),
+      ),
+    );
+    void qc.invalidateQueries({ queryKey: ["availability", talentId] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.data]);
+  // Give up waiting after a minute; the worker may be busy.
+  useEffect(() => {
+    if (Object.keys(reading).length === 0) return;
+    const t = window.setTimeout(() => setReading({}), 60_000);
+    return () => window.clearTimeout(t);
+  }, [reading]);
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const act = async (call: () => Promise<unknown>) => {
@@ -191,9 +226,11 @@ export function TalentCalendarsCard({
                     </span>
                     <span className="text-muted-foreground">
                       {c.person && `${c.account} · `}
-                      {c.last_synced_at
-                        ? `read ${relativeTime(c.last_synced_at)}`
-                        : "not read yet"}
+                      {c.id in reading
+                        ? "reading…"
+                        : c.last_synced_at
+                          ? `read ${relativeTime(c.last_synced_at)}`
+                          : "not read yet"}
                       {c.status !== "active" &&
                         c.last_error &&
                         ` · ${c.last_error}`}
@@ -207,18 +244,22 @@ export function TalentCalendarsCard({
                           variant="ghost"
                           size="icon"
                           aria-label={`Read ${c.person ?? c.account} now`}
+                          disabled={c.id in reading}
                           onClick={() =>
-                            void act(() =>
-                              ok(
+                            void act(async () => {
+                              await ok(
                                 api.POST(
                                   "/api/v1/talent/{id}/calendars/{calendar_id}/sync",
                                   path(c.id),
                                 ),
-                              ),
-                            )
+                              );
+                              setReading((r) => ({ ...r, [c.id]: stood(c) }));
+                            })
                           }
                         >
-                          <RefreshCw />
+                          <RefreshCw
+                            className={c.id in reading ? "animate-spin" : ""}
+                          />
                         </Button>
                       )}
                       <Button
@@ -252,8 +293,9 @@ export function TalentCalendarsCard({
           )}
           {data.data.calendars.some((c) => c.status === "reconnect") && (
             <p className="text-sm text-muted-foreground">
-              A calendar that needs connecting again keeps its last busy times.
-              Send a new link to put it right.
+              A calendar that needs connecting again no longer counts its busy
+              times. Send a new link: connecting the same calendar, or pasting
+              the same iCal link, puts it right.
             </p>
           )}
           {data.data.links.length > 0 && (
@@ -383,11 +425,7 @@ export function ConnectCalendarPage() {
   if (page.isError) {
     return (
       <main className="mx-auto max-w-xl p-6">
-        <Alert>
-          {page.error instanceof ApiFailure && page.error.status === 404
-            ? "This link does not work any more. Links last two weeks; ask whoever sent it for a new one."
-            : page.error.message}
-        </Alert>
+        <Alert>{linkFailure(page.error)}</Alert>
       </main>
     );
   }
@@ -407,7 +445,7 @@ export function ConnectCalendarPage() {
       remember(token);
       window.location.assign(url);
     } catch (e) {
-      setError(failure(e));
+      setError(linkFailure(e));
       setBusy(false);
     }
   };
@@ -441,7 +479,7 @@ export function ConnectCalendarPage() {
           {p.connected
             .map(
               (c) =>
-                `${c.person ?? "a calendar"} (${PROVIDER[c.provider] ?? c.provider})`,
+                `${c.person ?? "a calendar"} (${PROVIDER[c.provider] ?? c.provider}${c.status === "reconnect" ? ", needs connecting again" : ""})`,
             )
             .join(", ")}
           .
@@ -494,7 +532,7 @@ export function ConnectCalendarPage() {
             setIcal("");
             void page.refetch();
           } catch (err) {
-            setError(failure(err));
+            setError(linkFailure(err));
           } finally {
             setBusy(false);
           }
@@ -581,7 +619,7 @@ export function ConnectCalendarReturnPage() {
     window.history.replaceState(null, "", "/connect-calendar");
     ok(api.POST("/api/v1/public/calendar-connect/finish", { body }))
       .then(setResult)
-      .catch((e: unknown) => setError(failure(e)));
+      .catch((e: unknown) => setError(linkFailure(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const token = remembered();

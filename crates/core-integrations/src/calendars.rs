@@ -34,7 +34,13 @@ const GRAPH_PAGES: usize = 20;
 pub const ICAL_MAX_BYTES: usize = 8 * 1024 * 1024;
 const ICAL_MAX_EVENTS: usize = 20_000;
 /// Occurrences of one repeating event taken at most.
-const MAX_OCCURRENCES: u16 = 2_000;
+const MAX_OCCURRENCES: usize = 2_000;
+/// Steps through one event's repeats at most, and through all of a file's;
+/// a file that needs more is refused rather than read for minutes.
+const MAX_EVENT_STEPS: usize = 200_000;
+const MAX_FILE_STEPS: usize = 2_000_000;
+/// Stretches read from one file at most, before they are joined.
+const MAX_STRETCHES: usize = 50_000;
 /// Stretches kept at most per calendar.
 pub const MAX_BLOCKS: usize = 3_000;
 
@@ -65,12 +71,13 @@ pub fn merge(mut blocks: Vec<Busy>) -> Vec<Busy> {
     };
     let (tentative, busy): (Vec<Busy>, Vec<Busy>) = blocks.into_iter().partition(|b| b.tentative);
     let busy = join(busy);
+    // Joined busy stretches are sorted and apart, so the only one that can
+    // hold a tentative stretch is the last starting at or before it.
     let tentative = join(tentative)
         .into_iter()
         .filter(|t| {
-            !busy
-                .iter()
-                .any(|b| b.starts_at <= t.starts_at && b.ends_at >= t.ends_at)
+            let i = busy.partition_point(|b| b.starts_at <= t.starts_at);
+            !(i > 0 && busy[i - 1].ends_at >= t.ends_at)
         })
         .collect::<Vec<_>>();
     let mut all = busy;
@@ -200,11 +207,13 @@ impl GraphBusy {
 
     /// Busy and tentative times on the person's calendar between `from`
     /// and `to`, repeating events included. Free and working-elsewhere
-    /// time, and cancelled events, are left out.
+    /// time, and cancelled events, are left out. Whole days are in the
+    /// event's own zone, else in `fallback` (the workspace's).
     pub async fn busy(
         &self,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
+        fallback: chrono_tz::Tz,
     ) -> Result<Vec<Busy>, ProviderError> {
         #[derive(Deserialize)]
         struct When {
@@ -219,6 +228,9 @@ impl GraphBusy {
             show_as: Option<String>,
             #[serde(default)]
             is_cancelled: bool,
+            #[serde(default)]
+            is_all_day: bool,
+            original_start_time_zone: Option<String>,
         }
         #[derive(Deserialize)]
         struct Page {
@@ -227,18 +239,20 @@ impl GraphBusy {
             #[serde(rename = "@odata.nextLink")]
             next: Option<String>,
         }
-        // Times come back in UTC, without an offset.
-        let utc = |s: &str| -> Result<DateTime<Utc>, ProviderError> {
-            let trimmed = s.trim_end_matches('Z');
-            let naive = NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%dT%H:%M:%S%.f")
-                .map_err(|e| ProviderError::Invalid(format!("a time Microsoft sent: {e}")))?;
-            Ok(Utc.from_utc_datetime(&naive))
+        // Times come back in UTC, without an offset; whole days come back
+        // as dates at midnight, which are in the event's own zone.
+        let naive = |s: &str| -> Result<NaiveDateTime, ProviderError> {
+            NaiveDateTime::parse_from_str(s.trim_end_matches('Z'), "%Y-%m-%dT%H:%M:%S%.f")
+                .map_err(|e| ProviderError::Invalid(format!("a time Microsoft sent: {e}")))
         };
         let mut url = endpoint(&self.base, "/v1.0/me/calendarView");
         url.query_pairs_mut()
             .append_pair("startDateTime", &rfc3339(from))
             .append_pair("endDateTime", &rfc3339(to))
-            .append_pair("$select", "start,end,showAs,isCancelled")
+            .append_pair(
+                "$select",
+                "start,end,showAs,isCancelled,isAllDay,originalStartTimeZone",
+            )
             .append_pair("$top", "500");
         let mut out = Vec::new();
         for _ in 0..GRAPH_PAGES {
@@ -258,9 +272,23 @@ impl GraphBusy {
                 if e.is_cancelled {
                     continue;
                 }
+                let (start, end) = (naive(&e.start.date_time)?, naive(&e.end.date_time)?);
+                let (starts_at, ends_at) = if e.is_all_day {
+                    let tz = e
+                        .original_start_time_zone
+                        .as_deref()
+                        .and_then(zone)
+                        .unwrap_or(fallback);
+                    match (at_local(tz, start), at_local(tz, end)) {
+                        (Some(s), Some(e)) => (s, e),
+                        _ => continue,
+                    }
+                } else {
+                    (Utc.from_utc_datetime(&start), Utc.from_utc_datetime(&end))
+                };
                 out.push(Busy {
-                    starts_at: utc(&e.start.date_time)?,
-                    ends_at: utc(&e.end.date_time)?,
+                    starts_at,
+                    ends_at,
                     tentative,
                 });
             }
@@ -364,7 +392,11 @@ pub async fn fetch_ical(
             body.extend_from_slice(&chunk);
         }
         let text = String::from_utf8_lossy(&body).into_owned();
-        if !text.trim_start().starts_with("BEGIN:VCALENDAR") {
+        if !text
+            .trim_start_matches('\u{feff}')
+            .trim_start()
+            .starts_with("BEGIN:VCALENDAR")
+        {
             return Err(ProviderError::Refused {
                 status,
                 message: "the link is not an iCal calendar".into(),
@@ -509,7 +541,7 @@ enum When {
 }
 
 impl When {
-    fn parse(value: &str, tzid: Option<&str>, default: chrono_tz::Tz) -> Option<Self> {
+    fn parse(value: &str, tz: Option<chrono_tz::Tz>, default: chrono_tz::Tz) -> Option<Self> {
         let v = value.trim();
         if v.len() == 8 {
             return NaiveDate::parse_from_str(v, "%Y%m%d").ok().map(Self::Date);
@@ -519,7 +551,7 @@ impl When {
             return Some(Self::Utc(Utc.from_utc_datetime(&naive)));
         }
         let naive = NaiveDateTime::parse_from_str(v, "%Y%m%dT%H%M%S").ok()?;
-        Some(Self::Local(naive, tzid.and_then(zone).unwrap_or(default)))
+        Some(Self::Local(naive, tz.unwrap_or(default)))
     }
 
     /// The zone repeats are counted in, and the local start.
@@ -599,19 +631,45 @@ struct Vevent<'a> {
 /// Busy times in an iCal calendar overlapping `[from, to)`, repeating
 /// events counted out. Free ("transparent") and cancelled events are left
 /// out; a moved or cancelled occurrence replaces the one it stands for.
+/// Floating times and whole days are in the calendar's own zone, else in
+/// `fallback` (the workspace's). CPU-bound: run it off the async threads.
 pub fn ical_busy(
     text: &str,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
+    fallback: chrono_tz::Tz,
 ) -> Result<Vec<Busy>, ProviderError> {
-    let lines = unfold(text);
+    let too_big = || ProviderError::Refused {
+        status: 200,
+        message: "the calendar has too many events to read".into(),
+    };
+    let lines = unfold(text.trim_start_matches('\u{feff}'));
     let parsed: Vec<Line<'_>> = lines.iter().filter_map(|l| parse_line(l)).collect();
     // The calendar's own zone, for floating times and whole days.
     let default = parsed
         .iter()
         .find(|l| l.name == "X-WR-TIMEZONE")
         .and_then(|l| zone(l.value))
-        .unwrap_or(chrono_tz::UTC);
+        .unwrap_or(fallback);
+    // Zones the file defines itself, by the IANA name it gives them (some
+    // calendars name zones like "(GMT+01:00) Amsterdam" or "/mozilla.org/…").
+    let mut aliases: HashMap<&str, chrono_tz::Tz> = HashMap::new();
+    let mut in_zone: Option<&str> = None;
+    for l in &parsed {
+        match (l.name.as_str(), in_zone) {
+            ("BEGIN", _) if l.value.trim().eq_ignore_ascii_case("VTIMEZONE") => in_zone = Some(""),
+            ("END", _) if l.value.trim().eq_ignore_ascii_case("VTIMEZONE") => in_zone = None,
+            ("TZID", Some(_)) => in_zone = Some(l.value.trim()),
+            ("X-LIC-LOCATION", Some(id)) if !id.is_empty() => {
+                if let Some(tz) = zone(l.value) {
+                    aliases.insert(id, tz);
+                }
+            }
+            _ => {}
+        }
+    }
+    let resolve =
+        |tzid: Option<&str>| tzid.and_then(|t| zone(t).or_else(|| aliases.get(t.trim()).copied()));
 
     let mut events: Vec<Vevent<'_>> = Vec::new();
     let mut stack: Vec<String> = Vec::new();
@@ -634,10 +692,7 @@ pub fn ical_busy(
                 {
                     events.push(e);
                     if events.len() > ICAL_MAX_EVENTS {
-                        return Err(ProviderError::Refused {
-                            status: 200,
-                            message: "the calendar has too many events to read".into(),
-                        });
+                        return Err(too_big());
                     }
                 }
                 stack.pop();
@@ -650,24 +705,24 @@ pub fn ical_busy(
             continue;
         }
         let Some(e) = current.as_mut() else { continue };
-        let tzid = l.param("TZID");
+        let tz = resolve(l.param("TZID"));
         match l.name.as_str() {
             "UID" => e.uid = Some(l.value.trim()),
-            "DTSTART" => e.start = When::parse(l.value, tzid, default),
-            "DTEND" => e.end = When::parse(l.value, tzid, default),
+            "DTSTART" => e.start = When::parse(l.value, tz, default),
+            "DTEND" => e.end = When::parse(l.value, tz, default),
             "DURATION" => e.duration = duration(l.value),
             "RRULE" => e.rrule = Some(l.value.trim()),
             "EXDATE" => e.exdates.extend(
                 l.value
                     .split(',')
-                    .filter_map(|v| When::parse(v, tzid, default)),
+                    .filter_map(|v| When::parse(v, tz, default)),
             ),
             "RDATE" if l.param("VALUE") != Some("PERIOD") => e.rdates.extend(
                 l.value
                     .split(',')
-                    .filter_map(|v| When::parse(v, tzid, default)),
+                    .filter_map(|v| When::parse(v, tz, default)),
             ),
-            "RECURRENCE-ID" => e.recurrence_id = When::parse(l.value, tzid, default),
+            "RECURRENCE-ID" => e.recurrence_id = When::parse(l.value, tz, default),
             "STATUS" => {
                 let s = l.value.trim().to_ascii_uppercase();
                 e.cancelled = s == "CANCELLED";
@@ -685,7 +740,11 @@ pub fn ical_busy(
         .collect();
 
     let mut out = Vec::new();
+    let mut steps = 0;
     for e in &events {
+        if steps > MAX_FILE_STEPS || out.len() > MAX_STRETCHES {
+            return Err(too_big());
+        }
         if e.cancelled || e.free {
             continue;
         }
@@ -729,7 +788,7 @@ pub fn ical_busy(
         match (e.rrule, e.recurrence_id) {
             (Some(rule), None) => {
                 let (tz, local) = start.local(default);
-                for s in occurrences(rule, tz, local, from - length, to)
+                for s in occurrences(rule, tz, local, from - length, to, &mut steps)
                     .into_iter()
                     .chain(e.rdates.iter().filter_map(|w| w.instant(default)))
                 {
@@ -750,17 +809,23 @@ pub fn ical_busy(
             }
         }
     }
+    if steps > MAX_FILE_STEPS || out.len() > MAX_STRETCHES {
+        return Err(too_big());
+    }
     Ok(merge(out))
 }
 
 /// Starts of a repeating event between `after` and `before`. A rule that
-/// cannot be read leaves just the first occurrence.
+/// cannot be read leaves just the first occurrence; so does one repeating
+/// every few seconds or minutes, which no real calendar does. `steps`
+/// counts the work done across the file.
 fn occurrences(
     rule: &str,
     tz: chrono_tz::Tz,
     local: NaiveDateTime,
     after: DateTime<Utc>,
     before: DateTime<Utc>,
+    steps: &mut usize,
 ) -> Vec<DateTime<Utc>> {
     let Some(first) = at_local(tz, local) else {
         return Vec::new();
@@ -773,6 +838,9 @@ fn occurrences(
         }
     };
     let rule = until_in_utc(rule, tz);
+    let Some(local) = skip_ahead(&rule, local, after.with_timezone(&tz).naive_local()) else {
+        return single();
+    };
     let rtz: rrule::Tz = tz.into();
     let Some(start) = rtz.from_local_datetime(&local).earliest().or_else(|| {
         rtz.from_local_datetime(&(local + Duration::hours(1)))
@@ -784,19 +852,99 @@ fn occurrences(
         .parse::<rrule::RRule<rrule::Unvalidated>>()
         .and_then(|r| r.build(start))
     {
-        Ok(set) => set,
+        Ok(set) => set.limit(),
         Err(e) => {
             tracing::debug!(error = %e, rule = %rule, "a repeat rule could not be read");
             return single();
         }
     };
-    set.after(after.with_timezone(&rtz))
-        .before(before.with_timezone(&rtz))
-        .all(MAX_OCCURRENCES)
-        .dates
-        .into_iter()
-        .map(|d| d.with_timezone(&Utc))
-        .collect()
+    let mut out = Vec::new();
+    let mut taken = 0;
+    for d in &set {
+        *steps += 1;
+        taken += 1;
+        if taken > MAX_EVENT_STEPS || *steps > MAX_FILE_STEPS {
+            break;
+        }
+        let d = d.with_timezone(&Utc);
+        if d >= before {
+            break;
+        }
+        if d > after {
+            out.push(d);
+            if out.len() >= MAX_OCCURRENCES {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Moves a repeating event's start on to shortly before `target` when that
+/// changes none of its occurrences from there: by whole repeats for hourly,
+/// daily and weekly rules, by whole years for monthly and yearly ones, and
+/// not at all when the rule counts its occurrences. A rule repeating every
+/// few seconds or minutes gives `None`.
+fn skip_ahead(rule: &str, local: NaiveDateTime, target: NaiveDateTime) -> Option<NaiveDateTime> {
+    use chrono::Datelike;
+    let mut freq = "";
+    let mut interval: i64 = 1;
+    for part in rule.split(';') {
+        let Some((k, v)) = part.split_once('=') else {
+            continue;
+        };
+        match k.trim().to_ascii_uppercase().as_str() {
+            "FREQ" => freq = v.trim(),
+            "INTERVAL" => interval = v.trim().parse().unwrap_or(1).clamp(1, 10_000),
+            "COUNT" => return Some(local),
+            _ => {}
+        }
+    }
+    let freq = freq.to_ascii_uppercase();
+    if matches!(freq.as_str(), "SECONDLY" | "MINUTELY") {
+        return None;
+    }
+    if target <= local {
+        return Some(local);
+    }
+    let period = match freq.as_str() {
+        "HOURLY" => Some(Duration::hours(interval)),
+        "DAILY" => Some(Duration::days(interval)),
+        "WEEKLY" => Some(Duration::weeks(interval)),
+        _ => None,
+    };
+    if let Some(period) = period {
+        let n = (target - local).num_seconds() / period.num_seconds() - 1;
+        return Some(if n > 0 {
+            local + period * (n as i32)
+        } else {
+            local
+        });
+    }
+    let years_step = match freq.as_str() {
+        // Whole years that are also whole repeats.
+        "MONTHLY" => {
+            let gcd = |mut a: i64, mut b: i64| {
+                while b != 0 {
+                    (a, b) = (b, a % b);
+                }
+                a
+            };
+            interval * 12 / gcd(interval, 12) / 12
+        }
+        "YEARLY" => interval,
+        _ => return Some(local),
+    };
+    let years = (i64::from(target.year()) - i64::from(local.year()) - 1) / years_step * years_step;
+    if years <= 0 {
+        return Some(local);
+    }
+    Some(
+        i32::try_from(years)
+            .ok()
+            .and_then(|y| local.with_year(local.year() + y))
+            .unwrap_or(local),
+    )
 }
 
 /// Writes a rule's `UNTIL` as a UTC time, as RFC 5545 asks when the start
@@ -939,6 +1087,7 @@ END:VCALENDAR\r\n";
             CALENDAR,
             at("2027-03-01T00:00:00Z"),
             at("2027-05-01T00:00:00Z"),
+            chrono_tz::UTC,
         )
         .expect("the calendar reads");
         assert_eq!(
@@ -965,11 +1114,163 @@ END:VCALENDAR\r\n";
             CALENDAR,
             at("2027-04-01T00:00:00Z"),
             at("2027-05-01T00:00:00Z"),
+            chrono_tz::UTC,
         )
         .expect("the calendar reads");
         assert_eq!(
             april,
             vec![busy("2027-04-05T18:00:00Z", "2027-04-05T21:00:00Z")]
         );
+    }
+
+    fn event(uid: &str, lines: &str) -> String {
+        format!("BEGIN:VEVENT\r\nUID:{uid}\r\n{lines}END:VEVENT\r\n")
+    }
+
+    fn calendar(head: &str, events: &str) -> String {
+        format!("\u{feff}BEGIN:VCALENDAR\r\n{head}{events}END:VCALENDAR\r\n")
+    }
+
+    #[test]
+    fn zones_come_from_the_file_or_the_workspace() {
+        let text = calendar(
+            "BEGIN:VTIMEZONE\r\nTZID:(GMT+01:00) Amsterdam\r\nX-LIC-LOCATION:Europe/Amsterdam\r\nEND:VTIMEZONE\r\n",
+            &[
+                event(
+                    "named",
+                    "DTSTART;TZID=\"(GMT+01:00) Amsterdam\":20270104T100000\r\nDURATION:PT1H\r\n",
+                ),
+                event("day", "DTSTART;VALUE=DATE:20270106\r\n"),
+            ]
+            .concat(),
+        );
+        let got = ical_busy(
+            &text,
+            at("2027-01-01T00:00:00Z"),
+            at("2027-02-01T00:00:00Z"),
+            chrono_tz::America::New_York,
+        )
+        .expect("the calendar reads");
+        assert_eq!(
+            got,
+            vec![
+                busy("2027-01-04T09:00:00Z", "2027-01-04T10:00:00Z"),
+                // A whole day in the workspace's zone, as the file names none.
+                busy("2027-01-06T05:00:00Z", "2027-01-07T05:00:00Z"),
+            ]
+        );
+    }
+
+    #[test]
+    fn old_repeats_are_read_quickly() {
+        // Daily since 1970, every five hours since 2000, and every minute.
+        let text = calendar(
+            "",
+            &[
+                event(
+                    "daily",
+                    "DTSTART:19700101T090000Z\r\nDURATION:PT1H\r\nRRULE:FREQ=DAILY\r\n",
+                ),
+                event(
+                    "hourly",
+                    "DTSTART:20000101T000000Z\r\nDURATION:PT10M\r\nRRULE:FREQ=HOURLY;INTERVAL=5\r\n",
+                ),
+                event(
+                    "minutely",
+                    "DTSTART:20270101T000000Z\r\nDURATION:PT1M\r\nRRULE:FREQ=MINUTELY\r\n",
+                ),
+            ]
+            .concat(),
+        );
+        let started = std::time::Instant::now();
+        let got = ical_busy(
+            &text,
+            at("2027-01-01T00:00:00Z"),
+            at("2027-01-02T00:00:00Z"),
+            chrono_tz::UTC,
+        )
+        .expect("the calendar reads");
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        assert_eq!(
+            got,
+            vec![
+                // The minutely rule counts only its first minute.
+                busy("2027-01-01T00:00:00Z", "2027-01-01T00:01:00Z"),
+                // 2027-01-01 is 9,862 days after 2000-01-01: hours 2 + 5n.
+                busy("2027-01-01T02:00:00Z", "2027-01-01T02:10:00Z"),
+                busy("2027-01-01T07:00:00Z", "2027-01-01T07:10:00Z"),
+                busy("2027-01-01T09:00:00Z", "2027-01-01T10:00:00Z"),
+                busy("2027-01-01T12:00:00Z", "2027-01-01T12:10:00Z"),
+                busy("2027-01-01T17:00:00Z", "2027-01-01T17:10:00Z"),
+                busy("2027-01-01T22:00:00Z", "2027-01-01T22:10:00Z"),
+            ]
+        );
+        // Every fifth month on the 31st, counted from January 1900.
+        let monthly = calendar(
+            "",
+            &event(
+                "monthly",
+                "DTSTART:19000131T120000Z\r\nDURATION:PT1H\r\nRRULE:FREQ=MONTHLY;INTERVAL=5;BYMONTHDAY=31\r\n",
+            ),
+        );
+        let months = ical_busy(
+            &monthly,
+            at("2027-01-01T00:00:00Z"),
+            at("2028-01-01T00:00:00Z"),
+            chrono_tz::UTC,
+        )
+        .expect("the calendar reads");
+        assert_eq!(
+            months,
+            vec![
+                busy("2027-07-31T12:00:00Z", "2027-07-31T13:00:00Z"),
+                busy("2027-12-31T12:00:00Z", "2027-12-31T13:00:00Z"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_calendar_that_would_take_too_long_is_refused() {
+        // A thousand events each repeating 2,000 times an hour apart, at
+        // staggered seconds so none join.
+        let events: String = (0..1_000)
+            .map(|i| {
+                event(
+                    &format!("e{i}"),
+                    &format!(
+                        "DTSTART:20270101T0000{:02}Z\r\nDURATION:PT1S\r\nRRULE:FREQ=HOURLY;COUNT=2000\r\n",
+                        i % 60
+                    ),
+                )
+            })
+            .collect();
+        let text = calendar("", &events);
+        let started = std::time::Instant::now();
+        let got = ical_busy(
+            &text,
+            at("2027-01-01T00:00:00Z"),
+            at("2028-01-01T00:00:00Z"),
+            chrono_tz::UTC,
+        );
+        assert!(matches!(got, Err(ProviderError::Refused { .. })));
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    }
+
+    #[test]
+    fn merging_many_stretches_is_quick() {
+        let base = at("2027-01-01T00:00:00Z");
+        let mut many = Vec::new();
+        for i in 0..100_000i64 {
+            let s = base + Duration::minutes(i * 3);
+            many.push(Busy {
+                starts_at: s,
+                ends_at: s + Duration::minutes(1),
+                tentative: i % 2 == 0,
+            });
+        }
+        let started = std::time::Instant::now();
+        let merged = merge(many);
+        assert_eq!(merged.len(), MAX_BLOCKS);
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
     }
 }

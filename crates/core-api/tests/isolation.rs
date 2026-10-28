@@ -268,8 +268,8 @@ async fn crm(app: &TestApp, owner: &Client, slug: &str) -> Crm {
     // A connected calendar, as the talent's link would leave it.
     let calendar = core_domain::ids::new_id();
     sqlx::query(
-        "INSERT INTO talent_calendars (id, workspace_id, talent_id, link_id, provider, account, secret)
-         SELECT $1, workspace_id, talent_id, id, 'ical', $2, '\\x00' FROM calendar_connect_links WHERE id = $3",
+        "INSERT INTO talent_calendars (id, workspace_id, talent_id, link_id, provider, account, secret, url_hash)
+         SELECT $1, workspace_id, talent_id, id, 'ical', $2, '\\x00', '\\x00' FROM calendar_connect_links WHERE id = $3",
     )
     .bind(calendar)
     .bind(format!("{slug}.secret.test"))

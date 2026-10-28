@@ -141,6 +141,19 @@ impl OAuthApp {
         url
     }
 
+    /// Like [`Self::authorize`], but the grant carries only these scopes,
+    /// never others the person gave this app before.
+    pub fn authorize_exact(&self, state: &str, redirect_uri: &str, scopes: &[&str]) -> Url {
+        let mut url = self.authorize(state, redirect_uri, scopes, None);
+        let kept: Vec<(String, String)> = url
+            .query_pairs()
+            .filter(|(k, _)| k != "include_granted_scopes")
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect();
+        url.query_pairs_mut().clear().extend_pairs(kept);
+        url
+    }
+
     /// Exchanges the code the provider sent back.
     pub async fn exchange(
         &self,
@@ -306,6 +319,10 @@ mod tests {
         assert_eq!(get("login_hint"), Some("ana@x.test"));
         assert!(get("scope").is_some_and(|s| s.contains("gmail.send")));
         assert!(!url.as_str().contains("secret"));
+        assert_eq!(get("include_granted_scopes"), Some("true"));
+        let exact = g.authorize_exact("st", "https://app.test/cb", &["openid"]);
+        assert!(!exact.as_str().contains("include_granted_scopes"));
+        assert!(exact.as_str().contains("access_type=offline"));
 
         let m = OAuthApp::microsoft("cid".into(), "s".into(), "common");
         assert_eq!(

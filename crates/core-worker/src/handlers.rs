@@ -234,6 +234,12 @@ impl Worker {
                 note(log, outcome.to_string());
                 Ok(())
             }
+            talent_calendars::JOB_REVOKE => {
+                let id = uuid_field(&job.payload, "calendar_id")?;
+                let outcome = talent_calendars::revoke(&self.app, workspace(job)?, id).await?;
+                note(log, outcome);
+                Ok(())
+            }
             JOB_WEBHOOK => self.deliver_webhook(job, log).await,
             imports::JOB_IMPORT => self.run_import(job, log).await,
             other => Err(JobError::permanent(format!(

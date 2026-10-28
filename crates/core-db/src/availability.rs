@@ -27,7 +27,8 @@ pub struct Availability {
 /// Live entries of these talent (all talent when empty) overlapping
 /// `[from, to)`, of any of `kinds` (all kinds when empty), with the busy
 /// times read from their own calendars (`source` "external", which cannot
-/// be changed here).
+/// be changed here). Each kind is capped on its own, so busy times can
+/// never push out what was marked here.
 pub async fn list(
     conn: &mut PgConnection,
     talent: &[Uuid],
@@ -37,7 +38,7 @@ pub async fn list(
 ) -> Result<Vec<Availability>> {
     Ok(sqlx::query_as!(
         Availability,
-        r#"SELECT a.id AS "id!", a.talent_id AS "talent_id!", t.name AS "talent_name!",
+        r#"(SELECT a.id AS "id!", a.talent_id AS "talent_id!", t.name AS "talent_name!",
                   a.kind AS "kind!: AvailabilityKind", a.starts_at AS "starts_at!", a.ends_at AS "ends_at!",
                   a.all_day AS "all_day!", a.source AS "source!", a.note, a.version AS "version!",
                   a.created_at AS "created_at!", a.updated_at AS "updated_at!"
@@ -46,10 +47,12 @@ pub async fn list(
              AND (cardinality($1::uuid[]) = 0 OR a.talent_id = ANY($1))
              AND tstzrange(a.starts_at, a.ends_at, '[)') && tstzrange($2, $3, '[)')
              AND (cardinality($4::availability_kind[]) = 0 OR a.kind = ANY($4))
+           ORDER BY a.starts_at, t.name, a.id
+           LIMIT 5000)
            UNION ALL
            -- Busy times from the talent's own calendars, named by whose
            -- calendar they come from.
-           SELECT b.id, b.talent_id, t.name, CASE WHEN b.tentative THEN 'tentative' ELSE 'unavailable' END::availability_kind,
+           (SELECT b.id, b.talent_id, t.name, CASE WHEN b.tentative THEN 'tentative' ELSE 'unavailable' END::availability_kind,
                   b.starts_at, b.ends_at, false, 'external', 'Busy in their own calendar (' || coalesce(c.person, c.account) || ')', 1::bigint,
                   c.connected_at, coalesce(c.last_synced_at, c.connected_at)
            FROM calendar_busy b JOIN talent t ON t.id = b.talent_id
@@ -59,8 +62,9 @@ pub async fn list(
              AND tstzrange(b.starts_at, b.ends_at, '[)') && tstzrange($2, $3, '[)')
              AND (cardinality($4::availability_kind[]) = 0
                   OR (CASE WHEN b.tentative THEN 'tentative' ELSE 'unavailable' END)::availability_kind = ANY($4))
-           ORDER BY 5, 3, 1
-           LIMIT 5000"#,
+           ORDER BY b.starts_at, t.name, b.id
+           LIMIT 5000)
+           ORDER BY 5, 3, 1"#,
         talent,
         from,
         to,
