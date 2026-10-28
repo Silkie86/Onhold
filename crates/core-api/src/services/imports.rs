@@ -267,10 +267,17 @@ pub struct NewImport {
     pub entity: String,
     pub filename: Option<String>,
     /// The file's text: CSV with a header row, separated by commas,
-    /// semicolons or tabs (save spreadsheets as CSV UTF-8), or contact
-    /// cards (vCard, `.vcf`).
+    /// semicolons or tabs, or contact cards (vCard, `.vcf`). Leave it out
+    /// when sending `workbook`.
+    #[serde(default)]
     pub csv: String,
+    /// An Excel workbook (`.xlsx`), base64: its first visible sheet with
+    /// anything on it is imported. Up to 7 MB.
+    pub workbook: Option<String>,
 }
+
+/// The largest workbook accepted (it travels as base64, a third larger).
+pub const MAX_WORKBOOK_BYTES: usize = 7 * 1024 * 1024;
 
 /// Asks the upload to work out what the file holds.
 pub const AUTO: &str = "auto";
@@ -678,7 +685,7 @@ fn likely_entity(headers: &[String]) -> &'static str {
     best.0
 }
 
-pub async fn upload(state: &AppState, ctx: &Ctx, new: NewImport) -> ApiResult<ImportPreview> {
+pub async fn upload(state: &AppState, ctx: &Ctx, mut new: NewImport) -> ApiResult<ImportPreview> {
     if new.entity != AUTO {
         ctx.authorize(write_permission(&new.entity)?)?;
     }
@@ -688,7 +695,41 @@ pub async fn upload(state: &AppState, ctx: &Ctx, new: NewImport) -> ApiResult<Im
             format!("the file is larger than {} MB", MAX_CSV_BYTES / 1024 / 1024),
         ));
     }
-    let filename = super::optional_text("filename", new.filename, 255)?;
+    let filename = super::optional_text("filename", new.filename.take(), 255)?;
+    if let Some(encoded) = new.workbook.take() {
+        let bytes = data_encoding::BASE64
+            .decode(encoded.trim().as_bytes())
+            .map_err(|_| ApiError::invalid("workbook", "send the file as base64"))?;
+        if bytes.len() > MAX_WORKBOOK_BYTES {
+            return Err(ApiError::invalid(
+                "workbook",
+                format!(
+                    "the file is larger than {} MB",
+                    MAX_WORKBOOK_BYTES / 1024 / 1024
+                ),
+            ));
+        }
+        if !core_engines::workbook::is_workbook(&bytes) {
+            return Err(ApiError::invalid(
+                "workbook",
+                "this is not an Excel (.xlsx) workbook; save it as .xlsx or CSV",
+            ));
+        }
+        // Unpacking and reading takes a while: off the request threads.
+        new.csv = tokio::task::spawn_blocking(move || core_engines::workbook::to_csv(&bytes))
+            .await
+            .map_err(ApiError::internal)?
+            .map_err(|m| ApiError::invalid("workbook", m))?;
+        if new.csv.len() > MAX_CSV_BYTES {
+            return Err(ApiError::invalid(
+                "workbook",
+                format!(
+                    "the sheet is larger than {} MB as text",
+                    MAX_CSV_BYTES / 1024 / 1024
+                ),
+            ));
+        }
+    }
     // Contact cards are kept as the table they read as: smaller, without
     // their photos, and read again like any spreadsheet.
     let (table, csv, source) = if vcard::is_vcard(&new.csv) {

@@ -58,6 +58,23 @@ export function stripCardAttachments(text: string): string {
   return out.join("\n");
 }
 
+/** Whether the bytes are an Excel (.xlsx) workbook rather than text. */
+export function isWorkbook(bytes: Uint8Array): boolean {
+  return bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
+}
+
+/** Spreadsheet files read here only once saved as .xlsx or CSV: .xlsb,
+ * OpenDocument, Numbers and old Excel (.xls, often a web page in disguise). */
+export function needsResaving(name: string, bytes: Uint8Array): boolean {
+  return /\.(xlsb|ods|numbers)$/i.test(name) || (/\.xls$/i.test(name) && !isWorkbook(bytes));
+}
+
+function base64(bytes: Uint8Array): string {
+  let text = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(text);
+}
+
 /** Corrections made while checking, by `row:column`. */
 type Edits = Record<string, string>;
 
@@ -434,15 +451,15 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
           <Input
             id="import-file"
             type="file"
-            accept=".csv,.tsv,.txt,.vcf,.vcard,text/csv,text/tab-separated-values,text/vcard,text/x-vcard"
+            accept=".csv,.tsv,.txt,.vcf,.vcard,.xlsx,text/csv,text/tab-separated-values,text/vcard,text/x-vcard,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="py-1.5"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
           <p className="text-xs text-muted-foreground">
             A CSV export from the app you are moving from, as it comes: Google Contacts, Outlook, HubSpot, Salesforce, Pipedrive,
-            Mailchimp, LinkedIn or a booking system. Contact cards (.vcf) from Apple Contacts, iCloud or Android work too. For a
-            spreadsheet, in Excel or Numbers choose File → Save As (or Export) → CSV UTF-8; in Google Sheets, File → Download → CSV. Up to
-            10 MB and 50,000 rows.
+            Mailchimp, LinkedIn or a booking system. Excel files (.xlsx) work as they are (the first visible sheet is read), and so do
+            contact cards (.vcf) from Apple Contacts, iCloud or Android. Older .xls, Numbers or OpenDocument files: save them as .xlsx or
+            CSV first. Up to 10 MB (7 MB for Excel) and 50,000 rows.
           </p>
         </div>
         {error && <Alert>{error}</Alert>}
@@ -456,10 +473,20 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
               attempt(async () => {
                 if (!file) return;
                 if (file.size > 100 * 1024 * 1024) throw new Error("The file is over 100 MB. Split it into smaller files.");
-                const csv = stripCardAttachments(decodeFile(new Uint8Array(await file.arrayBuffer())));
-                if (new TextEncoder().encode(csv).length > 10 * 1024 * 1024)
-                  throw new Error("The file is over 10 MB. Split it into smaller files.");
-                const p = await ok(api.POST("/api/v1/imports", { body: { entity, filename: file.name, csv } }));
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                if (needsResaving(file.name, bytes))
+                  throw new Error("Open this file in Excel, Numbers or Google Sheets and save it as .xlsx or CSV UTF-8, then upload that.");
+                let body: Schemas["NewImport"];
+                if (isWorkbook(bytes)) {
+                  if (bytes.length > 7 * 1024 * 1024) throw new Error("The spreadsheet is over 7 MB. Save it as CSV, or split it.");
+                  body = { entity, filename: file.name, workbook: base64(bytes) };
+                } else {
+                  const csv = stripCardAttachments(decodeFile(bytes));
+                  if (new TextEncoder().encode(csv).length > 10 * 1024 * 1024)
+                    throw new Error("The file is over 10 MB. Split it into smaller files.");
+                  body = { entity, filename: file.name, csv };
+                }
+                const p = await ok(api.POST("/api/v1/imports", { body }));
                 setPreview(p);
                 setColumns(p.suggested);
                 setDry(null);

@@ -7112,16 +7112,21 @@ export interface components {
         NewImport: {
             /**
              * @description The file's text: CSV with a header row, separated by commas,
-             *     semicolons or tabs (save spreadsheets as CSV UTF-8), or contact
-             *     cards (vCard, `.vcf`).
+             *     semicolons or tabs, or contact cards (vCard, `.vcf`). Leave it out
+             *     when sending `workbook`.
              */
-            csv: string;
+            csv?: string;
             /**
              * @description `talent`, `organisation` or `contact`, or `auto` to work it out
              *     from the file.
              */
             entity: string;
             filename?: string | null;
+            /**
+             * @description An Excel workbook (`.xlsx`), base64: its first visible sheet with
+             *     anything on it is imported. Up to 7 MB.
+             */
+            workbook?: string | null;
         };
         NewInvoice: {
             /** Format: uuid */

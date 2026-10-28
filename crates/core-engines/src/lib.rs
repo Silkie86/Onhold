@@ -15,6 +15,7 @@ pub mod schedule;
 pub mod templates;
 pub mod vcard;
 pub mod webhooks;
+pub mod workbook;
 
 /// A problem with one input field, for validation errors that name the
 /// field at fault (`custom.budget`, `stages[2].key`, `actions[0].template`).
