@@ -16365,6 +16365,121 @@
         ]
       }
     },
+    "/api/v1/portal/sharing": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Whether the talent shares when they are booked with their other workspaces.",
+        "operationId": "portal_sharing",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalSharing"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Share (or stop sharing) when they are booked, times only, with every\nother workspace they are talent with.",
+        "operationId": "update_portal_sharing",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalSharingInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalSharing"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
     "/api/v1/project-crew/{id}": {
       "put": {
         "tags": [
@@ -28000,7 +28115,7 @@
           },
           "kind": {
             "type": "string",
-            "description": "`booking` or `availability`."
+            "description": "`booking`, `availability`, or `elsewhere`: booked in another of the\nperson's workspaces, which they share their busy times with."
           },
           "starts_at": {
             "type": "string",
@@ -36022,6 +36137,35 @@
             "type": "boolean",
             "description": "Flights, trains, rides and hotels on their dates (never what they cost).",
             "default": true
+          }
+        }
+      },
+      "PortalSharing": {
+        "type": "object",
+        "description": "Whether the person lets their other workspaces see when they are booked.",
+        "required": [
+          "share_busy",
+          "other_workspaces"
+        ],
+        "properties": {
+          "other_workspaces": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Other workspaces they are talent with."
+          },
+          "share_busy": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PortalSharingInput": {
+        "type": "object",
+        "required": [
+          "share_busy"
+        ],
+        "properties": {
+          "share_busy": {
+            "type": "boolean"
           }
         }
       },

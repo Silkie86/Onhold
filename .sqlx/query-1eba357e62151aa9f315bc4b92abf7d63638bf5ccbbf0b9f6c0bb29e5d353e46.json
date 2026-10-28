@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE users SET share_busy = $1 WHERE id = app_user_id()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1eba357e62151aa9f315bc4b92abf7d63638bf5ccbbf0b9f6c0bb29e5d353e46"
+}

@@ -653,3 +653,63 @@ pub async fn set_profile(
     .fetch_optional(conn)
     .await?)
 }
+
+// Busy elsewhere ---------------------------------------------------------------------------------
+
+/// A time the person behind a talent record is booked in another workspace
+/// that they share their busy times with. Times only.
+#[derive(Debug, Clone)]
+pub struct BusyElsewhere {
+    pub talent_id: Uuid,
+    pub talent_name: String,
+    pub starts_at: DateTime<Utc>,
+    pub ends_at: DateTime<Utc>,
+}
+
+pub async fn busy_elsewhere(
+    conn: &mut PgConnection,
+    talent: &[Uuid],
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+) -> Result<Vec<BusyElsewhere>> {
+    Ok(sqlx::query_as!(
+        BusyElsewhere,
+        r#"SELECT talent_id AS "talent_id!", talent_name AS "talent_name!",
+                  starts_at AS "starts_at!", ends_at AS "ends_at!"
+           FROM busy_elsewhere($1, $2, $3)"#,
+        talent,
+        from,
+        to
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
+/// Whether the signed-in user shares their busy times between workspaces.
+pub async fn share_busy(conn: &mut PgConnection) -> Result<bool> {
+    Ok(
+        sqlx::query_scalar!("SELECT share_busy FROM users WHERE id = app_user_id()")
+            .fetch_optional(conn)
+            .await?
+            .unwrap_or(false),
+    )
+}
+
+pub async fn set_share_busy(conn: &mut PgConnection, on: bool) -> Result<()> {
+    sqlx::query!(
+        "UPDATE users SET share_busy = $1 WHERE id = app_user_id()",
+        on
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// How many other workspaces the signed-in user is talent with.
+pub async fn other_talent_workspaces(conn: &mut PgConnection) -> Result<i64> {
+    Ok(
+        sqlx::query_scalar!(r#"SELECT my_other_talent_workspaces() AS "n!""#)
+            .fetch_one(conn)
+            .await?,
+    )
+}

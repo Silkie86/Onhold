@@ -3004,6 +3004,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portal/sharing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the talent shares when they are booked with their other workspaces. */
+        get: operations["portal_sharing"];
+        /**
+         * Share (or stop sharing) when they are booked, times only, with every
+         *     other workspace they are talent with.
+         */
+        put: operations["update_portal_sharing"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/project-crew/{id}": {
         parameters: {
             query?: never;
@@ -5227,7 +5248,10 @@ export interface components {
             booking_id?: string | null;
             /** Format: date-time */
             ends_at: string;
-            /** @description `booking` or `availability`. */
+            /**
+             * @description `booking`, `availability`, or `elsewhere`: booked in another of the
+             *     person's workspaces, which they share their busy times with.
+             */
             kind: string;
             /** Format: date-time */
             starts_at: string;
@@ -7691,6 +7715,18 @@ export interface components {
              * @default true
              */
             show_travel: boolean;
+        };
+        /** @description Whether the person lets their other workspaces see when they are booked. */
+        PortalSharing: {
+            /**
+             * Format: int64
+             * @description Other workspaces they are talent with.
+             */
+            other_workspaces: number;
+            share_busy: boolean;
+        };
+        PortalSharingInput: {
+            share_busy: boolean;
         };
         /** @description What a date paid the talent. */
         PortalStatement: {
@@ -17976,6 +18012,69 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_sharing: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalSharing"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_portal_sharing: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalSharingInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalSharing"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
