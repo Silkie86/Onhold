@@ -57,6 +57,7 @@ pub fn default_price_list() -> PriceList {
             ("invoicing", 800),
             ("documents", 500),
             ("events", 500),
+            ("pitching", 500),
             ("portal", 1000),
             ("commission", 500),
             ("custom", 1000),

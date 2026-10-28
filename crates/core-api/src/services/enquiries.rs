@@ -462,6 +462,10 @@ pub(crate) async fn create_in_tx(
     )
     .await?;
     core_db::enquiries::set_talent(tx, id, &talent).await?;
+    if let Some(o) = new.organisation_id {
+        super::organisations::advance_in_tx(tx, ctx, o, super::organisations::Deal::Enquiry)
+            .await?;
+    }
     let view = load(tx, id).await?.ok_or(ApiError::NotFound)?;
     record(
         tx,
@@ -641,6 +645,12 @@ pub(crate) async fn update_in_tx(
         && talent_changed
     {
         core_db::enquiries::set_talent(tx, id, t).await?;
+    }
+    if let Some(o) = organisation_id
+        && organisation_id != current.organisation_id
+    {
+        super::organisations::advance_in_tx(tx, ctx, o, super::organisations::Deal::Enquiry)
+            .await?;
     }
     let after = load(tx, id).await?.ok_or(ApiError::NotFound)?;
     record(

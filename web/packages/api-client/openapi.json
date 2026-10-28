@@ -15358,6 +15358,145 @@
         ]
       }
     },
+    "/api/v1/pitching/settings": {
+      "get": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "The workspace's regions, statuses and what it pitches (OnHold's\ndefaults until it saves its own), with every country to place in a\nregion.",
+        "operationId": "get_settings",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PitchingSettingsView"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "Replace the settings. Each country may be in one region at most.",
+        "operationId": "update_settings",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PitchingSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PitchingSettingsView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/portal": {
       "get": {
         "tags": [
@@ -26628,7 +26767,7 @@
               "string",
               "null"
             ],
-            "description": "State, county or province."
+            "description": "County, state or province (the world region is the organisation's own)."
           }
         }
       },
@@ -28234,6 +28373,18 @@
           }
         }
       },
+      "Colour": {
+        "type": "string",
+        "description": "The colours a status dot can take, drawn from the theme so they read in\nlight and dark.",
+        "enum": [
+          "green",
+          "amber",
+          "red",
+          "grey",
+          "blue",
+          "purple"
+        ]
+      },
       "Compose": {
         "type": "object",
         "required": [
@@ -28550,6 +28701,16 @@
             },
             "description": "Replaces the addresses."
           },
+          "links": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Replaces the links."
+          },
           "name": {
             "type": [
               "string",
@@ -28627,6 +28788,8 @@
           "name",
           "emails",
           "phones",
+          "phones_international",
+          "links",
           "email_opt_in",
           "sms_opt_in",
           "whatsapp_opt_in",
@@ -28677,6 +28840,13 @@
             "type": "string",
             "format": "uuid"
           },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Web pages and social profiles, as full addresses."
+          },
           "name": {
             "type": "string"
           },
@@ -28712,6 +28882,13 @@
               "type": "string"
             },
             "description": "As entered; the first is the primary number."
+          },
+          "phones_international": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The numbers with their country code (+44…), where it can be told\nfrom the number or the organisation's country; as entered otherwise."
           },
           "preferred_channel": {
             "oneOf": [
@@ -28759,6 +28936,26 @@
           },
           "whatsapp_opt_in": {
             "type": "boolean"
+          }
+        }
+      },
+      "CountryView": {
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "default_region"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "default_region": {
+            "type": "string",
+            "description": "The region OnHold's own split puts it in."
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -32580,6 +32777,52 @@
           }
         }
       },
+      "ItemInput": {
+        "type": "object",
+        "description": "Talent or a project to put on one of an organisation's lists.",
+        "required": [
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemKind"
+          }
+        }
+      },
+      "ItemKind": {
+        "type": "string",
+        "description": "What a workspace pitches.",
+        "enum": [
+          "talent",
+          "project"
+        ]
+      },
+      "ItemRef": {
+        "type": "object",
+        "description": "Talent or a project on one of an organisation's lists.",
+        "required": [
+          "kind",
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemKind"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "Itinerary": {
         "type": "object",
         "required": [
@@ -33943,6 +34186,13 @@
               "type": "string"
             }
           },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Web pages and social profiles. A bare address gets `https://`."
+          },
           "name": {
             "type": "string"
           },
@@ -34347,6 +34597,12 @@
               "$ref": "#/components/schemas/Address"
             }
           },
+          "buys_from_others": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "custom": {
             "type": "object",
             "description": "Custom field values by key. Missing fields take their defaults."
@@ -34356,6 +34612,22 @@
               "string",
               "null"
             ]
+          },
+          "do_not_contact": {
+            "type": "boolean"
+          },
+          "follow_up_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "interested_in": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemInput"
+            }
           },
           "name": {
             "type": "string"
@@ -34378,6 +34650,36 @@
               "null"
             ],
             "format": "int32"
+          },
+          "potential_matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemInput"
+            }
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A region key, to override the one its country gives."
+          },
+          "relationship": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Relationship"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A key of the workspace's pitching statuses."
           },
           "tags": {
             "type": "array",
@@ -34897,6 +35199,16 @@
             },
             "description": "Replaces the addresses."
           },
+          "buys_from_others": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Replaces the list."
+          },
           "custom": {
             "type": [
               "object",
@@ -34909,6 +35221,29 @@
               "string",
               "null"
             ]
+          },
+          "do_not_contact": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "follow_up_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "interested_in": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ItemInput"
+            },
+            "description": "Replaces the list."
           },
           "name": {
             "type": [
@@ -34936,6 +35271,39 @@
             ],
             "format": "int32"
           },
+          "potential_matches": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ItemInput"
+            },
+            "description": "Replaces the list."
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`null` goes back to the country's region."
+          },
+          "relationship": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Relationship"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "tags": {
             "type": [
               "array",
@@ -34960,6 +35328,11 @@
           "id",
           "name",
           "addresses",
+          "region_picked",
+          "do_not_contact",
+          "buys_from_others",
+          "interested_in",
+          "potential_matches",
           "tags",
           "custom",
           "contact_count",
@@ -34974,10 +35347,38 @@
               "$ref": "#/components/schemas/Address"
             }
           },
+          "buys_from_others": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Similar acts or things they buy from others."
+          },
+          "city": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The main address's city."
+          },
           "contact_count": {
             "type": "integer",
             "format": "int64",
             "description": "Contacts at the organisation."
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The country's name."
+          },
+          "country_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The country's ISO code, worked out from the main address however it\nwas typed (\"UK\", \"England\", \"Melbourne\")."
           },
           "created_at": {
             "type": "string",
@@ -35003,9 +35404,27 @@
               "null"
             ]
           },
+          "do_not_contact": {
+            "type": "boolean",
+            "description": "Never offered for pitching."
+          },
+          "follow_up_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "interested_in": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemRef"
+            },
+            "description": "What they asked about."
           },
           "name": {
             "type": "string"
@@ -35029,6 +35448,41 @@
               "null"
             ],
             "format": "int32"
+          },
+          "potential_matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemRef"
+            },
+            "description": "What the workspace thinks would suit them."
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The key of its world region: the one picked for it, or its country's."
+          },
+          "region_picked": {
+            "type": "boolean",
+            "description": "Whether the region was picked by hand rather than taken from the country."
+          },
+          "relationship": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Relationship"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A key of the workspace's pitching statuses; absent when not set."
           },
           "tags": {
             "type": "array",
@@ -35653,6 +36107,74 @@
             "format": "int64"
           }
         }
+      },
+      "PitchingSettings": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemKind"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Region"
+            }
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Status"
+            }
+          }
+        }
+      },
+      "PitchingSettingsView": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PitchingSettings"
+          },
+          {
+            "type": "object",
+            "required": [
+              "version",
+              "countries"
+            ],
+            "properties": {
+              "countries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CountryView"
+                },
+                "description": "Every country, for choosing which region each is in."
+              },
+              "updated_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "updated_by": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/UserId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "version": {
+                "type": "integer",
+                "format": "int64",
+                "description": "0 until the workspace first saves its own."
+              }
+            }
+          }
+        ]
       },
       "Plan": {
         "type": "object",
@@ -37589,6 +38111,39 @@
           }
         }
       },
+      "Region": {
+        "type": "object",
+        "description": "A part of the world, by the countries in it.",
+        "required": [
+          "key",
+          "name",
+          "countries"
+        ],
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ISO country codes, upper case. Each country is in one region at most."
+          },
+          "key": {
+            "type": "string",
+            "description": "Lower case letters, digits and underscores: `europe`."
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "Relationship": {
+        "type": "string",
+        "description": "Whether an organisation has worked with the workspace: a client has, a\nprospect has not yet. It moves by itself as enquiries and confirmed\nbookings come in, and never back.",
+        "enum": [
+          "client",
+          "prospect"
+        ]
+      },
       "ReplayRequest": {
         "type": "object",
         "required": [
@@ -38162,6 +38717,7 @@
           "email_list",
           "phone_list",
           "address_list",
+          "url_list",
           "currency"
         ]
       },
@@ -38213,6 +38769,13 @@
           "label"
         ],
         "properties": {
+          "colour": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A colour for the choice's dot: green, amber, red, grey, blue or purple."
+          },
           "label": {
             "type": "string"
           },
@@ -39207,6 +39770,39 @@
             ]
           }
         }
+      },
+      "Status": {
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "colour",
+          "meaning"
+        ],
+        "properties": {
+          "colour": {
+            "$ref": "#/components/schemas/Colour"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "meaning": {
+            "$ref": "#/components/schemas/StatusMeaning"
+          }
+        }
+      },
+      "StatusMeaning": {
+        "type": "string",
+        "description": "What a status says about where things stand, so OnHold can move it by\nitself: an enquiry sets a `talking` one, a confirmed booking a `booked`\none.",
+        "enum": [
+          "booked",
+          "talking",
+          "inactive",
+          "other"
+        ]
       },
       "StatusRequest": {
         "type": "object",
@@ -42077,6 +42673,10 @@
     {
       "name": "projects",
       "description": "Tours, seasons, circuits and campaigns: their dates, crew, costs, whether they pay, and the itinerary"
+    },
+    {
+      "name": "pitching",
+      "description": "Pitching: the workspace's regions, statuses and what it pitches"
     },
     {
       "name": "quotes",

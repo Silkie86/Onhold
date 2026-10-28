@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO organisation_items (workspace_id, organisation_id, list, talent_id, project_id, position)\n           SELECT app_workspace_id(), $1, $2, i.talent_id, i.project_id, (i.n - 1)::integer\n           FROM unnest($3::uuid[], $4::uuid[]) WITH ORDINALITY AS i (talent_id, project_id, n)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "UuidArray",
+        "UuidArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "371bb87487328191f0eece70419d57d3ff7121d8e3a2c79628cb083e4dccb92d"
+}

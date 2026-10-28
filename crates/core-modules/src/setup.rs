@@ -68,6 +68,13 @@ const FEATURES: &[Feature] = &[
         effect: Effect::Module("events"),
     },
     Feature {
+        key: "pitching",
+        label: "Find new clients: who to pitch next, and follow-ups",
+        hint: Some("A ranked list of venues, brands or buyers to approach, with reasons"),
+        details: "Keep the venues, festivals, brands, promoters or buyers you want to work with in one list, sorted by country and region, marked client or prospect with a coloured status, and noted with what they're interested in. OnHold suggests who to pitch next and why, sends pitches from your own email (or lets you send them yourself and log it), and reminds you to follow up.",
+        effect: Effect::Module("pitching"),
+    },
+    Feature {
         key: "portal",
         label: "Give my artists or clients their own login",
         hint: Some("Free for them; they see their dates and documents"),

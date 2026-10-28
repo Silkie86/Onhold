@@ -1,0 +1,251 @@
+# code	name	calling code	trunk prefix	default region	aliases
+AD	Andorra	376		europe	and|principality of andorra
+AE	United Arab Emirates	971	0	asia	are|emirates|u.a.e.|uae
+AF	Afghanistan	93	0	asia	afg|islamic republic of afghanistan
+AG	Antigua and Barbuda	1	1	north_central_america	antigua|atg
+AI	Anguilla	1	1	north_central_america	aia
+AL	Albania	355	0	europe	alb|republic of albania
+AM	Armenia	374	0	asia	arm|republic of armenia
+AO	Angola	244		africa	ago|republic of angola
+AQ	Antarctica			oceania	ata
+AR	Argentina	54		south_america	arg|argentine republic
+AS	American Samoa	1	1	oceania	asm|samoa american
+AT	Austria	43	0	europe	aut|osterreich|republic of austria|österreich
+AU	Australia	61	0	oceania	aus|oz|straya
+AW	Aruba	297		north_central_america	abw
+AX	Åland Islands	358	0	europe	ala
+AZ	Azerbaijan	994	0	asia	aze|republic of azerbaijan
+BA	Bosnia and Herzegovina	387	0	europe	bih|bosnia|bosnia & herzegovina|republic of bosnia and herzegovina
+BB	Barbados	1	1	north_central_america	brb
+BD	Bangladesh	880	0	asia	bgd|people's republic of bangladesh
+BE	Belgium	32	0	europe	bel|belgie|belgique|belgië|kingdom of belgium
+BF	Burkina Faso	226		africa	bfa
+BG	Bulgaria	359	0	europe	bgr|republic of bulgaria
+BH	Bahrain	973		asia	bhr|kingdom of bahrain
+BI	Burundi	257		africa	bdi|republic of burundi
+BJ	Benin	229		africa	ben|republic of benin
+BL	Saint Barthélemy	590	0	north_central_america	blm
+BM	Bermuda	1	1	north_central_america	bmu
+BN	Brunei Darussalam	673		asia	brn|brunei
+BO	Bolivia	591	0	south_america	bol|bolivia, plurinational state of|plurinational state of bolivia
+BQ	Bonaire, Sint Eustatius and Saba	599		north_central_america	bes
+BR	Brazil	55	0	south_america	bra|brasil|federative republic of brazil
+BS	Bahamas	1	1	north_central_america	bahamas the|bhs|commonwealth of the bahamas|the bahamas
+BT	Bhutan	975		asia	btn|kingdom of bhutan
+BV	Bouvet Island			europe	bvt
+BW	Botswana	267		africa	bwa|republic of botswana
+BY	Belarus	375	8	europe	blr|republic of belarus
+BZ	Belize	501		north_central_america	blz
+CA	Canada	1	1	north_central_america	can
+CC	Cocos (Keeling) Islands	61	0	oceania	cck
+CD	Congo, The Democratic Republic of the	243	0	africa	cod|congo dem rep|congo dem. rep.|congo democratic republic|congo drc|congo-kinshasa|democratic republic of the congo|dr congo|drc
+CF	Central African Republic	236		africa	caf
+CG	Congo	242		africa	cog|congo rep|congo rep.|congo republic of|congo-brazzaville|republic of the congo
+CH	Switzerland	41	0	europe	che|schweiz|suisse|svizzera|swiss confederation
+CI	Côte d'Ivoire	225		africa	civ|cote d'ivoire|ivory coast|republic of côte d'ivoire
+CK	Cook Islands	682		oceania	cok
+CL	Chile	56		south_america	chl|republic of chile
+CM	Cameroon	237		africa	cmr|republic of cameroon
+CN	China	86	0	asia	chn|mainland china|people's republic of china|prc
+CO	Colombia	57	0	south_america	col|republic of colombia
+CR	Costa Rica	506		north_central_america	cri|republic of costa rica
+CU	Cuba	53	0	north_central_america	cub|republic of cuba
+CV	Cabo Verde	238		africa	cape verde|cpv|republic of cabo verde
+CW	Curaçao	599		north_central_america	cuw
+CX	Christmas Island	61	0	oceania	cxr
+CY	Cyprus	357		europe	cyp|republic of cyprus
+CZ	Czechia	420		europe	cze|czech|czech republic
+DE	Germany	49	0	europe	deu|deutschland|federal republic of germany
+DJ	Djibouti	253		africa	dji|republic of djibouti
+DK	Denmark	45		europe	danmark|dnk|kingdom of denmark
+DM	Dominica	1	1	north_central_america	commonwealth of dominica|dma
+DO	Dominican Republic	1	1	north_central_america	dom
+DZ	Algeria	213	0	africa	dza|people's democratic republic of algeria
+EC	Ecuador	593	0	south_america	ecu|republic of ecuador
+EE	Estonia	372		europe	est|republic of estonia
+EG	Egypt	20	0	africa	arab republic of egypt|egy|egypt arab rep
+EH	Western Sahara	212	0	africa	esh
+ER	Eritrea	291	0	africa	eri|the state of eritrea
+ES	Spain	34		europe	esp|espana|españa|kingdom of spain
+ET	Ethiopia	251	0	africa	eth|federal democratic republic of ethiopia
+FI	Finland	358	0	europe	fin|republic of finland|suomi
+FJ	Fiji	679		oceania	fji|republic of fiji
+FK	Falkland Islands (Malvinas)	500		south_america	flk
+FM	Micronesia, Federated States of	691		oceania	federated states of micronesia|fsm|micronesia|micronesia fed sts
+FO	Faroe Islands	298		europe	fro
+FR	France	33	0	europe	fra|french republic
+GA	Gabon	241		africa	gab|gabonese republic
+GB	United Kingdom	44	0	europe	britain|eng|england|gb|gbr|great britain|ireland northern|northern ireland|scotland|u.k.|uk|united kingdom of great britain and northern ireland|wales
+GD	Grenada	1	1	north_central_america	grd
+GE	Georgia	995	0	asia	geo
+GF	French Guiana	594	0	south_america	guf
+GG	Guernsey	44	0	europe	ggy
+GH	Ghana	233	0	africa	gha|republic of ghana
+GI	Gibraltar	350		europe	gib
+GL	Greenland	299		north_central_america	grl
+GM	Gambia	220		africa	gambia the|gmb|republic of the gambia|the gambia
+GN	Guinea	224		africa	gin|republic of guinea
+GP	Guadeloupe	590	0	north_central_america	glp
+GQ	Equatorial Guinea	240		africa	gnq|republic of equatorial guinea
+GR	Greece	30		europe	grc|hellas|hellenic republic
+GS	South Georgia and the South Sandwich Islands			south_america	sgs
+GT	Guatemala	502		north_central_america	gtm|republic of guatemala
+GU	Guam	1	1	oceania	gum
+GW	Guinea-Bissau	245		africa	gnb|republic of guinea-bissau
+GY	Guyana	592		south_america	guy|republic of guyana
+HK	Hong Kong	852		asia	hk|hkg|hong kong sar|hong kong sar china|hong kong special administrative region of china
+HM	Heard Island and McDonald Islands			oceania	hmd
+HN	Honduras	504		north_central_america	hnd|republic of honduras
+HR	Croatia	385	0	europe	hrv|hrvatska|republic of croatia
+HT	Haiti	509		north_central_america	hti|republic of haiti
+HU	Hungary	36	06	europe	hun|magyarorszag
+ID	Indonesia	62	0	asia	idn|republic of indonesia
+IE	Ireland	353	0	europe	eire|irl|republic of ireland|roi
+IL	Israel	972	0	asia	isr|state of israel
+IM	Isle of Man	44	0	europe	imn
+IN	India	91	0	asia	ind|republic of india
+IO	British Indian Ocean Territory	246		asia	iot
+IQ	Iraq	964	0	asia	irq|republic of iraq
+IR	Iran	98	0	asia	iran islamic rep|iran, islamic republic of|irn|islamic republic of iran
+IS	Iceland	354		europe	isl|island|republic of iceland
+IT	Italy	39		europe	ita|italia|italian republic
+JE	Jersey	44	0	europe	jey
+JM	Jamaica	1	1	north_central_america	jam
+JO	Jordan	962	0	asia	hashemite kingdom of jordan|jor
+JP	Japan	81	0	asia	jpn|nippon
+KE	Kenya	254	0	africa	ken|republic of kenya
+KG	Kyrgyzstan	996	0	asia	kgz|kyrgyz republic
+KH	Cambodia	855	0	asia	khm|kingdom of cambodia
+KI	Kiribati	686	0	oceania	kir|republic of kiribati
+KM	Comoros	269		africa	com|union of the comoros
+KN	Saint Kitts and Nevis	1	1	north_central_america	kna|st kitts|st kitts and nevis
+KP	North Korea	850	0	asia	democratic people's republic of korea|korea dem people s rep|korea dem. people's rep.|korea dpr|korea north|korea, democratic people's republic of|prk
+KR	South Korea	82	0	asia	kor|korea|korea rep|korea rep.|korea south|korea, republic of|republic of korea|s korea|s. korea
+KW	Kuwait	965		asia	kwt|state of kuwait
+KY	Cayman Islands	1	1	north_central_america	cym
+KZ	Kazakhstan	7	8	asia	kaz|republic of kazakhstan
+LA	Laos	856	0	asia	lao|lao pdr|lao people's democratic republic
+LB	Lebanon	961	0	asia	lbn|lebanese republic
+LC	Saint Lucia	1	1	north_central_america	lca|st lucia
+LI	Liechtenstein	423	0	europe	lie|principality of liechtenstein
+LK	Sri Lanka	94	0	asia	democratic socialist republic of sri lanka|lka
+LR	Liberia	231	0	africa	lbr|republic of liberia
+LS	Lesotho	266		africa	kingdom of lesotho|lso
+LT	Lithuania	370	0	europe	ltu|republic of lithuania
+LU	Luxembourg	352		europe	grand duchy of luxembourg|lux
+LV	Latvia	371		europe	lva|republic of latvia
+LY	Libya	218	0	africa	lby
+MA	Morocco	212	0	africa	kingdom of morocco|mar
+MC	Monaco	377	0	europe	mco|principality of monaco
+MD	Moldova	373	0	europe	mda|moldova, republic of|republic of moldova
+ME	Montenegro	382	0	europe	mne
+MF	Saint Martin (French part)	590	0	north_central_america	maf
+MG	Madagascar	261	0	africa	mdg|republic of madagascar
+MH	Marshall Islands	692	1	oceania	mhl|republic of the marshall islands
+MK	North Macedonia	389	0	europe	macedonia|mkd|republic of north macedonia
+ML	Mali	223		africa	mli|republic of mali
+MM	Myanmar	95	0	asia	burma|mmr|republic of myanmar
+MN	Mongolia	976	0	asia	mng
+MO	Macao	853		asia	mac|macao sar|macao sar china|macao special administrative region of china|macau|macau sar china
+MP	Northern Mariana Islands	1	1	oceania	commonwealth of the northern mariana islands|mnp
+MQ	Martinique	596	0	north_central_america	mtq
+MR	Mauritania	222		africa	islamic republic of mauritania|mrt
+MS	Montserrat	1	1	north_central_america	msr
+MT	Malta	356		europe	mlt|republic of malta
+MU	Mauritius	230		africa	mus|republic of mauritius
+MV	Maldives	960		asia	mdv|republic of maldives
+MW	Malawi	265	0	africa	mwi|republic of malawi
+MX	Mexico	52		north_central_america	mex|méxico|united mexican states
+MY	Malaysia	60	0	asia	mys
+MZ	Mozambique	258		africa	moz|republic of mozambique
+NA	Namibia	264	0	africa	nam|republic of namibia
+NC	New Caledonia	687		oceania	ncl
+NE	Niger	227		africa	ner|republic of the niger
+NF	Norfolk Island	672		oceania	nfk
+NG	Nigeria	234	0	africa	federal republic of nigeria|nga
+NI	Nicaragua	505		north_central_america	nic|republic of nicaragua
+NL	Netherlands	31	0	europe	holland|kingdom of the netherlands|nl|nld|the netherlands
+NO	Norway	47		europe	kingdom of norway|nor|norge
+NP	Nepal	977	0	asia	federal democratic republic of nepal|npl
+NR	Nauru	674		oceania	nru|republic of nauru
+NU	Niue	683		oceania	niu
+NZ	New Zealand	64	0	oceania	aotearoa|nz|nzl
+OM	Oman	968		asia	omn|sultanate of oman
+PA	Panama	507		north_central_america	pan|republic of panama
+PE	Peru	51	0	south_america	per|republic of peru
+PF	French Polynesia	689		oceania	pyf
+PG	Papua New Guinea	675		oceania	independent state of papua new guinea|png
+PH	Philippines	63	0	asia	phl|republic of the philippines|the philippines
+PK	Pakistan	92	0	asia	islamic republic of pakistan|pak
+PL	Poland	48		europe	pol|polska|republic of poland
+PM	Saint Pierre and Miquelon	508	0	north_central_america	spm
+PN	Pitcairn			oceania	pcn
+PR	Puerto Rico	1	1	north_central_america	pri
+PS	Palestine, State of	970	0	asia	palestine|pse|the state of palestine
+PT	Portugal	351		europe	portuguese republic|prt
+PW	Palau	680		oceania	plw|republic of palau
+PY	Paraguay	595	0	south_america	pry|republic of paraguay
+QA	Qatar	974		asia	qat|state of qatar
+RE	Réunion	262	0	africa	reu
+RO	Romania	40	0	europe	rou
+RS	Serbia	381	0	europe	republic of serbia|srb
+RU	Russian Federation	7	8	europe	rus|russia
+RW	Rwanda	250	0	africa	rwa|rwandese republic
+SA	Saudi Arabia	966	0	asia	kingdom of saudi arabia|ksa|sau|saudi
+SB	Solomon Islands	677		oceania	slb
+SC	Seychelles	248		africa	republic of seychelles|syc
+SD	Sudan	249	0	africa	republic of the sudan|sdn
+SE	Sweden	46	0	europe	kingdom of sweden|sverige|swe
+SG	Singapore	65		asia	republic of singapore|sgp
+SH	Saint Helena, Ascension and Tristan da Cunha	290		africa	shn
+SI	Slovenia	386	0	europe	republic of slovenia|svn
+SJ	Svalbard and Jan Mayen	47		europe	sjm
+SK	Slovakia	421	0	europe	slovak republic|svk
+SL	Sierra Leone	232	0	africa	republic of sierra leone|sle
+SM	San Marino	378		europe	republic of san marino|smr
+SN	Senegal	221		africa	republic of senegal|sen
+SO	Somalia	252	0	africa	federal republic of somalia|som
+SR	Suriname	597		south_america	republic of suriname|sur
+SS	South Sudan	211	0	africa	republic of south sudan|ssd
+ST	Sao Tome and Principe	239		africa	democratic republic of sao tome and principe|stp
+SV	El Salvador	503		north_central_america	republic of el salvador|slv
+SX	Sint Maarten (Dutch part)	1	1	north_central_america	sxm
+SY	Syria	963	0	asia	syr|syrian arab rep|syrian arab republic
+SZ	Eswatini	268		africa	kingdom of eswatini|swaziland|swz
+TC	Turks and Caicos Islands	1	1	north_central_america	tca
+TD	Chad	235		africa	republic of chad|tcd
+TF	French Southern Territories			africa	atf
+TG	Togo	228		africa	tgo|togolese republic
+TH	Thailand	66	0	asia	kingdom of thailand|tha
+TJ	Tajikistan	992		asia	republic of tajikistan|tjk
+TK	Tokelau	690		oceania	tkl
+TL	Timor-Leste	670		asia	democratic republic of timor-leste|east timor|tls
+TM	Turkmenistan	993	8	asia	tkm
+TN	Tunisia	216		africa	republic of tunisia|tun
+TO	Tonga	676		oceania	kingdom of tonga|ton
+TR	Türkiye	90	0	europe	republic of türkiye|tur|turkey|turkiye
+TT	Trinidad and Tobago	1	1	north_central_america	republic of trinidad and tobago|tobago|trinidad|trinidad & tobago|tto
+TV	Tuvalu	688		oceania	tuv
+TW	Taiwan	886	0	asia	taiwan, province of china|twn
+TZ	Tanzania	255	0	africa	tanzania, united republic of|tza|united republic of tanzania
+UA	Ukraine	380	0	europe	ukr
+UG	Uganda	256	0	africa	republic of uganda|uga
+UM	United States Minor Outlying Islands			oceania	umi
+US	United States	1	1	north_central_america	america|the states|u.s.|u.s.a.|united states of america|us|usa
+UY	Uruguay	598	0	south_america	eastern republic of uruguay|ury
+UZ	Uzbekistan	998		asia	republic of uzbekistan|uzb
+VA	Holy See (Vatican City State)	39		europe	holy see|vat|vatican|vatican city
+VC	Saint Vincent and the Grenadines	1	1	north_central_america	st vincent|vct
+VE	Venezuela	58	0	south_america	bolivarian republic of venezuela|ven|venezuela rb|venezuela, bolivarian republic of
+VG	Virgin Islands, British	1	1	north_central_america	british virgin islands|vgb
+VI	Virgin Islands, U.S.	1	1	north_central_america	vir|virgin islands of the united states
+VN	Vietnam	84	0	asia	socialist republic of viet nam|viet nam|vnm
+VU	Vanuatu	678		oceania	republic of vanuatu|vut
+WF	Wallis and Futuna	681		oceania	wlf
+WS	Samoa	685		oceania	independent state of samoa|wsm
+XK	Kosovo	383	0	europe	kosovo|kosova
+YE	Yemen	967	0	asia	republic of yemen|yem|yemen rep
+YT	Mayotte	262	0	africa	myt
+ZA	South Africa	27	0	africa	republic of south africa|rsa|zaf
+ZM	Zambia	260	0	africa	republic of zambia|zmb
+ZW	Zimbabwe	263	0	africa	republic of zimbabwe|zwe

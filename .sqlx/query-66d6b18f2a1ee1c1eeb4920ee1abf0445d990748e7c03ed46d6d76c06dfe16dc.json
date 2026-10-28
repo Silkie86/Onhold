@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE organisations SET name = $2, org_type = $3, addresses = $4, tax_id = $5,\n                  default_currency = $6, payment_terms_days = $7, notes = $8, tags = $9, custom = $10,\n                  updated_by = $11, country_code = $12, city = $13, region_key = $14, relationship = $15,\n                  status_key = $16, follow_up_on = $17, do_not_contact = $18, buys_from_others = $19\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Jsonb",
+        "Text",
+        "Bpchar",
+        "Int4",
+        "Text",
+        "TextArray",
+        "Jsonb",
+        "Uuid",
+        "Bpchar",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Date",
+        "Bool",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "66d6b18f2a1ee1c1eeb4920ee1abf0445d990748e7c03ed46d6d76c06dfe16dc"
+}

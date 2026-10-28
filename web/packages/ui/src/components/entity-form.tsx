@@ -60,12 +60,12 @@ const ADDRESS_PARTS: [keyof Address, string][] = [
   ["line1", "Address line 1"],
   ["line2", "Address line 2"],
   ["city", "City"],
-  ["region", "Region"],
+  ["region", "County / state"],
   ["postcode", "Postcode"],
   ["country", "Country"],
 ];
 
-const LIST_TYPES = new Set(["tags", "email_list", "phone_list", "multi_select", "address_list"]);
+const LIST_TYPES = new Set(["tags", "email_list", "phone_list", "url_list", "multi_select", "address_list"]);
 
 function emptyValue(field: SchemaField): unknown {
   if (LIST_TYPES.has(field.field_type)) return [];
@@ -92,13 +92,14 @@ function toLocalInput(iso: unknown): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function listText(value: unknown): string {
-  return Array.isArray(value) ? value.join(", ") : "";
+function listText(value: unknown, bySpaces = false): string {
+  return Array.isArray(value) ? value.join(bySpaces ? " " : ", ") : "";
 }
 
-function parseList(text: string): string[] {
+/** Items split on commas, or on spaces for web addresses, which may hold commas but never spaces. */
+export function parseList(text: string, bySpaces = false): string[] {
   return text
-    .split(/[,\n]/)
+    .split(bySpaces ? /\s+/ : /[,\n]/)
     .map((s) => s.trim())
     .filter(Boolean);
 }
@@ -257,6 +258,8 @@ export function EntityForm(props: EntityFormProps) {
       case "email_list":
       case "phone_list":
         return <ListInput {...common} value={value} onChange={(list) => set(f.key, list)} />;
+      case "url_list":
+        return <ListInput {...common} bySpaces value={value} onChange={(list) => set(f.key, list)} />;
       case "address_list":
         return (
           <AddressList id={id} disabled={disabled} value={(value as Address[] | null) ?? []} onChange={(a) => set(f.key, a)} />
@@ -405,24 +408,26 @@ export function MoneyInput({
 function ListInput({
   value,
   onChange,
+  bySpaces = false,
   ...rest
 }: {
   id: string;
   value: unknown;
   onChange: (list: string[]) => void;
+  bySpaces?: boolean;
   disabled?: boolean;
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
 }) {
-  const [text, setText] = useState(listText(value));
+  const [text, setText] = useState(listText(value, bySpaces));
   return (
     <Input
       {...rest}
-      placeholder="Separate with commas"
+      placeholder={bySpaces ? "Separate with spaces" : "Separate with commas"}
       value={text}
       onChange={(e) => {
         setText(e.target.value);
-        onChange(parseList(e.target.value));
+        onChange(parseList(e.target.value, bySpaces));
       }}
     />
   );

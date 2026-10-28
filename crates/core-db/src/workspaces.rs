@@ -57,6 +57,7 @@ pub async fn get(conn: &mut PgConnection, id: WorkspaceId) -> Result<Option<Work
 
 /// What shapes the app's forms and labels: extras, hidden parts and words.
 pub struct Shape {
+    pub enabled_modules: Vec<String>,
     pub extras: Vec<String>,
     pub hidden: Vec<String>,
     pub vocabulary: serde_json::Value,
@@ -65,7 +66,7 @@ pub struct Shape {
 pub async fn shape(conn: &mut PgConnection, id: WorkspaceId) -> Result<Option<Shape>> {
     Ok(sqlx::query_as!(
         Shape,
-        "SELECT extras, hidden, vocabulary FROM workspaces WHERE id = $1",
+        "SELECT enabled_modules, extras, hidden, vocabulary FROM workspaces WHERE id = $1",
         id.0
     )
     .fetch_optional(conn)

@@ -7,6 +7,7 @@ import {
   Alert,
   type BulkAction,
   Button,
+  CopyButton,
   DataTable,
   Dialog,
   EntityForm,
@@ -48,6 +49,7 @@ import { useSetup } from "../setup.ts";
 import { RelatedConversations } from "./inbox.tsx";
 import { TalentCalendarsCard } from "./talent-calendars.tsx";
 import { PortalAccessCard } from "./portal-settings.tsx";
+import { OrganisationPitching } from "./pitching.tsx";
 
 type Entity = (typeof ENTITIES)[keyof typeof ENTITIES];
 
@@ -455,7 +457,14 @@ export function EntityRecordPage() {
   const record = useQuery({
     queryKey: ["record", entity.entity, id],
     queryFn: () => fetchRecord(sync, entity.entity, id),
+    // Enquiries and bookings move organisations along on the server, so a
+    // copy from a moment ago may be a version behind.
+    refetchOnMount: "always",
   });
+  // The details form starts again when the record changes, except after a
+  // change to the pitching lists, which would throw away what is typed.
+  const [formKey, setFormKey] = useState<string | null>(null);
+  useEffect(() => setFormKey(null), [id]);
   // A record created offline gets its real id once it reaches the server.
   const renamed = isLocalId(id) ? sync?.renamed.get(id) : undefined;
   useEffect(() => {
@@ -522,8 +531,9 @@ export function EntityRecordPage() {
           {saved === "queued" && (
             <Alert tone="info">Saved on this device. It will be sent when you are back online.</Alert>
           )}
+          {entity.entity === "contact" && <QuickCopy contact={r} />}
           <EntityForm
-            key={String(r.version)}
+            key={`${id}:${formKey ?? String(r.version)}`}
             schema={schema.data}
             record={r}
             issues={issues}
@@ -537,6 +547,7 @@ export function EntityRecordPage() {
                 const result = await updateRecord(sync, entity.entity, id, body, Number(r.version ?? 0));
                 qc.setQueryData(["record", entity.entity, id], { data: result.record, offline: result.queued && !navigator.onLine });
                 setSaved(result.queued ? "queued" : "sent");
+                setFormKey(null);
                 void qc.invalidateQueries({ queryKey: ["timeline", entity.entity, id] });
                 void qc.invalidateQueries({ queryKey: ["list", entity.entity] });
               } catch (e) {
@@ -561,6 +572,23 @@ export function EntityRecordPage() {
               </>
             ))}
           {entity.entity === "organisation" && <OrganisationContacts organisation={r} />}
+          {entity.entity === "organisation" &&
+            setup.has("pitching") &&
+            (offline || isLocalId(id) || record.data.queued ? (
+              <p className="text-sm text-muted-foreground">
+                {record.data.queued ? "Pitching shows once your changes here are sent." : "Pitching shows when you are online."}
+              </p>
+            ) : (
+              <OrganisationPitching
+                organisation={r}
+                canWrite={schema.data.can_write}
+                onSaved={(after) => {
+                  setFormKey((k) => k ?? String(r.version));
+                  qc.setQueryData(["record", entity.entity, id], { data: after, offline: false });
+                  void qc.invalidateQueries({ queryKey: ["timeline", entity.entity, id] });
+                }}
+              />
+            ))}
           {!offline && !isLocalId(id) && conversations && entity.entity === "contact" && <RelatedConversations filter={{ contact_id: id }} />}
           {!offline && !isLocalId(id) && conversations && entity.entity === "organisation" && (
             <RelatedConversations filter={{ organisation_id: id }} />
@@ -613,11 +641,26 @@ function OrganisationContacts({ organisation }: { organisation: RecordJson }) {
       ) : (
         <ul className="divide-y rounded-md border">
           {contacts.data?.items.map((c) => (
-            <li key={c.id} className="flex flex-wrap justify-between gap-2 px-3 py-2 text-sm">
+            <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
               <Link to="/crm/$entity/$id" params={{ entity: "contacts", id: c.id }} className="font-medium hover:underline">
                 {String(c.name)}
               </Link>
-              <span className="text-muted-foreground">{[c.role, c.email].filter(Boolean).map(String).join(" · ")}</span>
+              <span className="flex flex-wrap items-center gap-1 text-muted-foreground">
+                {c.role ? <span>{String(c.role)}</span> : null}
+                {c.email ? (
+                  <span className="inline-flex items-center">
+                    {c.role ? "· " : ""}
+                    {String(c.email)}
+                    <CopyButton value={String(c.email)} label={`${String(c.name)}'s email`} />
+                  </span>
+                ) : null}
+                {firstPhone(c) && (
+                  <span className="inline-flex items-center">
+                    {firstPhone(c)}
+                    <CopyButton value={firstPhone(c) ?? ""} label={`${String(c.name)}'s phone number`} />
+                  </span>
+                )}
+              </span>
             </li>
           ))}
         </ul>
@@ -632,6 +675,52 @@ function OrganisationContacts({ organisation }: { organisation: RecordJson }) {
           onCreated={() => void contacts.refetch()}
         />
       )}
+    </section>
+  );
+}
+
+/** A contact's first number, with its country code when it can be told. */
+function firstPhone(c: RecordJson): string | null {
+  return phonesOf(c)[0] ?? null;
+}
+
+/**
+ * A contact's numbers, with their country code when the server worked them
+ * out from these numbers (a change still on this device has none yet).
+ */
+function phonesOf(c: RecordJson): string[] {
+  const phones = (c.phones as string[] | undefined) ?? [];
+  const intl = c.phones_international as string[] | undefined;
+  return intl && intl.length === phones.length ? intl : phones;
+}
+
+/** What to dial: the number up to anything that is not part of it ("ext 12", "/ 0770…"). */
+export function dialable(phone: string): string {
+  const number = phone.split(/[^\d+\s().-]/)[0] ?? "";
+  return number.replace(/[^\d+]/g, "");
+}
+
+/** A contact's emails, numbers and links, each a tap away from the clipboard. */
+function QuickCopy({ contact }: { contact: RecordJson }) {
+  const emails = (contact.emails as string[] | undefined) ?? [];
+  const phones = phonesOf(contact);
+  const links = (contact.links as string[] | undefined) ?? [];
+  if (emails.length + phones.length + links.length === 0) return null;
+  const row = (kind: string, value: string, href: string) => (
+    <li key={`${kind}:${value}`} className="flex min-w-0 items-center gap-1">
+      <a href={href} className="min-w-0 truncate hover:underline" {...(kind === "link" ? { target: "_blank", rel: "noreferrer" } : {})}>
+        {kind === "link" ? value.replace(/^https?:\/\//, "") : value}
+      </a>
+      <CopyButton value={value} label={kind === "link" ? "link" : kind === "email" ? "email address" : "phone number"} />
+    </li>
+  );
+  return (
+    <section aria-label="Quick copy" className="flex flex-col gap-1 rounded-md border p-3 text-sm">
+      <ul className="flex flex-col gap-0.5">
+        {emails.map((e) => row("email", e, `mailto:${e}`))}
+        {phones.map((p) => row("phone", p, `tel:${dialable(p)}`))}
+        {links.map((l) => row("link", l, l))}
+      </ul>
     </section>
   );
 }

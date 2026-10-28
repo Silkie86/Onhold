@@ -1254,13 +1254,15 @@ async fn assert_untouched(app: &TestApp, w: &World) {
         .await
         .unwrap();
     assert_eq!(job, "dead");
-    for path in [
-        format!("/api/v1/talent/{}", w.b_crm.talent),
-        format!("/api/v1/organisations/{}", w.b_crm.organisation),
-        format!("/api/v1/contacts/{}", w.b_crm.contact),
+    // The organisation's own enquiry and confirmed booking made it a
+    // prospect, then a client: versions 2 and 3, and nothing since.
+    for (path, version) in [
+        (format!("/api/v1/talent/{}", w.b_crm.talent), 1),
+        (format!("/api/v1/organisations/{}", w.b_crm.organisation), 3),
+        (format!("/api/v1/contacts/{}", w.b_crm.contact), 1),
     ] {
         let record = app.get(&path).signed_in(&w.b).send().await.ok();
-        assert_eq!(record.body["version"], 1, "{path}");
+        assert_eq!(record.body["version"], version, "{path}");
     }
     let members = app
         .get(&format!("/api/v1/talent/{}/members", w.b_crm.talent))

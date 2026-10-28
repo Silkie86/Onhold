@@ -3,7 +3,7 @@
 name = "Freelance agent"
 description = "For an independent agent booking artists on their own. Enquiries, holds and confirmed bookings for each artist, quotes and invoices, and commission with statements of what each artist is owed."
 perspective = "sells"
-modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents"]
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "pitching"]
 extras = ["commission"]
 [vocabulary.crm.talent]
 one = "Artist"
