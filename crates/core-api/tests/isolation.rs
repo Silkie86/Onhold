@@ -328,6 +328,8 @@ struct Work {
     push: uuid::Uuid,
     travel: uuid::Uuid,
     money_line: uuid::Uuid,
+    project: uuid::Uuid,
+    crew: uuid::Uuid,
 }
 
 async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
@@ -403,6 +405,18 @@ async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
     )
     .await
     .id("/id");
+    let project = post(
+        "/api/v1/projects",
+        json!({ "name": format!("{slug} secret tour"), "booking_ids": [booking] }),
+    )
+    .await
+    .id("/id");
+    let crew = post(
+        &format!("/api/v1/projects/{project}/crew"),
+        json!({ "name": format!("{slug} secret crew") }),
+    )
+    .await
+    .id("/id");
     Work {
         enquiry,
         booking,
@@ -413,6 +427,8 @@ async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
         push,
         travel,
         money_line,
+        project,
+        crew,
     }
 }
 
@@ -507,6 +523,8 @@ async fn world(app: &TestApp) -> World {
         "enquiry:write",
         "booking:read",
         "booking:write",
+        "project:read",
+        "project:write",
         "booking:override",
         "quote:read",
         "quote:write",
@@ -727,10 +745,19 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
             "issue_date": "2024-01-01", "total_minor": 1
         }),
         ("POST", "/api/v1/bookings/{id}/invoices") => json!({ "purpose": "full" }),
-        ("POST", "/api/v1/bookings/{id}/travel") | ("PUT", "/api/v1/travel/{id}") => {
+        ("POST", "/api/v1/projects") | ("PATCH", "/api/v1/projects/{id}") => {
+            json!({ "name": "Intruder" })
+        }
+        ("POST", "/api/v1/projects/{id}/dates") => json!({ "booking_id": w.b_work.booking }),
+        ("POST", "/api/v1/projects/{id}/crew") | ("PUT", "/api/v1/project-crew/{id}") => {
+            json!({ "name": "Intruder" })
+        }
+        ("POST", "/api/v1/bookings/{id}/travel" | "/api/v1/projects/{id}/travel")
+        | ("PUT", "/api/v1/travel/{id}") => {
             json!({ "kind": "flight", "starts_at": "2031-06-01T08:00:00Z" })
         }
-        ("POST", "/api/v1/bookings/{id}/money") | ("PUT", "/api/v1/money-lines/{id}") => json!({
+        ("POST", "/api/v1/bookings/{id}/money" | "/api/v1/projects/{id}/money")
+        | ("PUT", "/api/v1/money-lines/{id}") => json!({
             "direction": "cost", "category": "crew", "description": "Intruder",
             "amount": { "minor": 1, "currency": "GBP" }
         }),
@@ -767,6 +794,10 @@ fn fill_path(path: &str, w: &World) -> String {
         w.b_work.travel
     } else if path.starts_with("/api/v1/money-lines/") {
         w.b_work.money_line
+    } else if path.starts_with("/api/v1/project-crew/") {
+        w.b_work.crew
+    } else if path.starts_with("/api/v1/projects/") {
+        w.b_work.project
     } else if path.contains("/inbox/threads/") {
         w.b_inbox.thread
     } else if path.contains("/inbox/mailboxes/") {
@@ -836,6 +867,7 @@ fn fill_path(path: &str, w: &World) -> String {
     };
     path.replace("{user_id}", &object.to_string())
         .replace("{id}", &object.to_string())
+        .replace("{booking_id}", &w.b_work.booking.to_string())
         .replace("{member_id}", &w.b_crm.member.to_string())
         .replace("{link_id}", &w.b_crm.calendar_link.to_string())
         .replace("{calendar_id}", &w.b_crm.calendar.to_string())

@@ -465,6 +465,7 @@ async fn read_only_roles_cannot_change_anything(pool: PgPool) {
             "booking:read",
             "quote:read",
             "task:read",
+            "project:read",
             "document:read",
             "invoice:read",
             "inbox:read"

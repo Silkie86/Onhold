@@ -115,6 +115,14 @@ const calendar = createRoute({
   component: CalendarPage,
 });
 const tasks = createRoute({ getParentRoute: () => app, path: "/tasks", validateSearch: validateTasksSearch, component: TasksPage });
+const projectsPage = () => import("./pages/projects.tsx");
+const projects = createRoute({ getParentRoute: () => app, path: "/projects", component: lazyRouteComponent(projectsPage, "ProjectsPage") });
+const project = createRoute({ getParentRoute: () => app, path: "/projects/$id", component: lazyRouteComponent(projectsPage, "ProjectPage") });
+const projectDay = createRoute({
+  getParentRoute: () => app,
+  path: "/projects/$id/days/$date",
+  component: lazyRouteComponent(projectsPage, "ProjectDayPage"),
+});
 const imports = createRoute({ getParentRoute: () => app, path: "/imports", component: lazyRouteComponent(() => import("./pages/imports.tsx"), "ImportsPage") });
 // Pages used now and then load when first opened.
 const settings = () => import("./pages/settings.tsx");
@@ -263,6 +271,9 @@ const tree = root.addChildren([
     enquiry,
     bookings,
     booking,
+    projects,
+    project,
+    projectDay,
     tasks,
     list,
     record,

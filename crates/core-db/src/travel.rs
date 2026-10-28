@@ -11,7 +11,8 @@ use crate::Result;
 #[derive(Debug, Clone)]
 pub struct TravelItem {
     pub id: Uuid,
-    pub booking_id: Uuid,
+    pub booking_id: Option<Uuid>,
+    pub project_id: Option<Uuid>,
     pub kind: String,
     pub status: String,
     pub carrier: Option<String>,
@@ -37,18 +38,25 @@ pub struct TravelItem {
     pub updated_by: Option<UserId>,
 }
 
-/// The travel of these bookings, in time order.
-pub async fn list(conn: &mut PgConnection, booking_ids: &[Uuid]) -> Result<Vec<TravelItem>> {
+/// The travel of these bookings, and of the project itself when given, in
+/// time order.
+pub async fn list(
+    conn: &mut PgConnection,
+    booking_ids: &[Uuid],
+    project_id: Option<Uuid>,
+) -> Result<Vec<TravelItem>> {
     Ok(sqlx::query_as!(
         TravelItem,
-        r#"SELECT id, booking_id, kind, status, carrier, number, reference, from_place, from_code,
+        r#"SELECT id, booking_id, project_id, kind, status, carrier, number, reference, from_place, from_code,
                   to_place, to_code, starts_at, start_tz, ends_at, end_tz, travellers, notes,
                   cost_minor, cost_currency::text AS cost_currency, paid_by, version, created_at,
                   updated_at, created_by AS "created_by: UserId", updated_by AS "updated_by: UserId"
            FROM travel_items
-           WHERE workspace_id = app_workspace_id() AND booking_id = ANY($1) AND deleted_at IS NULL
+           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+             AND (booking_id = ANY($1) OR project_id = $2)
            ORDER BY starts_at, created_at, id"#,
-        booking_ids
+        booking_ids,
+        project_id
     )
     .fetch_all(conn)
     .await?)
@@ -57,7 +65,7 @@ pub async fn list(conn: &mut PgConnection, booking_ids: &[Uuid]) -> Result<Vec<T
 pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<TravelItem>> {
     Ok(sqlx::query_as!(
         TravelItem,
-        r#"SELECT id, booking_id, kind, status, carrier, number, reference, from_place, from_code,
+        r#"SELECT id, booking_id, project_id, kind, status, carrier, number, reference, from_place, from_code,
                   to_place, to_code, starts_at, start_tz, ends_at, end_tz, travellers, notes,
                   cost_minor, cost_currency::text AS cost_currency, paid_by, version, created_at,
                   updated_at, created_by AS "created_by: UserId", updated_by AS "updated_by: UserId"
@@ -102,10 +110,26 @@ pub struct TravelValues<'a> {
     pub paid_by: &'a str,
 }
 
+/// Owned by exactly one of a booking or a project.
+#[derive(Debug, Clone, Copy)]
+pub enum Owner {
+    Booking(Uuid),
+    Project(Uuid),
+}
+
+impl Owner {
+    fn ids(self) -> (Option<Uuid>, Option<Uuid>) {
+        match self {
+            Owner::Booking(id) => (Some(id), None),
+            Owner::Project(id) => (None, Some(id)),
+        }
+    }
+}
+
 pub async fn insert(
     conn: &mut PgConnection,
     id: Uuid,
-    booking_id: Uuid,
+    owner: Owner,
     v: TravelValues<'_>,
     by: Option<UserId>,
 ) -> Result<()> {
@@ -113,11 +137,11 @@ pub async fn insert(
         r#"INSERT INTO travel_items (id, workspace_id, booking_id, kind, status, carrier, number, reference,
                                      from_place, from_code, to_place, to_code, starts_at, start_tz, ends_at,
                                      end_tz, travellers, notes, cost_minor, cost_currency, paid_by,
-                                     created_by, updated_by)
+                                     created_by, updated_by, project_id)
            VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-                   $16, $17, $18, $19, $20, $21, $21)"#,
+                   $16, $17, $18, $19, $20, $21, $21, $22)"#,
         id,
-        booking_id,
+        owner.ids().0,
         v.kind,
         v.status,
         v.carrier,
@@ -136,7 +160,8 @@ pub async fn insert(
         v.cost_minor,
         v.cost_currency,
         v.paid_by,
-        by.map(|u| u.0)
+        by.map(|u| u.0),
+        owner.ids().1
     )
     .execute(conn)
     .await?;
@@ -198,7 +223,8 @@ pub async fn soft_delete(conn: &mut PgConnection, id: Uuid, by: Option<UserId>) 
 #[derive(Debug, Clone)]
 pub struct MoneyLine {
     pub id: Uuid,
-    pub booking_id: Uuid,
+    pub booking_id: Option<Uuid>,
+    pub project_id: Option<Uuid>,
     pub direction: String,
     pub category: String,
     pub description: String,
@@ -213,17 +239,24 @@ pub struct MoneyLine {
     pub updated_by: Option<UserId>,
 }
 
-/// The money lines of these bookings: income first, then costs, oldest first.
-pub async fn lines(conn: &mut PgConnection, booking_ids: &[Uuid]) -> Result<Vec<MoneyLine>> {
+/// The money lines of these bookings, and of the project itself when
+/// given: income first, then costs, oldest first.
+pub async fn lines(
+    conn: &mut PgConnection,
+    booking_ids: &[Uuid],
+    project_id: Option<Uuid>,
+) -> Result<Vec<MoneyLine>> {
     Ok(sqlx::query_as!(
         MoneyLine,
-        r#"SELECT id, booking_id, direction, category, description, amount_minor,
+        r#"SELECT id, booking_id, project_id, direction, category, description, amount_minor,
                   currency::text AS "currency!", spent_on, notes, version, created_at, updated_at,
                   created_by AS "created_by: UserId", updated_by AS "updated_by: UserId"
            FROM money_lines
-           WHERE workspace_id = app_workspace_id() AND booking_id = ANY($1) AND deleted_at IS NULL
+           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+             AND (booking_id = ANY($1) OR project_id = $2)
            ORDER BY direction DESC, created_at, id"#,
-        booking_ids
+        booking_ids,
+        project_id
     )
     .fetch_all(conn)
     .await?)
@@ -232,7 +265,7 @@ pub async fn lines(conn: &mut PgConnection, booking_ids: &[Uuid]) -> Result<Vec<
 pub async fn line(conn: &mut PgConnection, id: Uuid) -> Result<Option<MoneyLine>> {
     Ok(sqlx::query_as!(
         MoneyLine,
-        r#"SELECT id, booking_id, direction, category, description, amount_minor,
+        r#"SELECT id, booking_id, project_id, direction, category, description, amount_minor,
                   currency::text AS "currency!", spent_on, notes, version, created_at, updated_at,
                   created_by AS "created_by: UserId", updated_by AS "updated_by: UserId"
            FROM money_lines
@@ -267,16 +300,16 @@ pub struct LineValues<'a> {
 pub async fn insert_line(
     conn: &mut PgConnection,
     id: Uuid,
-    booking_id: Uuid,
+    owner: Owner,
     v: LineValues<'_>,
     by: Option<UserId>,
 ) -> Result<()> {
     sqlx::query!(
         r#"INSERT INTO money_lines (id, workspace_id, booking_id, direction, category, description,
-                                    amount_minor, currency, spent_on, notes, created_by, updated_by)
-           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)"#,
+                                    amount_minor, currency, spent_on, notes, created_by, updated_by, project_id)
+           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11)"#,
         id,
-        booking_id,
+        owner.ids().0,
         v.direction,
         v.category,
         v.description,
@@ -284,7 +317,8 @@ pub async fn insert_line(
         v.currency,
         v.spent_on,
         v.notes,
-        by.map(|u| u.0)
+        by.map(|u| u.0),
+        owner.ids().1
     )
     .execute(conn)
     .await?;

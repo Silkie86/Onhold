@@ -68,6 +68,8 @@ export const SECTIONS: { key: string; label: string }[] = [
   { key: "section:booking.quotes", label: "Quotes on a booking" },
   { key: "section:booking.finance", label: "Invoices and payments on a booking" },
   { key: "section:booking.documents", label: "Contracts and documents on a booking" },
+  { key: "section:booking.travel", label: "Travel (flights, trains, hotels) on a booking" },
+  { key: "section:booking.money", label: "\"Does it pay?\" (costs against the fee) on a booking" },
   { key: "section:booking.settlements", label: "Settlements (what talent are owed) on a booking" },
   { key: "section:tasks.assign", label: "Assigning tasks to people" },
   { key: "section:talent.members", label: "Members of an act" },

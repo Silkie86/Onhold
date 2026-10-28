@@ -23,7 +23,7 @@ const ADDS: Record<string, string> = {
   messaging: "Inbox for your email",
   finance: "Quotes, invoices, card payments and reports",
   documents: "Contracts, e-signatures and documents",
-  events: "Events, tours and line-ups (coming soon)",
+  events: "Events, tours and line-ups",
   portal: "A login for your artists or clients (coming soon)",
   team: "Assigning work to each other",
   commission: "Commission and artist statements",

@@ -56,7 +56,7 @@ const FEATURES: &[Feature] = &[
     Feature {
         key: "events",
         label: "Plan events, tours and line-ups",
-        hint: Some("Coming soon"),
+        hint: Some("Tours and runs of dates, with budget, crew and day sheets"),
         effect: Effect::Module("events"),
     },
     Feature {

@@ -51,7 +51,7 @@ async fn create_travel(
 ) -> ApiResult<(StatusCode, Json<TravelView>)> {
     Ok((
         StatusCode::CREATED,
-        Json(travel::create_travel(&state, &ctx, id, b).await?),
+        Json(travel::create_travel(&state, &ctx, travel::Owner::Booking(id), b).await?),
     ))
 }
 
@@ -110,7 +110,7 @@ async fn create_line(
 ) -> ApiResult<(StatusCode, Json<MoneyLineView>)> {
     Ok((
         StatusCode::CREATED,
-        Json(travel::create_line(&state, &ctx, id, b).await?),
+        Json(travel::create_line(&state, &ctx, travel::Owner::Booking(id), b).await?),
     ))
 }
 

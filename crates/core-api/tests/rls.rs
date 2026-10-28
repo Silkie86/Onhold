@@ -63,12 +63,14 @@ async fn the_app_role_cannot_bypass_policies(pool: PgPool) {
     // Busy times copied from a talent's own calendar are replaced as the
     // calendar changes; the calendar's row keeps the history. Which event
     // stands for which booking in a member's own calendar goes with the
-    // event; the connection's row keeps the history.
+    // event; the connection's row keeps the history. Which project a date
+    // belongs to is a link; the project's audit entry keeps the history.
     let links = [
         "enquiry_talent",
         "booking_talent",
         "calendar_busy",
         "calendar_push_events",
+        "project_bookings",
     ];
     let deletable: Vec<&String> = deletable
         .iter()

@@ -40,6 +40,7 @@ pub mod payments;
 pub mod pdf_imports;
 pub mod pipelines;
 pub mod platform_settings;
+pub mod projects;
 pub mod quotes;
 pub mod reports;
 pub mod rules;

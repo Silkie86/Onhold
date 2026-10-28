@@ -598,8 +598,8 @@ export function BookingPage() {
   // them on a phone, where they are what people open a booking for.
   const trip = (
     <>
-      <BookingTravelPanel booking={b} />
-      <BookingMoneyPanel booking={b} />
+      {setup.shows("section:booking.travel") && <BookingTravelPanel booking={b} />}
+      {setup.shows("section:booking.money") && <BookingMoneyPanel booking={b} />}
     </>
   );
 
