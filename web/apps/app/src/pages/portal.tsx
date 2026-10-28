@@ -28,18 +28,27 @@ import {
   formatMoney,
 } from "@onhold/ui";
 import {
+  Briefcase,
   CalendarCheck,
   CalendarClock,
+  CalendarDays,
   CalendarX2,
   ChevronLeft,
   Download,
+  ExternalLink,
+  FileSignature,
   FileText,
+  Inbox,
   Link2,
+  Lock,
   LogOut,
   MapPin,
   Monitor,
   Moon,
   Plus,
+  Receipt,
+  Route,
+  Sparkles,
   Sun,
   Trash2,
   Wallet,
@@ -47,6 +56,7 @@ import {
 import { type ReactNode, useEffect, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
 import { useWorkspaceBranding } from "../branding.ts";
+import { openInBrowser } from "../platform.ts";
 import { type Session, SessionContext, useSession, useSessionActions } from "../session.tsx";
 import { storedTheme } from "../shell.tsx";
 import { formatWhen, zonedTime } from "../work.ts";
@@ -163,6 +173,7 @@ export function PortalShell({ me }: { me: Session["me"] }) {
     { to: "/portal/money", label: "Money", icon: <Wallet />, shown: !!settings?.show_money },
   ];
   const shown = tabs.filter((t) => t.shown);
+  const locked = !!settings && !settings.hide_locked;
   const initials = me.user.name
     .split(/\s+/)
     .map((p) => p[0])
@@ -194,6 +205,16 @@ export function PortalShell({ me }: { me: Session["me"] }) {
                 {t.label}
               </Link>
             ))}
+            {locked && (
+              <Link
+                to="/portal/unlock"
+                className="flex items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-sm hover:bg-accent [&_svg]:size-4"
+                activeProps={{ className: "bg-accent font-medium" }}
+              >
+                <Sparkles />
+                Unlock features
+              </Link>
+            )}
           </nav>
           <Menu>
             <MenuTrigger asChild>
@@ -261,6 +282,16 @@ export function PortalShell({ me }: { me: Session["me"] }) {
               {t.label}
             </Link>
           ))}
+          {locked && (
+            <Link
+              to="/portal/unlock"
+              className="flex flex-1 flex-col items-center gap-0.5 py-2 text-xs text-muted-foreground [&_svg]:size-5"
+              activeProps={{ className: "text-foreground font-medium" }}
+            >
+              <Sparkles />
+              Unlock
+            </Link>
+          )}
         </nav>
       </div>
     </SessionContext.Provider>
@@ -315,6 +346,19 @@ export function PortalDatesPage() {
             <DateCard key={`${d.id}-${d.talent_id}`} d={d} showTalent={(home.data?.talent.length ?? 0) > 1} />
           ))}
         </ul>
+      )}
+      {home.data && !home.data.settings.hide_locked && (
+        <Link
+          to="/portal/unlock"
+          className="flex items-center gap-3 rounded-lg border border-dashed p-3 text-sm hover:bg-accent/50"
+        >
+          <Lock className="size-4 shrink-0 text-muted-foreground" />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="font-medium">Add gigs you book yourself</span>
+            <span className="text-muted-foreground">Take your own bookings, send invoices and contracts, plan tours.</span>
+          </span>
+          <span className="shrink-0 font-medium">Unlock features</span>
+        </Link>
       )}
     </div>
   );
@@ -843,5 +887,138 @@ function StatementCard({ s }: { s: Statement }) {
       </div>
       {error && <Alert>{error}</Alert>}
     </li>
+  );
+}
+
+// Unlock features ---------------------------------------------------------------------------------
+
+/** What the full app adds; each shows padlocked here. */
+const LOCKED: { label: string; icon: ReactNode; blurb: string }[] = [
+  { label: "Your own bookings", icon: <Briefcase />, blurb: "Take enquiries, pencil holds and confirm gigs yourself, next to the ones your agency books." },
+  { label: "The full calendar", icon: <CalendarDays />, blurb: "Every gig, hold and day off on one calendar, shared with whoever you choose." },
+  { label: "Invoices and deposits", icon: <Receipt />, blurb: "Send invoices, take deposits by card and see who still owes you." },
+  { label: "Contracts and signing", icon: <FileSignature />, blurb: "Send contracts and riders and have them signed online." },
+  { label: "Email inbox", icon: <Inbox />, blurb: "Booking emails filed next to the gig they belong to." },
+  { label: "Tours and travel", icon: <Route />, blurb: "Plan runs of dates with travel, hotels and a day-by-day itinerary." },
+];
+
+const BOARD: { status: string; label: string }[] = [
+  { status: "hold", label: "Pencilled" },
+  { status: "pending", label: "Being confirmed" },
+  { status: "confirmed", label: "Confirmed" },
+];
+
+/**
+ * A preview of the full app built from the talent's own dates, with what it
+ * would add shown padlocked, and the way to upgrade: on the website, never
+ * inside the app. Hidden when the agency hides locked features.
+ */
+export function PortalUnlockPage() {
+  const home = usePortal();
+  const navigate = useNavigate();
+  const hidden = home.data?.settings.hide_locked;
+  useEffect(() => {
+    if (hidden) void navigate({ to: "/portal", replace: true });
+  }, [hidden, navigate]);
+  const upcoming = useQuery({
+    queryKey: ["portal", "dates", "upcoming"],
+    queryFn: () => ok(api.GET("/api/v1/portal/dates", { params: { query: { when: "upcoming" } } })),
+    enabled: hidden === false,
+  });
+  const past = useQuery({
+    queryKey: ["portal", "dates", "past"],
+    queryFn: () => ok(api.GET("/api/v1/portal/dates", { params: { query: { when: "past" } } })),
+    enabled: hidden === false,
+  });
+  if (!home.data || hidden) return <Spinner />;
+  const coming = (upcoming.data ?? []).filter((d) => d.status !== "cancelled");
+  const yearAgo = Date.now() - 365 * 24 * 3600 * 1000;
+  const lastYear = (past.data ?? []).filter((d) => d.status !== "cancelled" && Date.parse(d.starts_at) >= yearAgo);
+  const venues = new Set([...coming, ...lastYear].map((d) => d.venue).filter(Boolean)).size;
+  const url = home.data.upgrade_url;
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-xl font-semibold">Unlock the full app</h1>
+        <p className="text-sm text-muted-foreground">
+          This page is free and stays free. The full app adds the tools to run your own bookings and business. Here is how it would look with your
+          dates.
+        </p>
+      </div>
+
+      <section aria-label="Preview" className="relative flex flex-col gap-3 rounded-lg border border-dashed p-3">
+        <span className="absolute -top-2.5 left-3 bg-background px-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Preview
+        </span>
+        <dl className="grid grid-cols-3 gap-2 text-center">
+          {[
+            { n: coming.length, label: "coming up" },
+            { n: lastYear.length, label: "in the past year" },
+            { n: venues, label: venues === 1 ? "venue" : "venues" },
+          ].map((s) => (
+            <div key={s.label} className="rounded-md bg-secondary px-2 py-2">
+              <dt className="sr-only">{s.label}</dt>
+              <dd className="text-lg font-semibold tabular-nums">{upcoming.isPending || past.isPending ? "…" : s.n}</dd>
+              <dd className="text-xs text-muted-foreground">{s.label}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="grid gap-2 sm:grid-cols-3" aria-label="Your bookings board">
+          {BOARD.map((col) => {
+            const items = coming.filter((d) => d.status === col.status);
+            return (
+              <div key={col.status} className="flex flex-col gap-1.5 rounded-md bg-secondary/60 p-2">
+                <span className="flex items-center justify-between text-xs font-medium">
+                  {col.label}
+                  <span className="tabular-nums text-muted-foreground">{items.length}</span>
+                </span>
+                {items.slice(0, 3).map((d) => (
+                  <div key={`${d.id}-${d.talent_id}`} className="rounded border bg-background px-2 py-1.5 text-xs">
+                    <span className="block truncate font-medium">{d.title}</span>
+                    <span className="text-muted-foreground">{when(d).day}</span>
+                  </div>
+                ))}
+                {items.length > 3 && <span className="text-xs text-muted-foreground">and {items.length - 3} more</span>}
+                <span className="flex items-center gap-1 rounded border border-dashed px-2 py-1.5 text-xs text-muted-foreground">
+                  <Lock className="size-3" /> Add your own
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <ul className="grid gap-2 sm:grid-cols-2" aria-label="Locked features">
+        {LOCKED.map((f) => (
+          <li key={f.label} className="flex items-start gap-3 rounded-lg border p-3 [&>svg]:size-5">
+            <span className="mt-0.5 text-muted-foreground [&_svg]:size-5">{f.icon}</span>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                {f.label}
+                <Lock className="size-3.5 text-muted-foreground" aria-label="Locked" />
+              </span>
+              <span className="text-xs text-muted-foreground">{f.blurb}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <Card className="flex flex-col gap-2 p-4">
+        {url ? (
+          <>
+            <Button onClick={() => void openInBrowser(`${url}${url.includes("?") ? "&" : "?"}from=portal`)}>
+              Upgrade on the website <ExternalLink />
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Upgrades are made on the OnHold website, not in this app. Your dates with {home.data.workspace_name} stay as they are.
+            </p>
+          </>
+        ) : (
+          <p className="text-center text-sm text-muted-foreground">
+            Upgrades open on the OnHold website soon. Nothing is sold inside this app.
+          </p>
+        )}
+      </Card>
+    </div>
   );
 }

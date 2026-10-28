@@ -263,6 +263,33 @@ async fn a_talent_sees_their_own_dates_and_answers_them(pool: PgPool) {
     // Statements stay hidden until the agency shares them.
     let money = get(&app, &me, "/api/v1/portal/money").await.ok();
     assert_eq!(money.body, json!([]));
+
+    // "Unlock features" sends them to the website OnHold's team set, unless
+    // the agency hides locked features.
+    let home = get(&app, &me, "/api/v1/portal").await.ok();
+    assert!(home.body["upgrade_url"].is_null());
+    sqlx::query(
+        "INSERT INTO platform_settings (key, value) VALUES ('price_list', $1)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+    )
+    .bind(
+        json!({ "currency": "GBP", "base": 0, "features": {}, "team": {},
+                  "upgrade_url": "https://onhold.example/plans" }),
+    )
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    let home = get(&app, &me, "/api/v1/portal").await.ok();
+    assert_eq!(home.body["upgrade_url"], "https://onhold.example/plans");
+    app.put("/api/v1/workspace/portal")
+        .signed_in(&owner)
+        .json(json!({ "hide_locked": true }))
+        .send()
+        .await
+        .ok();
+    let home = get(&app, &me, "/api/v1/portal").await.ok();
+    assert!(home.body["upgrade_url"].is_null());
+    assert_eq!(home.body["settings"]["hide_locked"], true);
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]

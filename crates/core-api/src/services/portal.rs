@@ -308,6 +308,9 @@ pub struct PortalHome {
     pub talent: Vec<PortalTalent>,
     /// Dates waiting for their answer.
     pub awaiting_answer: i64,
+    /// The website page where they can upgrade to the full app; none until
+    /// OnHold's team sets one, or when the agency hides locked features.
+    pub upgrade_url: Option<String>,
 }
 
 /// The talent records opened for the signed-in person (none for staff, keys
@@ -340,10 +343,16 @@ pub async fn home(state: &AppState, ctx: &Ctx) -> ApiResult<PortalHome> {
     } else {
         0
     };
+    let upgrade_url = if settings.hide_locked {
+        None
+    } else {
+        super::setup::upgrade_url(&mut tx).await?
+    };
     tx.commit().await?;
     Ok(PortalHome {
         workspace_name: workspace.name,
         branding: workspace.branding,
+        upgrade_url,
         settings,
         talent: talent
             .into_iter()

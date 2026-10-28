@@ -7488,6 +7488,11 @@ export interface components {
              *     once the agency ends their access).
              */
             talent: components["schemas"]["PortalTalent"][];
+            /**
+             * @description The website page where they can upgrade to the full app; none until
+             *     OnHold's team sets one, or when the agency hides locked features.
+             */
+            upgrade_url?: string | null;
             workspace_name: string;
         };
         PortalInviteBody: {
@@ -7655,6 +7660,11 @@ export interface components {
             team: {
                 [key: string]: number;
             };
+            /**
+             * @description The website page where people upgrade, e.g. from the talent portal's
+             *     "Unlock features". Plans are sold there, never inside the app.
+             */
+            upgrade_url?: string | null;
         };
         ProjectOverview: {
             budget: components["schemas"]["BudgetLine"][];
