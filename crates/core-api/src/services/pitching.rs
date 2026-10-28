@@ -25,6 +25,8 @@ pub const MODULE: &str = "pitching";
 
 pub const MAX_REGIONS: usize = 30;
 pub const MAX_STATUSES: usize = 12;
+pub const MAX_OUTCOMES: usize = 20;
+pub const MAX_ACTIONS: usize = 20;
 
 /// A part of the world, by the countries in it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -101,6 +103,32 @@ impl ItemKind {
     }
 }
 
+/// What an answer means for pitching them again: good news, wait a while,
+/// no for now, or never.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OutcomeTag {
+    Good,
+    Wait,
+    No,
+    Never,
+}
+
+/// An answer to a pitch: "Interested", "Not now", "No answer"…
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct Outcome {
+    pub key: String,
+    pub label: String,
+    pub tag: OutcomeTag,
+}
+
+/// Something done to win them over: pitched, followed up, called…
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ActionType {
+    pub key: String,
+    pub label: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct PitchingSettings {
     #[serde(default = "default_regions")]
@@ -109,6 +137,12 @@ pub struct PitchingSettings {
     pub statuses: Vec<Status>,
     #[serde(default = "default_items")]
     pub items: Vec<ItemKind>,
+    /// The answers a pitch can get.
+    #[serde(default = "default_outcomes")]
+    pub outcomes: Vec<Outcome>,
+    /// The kinds of thing logged as done.
+    #[serde(default = "default_actions")]
+    pub actions: Vec<ActionType>,
 }
 
 impl Default for PitchingSettings {
@@ -117,6 +151,8 @@ impl Default for PitchingSettings {
             regions: default_regions(),
             statuses: default_statuses(),
             items: default_items(),
+            outcomes: default_outcomes(),
+            actions: default_actions(),
         }
     }
 }
@@ -171,6 +207,35 @@ fn default_items() -> Vec<ItemKind> {
     vec![ItemKind::Talent]
 }
 
+fn default_outcomes() -> Vec<Outcome> {
+    let o = |key: &str, label: &str, tag| Outcome {
+        key: key.into(),
+        label: label.into(),
+        tag,
+    };
+    vec![
+        o("interested", "Interested or yes", OutcomeTag::Good),
+        o("not_now", "Not now", OutcomeTag::Wait),
+        o("no", "No", OutcomeTag::No),
+        o("not_a_fit", "Not a fit", OutcomeTag::Never),
+        o("no_answer", "No answer", OutcomeTag::Wait),
+    ]
+}
+
+fn default_actions() -> Vec<ActionType> {
+    let a = |key: &str, label: &str| ActionType {
+        key: key.into(),
+        label: label.into(),
+    };
+    vec![
+        a("pitched", "Pitched"),
+        a("followed_up", "Followed up"),
+        a("called", "Called"),
+        a("met", "Met"),
+        a("messaged", "Messaged on social"),
+    ]
+}
+
 impl PitchingSettings {
     /// The region an organisation is in: the one picked for it if it still
     /// exists, otherwise its country's.
@@ -196,12 +261,31 @@ impl PitchingSettings {
     pub fn region(&self, key: &str) -> Option<&Region> {
         self.regions.iter().find(|r| r.key == key)
     }
+
+    pub fn outcome(&self, key: &str) -> Option<&Outcome> {
+        self.outcomes.iter().find(|o| o.key == key)
+    }
+
+    pub fn action(&self, key: &str) -> Option<&ActionType> {
+        self.actions.iter().find(|a| a.key == key)
+    }
 }
 
 fn is_key(k: &str) -> bool {
     (1..=40).contains(&k.len())
         && k.bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+}
+
+/// A key, trimmed, noting a problem when it is malformed or `taken`.
+fn checked_key(check: &mut Check, field: &str, key: &str, taken: impl Fn(&str) -> bool) -> String {
+    let key = key.trim().to_owned();
+    if !is_key(&key) {
+        check.issue(field, "use 1 to 40 lower case letters, digits or underscores");
+    } else if taken(&key) {
+        check.issue(field, "is used twice");
+    }
+    key
 }
 
 /// Checks and tidies settings: keys unique and well formed, names given,
@@ -282,11 +366,39 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
     if items.is_empty() {
         check.issue("items", "choose at least one thing to pitch");
     }
+    if input.outcomes.is_empty() || input.outcomes.len() > MAX_OUTCOMES {
+        check.issue("outcomes", format!("give 1 to {MAX_OUTCOMES} answers"));
+    }
+    let mut outcomes: Vec<Outcome> = Vec::new();
+    for (i, o) in input.outcomes.iter().enumerate() {
+        let key = checked_key(&mut check, &format!("outcomes[{i}].key"), &o.key, |k| {
+            outcomes.iter().any(|x| x.key == k)
+        });
+        let label = check.required(&format!("outcomes[{i}].label"), &o.label, 60);
+        outcomes.push(Outcome {
+            key,
+            label,
+            tag: o.tag,
+        });
+    }
+    if input.actions.is_empty() || input.actions.len() > MAX_ACTIONS {
+        check.issue("actions", format!("give 1 to {MAX_ACTIONS} kinds of action"));
+    }
+    let mut actions: Vec<ActionType> = Vec::new();
+    for (i, a) in input.actions.iter().enumerate() {
+        let key = checked_key(&mut check, &format!("actions[{i}].key"), &a.key, |k| {
+            actions.iter().any(|x| x.key == k)
+        });
+        let label = check.required(&format!("actions[{i}].label"), &a.label, 60);
+        actions.push(ActionType { key, label });
+    }
     check.finish()?;
     Ok(PitchingSettings {
         regions,
         statuses,
         items,
+        outcomes,
+        actions,
     })
 }
 

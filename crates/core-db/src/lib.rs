@@ -41,6 +41,7 @@ pub mod outbox;
 pub mod payments;
 pub mod pdf_imports;
 pub mod pipelines;
+pub mod pitches;
 pub mod pitching;
 pub mod platform_settings;
 pub mod portal;

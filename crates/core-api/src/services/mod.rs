@@ -33,6 +33,7 @@ pub mod organisations;
 pub mod payments;
 pub mod pdf_imports;
 pub mod pipelines;
+pub mod pitches;
 pub mod pitching;
 pub mod portal;
 pub mod projects;
