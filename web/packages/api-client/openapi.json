@@ -25027,8 +25027,7 @@
           "id",
           "filename",
           "content_type",
-          "size_bytes",
-          "inline"
+          "size_bytes"
         ],
         "properties": {
           "content_type": {
@@ -25040,10 +25039,6 @@
           "id": {
             "type": "string",
             "format": "uuid"
-          },
-          "inline": {
-            "type": "boolean",
-            "description": "Shown inside the message rather than attached to it."
           },
           "size_bytes": {
             "type": "integer",

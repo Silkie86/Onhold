@@ -110,8 +110,6 @@ pub struct MessageFileView {
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,
-    /// Shown inside the message rather than attached to it.
-    pub inline: bool,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -190,11 +188,10 @@ async fn detail(state: &AppState, tx: &mut core_db::Tx, t: Thread) -> ApiResult<
                 .iter()
                 .filter(|f| f.message_id == m.id)
                 .map(|f| MessageFileView {
-                    id: f.file_id,
+                    id: f.id,
                     filename: f.filename.clone(),
                     content_type: f.content_type.clone(),
                     size_bytes: f.size_bytes,
-                    inline: f.inline,
                 })
                 .collect(),
             id: m.id,
@@ -291,31 +288,52 @@ pub async fn get(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<ThreadDetai
     Ok(d)
 }
 
-/// A file that came with, or was sent with, a message in the thread.
+/// A file that came with, or was sent with, a message in the thread. One
+/// that came from a mailbox is read from there again: OnHold keeps only
+/// its name and size.
 pub async fn download(
     state: &AppState,
     ctx: &Ctx,
     thread_id: Uuid,
-    file_id: Uuid,
+    id: Uuid,
 ) -> ApiResult<super::files::Download> {
     ctx.authorize(Permission::InboxRead)?;
     let mut tx = begin(state, ctx).await?;
     load(&mut tx, ctx, thread_id).await?;
-    if !core_db::inbox::file_in_thread(&mut tx, thread_id, file_id).await? {
-        return Err(ApiError::NotFound);
-    }
-    let file = match core_db::files::mail_file(&mut tx, file_id).await? {
-        Some(f) => f,
-        None => core_db::files::get(&mut tx, file_id)
+    let found = core_db::inbox::file(&mut tx, thread_id, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if let Some(file_id) = found.file.file_id {
+        let file = core_db::files::get(&mut tx, file_id)
             .await?
-            .ok_or(ApiError::NotFound)?,
-    };
-    let bytes = super::files::bytes(state, &mut tx, &file).await?;
+            .ok_or(ApiError::NotFound)?;
+        let bytes = super::files::bytes(state, &mut tx, &file).await?;
+        tx.commit().await?;
+        return Ok(super::files::Download {
+            filename: file.filename,
+            content_type: file.content_type,
+            bytes,
+        });
+    }
     tx.commit().await?;
+    let (Some(integration_id), Some(external_id), Some(part)) =
+        (found.integration_id, found.external_id, found.file.part)
+    else {
+        return Err(ApiError::NotFound);
+    };
+    let raw = super::integrations::fetch_raw(state, ctx, integration_id, &external_id).await?;
+    let attachment = mailbox::parse(&raw)
+        .and_then(|m| m.attachments.into_iter().nth(part as usize))
+        .ok_or_else(|| {
+            ApiError::conflict(
+                "message_gone",
+                "the message in the mailbox no longer has this file",
+            )
+        })?;
     Ok(super::files::Download {
-        filename: file.filename,
-        content_type: file.content_type,
-        bytes,
+        filename: found.file.filename,
+        content_type: found.file.content_type,
+        bytes: attachment.bytes,
     })
 }
 
@@ -1083,7 +1101,7 @@ async fn queue_outbound(
     )
     .await?;
     for f in &o.attachments {
-        core_db::inbox::attach(tx, id, *f, false).await?;
+        core_db::inbox::attach_file(tx, id, *f).await?;
         core_db::files::attach(tx, *f).await?;
     }
     core_db::inbox::refresh(tx, thread.id, false).await?;
@@ -1173,12 +1191,11 @@ pub async fn send(
         .into_iter()
         .filter(|f| f.message_id == m.id)
     {
-        let file = match core_db::files::get(&mut tx, f.file_id).await? {
-            Some(file) => file,
-            None => core_db::files::mail_file(&mut tx, f.file_id)
-                .await?
-                .ok_or(ApiError::NotFound)?,
-        };
+        let file = match f.file_id {
+            Some(id) => core_db::files::get(&mut tx, id).await?,
+            None => None,
+        }
+        .ok_or(ApiError::NotFound)?;
         attachments.push(Attachment {
             filename: file.filename.clone(),
             content_type: file.content_type.clone(),
@@ -1359,6 +1376,18 @@ fn html_to_text(html: &str) -> String {
     html2text::from_read(html.as_bytes(), 10_000).unwrap_or_default()
 }
 
+/// The most of a message read from a mailbox that is kept: its text (in
+/// characters) and its cleaned HTML (in bytes; longer HTML is dropped).
+const MAX_STORED_TEXT: usize = 100_000;
+const MAX_STORED_HTML: usize = 256 * 1024;
+
+fn truncate(s: &str, max: usize) -> &str {
+    match s.char_indices().nth(max) {
+        Some((i, _)) => &s[..i],
+        None => s,
+    }
+}
+
 fn strip_subject(s: &str) -> &str {
     let mut s = s.trim();
     loop {
@@ -1439,6 +1468,15 @@ pub(crate) async fn ingest(
     } else {
         core_db::inbox::contact_for(&mut tx, &others).await?
     };
+    // Only what the business needs is kept: mail from people, what belongs
+    // to a conversation already here, and mail to or from a contact.
+    // Mailing lists, auto-replies and the mailbox's other sent mail stay in
+    // the mailbox only.
+    let keep = thread_id.is_some() || contact.is_some() || (!outbound && person);
+    if !keep {
+        tx.rollback().await?;
+        return Ok(false);
+    }
     let subject = parsed
         .subject
         .as_deref()
@@ -1493,12 +1531,19 @@ pub(crate) async fn ingest(
         }
     };
 
-    let html = parsed.html.as_deref().map(sanitise);
+    // A very long message keeps its text, cut short, and loses its
+    // formatting rather than taking up room.
+    let html = parsed
+        .html
+        .as_deref()
+        .map(sanitise)
+        .filter(|h| h.len() <= MAX_STORED_HTML);
     let text = parsed
         .text
         .clone()
         .or_else(|| parsed.html.as_deref().map(html_to_text))
         .unwrap_or_default();
+    let text = truncate(&text, MAX_STORED_TEXT);
     let message_id = core_domain::ids::new_id();
     let addresses = |list: &[mailbox::Address]| -> Vec<String> {
         list.iter().take(100).map(|a| a.email.clone()).collect()
@@ -1524,7 +1569,7 @@ pub(crate) async fn ingest(
             to_addresses: &addresses(&parsed.to),
             cc_addresses: &addresses(&parsed.cc),
             subject: parsed.subject.as_deref(),
-            body_text: &text,
+            body_text: text,
             body_html: html.as_deref(),
             sent_at,
             status: if outbound { "sent" } else { "received" },
@@ -1540,18 +1585,23 @@ pub(crate) async fn ingest(
         tx.rollback().await?;
         return Ok(false);
     }
-    let limit = state.config.max_upload_bytes;
-    for a in parsed
-        .attachments
-        .iter()
-        .filter(|a| !a.bytes.is_empty() && a.bytes.len() <= limit)
-    {
+    // Attachments stay in the mailbox; shown inside the message (`cid:`)
+    // ones are not shown at all.
+    for (part, a) in parsed.attachments.iter().enumerate() {
+        if a.inline || a.bytes.is_empty() {
+            continue;
+        }
         let filename = super::files::clean_filename(&a.filename);
         let content_type = super::files::sniff(&a.bytes, Some(&a.content_type), &filename);
-        let file =
-            super::files::store_mail(state, &mut tx, &ctx, &filename, &content_type, &a.bytes)
-                .await?;
-        core_db::inbox::attach(&mut tx, message_id, file.id, a.inline).await?;
+        core_db::inbox::attach_part(
+            &mut tx,
+            message_id,
+            part as i32,
+            &filename,
+            truncate(&content_type, 255),
+            a.bytes.len() as i64,
+        )
+        .await?;
     }
     core_db::inbox::refresh(&mut tx, thread_id, !outbound && person).await?;
     let thread = core_db::inbox::get(&mut tx, thread_id, None)

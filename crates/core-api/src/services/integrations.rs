@@ -1081,6 +1081,52 @@ pub(crate) async fn send_from(
     }
 }
 
+/// One message read again from the mailbox it came from, to open an
+/// attachment OnHold did not keep. The caller has checked the reader may
+/// see the message.
+pub(crate) async fn fetch_raw(
+    state: &AppState,
+    ctx: &Ctx,
+    integration_id: Uuid,
+    external_id: &str,
+) -> ApiResult<Vec<u8>> {
+    let mut tx = begin(state, ctx).await?;
+    let i = core_db::integrations::get(&mut tx, integration_id).await?;
+    tx.commit().await?;
+    let gone = || {
+        ApiError::conflict(
+            "mailbox_unavailable",
+            "this file stays in the mailbox it came with, which is no longer connected",
+        )
+    };
+    let i = i
+        .filter(|i| i.disconnected_at.is_none() && i.status != "reconnect")
+        .ok_or_else(gone)?;
+    let read = async {
+        match provider_for(state, ctx.workspace_id, &i, false)
+            .await?
+            .raw(external_id)
+            .await
+        {
+            Err(ProviderError::Unauthorized) => {
+                provider_for(state, ctx.workspace_id, &i, true)
+                    .await?
+                    .raw(external_id)
+                    .await
+            }
+            other => other,
+        }
+    };
+    match read.await {
+        Ok(Some(raw)) => Ok(raw),
+        Ok(None) => Err(ApiError::conflict(
+            "message_gone",
+            "the message is no longer in the mailbox, so its files cannot be opened",
+        )),
+        Err(e) => Err(provider_error(i.mailbox(), e)),
+    }
+}
+
 /// Marks a connection as needing to be connected again, after a send found
 /// its grant gone.
 pub(crate) async fn mark_revoked(

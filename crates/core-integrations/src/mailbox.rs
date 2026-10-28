@@ -77,6 +77,10 @@ pub trait MailProvider: Send + Sync {
     ) -> Result<Batch, ProviderError>;
 
     async fn send(&self, mail: &OutgoingMail) -> Result<SentMail, ProviderError>;
+
+    /// One message, whole, read again (to open an attachment OnHold left in
+    /// the mailbox). `None` when it is no longer there.
+    async fn raw(&self, external_id: &str) -> Result<Option<Vec<u8>>, ProviderError>;
 }
 
 /// Builds the RFC 5322 message for `mail`.

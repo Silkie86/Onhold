@@ -179,44 +179,6 @@ pub(crate) async fn store(
     bytes: &[u8],
     attached: bool,
 ) -> ApiResult<File> {
-    store_from(
-        state,
-        tx,
-        ctx,
-        filename,
-        content_type,
-        bytes,
-        attached,
-        "upload",
-    )
-    .await
-}
-
-/// Like [`store`], for a file that came with a message (`origin` `mail`):
-/// kept from the moment it is stored, never read for search, and opened
-/// only through its thread.
-pub(crate) async fn store_mail(
-    state: &AppState,
-    tx: &mut Tx,
-    ctx: &Ctx,
-    filename: &str,
-    content_type: &str,
-    bytes: &[u8],
-) -> ApiResult<File> {
-    store_from(state, tx, ctx, filename, content_type, bytes, true, "mail").await
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn store_from(
-    state: &AppState,
-    tx: &mut Tx,
-    ctx: &Ctx,
-    filename: &str,
-    content_type: &str,
-    bytes: &[u8],
-    attached: bool,
-    origin: &str,
-) -> ApiResult<File> {
     let id = core_domain::ids::new_id();
     let sha = Sha256::digest(bytes);
     let key = format!("{}/{}", ctx.workspace_id.0, id.simple());
@@ -230,7 +192,7 @@ async fn store_from(
                 other => ApiError::internal(other.to_string()),
             })?;
     }
-    let is_pdf = content_type == PDF && origin == "upload";
+    let is_pdf = content_type == PDF;
     core_db::files::insert(
         tx,
         core_db::files::NewFile {
@@ -243,7 +205,6 @@ async fn store_from(
             storage_key: &key,
             read_state: if is_pdf { "pending" } else { "skipped" },
             attached,
-            origin,
         },
         ctx.user_id(),
     )
@@ -259,12 +220,7 @@ async fn store_from(
         )
         .await?;
     }
-    let file = if origin == "mail" {
-        core_db::files::mail_file(tx, id).await?
-    } else {
-        core_db::files::get(tx, id).await?
-    };
-    file.ok_or(ApiError::NotFound)
+    core_db::files::get(tx, id).await?.ok_or(ApiError::NotFound)
 }
 
 /// A file's bytes.

@@ -4991,8 +4991,6 @@ export interface components {
             filename: string;
             /** Format: uuid */
             id: string;
-            /** @description Shown inside the message rather than attached to it. */
-            inline: boolean;
             /** Format: int64 */
             size_bytes: number;
         };

@@ -536,26 +536,50 @@ pub async fn set_outcome(
 /// A file listed with a message.
 #[derive(Debug, Clone)]
 pub struct MessageFile {
+    pub id: Uuid,
     pub message_id: Uuid,
-    pub file_id: Uuid,
+    /// Sent from OnHold: the stored file.
+    pub file_id: Option<Uuid>,
+    /// Read from a mailbox: which attachment of the message it is.
+    pub part: Option<i32>,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,
-    pub inline: bool,
 }
 
-pub async fn attach(
-    conn: &mut PgConnection,
-    message_id: Uuid,
-    file_id: Uuid,
-    inline: bool,
-) -> Result<()> {
+/// A stored file sent with a message.
+pub async fn attach_file(conn: &mut PgConnection, message_id: Uuid, file_id: Uuid) -> Result<()> {
     sqlx::query!(
-        r#"INSERT INTO thread_message_files (workspace_id, message_id, file_id, inline)
-           VALUES (app_workspace_id(), $1, $2, $3) ON CONFLICT DO NOTHING"#,
+        r#"INSERT INTO thread_message_files (id, workspace_id, message_id, file_id, filename, content_type, size_bytes)
+           SELECT $3, app_workspace_id(), $1, f.id, f.filename, f.content_type, f.size_bytes
+           FROM files f WHERE f.workspace_id = app_workspace_id() AND f.id = $2"#,
         message_id,
         file_id,
-        inline
+        core_domain::ids::new_id()
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// An attachment left in the mailbox: only its name and size are kept.
+pub async fn attach_part(
+    conn: &mut PgConnection,
+    message_id: Uuid,
+    part: i32,
+    filename: &str,
+    content_type: &str,
+    size_bytes: i64,
+) -> Result<()> {
+    sqlx::query!(
+        r#"INSERT INTO thread_message_files (id, workspace_id, message_id, part, filename, content_type, size_bytes)
+           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6)"#,
+        core_domain::ids::new_id(),
+        message_id,
+        part,
+        filename,
+        content_type,
+        size_bytes
     )
     .execute(conn)
     .await?;
@@ -566,35 +590,54 @@ pub async fn attach(
 pub async fn files(conn: &mut PgConnection, thread_id: Uuid) -> Result<Vec<MessageFile>> {
     Ok(sqlx::query_as!(
         MessageFile,
-        r#"SELECT mf.message_id, mf.file_id, f.filename, f.content_type, f.size_bytes, mf.inline
+        r#"SELECT mf.id, mf.message_id, mf.file_id, mf.part, mf.filename, mf.content_type, mf.size_bytes
            FROM thread_message_files mf
            JOIN thread_messages m ON m.workspace_id = mf.workspace_id AND m.id = mf.message_id
-           JOIN files f ON f.workspace_id = mf.workspace_id AND f.id = mf.file_id
-           WHERE mf.workspace_id = app_workspace_id() AND m.thread_id = $1 AND f.deleted_at IS NULL
-           ORDER BY m.sent_at, f.filename"#,
+           WHERE mf.workspace_id = app_workspace_id() AND m.thread_id = $1
+           ORDER BY m.sent_at, mf.part NULLS FIRST, mf.filename"#,
         thread_id
     )
     .fetch_all(conn)
     .await?)
 }
 
-/// Whether a file came with a message of this thread.
-pub async fn file_in_thread(
+/// One file of a thread, with where its message came from.
+#[derive(Debug, Clone)]
+pub struct ThreadFile {
+    pub file: MessageFile,
+    pub integration_id: Option<Uuid>,
+    pub external_id: Option<String>,
+}
+
+pub async fn file(
     conn: &mut PgConnection,
     thread_id: Uuid,
-    file_id: Uuid,
-) -> Result<bool> {
-    Ok(sqlx::query_scalar!(
-        r#"SELECT EXISTS (
-               SELECT 1 FROM thread_message_files mf
-               JOIN thread_messages m ON m.workspace_id = mf.workspace_id AND m.id = mf.message_id
-               WHERE mf.workspace_id = app_workspace_id() AND m.thread_id = $1 AND mf.file_id = $2
-           ) AS "e!""#,
+    id: Uuid,
+) -> Result<Option<ThreadFile>> {
+    let row = sqlx::query!(
+        r#"SELECT mf.id, mf.message_id, mf.file_id, mf.part, mf.filename, mf.content_type, mf.size_bytes,
+                  m.integration_id, m.external_id
+           FROM thread_message_files mf
+           JOIN thread_messages m ON m.workspace_id = mf.workspace_id AND m.id = mf.message_id
+           WHERE mf.workspace_id = app_workspace_id() AND m.thread_id = $1 AND mf.id = $2"#,
         thread_id,
-        file_id
+        id
     )
-    .fetch_one(conn)
-    .await?)
+    .fetch_optional(conn)
+    .await?;
+    Ok(row.map(|r| ThreadFile {
+        file: MessageFile {
+            id: r.id,
+            message_id: r.message_id,
+            file_id: r.file_id,
+            part: r.part,
+            filename: r.filename,
+            content_type: r.content_type,
+            size_bytes: r.size_bytes,
+        },
+        integration_id: r.integration_id,
+        external_id: r.external_id,
+    }))
 }
 
 /// Threads whose snooze has ended, from any workspace (the worker's sweep).

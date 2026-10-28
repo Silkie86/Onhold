@@ -600,11 +600,9 @@ function MessageCard({ threadId, message: m }: { threadId: string; message: Mess
       </div>
       {m.status === "failed" && m.error && <Alert>{m.error}</Alert>}
       {m.html ? <MailBody html={m.html} /> : <p className="whitespace-pre-wrap break-words">{m.text}</p>}
-      {m.files.filter((f) => !f.inline).length > 0 && (
+      {m.files.length > 0 && (
         <ul className="flex flex-wrap gap-2">
-          {m.files
-            .filter((f) => !f.inline)
-            .map((f) => (
+          {m.files.map((f) => (
               <li key={f.id}>
                 <Button
                   size="sm"

@@ -578,18 +578,17 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
         .unwrap();
     assert!(!String::from_utf8_lossy(&secret).contains("1//0gtest-owls-refresh"));
 
-    // The worker reads the mailbox: spam stays out, the enquiry is linked to Bea.
+    // The worker reads the mailbox: the enquiry is linked to Bea; spam and
+    // the newsletter stay in the mailbox only.
     h.drain().await;
     let page = h.threads(&owner).await;
-    assert_eq!(page["total"], 2, "{page}");
+    assert_eq!(page["total"], 1, "{page}");
     let thread = find(&page, "Booking enquiry for 12 June");
     assert_eq!(thread["contact_id"], bea.to_string(), "{thread}");
     assert_eq!(thread["unread"], true);
     assert_eq!(thread["status"], "open");
     assert_eq!(thread["participants"], json!(["bea@grand.test"]));
     let thread_id = thread["id"].as_str().unwrap().to_owned();
-    let news = find(&page, "This week's venue news");
-    assert_eq!(news["contact_id"], Value::Null);
 
     let detail = h.thread(&owner, &thread_id).await;
     let first = &detail["messages"][0];
@@ -604,9 +603,15 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
         html.contains("rel=\"noopener noreferrer nofollow\""),
         "{html}"
     );
-    // The attachment is kept and downloads through the thread only.
+    // The attachment stays in the mailbox: it is listed, read from Gmail
+    // when opened, and reached through the thread only.
     let file = &first["files"][0];
     assert_eq!(file["filename"], "rider.txt");
+    let stored: i64 = sqlx::query_scalar("SELECT count(*) FROM files")
+        .fetch_one(&h.app.owner)
+        .await
+        .unwrap();
+    assert_eq!(stored, 0);
     let file_id = file["id"].as_str().unwrap();
     let download = h
         .get(
@@ -615,6 +620,7 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
         )
         .await;
     assert_eq!(download.status, StatusCode::OK);
+    assert_eq!(download.body, "Two vocal mics, one DI.");
     h.get(&owner, &format!("/api/v1/files/{file_id}"))
         .await
         .expect(StatusCode::NOT_FOUND, "not_found");
@@ -710,7 +716,7 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
         "{preview}"
     );
     let page = h.threads(&owner).await;
-    assert_eq!(page["total"], 2, "no new threads: {page}");
+    assert_eq!(page["total"], 1, "no new threads: {page}");
 
     // Another member does not see a private mailbox until it is shared.
     let agent = h.app.add_member(&owner, "cy@owls.test", "agent").await;
@@ -738,7 +744,7 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
     )
     .await
     .ok();
-    assert_eq!(h.threads(&agent).await["total"], 2);
+    assert_eq!(h.threads(&agent).await["total"], 1);
 
     // Another workspace sees nothing at all.
     let (_other, stranger) = h.app.workspace_with_owner("hawks").await;
@@ -823,7 +829,16 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
         h.fake.lock().unwrap().revoked,
         vec!["1//0gtest-owls-refresh".to_owned()]
     );
-    assert_eq!(h.threads(&owner).await["total"], 2);
+    assert_eq!(h.threads(&owner).await["total"], 1);
+    // Its attachments stayed in the mailbox, so they cannot be opened now.
+    let detail = h.thread(&owner, &thread_id).await;
+    let file_id = detail["messages"][0]["files"][0]["id"].as_str().unwrap();
+    h.get(
+        &owner,
+        &format!("/api/v1/inbox/threads/{thread_id}/files/{file_id}"),
+    )
+    .await
+    .expect(StatusCode::CONFLICT, "mailbox_unavailable");
     let actions = h.app.audit_actions(_ws).await;
     for action in [
         "integration.connected",
@@ -1187,6 +1202,16 @@ async fn an_imap_mailbox_is_read_and_replies_go_out_by_smtp(pool: PgPool) {
     let thread_id = page["items"][0]["id"].as_str().unwrap().to_owned();
     let detail = h.thread(&owner, &thread_id).await;
     assert_eq!(detail["messages"][0]["files"][0]["filename"], "rider.txt");
+    // Opening it reads the message from the server again.
+    let file_id = detail["messages"][0]["files"][0]["id"].as_str().unwrap();
+    let download = h
+        .get(
+            &owner,
+            &format!("/api/v1/inbox/threads/{thread_id}/files/{file_id}"),
+        )
+        .await
+        .ok();
+    assert_eq!(download.body, "Two vocal mics, one DI.");
 
     h.post(
         &owner,

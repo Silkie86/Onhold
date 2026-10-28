@@ -150,9 +150,9 @@ CREATE TABLE thread_messages (
     to_addresses   text[] NOT NULL DEFAULT '{}' CHECK (cardinality(to_addresses) <= 100),
     cc_addresses   text[] NOT NULL DEFAULT '{}' CHECK (cardinality(cc_addresses) <= 100),
     subject        text CHECK (length(subject) <= 1000),
-    body_text      text NOT NULL DEFAULT '' CHECK (length(body_text) <= 1000000),
+    body_text      text NOT NULL DEFAULT '' CHECK (length(body_text) <= 200000),
     -- Sanitised before it is stored: no scripts, styles, forms or remote content.
-    body_html      text CHECK (length(body_html) <= 2000000),
+    body_html      text CHECK (length(body_html) <= 500000),
     sent_at        timestamptz NOT NULL,
     -- received: read from a mailbox. queued, sent, failed: written here.
     status         text NOT NULL CHECK (status IN ('received', 'queued', 'sent', 'failed')),
@@ -180,21 +180,24 @@ CREATE UNIQUE INDEX thread_messages_message_id ON thread_messages (integration_i
 -- Threading a reply by the message it answers.
 CREATE INDEX thread_messages_lookup ON thread_messages (workspace_id, message_id) WHERE message_id IS NOT NULL;
 
--- Files that came with a message, or were sent with one.
+-- Files that came with a message, or were sent with one. What was sent from
+-- OnHold is a stored file; what came from a mailbox stays there (only its
+-- name and size are kept) and is read again when someone opens it.
 CREATE TABLE thread_message_files (
+    id           uuid PRIMARY KEY,
     workspace_id uuid NOT NULL REFERENCES workspaces (id),
     message_id   uuid NOT NULL,
-    file_id      uuid NOT NULL,
-    -- Shown inside the message (`cid:`) rather than listed.
-    inline       boolean NOT NULL DEFAULT false,
-    PRIMARY KEY (message_id, file_id),
+    file_id      uuid,
+    -- Which attachment of the message it is, counting from 0.
+    part         integer CHECK (part >= 0),
+    filename     text NOT NULL CHECK (length(filename) <= 255),
+    content_type text NOT NULL CHECK (length(content_type) <= 255),
+    size_bytes   bigint NOT NULL CHECK (size_bytes >= 0),
+    CHECK ((file_id IS NULL) <> (part IS NULL)),
     FOREIGN KEY (workspace_id, message_id) REFERENCES thread_messages (workspace_id, id),
     FOREIGN KEY (workspace_id, file_id) REFERENCES files (workspace_id, id)
 );
-
--- A file that came by mail is opened through its thread, which knows who
--- may see it, never through the general file routes.
-ALTER TABLE files ADD COLUMN origin text NOT NULL DEFAULT 'upload' CHECK (origin IN ('upload', 'mail'));
+CREATE INDEX thread_message_files_message ON thread_message_files (message_id);
 
 -- Row-level security ------------------------------------------------------------
 

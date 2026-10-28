@@ -210,6 +210,10 @@ impl MailProvider for Graph {
         })
     }
 
+    async fn raw(&self, external_id: &str) -> Result<Option<Vec<u8>>, ProviderError> {
+        self.mime(external_id).await
+    }
+
     async fn send(&self, mail: &OutgoingMail) -> Result<SentMail, ProviderError> {
         // Graph takes a whole MIME message, base64-encoded, as text/plain.
         let raw = build(mail)?.formatted();

@@ -261,6 +261,13 @@ impl MailProvider for Gmail {
         })
     }
 
+    async fn raw(&self, external_id: &str) -> Result<Option<Vec<u8>>, ProviderError> {
+        match self.message(external_id).await? {
+            Some(m) => decode(&m.raw).map(Some),
+            None => Ok(None),
+        }
+    }
+
     async fn send(&self, mail: &OutgoingMail) -> Result<SentMail, ProviderError> {
         let raw = build(mail)?.formatted();
         let mut body = serde_json::json!({ "raw": BASE64URL.encode(&raw) });

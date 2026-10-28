@@ -383,6 +383,42 @@ impl MailProvider for Imap {
             .map_err(|_| ProviderError::Unavailable("the mail server was too slow".into()))?
     }
 
+    async fn raw(&self, external_id: &str) -> Result<Option<Vec<u8>>, ProviderError> {
+        let Some((validity, uid)) = external_id
+            .split_once(':')
+            .and_then(|(v, u)| Some((v.parse::<u32>().ok()?, u.parse::<u32>().ok()?)))
+        else {
+            return Ok(None);
+        };
+        let work = async {
+            let mut session = self.session().await?;
+            let mailbox = session.select("INBOX").await.map_err(imap_error)?;
+            // Renumbered since: the UID may now be another message.
+            if mailbox.uid_validity.unwrap_or(0) != validity {
+                let _ = session.logout().await;
+                return Ok(None);
+            }
+            let fetches: Vec<async_imap::types::Fetch> = session
+                .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
+                .await
+                .map_err(imap_error)?
+                .try_collect()
+                .await
+                .map_err(imap_error)?;
+            let _ = session.logout().await;
+            Ok::<_, ProviderError>(
+                fetches
+                    .iter()
+                    .find(|f| f.uid == Some(uid))
+                    .and_then(|f| f.body())
+                    .map(<[u8]>::to_vec),
+            )
+        };
+        tokio::time::timeout(TIMEOUT * 3, work)
+            .await
+            .map_err(|_| ProviderError::Unavailable("the mail server was too slow".into()))?
+    }
+
     async fn send(&self, mail: &OutgoingMail) -> Result<SentMail, ProviderError> {
         let message = build(mail)?;
         let transport = self.smtp().await?;
