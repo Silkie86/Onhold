@@ -1,6 +1,7 @@
 //! Pitching, part 1: where each organisation is and where things stand with
 //! it, the lists of what it wants, the workspace's own settings for them,
-//! and organisations moving along by themselves as deals come in.
+//! and organisations moving along by themselves as deals come in; and the
+//! pitch log of what was done and the answers given.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -503,4 +504,151 @@ async fn settings_are_the_workspaces_own(pool: PgPool) {
     assert!(!keys.contains(&"follow_up_on"));
     assert!(keys.contains(&"relationship"));
     assert!(keys.contains(&"region"));
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let viewer = app.add_member(&owner, "viewer@acme.test", "viewer").await;
+    let club = organisation(&app, &owner, json!({ "name": "Hyde Park Book Club" })).await;
+    let club_id = club["id"].as_str().unwrap().to_owned();
+    let other = organisation(&app, &owner, json!({ "name": "Brudenell" })).await;
+    let jo = post(
+        &app,
+        &owner,
+        "/api/v1/contacts",
+        json!({ "name": "Jo Booker", "organisation_id": club_id }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let elsewhere = post(
+        &app,
+        &owner,
+        "/api/v1/contacts",
+        json!({ "name": "Sam", "organisation_id": other["id"] }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let owls = talent(&app, &owner, "The Midnight Owls").await;
+
+    // The workspace's own actions and answers, OnHold's to start with.
+    let s = get(&app, &owner, "/api/v1/pitching/settings").await.body;
+    assert_eq!(s["actions"][0], json!({ "key": "pitched", "label": "Pitched" }));
+    assert_eq!(
+        s["outcomes"][0],
+        json!({ "key": "interested", "label": "Interested or yes", "tag": "good" })
+    );
+
+    // Pitched by email last week, then the answer today.
+    let pitched = post(
+        &app,
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": club_id, "contact_id": jo, "kind": "action", "type_key": "pitched",
+                "channel": "email", "item": { "kind": "talent", "id": owls }, "note": "Sent the EPK",
+                "happened_at": "2026-10-21T10:00:00Z" }),
+    )
+    .await;
+    assert_eq!(pitched.status, StatusCode::CREATED, "{}", pitched.body);
+    assert_eq!(pitched.body["type_label"], "Pitched");
+    assert_eq!(pitched.body["contact_name"], "Jo Booker");
+    assert_eq!(pitched.body["item"]["name"], "The Midnight Owls");
+    assert_eq!(pitched.body["source"], "manual");
+    let answer = post(
+        &app,
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": club_id, "kind": "outcome", "type_key": "not_now", "channel": "phone" }),
+    )
+    .await
+    .ok();
+    assert_eq!(answer.body["tag"], "wait");
+
+    // What they cannot be.
+    let bad = post(
+        &app,
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": club_id, "contact_id": elsewhere, "kind": "outcome",
+                "type_key": "pitched", "item": { "kind": "talent", "id": Uuid::now_v7() },
+                "happened_at": "2099-01-01T00:00:00Z" }),
+    )
+    .await;
+    assert_eq!(bad.status, StatusCode::BAD_REQUEST, "{}", bad.body);
+    let mut f = fields(&bad);
+    f.sort();
+    assert_eq!(f, ["contact_id", "happened_at", "item", "type_key"]);
+    post(
+        &app,
+        &viewer,
+        "/api/v1/pitches",
+        json!({ "organisation_id": club_id, "kind": "action", "type_key": "called" }),
+    )
+    .await
+    .expect(StatusCode::FORBIDDEN, "permission_denied");
+
+    // Latest first; viewers can read it.
+    let log = get(&app, &viewer, &format!("/api/v1/organisations/{club_id}/pitches")).await;
+    assert_eq!(log.body["total"], 2);
+    assert_eq!(log.body["items"][0]["type_key"], "not_now");
+    assert_eq!(log.body["items"][1]["type_key"], "pitched");
+    let none = get(&app, &owner, &format!("/api/v1/organisations/{}/pitches", other["id"].as_str().unwrap())).await;
+    assert_eq!(none.body["total"], 0);
+
+    // Edited: the answer was really "interested", and with Jo.
+    let id = answer.id("/id");
+    let edited = app
+        .patch(&format!("/api/v1/pitches/{id}"))
+        .signed_in(&owner)
+        .header("If-Match", "\"1\"")
+        .json(json!({ "type_key": "interested", "contact_id": jo, "note": "Wants a date in May" }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(edited.body["tag"], "good");
+    assert_eq!(edited.body["contact_name"], "Jo Booker");
+    assert_eq!(edited.body["version"], 2);
+    // An action's type is one of the actions, not the answers.
+    patch(
+        &app,
+        &owner,
+        &format!("/api/v1/pitches/{}", pitched.id("/id")),
+        json!({ "type_key": "interested" }),
+    )
+    .await
+    .expect(StatusCode::BAD_REQUEST, "invalid_input");
+
+    // A removed answer type still shows, unlabelled, and can be edited.
+    let mut body = s.clone();
+    body["outcomes"] = json!([{ "key": "yes", "label": "Yes", "tag": "good" }]);
+    app.put("/api/v1/pitching/settings")
+        .signed_in(&owner)
+        .json(body)
+        .send()
+        .await
+        .ok();
+    let log = get(&app, &owner, &format!("/api/v1/organisations/{club_id}/pitches")).await;
+    assert_eq!(log.body["items"][0]["type_label"], Value::Null);
+    assert_eq!(log.body["items"][0]["tag"], Value::Null);
+    patch(
+        &app,
+        &owner,
+        &format!("/api/v1/pitches/{id}"),
+        json!({ "note": "Still keen" }),
+    )
+    .await
+    .ok();
+
+    // Removed.
+    let gone = app
+        .delete(&format!("/api/v1/pitches/{id}"))
+        .signed_in(&owner)
+        .send()
+        .await;
+    assert_eq!(gone.status, StatusCode::NO_CONTENT, "{}", gone.body);
+    let log = get(&app, &owner, &format!("/api/v1/organisations/{club_id}/pitches")).await;
+    assert_eq!(log.body["total"], 1);
 }
