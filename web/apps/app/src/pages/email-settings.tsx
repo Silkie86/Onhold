@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
 import { useSession } from "../session.tsx";
 import { useMailSetup } from "./inbox.tsx";
+import { KeepMailCard } from "./mail-device.tsx";
 
 type Mailbox = Schemas["IntegrationView"];
 type Security = "tls" | "starttls";
@@ -123,6 +124,7 @@ export function EmailSettingsPage() {
       </p>
       {error && <Alert>{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
+      <KeepMailCard />
 
       {s.mailboxes.length > 0 && (
         <section aria-label="Connected mailboxes" className="flex flex-col gap-3">

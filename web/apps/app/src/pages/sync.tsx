@@ -11,6 +11,7 @@ import { useOffline, useSyncStatus } from "../data.ts";
 import type { OutboxItem } from "../offline/store.ts";
 import { type BookingStatus, STATUS_LABEL } from "../work.ts";
 import { Loading } from "./crm.tsx";
+import { KeepMailCard } from "./mail-device.tsx";
 
 const OPS: Record<OutboxItem["op"], string> = { create: "New", update: "Edited", delete: "Deleted", status: "Status" };
 
@@ -25,6 +26,8 @@ function kind(item: OutboxItem): { label: string; link?: { to: string; params: R
       return { label: "task", link: { to: "/tasks", params: {} } };
     case "availability":
       return { label: "marked time" };
+    case "reply":
+      return { label: "reply", link: { to: "/inbox", params: {} } };
     default: {
       const entity = ENTITIES[item.entity];
       return { label: entity.label.toLowerCase(), link: { to: "/crm/$entity/$id", params: { entity: entity.path, id: item.id } } };
@@ -99,6 +102,8 @@ export function SyncPage() {
           <RefreshCw className={status.syncing ? "animate-spin" : undefined} /> Sync now
         </Button>
       </Card>
+
+      <KeepMailCard />
 
       {attention.length > 0 && (
         <section aria-label="Needs attention" className="flex flex-col gap-3">

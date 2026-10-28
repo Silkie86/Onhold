@@ -56,7 +56,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { ENTITIES, entityByPath } from "./api.ts";
 import { OfflineContext, searchEverything, useSyncStatus } from "./data.ts";
-import { claimFor } from "./offline/store.ts";
+import { claimFor, forgetMailExcept } from "./offline/store.ts";
 import { OfflineSync } from "./offline/sync.ts";
 import { IS_APP, KEEPS_OFFLINE_COPY, serverUrl } from "./platform.ts";
 import { GoTo } from "./go-to.tsx";
@@ -212,6 +212,11 @@ function SignedIn({ me }: { me: Session["me"] }) {
   const current = workspace ?? me.workspaces[0];
   // The plan switch is for the apps; the installed website is the website.
   const sync = useOfflineSync(current && (!IS_APP || current.apps_allowed) ? current.id : undefined, me.user.id);
+  // Email kept for a workspace the person has left, or whose plan dropped the apps, goes.
+  const keptFor = me.workspaces.filter((w) => !IS_APP || w.apps_allowed).map((w) => w.id).join(",");
+  useEffect(() => {
+    if (KEEPS_OFFLINE_COPY) void forgetMailExcept(keptFor.split(",")).catch(() => undefined);
+  }, [keptFor]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(storedTheme);
@@ -440,7 +445,8 @@ function SyncIndicator() {
       : "Offline"
     : status.attention
       ? `${status.attention} need${status.attention === 1 ? "s" : ""} attention`
-      : status.syncing || status.pending
+      : // Not "up to date" before the first download has finished.
+        status.syncing || status.pending || !status.ready
         ? "Syncing…"
         : "Up to date";
   const warn = !status.online || status.attention > 0;

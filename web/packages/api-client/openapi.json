@@ -25147,6 +25147,13 @@
             "type": "string",
             "format": "uuid"
           },
+          "reply_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the sender asked answers to go, when not to `from_address`."
+          },
           "sent_at": {
             "type": "string",
             "format": "date-time"

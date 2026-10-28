@@ -15,6 +15,9 @@
 //   newer edit; that becomes a conflict for the person to settle).
 // - A change that links to a record created offline waits until that record
 //   has reached the server and has its real id.
+// - When the person keeps recent email on the device, the feed also names
+//   the conversations with news, and those are read again (see `mail.ts`).
+//   Replies written offline wait in the same queue.
 
 import type { RecordJson } from "@onhold/ui";
 import { ApiFailure, RECORD_PATHS, api, ok } from "../api.ts";
@@ -23,6 +26,7 @@ import {
   OFFLINE_ENTITIES,
   type OutboxItem,
   type OutboxOp,
+  type QueuedEntity,
   type StoredEntity,
   WORK_ENTITIES,
   type WorkEntity,
@@ -46,6 +50,7 @@ import {
   setMeta,
   waitsForLocal,
 } from "./store.ts";
+import { MailCopy } from "./mail.ts";
 import { type DressContext, type Stage, blankRecord, dress } from "./work.ts";
 
 export interface SyncStatus {
@@ -70,6 +75,8 @@ interface Downloaded {
 
 const TOPICS =
   "contact.*,organisation.*,talent.*,custom_field.*,enquiry.*,booking.*,task.*,availability.*,pipeline.*";
+/** Also read when the device keeps email: which conversations had news. */
+const MAIL_TOPICS = `${TOPICS},thread.*,message.*`;
 const PAGE = 500;
 const EVERY_MS = 20_000;
 /**
@@ -113,8 +120,14 @@ export class OfflineSync {
   private sending: number | undefined;
   /** Ids that records created offline were given by the server. */
   readonly renamed = new Map<string, string>();
+  /** Recent email kept on the device, when the person asks for it. */
+  readonly mail: MailCopy;
+  /** Conversations the feed says had news, to read again when email is kept. */
+  private readonly mailTouched = new Set<string>();
 
-  constructor(readonly ws: string) {}
+  constructor(readonly ws: string) {
+    this.mail = new MailCopy(ws, () => this.req);
+  }
 
   /**
    * Every request names this engine's workspace, whatever the app has
@@ -195,6 +208,7 @@ export class OfflineSync {
       const now = new Date().toISOString();
       await setMeta(`${this.ws}:lastSync`, now);
       this.set({ online: true, lastSync: now, ready: true });
+      await this.refreshMail();
     } catch (e) {
       if (this.stopping.signal.aborted) return;
       if (isNetworkError(e)) this.set({ online: false });
@@ -202,6 +216,21 @@ export class OfflineSync {
     } finally {
       await this.refreshCounts();
       this.set({ syncing: false });
+    }
+  }
+
+  /** Brings the email kept on the device up to date; a failure here leaves the rest alone. */
+  private async refreshMail() {
+    const before = [...this.mailTouched];
+    const touched = new Set(before);
+    try {
+      if (await this.mail.refresh(touched)) this.notifyChanged();
+    } catch (e) {
+      if (isNetworkError(e) || this.stopping.signal.aborted) throw e;
+      console.warn("email sync failed", e);
+    } finally {
+      // What was dealt with; the rest is read on the next run.
+      for (const id of before) if (!touched.has(id)) this.mailTouched.delete(id);
     }
   }
 
@@ -352,6 +381,7 @@ export class OfflineSync {
 
   private async pullChanges(cursor: number): Promise<void> {
     let after = cursor;
+    const topics = (await this.mail.enabled()) ? MAIL_TOPICS : TOPICS;
     const touched = new Map<string, EntityName | "enquiry" | "booking" | "task">();
     let fieldsChanged = false;
     let availabilityChanged = false;
@@ -359,7 +389,7 @@ export class OfflineSync {
     for (;;) {
       let page;
       try {
-        page = await ok(api.GET("/api/v1/events", { ...this.req, params: { query: { after, topics: TOPICS, limit: PAGE } } }));
+        page = await ok(api.GET("/api/v1/events", { ...this.req, params: { query: { after, topics, limit: PAGE } } }));
       } catch (e) {
         if (e instanceof ApiFailure && e.status === 410) {
           await this.downloadAll();
@@ -369,7 +399,8 @@ export class OfflineSync {
       }
       for (const ev of page.events) {
         const entity = ev.topic.split(".")[0] ?? "";
-        if (entity === "custom_field") fieldsChanged = true;
+        if ((entity === "thread" || entity === "message") && ev.object_id) this.mailTouched.add(ev.object_id);
+        else if (entity === "custom_field") fieldsChanged = true;
         else if (entity === "availability") availabilityChanged = true;
         else if (entity === "pipeline") stagesChanged = true;
         else if (ev.object_id && [...OFFLINE_ENTITIES, "enquiry", "booking", "task"].includes(entity)) {
@@ -503,6 +534,28 @@ export class OfflineSync {
     return dress(entity, applyChange({ ...base, updated_at: ctx.now }, op, body, ctx.now), before, ctx);
   }
 
+  /**
+   * Queues a reply to a conversation, to be sent when the device is back
+   * online. `sent` when it was sent once already and may have arrived: it
+   * then goes again with the same key, which the server recognises.
+   */
+  async queueReply(threadId: string, body: { body: string; to?: string[] }, label: string, key: string, sent = false): Promise<void> {
+    const item: OutboxItem = {
+      ws: this.ws,
+      entity: "reply",
+      op: "create",
+      id: threadId,
+      body,
+      label,
+      key,
+      createdAt: new Date().toISOString(),
+      state: "pending",
+      ...(sent && { tries: 0 }),
+    };
+    await this.saveQueue((queue) => enqueue(queue, item, this.sending));
+    void this.syncNow();
+  }
+
   /** True while changes to this record are waiting to be sent. */
   async hasQueued(id: string): Promise<boolean> {
     return (await outbox(this.ws)).some((q) => q.id === id);
@@ -539,7 +592,19 @@ export class OfflineSync {
     const { signal } = this.req;
     try {
       // What was queued meanwhile is in the queue as it is now, not as it was when this was sent.
-      if (item.op === "create") {
+      if (item.entity === "reply") {
+        await ok(
+          api.POST("/api/v1/inbox/threads/{id}/reply", {
+            params: { path: { id: item.id } },
+            headers,
+            signal,
+            body: item.body as never,
+          }),
+        );
+        await removeOutbox(item.seq as number);
+        // Read again with the feed's news, once the rest of the queue has gone.
+        this.mailTouched.add(item.id);
+      } else if (item.op === "create") {
         const created = (await ok(
           api.POST(P(item.entity), { headers, signal, body: item.body as never }),
         )) as unknown as RecordJson;
@@ -609,12 +674,13 @@ export class OfflineSync {
         const tries = (item.tries ?? 0) + 1;
         const wait = Math.min(RETRY_MS * 2 ** (tries - 1), RETRY_MAX_MS);
         await putOutbox({ ...item, tries, retryAt: new Date(Date.now() + wait).toISOString(), error: e.message });
-      } else if (e.status === 412) {
+      } else if (e.status === 412 && item.entity !== "reply") {
+        const entity = item.entity;
         // Someone else changed it first: keep both versions and ask.
         let server: RecordJson | undefined;
         try {
           server = (await ok(
-            api.GET(PI(item.entity), { ...this.req, params: { path: { id: item.id } } }),
+            api.GET(PI(entity), { ...this.req, params: { path: { id: item.id } } }),
           )) as unknown as RecordJson;
         } catch {
           server = undefined;
@@ -660,7 +726,10 @@ export class OfflineSync {
   async resolve(seq: number, choice: "mine" | "theirs"): Promise<void> {
     const item = (await outbox(this.ws)).find((q) => q.seq === seq);
     if (!item) return;
-    if (choice === "mine" && item.state === "conflict" && item.server) {
+    if (item.entity === "reply") {
+      // A reply has no copy to go back to: dropping it is all there is.
+      if (choice === "theirs") await removeOutbox(seq);
+    } else if (choice === "mine" && item.state === "conflict" && item.server) {
       await putOutbox({ ...item, state: "pending", version: Number(item.server.version), server: undefined, error: undefined });
       const mine = applyChange(item.server, item.op, item.body);
       await putRecords(this.ws, item.entity, [
