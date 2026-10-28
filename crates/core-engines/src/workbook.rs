@@ -284,10 +284,7 @@ fn finish_csv(w: csv::Writer<Vec<u8>>) -> Result<String, String> {
 
 /// One sheet, each of its rows one CSV row, blank ones included, so row
 /// numbers match what the sheet shows.
-fn one_sheet_csv(
-    rows: &[SheetRow],
-    fills: &HashMap<u32, &str>,
-) -> Result<String, String> {
+fn one_sheet_csv(rows: &[SheetRow], fills: &HashMap<u32, &str>) -> Result<String, String> {
     let header_at = rows[0].0;
     let coloured = rows[1..].iter().any(|(r, _)| fills.contains_key(r));
     let width = rows[0].1.len();
@@ -382,10 +379,7 @@ fn many_sheets_csv(
 /// One sheet's rows that have anything in them, with their row index
 /// (from 0), streamed cell by cell; `None` when it is empty. The first is
 /// the header.
-fn sheet_rows(
-    book: &mut Xlsx<Cursor<&[u8]>>,
-    name: &str,
-) -> Result<Option<Vec<SheetRow>>, String> {
+fn sheet_rows(book: &mut Xlsx<Cursor<&[u8]>>, name: &str) -> Result<Option<Vec<SheetRow>>, String> {
     let mut cells = book
         .worksheet_cells_reader(name)
         .map_err(|e| format!("the sheet `{name}` could not be read: {e}"))?;
