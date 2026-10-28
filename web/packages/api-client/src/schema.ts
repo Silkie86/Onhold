@@ -6672,6 +6672,11 @@ export interface components {
         Signatures: {
             /** @description You may change the workspace's. */
             can_edit_workspace: boolean;
+            /**
+             * @description You are a member here, so may have your own (a visiting operator
+             *     or an API key has none).
+             */
+            is_member: boolean;
             /** @description Yours, in this workspace. */
             mine?: string | null;
             /** @description The workspace's: used when a member has none, and on emails rules send. */

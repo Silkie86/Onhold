@@ -30940,12 +30940,17 @@
       "Signatures": {
         "type": "object",
         "required": [
+          "is_member",
           "can_edit_workspace"
         ],
         "properties": {
           "can_edit_workspace": {
             "type": "boolean",
             "description": "You may change the workspace's."
+          },
+          "is_member": {
+            "type": "boolean",
+            "description": "You are a member here, so may have your own (a visiting operator\nor an API key has none)."
           },
           "mine": {
             "type": [

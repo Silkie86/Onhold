@@ -69,23 +69,32 @@ export function SignatureCard() {
   if (sigs.isError) return <Alert>{sigs.error.message}</Alert>;
   const s = sigs.data;
   const done = (next: typeof s) => qc.setQueryData(["signatures"], next);
+  // The workspace's signature is part of the workspace, whose version moves.
+  const doneWorkspace = (next: typeof s) => {
+    done(next);
+    void qc.invalidateQueries({ queryKey: ["workspace"] });
+  };
   return (
     <Card className="flex flex-col gap-5 p-4" aria-label="Signatures">
       <h2 className="font-semibold">Signature</h2>
-      <SignatureForm
-        id="my-signature"
-        label="Your signature"
-        hint="Added under what you send from the inbox, and under the quotes, invoices and signing requests you send. Plain text."
-        saved={s.mine}
-        save={async (signature) => done(await ok(api.PUT("/api/v1/signatures/mine", { body: { signature } })))}
-      />
+      {s.is_member && (
+        <SignatureForm
+          id="my-signature"
+          label="Your signature"
+          hint="Added under what you send from the inbox, and under the quotes, invoices and signing requests you send. Plain text."
+          saved={s.mine}
+          save={async (signature) => done(await ok(api.PUT("/api/v1/signatures/mine", { body: { signature } })))}
+        />
+      )}
       {s.can_edit_workspace ? (
         <SignatureForm
           id="workspace-signature"
           label="Workspace signature"
           hint="Used for members who have not written their own, and under emails your rules send."
           saved={s.workspace}
-          save={async (signature) => done(await ok(api.PUT("/api/v1/signatures/workspace", { body: { signature } })))}
+          save={async (signature) =>
+            doneWorkspace(await ok(api.PUT("/api/v1/signatures/workspace", { body: { signature } })))
+          }
         />
       ) : (
         s.workspace &&

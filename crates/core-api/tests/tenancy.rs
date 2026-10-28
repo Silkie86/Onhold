@@ -644,6 +644,7 @@ async fn members_sign_their_own_emails(pool: PgPool) {
         .ok();
     assert_eq!(res.body["mine"], "  Ali\nAcme");
     assert_eq!(res.body["workspace"], "The Acme team");
+    assert_eq!(res.body["is_member"], true);
     assert_eq!(res.body["can_edit_workspace"], false);
 
     // Each member's is their own; only those who manage the workspace change its.
@@ -670,6 +671,7 @@ async fn members_sign_their_own_emails(pool: PgPool) {
     let key = create_key(&app, &owner, json!(["workspace:read"])).await;
     let res = app.get("/api/v1/signatures").bearer(&key).send().await.ok();
     assert_eq!(res.body["mine"], Value::Null);
+    assert_eq!(res.body["is_member"], false);
     assert_eq!(res.body["workspace"], "The Acme team");
 }
 
@@ -1305,6 +1307,20 @@ async fn impersonation_is_time_boxed_and_audited(pool: PgPool) {
         .send()
         .await
         .expect(StatusCode::FORBIDDEN, "not_a_member");
+    // A visitor has no signature of their own to set.
+    let sigs = app
+        .get("/api/v1/signatures")
+        .signed_in(&in_customer)
+        .send()
+        .await
+        .ok();
+    assert_eq!(sigs.body["is_member"], false);
+    app.put("/api/v1/signatures/mine")
+        .signed_in(&in_customer)
+        .json(json!({ "signature": "Support" }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "member_required");
     let me = app.get("/api/v1/auth/me").signed_in(&ops).send().await.ok();
     assert_eq!(
         me.body["impersonation"]["workspace_id"],

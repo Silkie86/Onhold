@@ -42,12 +42,13 @@ pub async fn for_sender(conn: &mut PgConnection, user: Option<UserId>) -> Result
     .flatten())
 }
 
+/// Sets the member's own; false when they are not a member here.
 pub async fn set_member(
     conn: &mut PgConnection,
     user: UserId,
     signature: Option<&str>,
-) -> Result<()> {
-    sqlx::query!(
+) -> Result<bool> {
+    let done = sqlx::query!(
         r#"UPDATE memberships SET email_signature = $2
            WHERE workspace_id = app_workspace_id() AND user_id = $1 AND deleted_at IS NULL"#,
         user.0,
@@ -55,7 +56,7 @@ pub async fn set_member(
     )
     .execute(conn)
     .await?;
-    Ok(())
+    Ok(done.rows_affected() == 1)
 }
 
 pub async fn set_workspace(conn: &mut PgConnection, signature: Option<&str>) -> Result<()> {

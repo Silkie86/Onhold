@@ -22,6 +22,9 @@ pub struct Signatures {
     pub mine: Option<String>,
     /// The workspace's: used when a member has none, and on emails rules send.
     pub workspace: Option<String>,
+    /// You are a member here, so may have your own (a visiting operator
+    /// or an API key has none).
+    pub is_member: bool,
     /// You may change the workspace's.
     pub can_edit_workspace: bool,
 }
@@ -55,19 +58,24 @@ fn clean(s: Option<String>) -> ApiResult<Option<String>> {
     Ok(Some(s))
 }
 
+fn not_member() -> ApiError {
+    ApiError::forbidden(
+        "member_required",
+        "a signature belongs to a member of this workspace, signed in",
+    )
+}
+
 fn member(ctx: &Ctx) -> ApiResult<UserId> {
-    ctx.user_id().ok_or_else(|| {
-        ApiError::forbidden(
-            "member_required",
-            "a signature belongs to a member, signed in",
-        )
-    })
+    ctx.user_id()
+        .filter(|_| ctx.role.is_some())
+        .ok_or_else(not_member)
 }
 
 pub async fn get(state: &AppState, ctx: &Ctx) -> ApiResult<Signatures> {
     ctx.authorize(Permission::WorkspaceRead)?;
     let mut tx = begin(state, ctx).await?;
-    let mine = match ctx.user_id() {
+    let is_member = member(ctx).is_ok();
+    let mine = match ctx.user_id().filter(|_| is_member) {
         Some(u) => core_db::signatures::member(&mut tx, u).await?,
         None => None,
     };
@@ -76,6 +84,7 @@ pub async fn get(state: &AppState, ctx: &Ctx) -> ApiResult<Signatures> {
     Ok(Signatures {
         mine,
         workspace,
+        is_member,
         can_edit_workspace: ctx.permissions.contains(&Permission::WorkspaceUpdate),
     })
 }
@@ -86,7 +95,9 @@ pub async fn set_mine(state: &AppState, ctx: &Ctx, b: SignatureBody) -> ApiResul
     let user = member(ctx)?;
     let signature = clean(b.signature)?;
     let mut tx = begin(state, ctx).await?;
-    core_db::signatures::set_member(&mut tx, user, signature.as_deref()).await?;
+    if !core_db::signatures::set_member(&mut tx, user, signature.as_deref()).await? {
+        return Err(not_member());
+    }
     record(
         &mut tx,
         ctx,
