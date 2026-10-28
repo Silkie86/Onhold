@@ -131,6 +131,8 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: New) -> ApiResult<Template
     }
 
     let mut tx = begin(state, ctx).await?;
+    super::mail::check_link_use(state, &mut tx, &new.key, new.subject.as_deref(), &new.body)
+        .await?;
     let id = core_domain::ids::new_id();
     let inserted = core_db::templates::insert(
         &mut tx,
@@ -209,6 +211,7 @@ pub async fn update(
         2000,
     )?;
     check_source(kind, subject.as_deref(), &body)?;
+    super::mail::check_link_use(state, &mut tx, &before.key, subject.as_deref(), &body).await?;
     if !core_db::templates::update(
         &mut tx,
         id,

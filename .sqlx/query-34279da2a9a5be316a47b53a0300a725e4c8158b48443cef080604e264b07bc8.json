@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE integrations SET secret = $2, scopes = $3\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "34279da2a9a5be316a47b53a0300a725e4c8158b48443cef080604e264b07bc8"
+}

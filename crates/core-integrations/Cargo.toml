@@ -7,7 +7,14 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
+async-imap.workspace = true
 async-trait.workspace = true
+data-encoding.workspace = true
+futures-util.workspace = true
+mail-parser.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+webpki-roots.workspace = true
 chrono.workspace = true
 hmac.workspace = true
 lettre.workspace = true
@@ -16,7 +23,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["fs"] }
+tokio = { workspace = true, features = ["fs", "io-util"] }
 tracing.workspace = true
 url.workspace = true
 uuid.workspace = true

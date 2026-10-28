@@ -375,6 +375,9 @@ pub async fn close_workspace(state: &AppState, ctx: &Ctx, confirm_slug: &str) ->
         ctx.user_id(),
     )
     .await?;
+    // Nobody can reach a closed workspace to disconnect a mailbox, so they
+    // are all disconnected now.
+    super::integrations::disconnect_all(&mut tx, ctx).await?;
     record(
         &mut tx,
         ctx,
@@ -528,6 +531,8 @@ pub async fn remove_member(state: &AppState, ctx: &Ctx, user: UserId) -> ApiResu
         }
     }
     core_db::members::soft_delete(&mut tx, user, ctx.user_id()).await?;
+    // Their mailboxes stop being read; the threads stay with the workspace.
+    super::integrations::disconnect_owned(&mut tx, ctx, user).await?;
     record(
         &mut tx,
         ctx,

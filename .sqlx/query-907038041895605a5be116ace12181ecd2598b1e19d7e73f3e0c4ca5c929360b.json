@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id FROM thread_messages\n           WHERE workspace_id = app_workspace_id() AND integration_id = $1\n             AND (external_id = $2 OR ($3::text IS NOT NULL AND message_id = $3))\n           LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "907038041895605a5be116ace12181ecd2598b1e19d7e73f3e0c4ca5c929360b"
+}

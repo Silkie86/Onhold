@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE integrations SET poll_lease_until = now() + make_interval(secs => $2),\n               next_poll_at = now() + make_interval(secs => $2)\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL\n             AND status <> 'reconnect' AND (poll_lease_until IS NULL OR poll_lease_until < now())",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c0c0fab20d48c1acb2b5a36c1b74c3918ae04e0557543a9790d5a7ff8bae002c"
+}

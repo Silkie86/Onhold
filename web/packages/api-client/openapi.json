@@ -7166,6 +7166,1251 @@
         ]
       }
     },
+    "/api/v1/inbox/mailboxes": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Which providers this server can connect, and the mailboxes the caller sees.",
+        "operationId": "mail_setup",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailSetup"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/mailboxes/connect": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Start connecting a Gmail or Microsoft mailbox: send the member to the returned URL.",
+        "operationId": "mail_connect",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartConnect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectStart"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/mailboxes/connect/finish": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Finish connecting with the `code` and `state` the provider sent back.",
+        "operationId": "mail_connect_finish",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinishConnect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/mailboxes/imap": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Connect any other mailbox by IMAP and SMTP. The servers are tried before it is saved.",
+        "operationId": "mail_connect_imap",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImapConnect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/mailboxes/{id}": {
+      "delete": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Stop reading a mailbox and forget its sign-in. Its threads stay.",
+        "operationId": "disconnect_mailbox",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Share a mailbox with the team, or rename it (its owner only).",
+        "operationId": "update_mailbox",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/mailboxes/{id}/sync": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Read a mailbox now rather than at its next turn.",
+        "operationId": "sync_mailbox",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationView"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/threads": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Conversations, latest first.",
+        "operationId": "list_threads",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "`open`, `snoozed` or `resolved`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "integration_id",
+            "in": "query",
+            "description": "One mailbox's threads.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "enquiry_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "booking_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "assigned_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "unlinked",
+            "in": "query",
+            "description": "Only threads linked to no contact, enquiry or booking.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "unread",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Matched against the subject and the people in it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, default 50.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Write a new message, from a connected mailbox or OnHold's own sender.",
+        "operationId": "compose_thread",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Compose"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/threads/{id}": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "One conversation with its messages, oldest first.",
+        "operationId": "get_thread",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Resolve, snooze, assign, mark read or link a conversation.",
+        "operationId": "update_thread",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/threads/{id}/enquiry": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Turn a conversation into an enquiry, adding the sender as a contact when needed.",
+        "operationId": "thread_enquiry",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadEnquiry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadEnquiryMade"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/threads/{id}/files/{file_id}": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "An attachment in a conversation.",
+        "operationId": "thread_file",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/threads/{id}/reply": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Reply in a conversation. The message is queued and sent in the background.",
+        "operationId": "reply_thread",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reply"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/invitations": {
       "get": {
         "tags": [
@@ -19465,6 +20710,85 @@
           }
         }
       },
+      "Compose": {
+        "type": "object",
+        "required": [
+          "to"
+        ],
+        "properties": {
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "booking_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "contact_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "enquiry_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "from_onhold": {
+            "type": "boolean",
+            "description": "Send through OnHold, in the workspace's name, rather than from a\nmailbox (`integration_id` must then be left out)."
+          },
+          "integration_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The mailbox to send from; default the sender's own, if connected."
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required unless the template gives one."
+          },
+          "template_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "Confidence": {
         "type": "string",
         "enum": [
@@ -22202,6 +23526,44 @@
           }
         }
       },
+      "ImapConnect": {
+        "type": "object",
+        "required": [
+          "address",
+          "imap",
+          "smtp",
+          "password"
+        ],
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "The address mail is sent as."
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imap": {
+            "$ref": "#/components/schemas/MailServer"
+          },
+          "password": {
+            "type": "string",
+            "description": "Often an app password made in the mail provider's settings."
+          },
+          "smtp": {
+            "$ref": "#/components/schemas/MailServer"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default: the address."
+          }
+        }
+      },
       "ImpersonationView": {
         "type": "object",
         "required": [
@@ -22485,6 +23847,118 @@
           "updated": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "IntegrationPatch": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name replies are sent under; `null` uses the account's own."
+          },
+          "shared": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Let everyone who can read the inbox see this mailbox's mail."
+          }
+        }
+      },
+      "IntegrationView": {
+        "type": "object",
+        "description": "A connection as the settings page shows it. Never carries the grant.",
+        "required": [
+          "id",
+          "provider",
+          "purposes",
+          "owner_id",
+          "mailbox",
+          "account",
+          "shared",
+          "status",
+          "connected_at",
+          "version"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "The account that connected it, when it differs (a shared mailbox)."
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "mailbox": {
+            "type": "string",
+            "description": "The address mail is read from and sent as."
+          },
+          "owner_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider": {
+            "type": "string",
+            "description": "`google`, `microsoft` or `imap`."
+          },
+          "purposes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "servers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "IMAP and SMTP servers, for an IMAP mailbox."
+          },
+          "shared": {
+            "type": "boolean",
+            "description": "Everyone who can read the inbox sees its mail."
+          },
+          "status": {
+            "type": "string",
+            "description": "`active`, `failing` (being retried) or `reconnect` (connect it again)."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -23423,6 +24897,63 @@
           }
         }
       },
+      "MailSecurity": {
+        "type": "string",
+        "description": "How the connection is protected.",
+        "enum": [
+          "tls",
+          "starttls",
+          "none"
+        ]
+      },
+      "MailServer": {
+        "type": "object",
+        "description": "An IMAP or SMTP server.",
+        "required": [
+          "host",
+          "port",
+          "security"
+        ],
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32",
+            "description": "IMAP: 993 or 143. SMTP: 465, 587, 25 or 2525.",
+            "minimum": 0
+          },
+          "security": {
+            "$ref": "#/components/schemas/MailSecurity"
+          }
+        }
+      },
+      "MailSetup": {
+        "type": "object",
+        "required": [
+          "google",
+          "microsoft",
+          "mailboxes"
+        ],
+        "properties": {
+          "google": {
+            "type": "boolean",
+            "description": "Gmail can be connected on this server."
+          },
+          "mailboxes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntegrationView"
+            },
+            "description": "The caller's own mailboxes and the shared ones; every mailbox for\nthose with `integration:manage`."
+          },
+          "microsoft": {
+            "type": "boolean",
+            "description": "Outlook and Microsoft 365 can be connected on this server."
+          }
+        }
+      },
       "MeResponse": {
         "type": "object",
         "required": [
@@ -23494,6 +25025,31 @@
           }
         }
       },
+      "MessageFileView": {
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "content_type",
+          "size_bytes"
+        ],
+        "properties": {
+          "content_type": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "MessagePage": {
         "type": "object",
         "required": [
@@ -23519,30 +25075,42 @@
         "type": "object",
         "required": [
           "id",
-          "channel",
+          "direction",
           "to",
-          "body_text",
+          "cc",
+          "text",
+          "sent_at",
           "status",
-          "at"
+          "automatic",
+          "bulk",
+          "files"
         ],
         "properties": {
-          "at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "body_html": {
+          "author_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Sign-in and invitation links are replaced with `[link removed]`."
+            "format": "uuid",
+            "description": "Who wrote it in OnHold."
           },
-          "body_text": {
-            "type": "string"
+          "automatic": {
+            "type": "boolean",
+            "description": "An auto-reply, bounce or other machine-sent message."
           },
-          "channel": {
+          "bulk": {
+            "type": "boolean",
+            "description": "Sent to a mailing list."
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "direction": {
             "type": "string",
-            "description": "`email` for now."
+            "description": "`inbound` or `outbound`."
           },
           "error": {
             "type": [
@@ -23550,33 +25118,42 @@
               "null"
             ]
           },
-          "id": {
-            "type": "string",
-            "format": "uuid"
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageFileView"
+            }
           },
-          "job_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "provider_message_id": {
+          "from_address": {
             "type": [
               "string",
               "null"
             ]
           },
-          "rule_id": {
+          "from_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "html": {
             "type": [
               "string",
               "null"
             ],
+            "description": "Sanitised: no scripts, styles, forms or remote images. Show it in a\nsandboxed frame all the same."
+          },
+          "id": {
+            "type": "string",
             "format": "uuid"
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time"
           },
           "status": {
             "type": "string",
-            "description": "`sent` or `failed`."
+            "description": "`received`, or for messages written here `queued`, `sent` or `failed`."
           },
           "subject": {
             "type": [
@@ -23590,8 +25167,14 @@
               "null"
             ]
           },
-          "to": {
+          "text": {
             "type": "string"
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -25405,7 +26988,10 @@
           "invoice:write",
           "payment:write",
           "report:read",
-          "finance:config"
+          "finance:config",
+          "inbox:read",
+          "inbox:write",
+          "integration:manage"
         ]
       },
       "Perspective": {
@@ -26126,6 +27712,49 @@
           "event_id": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "Reply": {
+        "type": "object",
+        "properties": {
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Files uploaded with `POST /files` to send with it."
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The message, as plain text. Give this or `template_key`."
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "template_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An email template to write it from, filled in with the thread's\ncontact, enquiry and booking."
+          },
+          "to": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Default: whoever wrote the latest message from outside."
           }
         }
       },
@@ -27250,6 +28879,25 @@
           "device_name": {
             "type": "string",
             "description": "Shown when approving and in the session list, such as \"Sam's MacBook\"."
+          }
+        }
+      },
+      "StartConnect": {
+        "type": "object",
+        "required": [
+          "provider"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "`google` or `microsoft`."
+          },
+          "shared_mailbox": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A Microsoft 365 shared mailbox to connect through your own account."
           }
         }
       },
@@ -28479,6 +30127,290 @@
           }
         }
       },
+      "ThreadDetail": {
+        "type": "object",
+        "required": [
+          "thread",
+          "messages"
+        ],
+        "properties": {
+          "mailbox": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The mailbox replies go out from; none when it was disconnected or\nnever was, and replies go through OnHold's own sender."
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageView"
+            },
+            "description": "Oldest first."
+          },
+          "thread": {
+            "$ref": "#/components/schemas/ThreadView"
+          }
+        }
+      },
+      "ThreadEnquiry": {
+        "type": "object",
+        "properties": {
+          "contact_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The contact's name when one is made for the sender; default the name\nin their email, else their address."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default: the thread's subject."
+          }
+        }
+      },
+      "ThreadEnquiryMade": {
+        "type": "object",
+        "required": [
+          "enquiry_id",
+          "contact_id",
+          "contact_created",
+          "thread"
+        ],
+        "properties": {
+          "contact_created": {
+            "type": "boolean",
+            "description": "A contact was made for the sender."
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "enquiry_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "thread": {
+            "$ref": "#/components/schemas/ThreadView"
+          }
+        }
+      },
+      "ThreadPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadView"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ThreadPatch": {
+        "type": "object",
+        "properties": {
+          "assigned_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "`null` unassigns."
+          },
+          "booking_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "contact_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "`null` unlinks; likewise for the other records. Linking a contact\nalso links their organisation, unless one is given."
+          },
+          "enquiry_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "organisation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "snoozed_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a snoozed thread comes back; setting it snoozes the thread."
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`open`, `snoozed` (with `snoozed_until`) or `resolved`."
+          },
+          "unread": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "ThreadView": {
+        "type": "object",
+        "required": [
+          "id",
+          "channel",
+          "status",
+          "unread",
+          "message_count",
+          "participants",
+          "last_message_at",
+          "created_at",
+          "version"
+        ],
+        "properties": {
+          "assigned_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "booking_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "channel": {
+            "type": "string",
+            "description": "`email`."
+          },
+          "contact_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enquiry_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "integration_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The mailbox it lives in; none for one sent through OnHold's own sender."
+          },
+          "last_inbound_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_message_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_outbound_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "organisation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The other people in it."
+          },
+          "preview": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The start of the latest message."
+          },
+          "snoozed_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "description": "`open`, `snoozed` or `resolved`."
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unread": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "TimelineActor": {
         "type": "object",
         "required": [
@@ -29340,6 +31272,10 @@
     {
       "name": "messages",
       "description": "Messages sent"
+    },
+    {
+      "name": "inbox",
+      "description": "Connected mailboxes and the conversations in them"
     },
     {
       "name": "admin",

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE integrations\n           SET status = 'active', failures = 0, last_error = NULL, last_error_at = NULL, next_poll_at = $2\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2b19c502e21ce3fe6a0c64fdc988a517388eb379ad963563364a764db89e3b90"
+}

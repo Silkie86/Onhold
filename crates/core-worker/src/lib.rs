@@ -29,6 +29,7 @@ use core_api::services::events::CHANNEL as EVENTS_CHANNEL;
 use core_api::services::invoices::JOB_OVERDUE;
 use core_api::services::mail::SYSTEM_TOPICS;
 use core_api::services::quotes::JOB_EXPIRE as JOB_EXPIRE_QUOTE;
+use core_api::services::{inbox, integrations};
 use core_db::DbError;
 use core_db::jobs::{Claimed, LogLine, NewJob, RunRecord};
 use core_integrations::http::WebhookClient;
@@ -360,6 +361,26 @@ impl Worker {
             core_db::jobs::enqueue(
                 tx,
                 NewJob::new(Some(q.workspace_id), JOB_EXPIRE_QUOTE, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for m in core_db::integrations::due(tx, now, DUE_BATCH).await? {
+            let key = integrations::poll_key(m.id, m.at);
+            let payload = json!({ "integration_id": m.id, "at": m.at });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(m.workspace_id), integrations::JOB_POLL, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for t in core_db::inbox::snooze_ended(tx, now, DUE_BATCH).await? {
+            let key = format!("{}@{}", t.id, t.at.to_rfc3339());
+            let payload = json!({ "thread_id": t.id, "at": t.at });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(t.workspace_id), inbox::JOB_WAKE, &payload).dedupe(&key),
             )
             .await?;
             queued += 1;

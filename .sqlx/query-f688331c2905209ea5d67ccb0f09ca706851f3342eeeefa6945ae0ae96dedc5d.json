@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, organisation_id FROM contacts\n           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL AND emails && $1\n           ORDER BY emails[1] = ANY($1) DESC, created_at, id LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "organisation_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "organisation_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "f688331c2905209ea5d67ccb0f09ca706851f3342eeeefa6945ae0ae96dedc5d"
+}

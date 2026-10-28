@@ -460,7 +460,11 @@ async fn signers_are_emailed_their_own_link(pool: PgPool) {
     let mail = &h.mailer.sent()[before];
     assert!(mail.subject.starts_with("Please sign"), "{}", mail.subject);
     let html = mail.html.clone().unwrap();
-    assert!(html.contains("&#x2f;sign&#x2f;"), "{html}");
+    // The link is put in after the template renders, whole.
+    assert!(
+        html.contains("<a href=\"http://localhost:5173/sign/"),
+        "{html}"
+    );
     // The links are not kept in the stored copies of the emails.
     let stored: Vec<String> = sqlx::query_scalar("SELECT coalesce(body_html, '') FROM outbound_messages WHERE template_key = 'system.signature_request'")
         .fetch_all(&h.app.owner)

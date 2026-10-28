@@ -44,6 +44,7 @@ import { isLocalId } from "../offline/store.ts";
 import { useSession } from "../session.tsx";
 import { AvailabilityEditor } from "./availability.tsx";
 import { TalentMembers } from "./members.tsx";
+import { RelatedConversations } from "./inbox.tsx";
 
 type Entity = (typeof ENTITIES)[keyof typeof ENTITIES];
 
@@ -552,6 +553,8 @@ export function EntityRecordPage() {
               </>
             ))}
           {entity.entity === "organisation" && <OrganisationContacts organisation={r} />}
+          {!offline && !isLocalId(id) && entity.entity === "contact" && <RelatedConversations filter={{ contact_id: id }} />}
+          {!offline && !isLocalId(id) && entity.entity === "organisation" && <RelatedConversations filter={{ organisation_id: id }} />}
         </section>
         <section aria-label="Activity" className="flex flex-col gap-3">
           <h2 className="font-semibold">Activity</h2>

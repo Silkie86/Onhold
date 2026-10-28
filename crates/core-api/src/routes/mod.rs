@@ -9,6 +9,7 @@ pub mod crm;
 pub mod documents;
 pub mod events;
 pub mod finance;
+pub mod inbox;
 pub mod jobs;
 pub mod stripe;
 pub mod things;

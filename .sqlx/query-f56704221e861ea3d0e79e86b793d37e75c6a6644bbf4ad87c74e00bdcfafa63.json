@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, workspace_id AS \"workspace_id: WorkspaceId\", snoozed_until AS \"at!\"\n           FROM threads WHERE status = 'snoozed' AND snoozed_until <= $1\n           ORDER BY snoozed_until LIMIT $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "workspace_id: WorkspaceId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "workspace_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "snoozed_until"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "f56704221e861ea3d0e79e86b793d37e75c6a6644bbf4ad87c74e00bdcfafa63"
+}

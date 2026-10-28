@@ -28,6 +28,8 @@ import {
   CheckSquare,
   ChevronsUpDown,
   Inbox,
+  Mail,
+  AtSign,
   CloudOff,
   Download,
   Contact,
@@ -65,6 +67,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
   {
     group: "Bookings",
     items: [
+      { to: "/inbox", label: "Inbox", icon: <Mail /> },
       { to: "/calendar", label: "Calendar", icon: <CalendarDays /> },
       { to: "/enquiries", label: "Enquiries", icon: <Inbox /> },
       { to: "/bookings", label: "Bookings", icon: <CalendarCheck /> },
@@ -98,6 +101,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
   {
     group: "Settings",
     items: [
+      { to: "/settings/email", label: "Email accounts", icon: <AtSign /> },
       { to: "/settings/fields", label: "Custom fields", icon: <SlidersHorizontal /> },
       { to: "/settings/pipelines", label: "Pipelines", icon: <Workflow /> },
       { to: "/settings/calendar", label: "Calendar settings", icon: <CalendarCog /> },

@@ -1364,6 +1364,196 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inbox/mailboxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which providers this server can connect, and the mailboxes the caller sees. */
+        get: operations["mail_setup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/mailboxes/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start connecting a Gmail or Microsoft mailbox: send the member to the returned URL. */
+        post: operations["mail_connect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/mailboxes/connect/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish connecting with the `code` and `state` the provider sent back. */
+        post: operations["mail_connect_finish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/mailboxes/imap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect any other mailbox by IMAP and SMTP. The servers are tried before it is saved. */
+        post: operations["mail_connect_imap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/mailboxes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop reading a mailbox and forget its sign-in. Its threads stay. */
+        delete: operations["disconnect_mailbox"];
+        options?: never;
+        head?: never;
+        /** Share a mailbox with the team, or rename it (its owner only). */
+        patch: operations["update_mailbox"];
+        trace?: never;
+    };
+    "/api/v1/inbox/mailboxes/{id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read a mailbox now rather than at its next turn. */
+        post: operations["sync_mailbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conversations, latest first. */
+        get: operations["list_threads"];
+        put?: never;
+        /** Write a new message, from a connected mailbox or OnHold's own sender. */
+        post: operations["compose_thread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/threads/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One conversation with its messages, oldest first. */
+        get: operations["get_thread"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Resolve, snooze, assign, mark read or link a conversation. */
+        patch: operations["update_thread"];
+        trace?: never;
+    };
+    "/api/v1/inbox/threads/{id}/enquiry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turn a conversation into an enquiry, adding the sender as a contact when needed. */
+        post: operations["thread_enquiry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/threads/{id}/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An attachment in a conversation. */
+        get: operations["thread_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/threads/{id}/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reply in a conversation. The message is queued and sent in the background. */
+        post: operations["reply_thread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invitations": {
         parameters: {
             query?: never;
@@ -3489,6 +3679,31 @@ export interface components {
             /** @description The workspace's slug, typed again to confirm. */
             confirm_slug: string;
         };
+        Compose: {
+            attachments?: string[];
+            body?: string | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            cc?: string[];
+            /** Format: uuid */
+            contact_id?: string | null;
+            /** Format: uuid */
+            enquiry_id?: string | null;
+            /**
+             * @description Send through OnHold, in the workspace's name, rather than from a
+             *     mailbox (`integration_id` must then be left out).
+             */
+            from_onhold?: boolean;
+            /**
+             * Format: uuid
+             * @description The mailbox to send from; default the sender's own, if connected.
+             */
+            integration_id?: string | null;
+            /** @description Required unless the template gives one. */
+            subject?: string | null;
+            template_key?: string | null;
+            to: string[];
+        };
         /** @enum {string} */
         Confidence: "low" | "medium" | "high";
         ConfirmPdfImport: {
@@ -4305,6 +4520,17 @@ export interface components {
              */
             total_minor?: number | null;
         };
+        ImapConnect: {
+            /** @description The address mail is sent as. */
+            address: string;
+            display_name?: string | null;
+            imap: components["schemas"]["MailServer"];
+            /** @description Often an app password made in the mail provider's settings. */
+            password: string;
+            smtp: components["schemas"]["MailServer"];
+            /** @description Default: the address. */
+            username?: string | null;
+        };
         ImpersonationView: {
             /** Format: date-time */
             expires_at: string;
@@ -4392,6 +4618,42 @@ export interface components {
             status: string;
             /** Format: int32 */
             updated: number;
+        };
+        IntegrationPatch: {
+            /** @description The name replies are sent under; `null` uses the account's own. */
+            display_name?: string | null;
+            /** @description Let everyone who can read the inbox see this mailbox's mail. */
+            shared?: boolean | null;
+        };
+        /** @description A connection as the settings page shows it. Never carries the grant. */
+        IntegrationView: {
+            /** @description The account that connected it, when it differs (a shared mailbox). */
+            account: string;
+            /** Format: date-time */
+            connected_at: string;
+            display_name?: string | null;
+            /** Format: uuid */
+            id: string;
+            last_error?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            /** Format: date-time */
+            last_synced_at?: string | null;
+            /** @description The address mail is read from and sent as. */
+            mailbox: string;
+            /** Format: uuid */
+            owner_id: string;
+            /** @description `google`, `microsoft` or `imap`. */
+            provider: string;
+            purposes: string[];
+            /** @description IMAP and SMTP servers, for an IMAP mailbox. */
+            servers?: Record<string, never> | null;
+            /** @description Everyone who can read the inbox sees its mail. */
+            shared: boolean;
+            /** @description `active`, `failing` (being retried) or `reconnect` (connect it again). */
+            status: string;
+            /** Format: int64 */
+            version: number;
         };
         InvitationPreviewView: {
             email: string;
@@ -4685,6 +4947,32 @@ export interface components {
         MagicLinkRequest: {
             email: string;
         };
+        /**
+         * @description How the connection is protected.
+         * @enum {string}
+         */
+        MailSecurity: "tls" | "starttls" | "none";
+        /** @description An IMAP or SMTP server. */
+        MailServer: {
+            host: string;
+            /**
+             * Format: int32
+             * @description IMAP: 993 or 143. SMTP: 465, 587, 25 or 2525.
+             */
+            port: number;
+            security: components["schemas"]["MailSecurity"];
+        };
+        MailSetup: {
+            /** @description Gmail can be connected on this server. */
+            google: boolean;
+            /**
+             * @description The caller's own mailboxes and the shared ones; every mailbox for
+             *     those with `integration:manage`.
+             */
+            mailboxes: components["schemas"]["IntegrationView"][];
+            /** @description Outlook and Microsoft 365 can be connected on this server. */
+            microsoft: boolean;
+        };
         MeResponse: {
             impersonation?: components["schemas"]["ImpersonationView"] | null;
             session: components["schemas"]["CurrentSessionView"];
@@ -4703,32 +4991,51 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        MessageFileView: {
+            content_type: string;
+            filename: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            size_bytes: number;
+        };
         MessagePage: {
             messages: components["schemas"]["MessageView"][];
             /** Format: uuid */
             next_before?: string | null;
         };
         MessageView: {
-            /** Format: date-time */
-            at: string;
-            /** @description Sign-in and invitation links are replaced with `[link removed]`. */
-            body_html?: string | null;
-            body_text: string;
-            /** @description `email` for now. */
-            channel: string;
+            /**
+             * Format: uuid
+             * @description Who wrote it in OnHold.
+             */
+            author_id?: string | null;
+            /** @description An auto-reply, bounce or other machine-sent message. */
+            automatic: boolean;
+            /** @description Sent to a mailing list. */
+            bulk: boolean;
+            cc: string[];
+            /** @description `inbound` or `outbound`. */
+            direction: string;
             error?: string | null;
+            files: components["schemas"]["MessageFileView"][];
+            from_address?: string | null;
+            from_name?: string | null;
+            /**
+             * @description Sanitised: no scripts, styles, forms or remote images. Show it in a
+             *     sandboxed frame all the same.
+             */
+            html?: string | null;
             /** Format: uuid */
             id: string;
-            /** Format: uuid */
-            job_id?: string | null;
-            provider_message_id?: string | null;
-            /** Format: uuid */
-            rule_id?: string | null;
-            /** @description `sent` or `failed`. */
+            /** Format: date-time */
+            sent_at: string;
+            /** @description `received`, or for messages written here `queued`, `sent` or `failed`. */
             status: string;
             subject?: string | null;
             template_key?: string | null;
-            to: string;
+            text: string;
+            to: string[];
         };
         MfaVerifyRequest: {
             /** @description The 6-digit code from the authenticator app. */
@@ -5235,7 +5542,7 @@ export interface components {
          * @description A `resource:action` permission.
          * @enum {string}
          */
-        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write" | "enquiry:read" | "enquiry:write" | "booking:read" | "booking:write" | "booking:override" | "quote:read" | "quote:write" | "task:read" | "task:write" | "document:read" | "document:write" | "invoice:read" | "invoice:write" | "payment:write" | "report:read" | "finance:config";
+        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write" | "enquiry:read" | "enquiry:write" | "booking:read" | "booking:write" | "booking:override" | "quote:read" | "quote:write" | "task:read" | "task:write" | "document:read" | "document:write" | "invoice:read" | "invoice:write" | "payment:write" | "report:read" | "finance:config" | "inbox:read" | "inbox:write" | "integration:manage";
         /**
          * @description Whether the workspace represents talent (`sells`), books talent for its
          *     own events (`buys`), or both. Changes vocabulary and defaults, never the
@@ -5460,6 +5767,20 @@ export interface components {
         ReplayRequest: {
             /** Format: uuid */
             event_id: string;
+        };
+        Reply: {
+            /** @description Files uploaded with `POST /files` to send with it. */
+            attachments?: string[];
+            /** @description The message, as plain text. Give this or `template_key`. */
+            body?: string | null;
+            cc?: string[];
+            /**
+             * @description An email template to write it from, filled in with the thread's
+             *     contact, enquiry and booking.
+             */
+            template_key?: string | null;
+            /** @description Default: whoever wrote the latest message from outside. */
+            to?: string[] | null;
         };
         RequestSignatures: {
             /** @description Who signs, in order. Default: the booking's contact. */
@@ -5808,6 +6129,12 @@ export interface components {
         StartAppSignInRequest: {
             /** @description Shown when approving and in the session list, such as "Sam's MacBook". */
             device_name: string;
+        };
+        StartConnect: {
+            /** @description `google` or `microsoft`. */
+            provider: string;
+            /** @description A Microsoft 365 shared mailbox to connect through your own account. */
+            shared_mailbox?: string | null;
         };
         StartImpersonationRequest: {
             /** @description Recorded in the customer's audit log. */
@@ -6166,6 +6493,109 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
             updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+        };
+        ThreadDetail: {
+            /**
+             * @description The mailbox replies go out from; none when it was disconnected or
+             *     never was, and replies go through OnHold's own sender.
+             */
+            mailbox?: string | null;
+            /** @description Oldest first. */
+            messages: components["schemas"]["MessageView"][];
+            thread: components["schemas"]["ThreadView"];
+        };
+        ThreadEnquiry: {
+            /**
+             * @description The contact's name when one is made for the sender; default the name
+             *     in their email, else their address.
+             */
+            contact_name?: string | null;
+            /** @description Default: the thread's subject. */
+            title?: string | null;
+        };
+        ThreadEnquiryMade: {
+            /** @description A contact was made for the sender. */
+            contact_created: boolean;
+            /** Format: uuid */
+            contact_id: string;
+            /** Format: uuid */
+            enquiry_id: string;
+            thread: components["schemas"]["ThreadView"];
+        };
+        ThreadPage: {
+            items: components["schemas"]["ThreadView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        ThreadPatch: {
+            /**
+             * Format: uuid
+             * @description `null` unassigns.
+             */
+            assigned_to?: string | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            /**
+             * Format: uuid
+             * @description `null` unlinks; likewise for the other records. Linking a contact
+             *     also links their organisation, unless one is given.
+             */
+            contact_id?: string | null;
+            /** Format: uuid */
+            enquiry_id?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            /**
+             * Format: date-time
+             * @description When a snoozed thread comes back; setting it snoozes the thread.
+             */
+            snoozed_until?: string | null;
+            /** @description `open`, `snoozed` (with `snoozed_until`) or `resolved`. */
+            status?: string | null;
+            unread?: boolean | null;
+        };
+        ThreadView: {
+            /** Format: uuid */
+            assigned_to?: string | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** @description `email`. */
+            channel: string;
+            /** Format: uuid */
+            contact_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            enquiry_id?: string | null;
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The mailbox it lives in; none for one sent through OnHold's own sender.
+             */
+            integration_id?: string | null;
+            /** Format: date-time */
+            last_inbound_at?: string | null;
+            /** Format: date-time */
+            last_message_at: string;
+            /** Format: date-time */
+            last_outbound_at?: string | null;
+            /** Format: int32 */
+            message_count: number;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            /** @description The other people in it. */
+            participants: string[];
+            /** @description The start of the latest message. */
+            preview?: string | null;
+            /** Format: date-time */
+            snoozed_until?: string | null;
+            /** @description `open`, `snoozed` or `resolved`. */
+            status: string;
+            subject?: string | null;
+            unread: boolean;
             /** Format: int64 */
             version: number;
         };
@@ -10130,6 +10560,585 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    mail_setup: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailSetup"];
+                };
+            };
+        };
+    };
+    mail_connect: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectStart"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    mail_connect_finish: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    mail_connect_imap: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImapConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disconnect_mailbox: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_mailbox: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    sync_mailbox: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_threads: {
+        parameters: {
+            query?: {
+                /** @description `open`, `snoozed` or `resolved`. */
+                status?: string | null;
+                /** @description One mailbox's threads. */
+                integration_id?: string | null;
+                contact_id?: string | null;
+                organisation_id?: string | null;
+                enquiry_id?: string | null;
+                booking_id?: string | null;
+                assigned_to?: string | null;
+                /** @description Only threads linked to no contact, enquiry or booking. */
+                unlinked?: boolean;
+                unread?: boolean;
+                /** @description Matched against the subject and the people in it. */
+                q?: string | null;
+                offset?: number | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    compose_thread: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Compose"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_thread: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_thread: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    thread_enquiry: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadEnquiry"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadEnquiryMade"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    thread_file: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reply_thread: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reply"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

