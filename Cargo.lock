@@ -813,6 +813,7 @@ dependencies = [
  "lettre",
  "mail-parser",
  "reqwest",
+ "ring",
  "rustls",
  "serde",
  "serde_json",

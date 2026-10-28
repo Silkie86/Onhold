@@ -1,6 +1,7 @@
 //! API configuration, built by the binary from the environment.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use core_domain::crypto::Keyring;
@@ -90,6 +91,15 @@ impl Default for MailboxConfig {
     }
 }
 
+/// Workspaces' own sender domains: the provider that verifies them, the
+/// DNS lookups, and Domain Connect when OnHold's template is published.
+#[derive(Debug, Clone)]
+pub struct SenderDomainsConfig {
+    pub resend: core_integrations::domains::Resend,
+    pub doh: core_integrations::dns::Doh,
+    pub domain_connect: Option<Arc<core_integrations::dns::DomainConnect>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Where the web app is served; links in emails and OIDC redirects are built from it.
@@ -132,6 +142,9 @@ pub struct Config {
     /// paid by bank transfer only.
     pub stripe: Option<StripeClient>,
     pub mailboxes: MailboxConfig,
+    /// Sending from workspaces' own domains; `None`: everything is sent
+    /// from the platform's address.
+    pub sender_domains: Option<SenderDomainsConfig>,
 }
 
 impl Config {
@@ -161,6 +174,7 @@ impl Config {
             max_upload_bytes: 25 * 1024 * 1024,
             stripe: None,
             mailboxes: MailboxConfig::default(),
+            sender_domains: None,
         }
     }
 

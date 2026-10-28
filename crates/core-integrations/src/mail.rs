@@ -12,8 +12,11 @@ use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Email {
     pub to: String,
-    /// Display name shown with the platform's sending address, e.g. the workspace name.
+    /// Display name shown with the sending address, e.g. the workspace name.
     pub from_name: Option<String>,
+    /// An address at the workspace's own verified domain, sent from instead
+    /// of the platform's address.
+    pub from_address: Option<String>,
     pub reply_to: Option<String>,
     pub subject: String,
     pub html: Option<String>,
@@ -75,7 +78,10 @@ impl SmtpMailer {
     fn build(&self, email: &Email) -> Result<Message, MailError> {
         let bad =
             |what: &str, e: &dyn std::fmt::Display| MailError::Permanent(format!("{what}: {e}"));
-        let mut from = self.from.clone();
+        let mut from = match &email.from_address {
+            Some(a) => Mailbox::new(None, a.parse().map_err(|e| bad("from address", &e))?),
+            None => self.from.clone(),
+        };
         if let Some(name) = &email.from_name {
             from.name = Some(name.clone());
         }
@@ -233,6 +239,7 @@ mod tests {
         Email {
             to: "Ana <ana@example.com>".into(),
             from_name: Some("Acme Agency".into()),
+            from_address: None,
             reply_to: Some("office@acme.test".into()),
             subject: "Hello".into(),
             html: Some("<p>Hi</p>".into()),
@@ -256,6 +263,13 @@ mod tests {
         assert!(raw.contains("Reply-To: office@acme.test"), "{raw}");
         assert!(raw.contains("Message-ID: <1@onhold.test>"), "{raw}");
         assert!(raw.contains("multipart/alternative"), "{raw}");
+        let mut own = email();
+        own.from_address = Some("bookings@acme.test".into());
+        let raw = String::from_utf8(mailer.build(&own).expect("builds").formatted()).expect("utf8");
+        assert!(
+            raw.contains("From: \"Acme Agency\" <bookings@acme.test>"),
+            "{raw}"
+        );
         let mut with_pdf = email();
         with_pdf.attachments.push(Attachment {
             filename: "INV-2026-0001.pdf".into(),

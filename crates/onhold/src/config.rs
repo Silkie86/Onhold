@@ -7,9 +7,11 @@ use anyhow::Context;
 use clap::Args;
 use core_api::Config;
 use core_api::config::ProxyHeaders;
-use core_api::config::{MailboxConfig, PdfConfig, StorageConfig};
+use core_api::config::{MailboxConfig, PdfConfig, SenderDomainsConfig, StorageConfig};
 use core_api::oidc::OidcProvider;
 use core_domain::crypto::Keyring;
+use core_integrations::dns::{Doh, DomainConnect};
+use core_integrations::domains::Resend;
 use core_integrations::mail::{LogMailer, Mailer, SmtpMailer};
 use core_integrations::oauth::OAuthApp;
 use core_integrations::storage::S3Config;
@@ -189,6 +191,54 @@ pub struct ApiArgs {
     microsoft_login_base: Url,
     #[arg(long, env = "GRAPH_API_BASE", default_value = core_integrations::graph::API_BASE, global = true, hide = true)]
     graph_api_base: Url,
+
+    /// Resend's API key, so workspaces can send from their own domains.
+    /// `SMTP_URL` must then be Resend's SMTP server with the same account.
+    #[arg(long, env = "RESEND_API_KEY", hide_env_values = true, global = true)]
+    resend_api_key: Option<String>,
+    /// Where Resend sends workspaces' mail from: us-east-1, eu-west-1,
+    /// sa-east-1 or ap-northeast-1.
+    #[arg(
+        long,
+        env = "RESEND_REGION",
+        default_value = "eu-west-1",
+        global = true
+    )]
+    resend_region: String,
+    /// Resend's API and the DNS-over-HTTPS resolver, for stand-ins in tests.
+    #[arg(long, env = "RESEND_API_BASE", default_value = core_integrations::domains::RESEND_API, global = true, hide = true)]
+    resend_api_base: Url,
+    #[arg(long, env = "DOH_BASE", default_value = core_integrations::dns::DOH_BASE, global = true, hide = true)]
+    doh_base: Url,
+    /// OnHold's Domain Connect template (`docs/domain-connect/`): its
+    /// providerId. With DOMAIN_CONNECT_PRIVATE_KEY, owners whose DNS
+    /// provider has taken the template in can add the records in one step.
+    #[arg(long, env = "DOMAIN_CONNECT_PROVIDER_ID", global = true)]
+    domain_connect_provider_id: Option<String>,
+    #[arg(
+        long,
+        env = "DOMAIN_CONNECT_SERVICE_ID",
+        default_value = "sending",
+        global = true
+    )]
+    domain_connect_service_id: String,
+    /// The label of the public key's TXT records under the template's
+    /// syncPubKeyDomain.
+    #[arg(
+        long,
+        env = "DOMAIN_CONNECT_KEY_HOST",
+        default_value = "_dck1",
+        global = true
+    )]
+    domain_connect_key_host: String,
+    /// The RSA private key Domain Connect links are signed with, in PEM.
+    #[arg(
+        long,
+        env = "DOMAIN_CONNECT_PRIVATE_KEY",
+        hide_env_values = true,
+        global = true
+    )]
+    domain_connect_private_key: Option<String>,
 }
 
 fn proxy_headers(value: &str) -> Result<ProxyHeaders, String> {
@@ -402,6 +452,43 @@ impl ApiArgs {
             ),
         };
 
+        let sender_domains = match self.resend_api_key {
+            Some(key) => {
+                anyhow::ensure!(
+                    ["us-east-1", "eu-west-1", "sa-east-1", "ap-northeast-1"]
+                        .contains(&self.resend_region.as_str()),
+                    "RESEND_REGION must be us-east-1, eu-west-1, sa-east-1 or ap-northeast-1"
+                );
+                let domain_connect = match (
+                    self.domain_connect_provider_id,
+                    self.domain_connect_private_key,
+                ) {
+                    (Some(provider_id), Some(pem)) => Some(Arc::new(
+                        DomainConnect::new(
+                            provider_id,
+                            self.domain_connect_service_id,
+                            self.domain_connect_key_host,
+                            // Environments often keep a PEM on one line.
+                            &pem.replace("\\n", "\n"),
+                            self.webhooks_allow_private,
+                        )
+                        .map_err(|e| anyhow::anyhow!("DOMAIN_CONNECT_PRIVATE_KEY: {e}"))?,
+                    )),
+                    (None, None) => None,
+                    _ => anyhow::bail!(
+                        "set both DOMAIN_CONNECT_PROVIDER_ID and DOMAIN_CONNECT_PRIVATE_KEY, or neither"
+                    ),
+                };
+                Some(SenderDomainsConfig {
+                    resend: Resend::new(key, self.resend_region, self.resend_api_base)
+                        .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    doh: Doh::new(self.doh_base).map_err(|e| anyhow::anyhow!("{e}"))?,
+                    domain_connect,
+                })
+            }
+            None => None,
+        };
+
         Ok(Config {
             storage,
             pdf,
@@ -416,6 +503,7 @@ impl ApiArgs {
             webhooks_allow_private: self.webhooks_allow_private,
             stripe,
             mailboxes,
+            sender_domains,
             ..Config::new(self.public_base_url, keyring)
         })
     }

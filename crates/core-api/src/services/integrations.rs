@@ -316,7 +316,7 @@ pub struct FinishConnect {
     pub state: String,
 }
 
-fn provider_error(provider: &str, err: ProviderError) -> ApiError {
+pub(crate) fn provider_error(provider: &str, err: ProviderError) -> ApiError {
     match err {
         ProviderError::Unavailable(m) => ApiError::unavailable(
             "provider_unavailable",

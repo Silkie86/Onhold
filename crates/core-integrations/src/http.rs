@@ -73,6 +73,36 @@ impl Resolve for PublicOnly {
     }
 }
 
+/// A client for URLs a tenant (or a tenant's DNS) chose: names resolve to
+/// public addresses only (unless `allow_private`, for development and
+/// tests), redirects are not followed and proxies are bypassed.
+pub fn public_client(allow_private: bool, user_agent: &str) -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder()
+        .timeout(TIMEOUT)
+        .connect_timeout(Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .user_agent(user_agent);
+    if !allow_private {
+        builder = builder.dns_resolver(Arc::new(PublicOnly));
+    }
+    builder.build().map_err(|e| e.to_string())
+}
+
+/// Whether a URL's host is a literal non-public address (or `localhost`),
+/// which the resolver of [`public_client`] never sees.
+pub fn names_private_address(url: &url::Url) -> bool {
+    let literal = match url.host() {
+        Some(url::Host::Ipv4(v4)) => IpAddr::V4(v4),
+        Some(url::Host::Ipv6(v6)) => IpAddr::V6(v6),
+        Some(url::Host::Domain(d)) if d.eq_ignore_ascii_case("localhost") => {
+            IpAddr::V6(Ipv6Addr::LOCALHOST)
+        }
+        Some(url::Host::Domain(_)) | None => return false,
+    };
+    !is_public(literal)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {
     pub status: u16,
@@ -100,17 +130,11 @@ impl WebhookClient {
     /// `allow_private` lifts the address check, for local development and
     /// tests that deliver to `localhost`. Never set it in production.
     pub fn new(allow_private: bool) -> Result<Self, String> {
-        let mut builder = reqwest::Client::builder()
-            .timeout(TIMEOUT)
-            .connect_timeout(Duration::from_secs(5))
-            .redirect(reqwest::redirect::Policy::none())
-            .no_proxy()
-            .user_agent(concat!("OnHold-Webhooks/", env!("CARGO_PKG_VERSION")));
-        if !allow_private {
-            builder = builder.dns_resolver(Arc::new(PublicOnly));
-        }
         Ok(Self {
-            client: builder.build().map_err(|e| e.to_string())?,
+            client: public_client(
+                allow_private,
+                concat!("OnHold-Webhooks/", env!("CARGO_PKG_VERSION")),
+            )?,
             allow_private,
         })
     }
@@ -128,16 +152,10 @@ impl WebhookClient {
                 "put credentials in the receiver, not the URL".into(),
             ));
         }
-        let literal = match url.host() {
-            Some(url::Host::Ipv4(v4)) => Some(IpAddr::V4(v4)),
-            Some(url::Host::Ipv6(v6)) => Some(IpAddr::V6(v6)),
-            Some(url::Host::Domain(d)) if d.eq_ignore_ascii_case("localhost") => {
-                Some(IpAddr::V6(Ipv6Addr::LOCALHOST))
-            }
-            Some(url::Host::Domain(_)) => None,
-            None => return Err(DeliveryError::Blocked("the URL has no host".into())),
-        };
-        if !self.allow_private && literal.is_some_and(|ip| !is_public(ip)) {
+        if url.host().is_none() {
+            return Err(DeliveryError::Blocked("the URL has no host".into()));
+        }
+        if !self.allow_private && names_private_address(&url) {
             return Err(DeliveryError::Blocked(
                 "webhooks cannot be sent to private or local addresses".into(),
             ));

@@ -7166,6 +7166,476 @@
         ]
       }
     },
+    "/api/v1/inbox/domains": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "The workspace's own domains to send email from, and whether this server can verify them.",
+        "operationId": "list_domains",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SenderDomainSetup"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Add a domain to send from. The answer lists the DNS records to add.",
+        "operationId": "add_domain",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSenderDomain"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SenderDomainView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/domains/{id}": {
+      "delete": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Stop sending from a domain and remove it.",
+        "operationId": "remove_domain",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Choose the sending address, or whether to send from this domain.",
+        "operationId": "update_domain",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SenderDomainPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SenderDomainView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/domains/{id}/automatic-setup": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "A signed link to the domain's DNS provider, where the owner approves the records in one step.",
+        "operationId": "domain_automatic_setup",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomaticSetup"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/domains/{id}/check": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Look for the domain's DNS records now. The result shows within a minute.",
+        "operationId": "check_domain",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SenderDomainView"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/inbox/mailboxes": {
       "get": {
         "tags": [
@@ -19454,6 +19924,25 @@
           }
         }
       },
+      "AddSenderDomain": {
+        "type": "object",
+        "required": [
+          "domain"
+        ],
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "The domain to send from, e.g. `acme.com` or `mail.acme.com`."
+          },
+          "local_part": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The part before the @; `hello` if left out."
+          }
+        }
+      },
       "Address": {
         "type": "object",
         "description": "A postal address. Every part is optional, but not all of them.",
@@ -19878,6 +20367,18 @@
             ],
             "format": "uuid",
             "description": "Pass as `before` for the next page; absent on the last page."
+          }
+        }
+      },
+      "AutomaticSetup": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Send the owner here to approve the records at their DNS provider."
           }
         }
       },
@@ -27695,6 +28196,50 @@
           }
         }
       },
+      "RecordView": {
+        "type": "object",
+        "description": "One DNS record to add.",
+        "required": [
+          "purpose",
+          "type",
+          "host",
+          "name",
+          "value",
+          "found"
+        ],
+        "properties": {
+          "found": {
+            "type": "boolean",
+            "description": "The provider has found it."
+          },
+          "host": {
+            "type": "string",
+            "description": "The name as most DNS providers want it: relative to the zone, e.g.\n`resend._domainkey` (or `resend._domainkey.mail` for a subdomain)."
+          },
+          "name": {
+            "type": "string",
+            "description": "The full name."
+          },
+          "priority": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "What it is for: `DKIM`, `SPF` or `DMARC`."
+          },
+          "type": {
+            "type": "string",
+            "description": "`TXT`, `MX` or `CNAME`."
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
       "RecoveryCodesResponse": {
         "type": "object",
         "required": [
@@ -28342,6 +28887,142 @@
               "null"
             ],
             "description": "Default: the booking contact's first email address."
+          }
+        }
+      },
+      "SenderDomainPatch": {
+        "type": "object",
+        "properties": {
+          "in_use": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Send the workspace's email from this domain (once verified). Turning\nit on turns any other domain off."
+          },
+          "local_part": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The part before the @ of the sending address."
+          }
+        }
+      },
+      "SenderDomainSetup": {
+        "type": "object",
+        "description": "What the settings page shows.",
+        "required": [
+          "available",
+          "domains"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "This server can verify domains (its mail provider is set up for it)."
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SenderDomainView"
+            }
+          }
+        }
+      },
+      "SenderDomainView": {
+        "type": "object",
+        "required": [
+          "id",
+          "domain",
+          "status",
+          "records",
+          "from_address",
+          "local_part",
+          "in_use",
+          "sending",
+          "created_at",
+          "version"
+        ],
+        "properties": {
+          "automatic_setup": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The domain's DNS provider, when it can add the records itself."
+          },
+          "checked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dmarc_record": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RecordView",
+                "description": "The suggested DMARC record, when the domain has no DMARC policy."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "domain": {
+            "type": "string"
+          },
+          "from_address": {
+            "type": "string",
+            "description": "The address email is sent from once verified and in use."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "in_use": {
+            "type": "boolean",
+            "description": "Chosen to send from."
+          },
+          "local_part": {
+            "type": "string"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordView"
+            }
+          },
+          "remove_after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it is removed if its records are still not found."
+          },
+          "sending": {
+            "type": "boolean",
+            "description": "Email is going out from it now."
+          },
+          "status": {
+            "type": "string",
+            "description": "`pending` (waiting for its records), `verified` or `failed`."
+          },
+          "verified_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },

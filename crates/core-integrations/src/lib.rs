@@ -5,9 +5,13 @@
 //! ([`storage::BlobStore`]: a directory or an S3-compatible bucket), the
 //! daily reference exchange rates ([`fx`]), Stripe Connect payments
 //! ([`stripe`]), and people's own mailboxes ([`mailbox::MailProvider`]:
-//! Gmail, Microsoft Graph, IMAP and SMTP), connected through [`oauth`].
+//! Gmail, Microsoft Graph, IMAP and SMTP), connected through [`oauth`],
+//! and workspaces' own sender domains ([`domains`]: Resend), set up in their
+//! DNS through Domain Connect ([`dns`]).
 //! Calendar, accounting and messaging providers follow.
 
+pub mod dns;
+pub mod domains;
 pub mod fx;
 pub mod gmail;
 pub mod graph;

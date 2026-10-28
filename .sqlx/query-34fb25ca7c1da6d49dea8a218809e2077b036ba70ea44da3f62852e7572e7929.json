@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT d.id, d.workspace_id AS \"workspace_id: WorkspaceId\", d.next_check_at AS \"at!\"\n           FROM sender_domains d JOIN workspaces w ON w.id = d.workspace_id\n           WHERE d.next_check_at <= $1 AND w.status <> 'closed'\n           ORDER BY d.next_check_at LIMIT $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "sender_domains",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "workspace_id: WorkspaceId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "sender_domains",
+            "name": "workspace_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "sender_domains",
+            "name": "next_check_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "34fb25ca7c1da6d49dea8a218809e2077b036ba70ea44da3f62852e7572e7929"
+}

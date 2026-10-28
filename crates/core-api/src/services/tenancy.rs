@@ -504,9 +504,10 @@ pub async fn close_workspace(state: &AppState, ctx: &Ctx, confirm_slug: &str) ->
         ctx.user_id(),
     )
     .await?;
-    // Nobody can reach a closed workspace to disconnect a mailbox, so they
-    // are all disconnected now.
+    // Nobody can reach a closed workspace to disconnect a mailbox or
+    // release a domain, so that happens now.
     super::integrations::disconnect_all(&mut tx, ctx).await?;
+    super::sender_domains::remove_all(&mut tx, ctx).await?;
     record(
         &mut tx,
         ctx,

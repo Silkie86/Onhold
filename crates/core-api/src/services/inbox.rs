@@ -1280,6 +1280,7 @@ pub async fn send(
         });
     }
     let (workspace, _) = super::context::workspace(&mut tx, state).await?;
+    let own_address = core_db::sender_domains::sending_address(&mut tx).await?;
     core_db::inbox::start_sending(&mut tx, m.id).await?;
     tx.commit().await?;
 
@@ -1350,6 +1351,7 @@ pub async fn send(
                     Some(n) => format!("{n} at {name}"),
                     None => name.clone(),
                 }),
+                from_address: own_address.clone(),
                 reply_to: m.from_address.clone(),
                 subject: m.subject.clone().unwrap_or_default(),
                 html: Some(super::mail::layout(
@@ -1361,7 +1363,11 @@ pub async fn send(
                 attachments,
             };
             match mailer.send(&email).await {
-                Ok(_) => Ok((None, None, "OnHold's own sender".into())),
+                Ok(_) => Ok((
+                    None,
+                    None,
+                    own_address.unwrap_or_else(|| "OnHold's own sender".into()),
+                )),
                 Err(e @ MailError::Permanent(_)) => Err((true, e.to_string())),
                 Err(e) => Err((false, e.to_string())),
             }

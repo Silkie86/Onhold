@@ -1,5 +1,5 @@
 //! The unified inbox: connected mailboxes, the threads read from them and
-//! replies sent from them.
+//! replies sent from them, and the workspace's own domains to send from.
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -22,6 +22,9 @@ use crate::services::integrations::{
     self, ConnectStart, FinishConnect, ImapConnect, IntegrationPatch, IntegrationView, MailSetup,
     StartConnect,
 };
+use crate::services::sender_domains::{
+    self, AddSenderDomain, AutomaticSetup, SenderDomainPatch, SenderDomainSetup, SenderDomainView,
+};
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -36,6 +39,10 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(reply_thread))
         .routes(routes!(thread_enquiry))
         .routes(routes!(thread_file))
+        .routes(routes!(list_domains, add_domain))
+        .routes(routes!(update_domain, remove_domain))
+        .routes(routes!(check_domain))
+        .routes(routes!(domain_automatic_setup))
 }
 
 // Mailboxes ----------------------------------------------------------------------------
@@ -241,5 +248,91 @@ async fn thread_file(
 ) -> ApiResult<Response> {
     Ok(file_response(
         inbox::download(&state, &ctx, id, file_id).await?,
+    ))
+}
+
+// Sending domains ----------------------------------------------------------------------
+
+/// The workspace's own domains to send email from, and whether this server can verify them.
+#[utoipa::path(get, path = "/inbox/domains", tag = "inbox", params(WorkspaceHeader),
+    responses((status = 200, body = SenderDomainSetup), (status = 403, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn list_domains(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<SenderDomainSetup>> {
+    Ok(Json(sender_domains::setup(&state, &ctx).await?))
+}
+
+/// Add a domain to send from. The answer lists the DNS records to add.
+#[utoipa::path(post, path = "/inbox/domains", tag = "inbox", params(WorkspaceHeader, IdempotencyHeader),
+    request_body = AddSenderDomain,
+    responses((status = 200, body = SenderDomainView), (status = 400, body = ErrorBody), (status = 409, body = ErrorBody),
+        (status = 503, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn add_domain(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Json(b): Json<AddSenderDomain>,
+) -> ApiResult<Json<SenderDomainView>> {
+    Ok(Json(sender_domains::add(&state, &ctx, b).await?))
+}
+
+/// Choose the sending address, or whether to send from this domain.
+#[utoipa::path(patch, path = "/inbox/domains/{id}", tag = "inbox",
+    params(WorkspaceHeader, IfMatchHeader, IdempotencyHeader, ("id" = Uuid, Path)), request_body = SenderDomainPatch,
+    responses((status = 200, body = SenderDomainView), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody),
+        (status = 412, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn update_domain(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+    IfMatch(if_match): IfMatch,
+    Json(b): Json<SenderDomainPatch>,
+) -> ApiResult<Response> {
+    let v = sender_domains::update(&state, &ctx, id, b, if_match).await?;
+    Ok(with_etag(v.version, v))
+}
+
+/// Stop sending from a domain and remove it.
+#[utoipa::path(delete, path = "/inbox/domains/{id}", tag = "inbox",
+    params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path)),
+    responses((status = 204), (status = 404, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn remove_domain(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    sender_domains::remove(&state, &ctx, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Look for the domain's DNS records now. The result shows within a minute.
+#[utoipa::path(post, path = "/inbox/domains/{id}/check", tag = "inbox",
+    params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path)),
+    responses((status = 200, body = SenderDomainView), (status = 404, body = ErrorBody), (status = 503, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn check_domain(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<SenderDomainView>> {
+    Ok(Json(sender_domains::check_now(&state, &ctx, id).await?))
+}
+
+/// A signed link to the domain's DNS provider, where the owner approves the records in one step.
+#[utoipa::path(post, path = "/inbox/domains/{id}/automatic-setup", tag = "inbox",
+    params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path)),
+    responses((status = 200, body = AutomaticSetup), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn domain_automatic_setup(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<AutomaticSetup>> {
+    Ok(Json(
+        sender_domains::automatic_setup(&state, &ctx, id).await?,
     ))
 }
