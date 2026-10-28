@@ -230,6 +230,9 @@ async fn check_owner(tx: &mut Tx, check: &mut Check, id: Option<Uuid>) -> ApiRes
 
 pub async fn create(state: &AppState, ctx: &Ctx, new: NewProject) -> ApiResult<ProjectView> {
     ctx.authorize(Permission::ProjectWrite)?;
+    if !new.booking_ids.is_empty() {
+        ctx.authorize(Permission::BookingWrite)?;
+    }
     let mut tx = begin(state, ctx).await?;
     let mut check = Check::default();
     let name = check.required("name", &new.name, 200);
@@ -328,6 +331,13 @@ pub async fn update(
     if p.owner_id.is_some() {
         check_owner(&mut tx, &mut check, owner_id).await?;
     }
+    // Budget amounts are in the project's currency: a new currency needs them again.
+    if currency != before.currency && p.budget.is_none() && !before.budget.is_empty() {
+        check.issue(
+            "budget",
+            "give the budget again in the new currency, or clear it",
+        );
+    }
     let budget = check_budget(&mut check, p.budget.as_ref().unwrap_or(&before.budget));
     let notes = match &p.notes {
         Some(n) => check.long("notes", n.as_deref(), 20000),
@@ -425,6 +435,7 @@ pub async fn add_date(
     link: DateLink,
 ) -> ApiResult<ProjectView> {
     ctx.authorize(Permission::ProjectWrite)?;
+    ctx.authorize(Permission::BookingWrite)?;
     let mut tx = begin(state, ctx).await?;
     load(&mut tx, id).await?;
     let previous = core_db::projects::of_booking(&mut tx, link.booking_id).await?;
@@ -727,13 +738,27 @@ async fn bookings_of(tx: &mut Tx, project_id: Uuid) -> ApiResult<Vec<BookingView
     Ok(out)
 }
 
+/// Whether a date still stands: cancelled bookings and lapsed holds stay
+/// listed but count for nothing.
+fn stands(b: &BookingView) -> bool {
+    !matches!(b.status, BookingStatus::Cancelled | BookingStatus::Expired)
+}
+
+/// The last day a booking covers: an end at midnight belongs to the day before.
+fn last_day(b: &BookingView) -> NaiveDate {
+    let end = b.ends_at - Duration::seconds(1);
+    local_date(end.max(b.starts_at), &b.timezone)
+}
+
 fn local_date(at: DateTime<Utc>, tz: &str) -> NaiveDate {
     let tz: chrono_tz::Tz = tz.parse().unwrap_or(chrono_tz::UTC);
     at.with_timezone(&tz).date_naive()
 }
 
 pub async fn overview(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<ProjectOverview> {
+    // Fees, commission and costs are the dates' own: reading them needs bookings too.
     ctx.authorize(Permission::ProjectRead)?;
+    ctx.authorize(Permission::BookingRead)?;
     let mut tx = begin(state, ctx).await?;
     let project = load(&mut tx, id).await?;
     let currency = project.currency.clone();
@@ -747,6 +772,7 @@ pub async fn overview(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Projec
 
     for b in &bookings {
         let m: MoneyCheck = super::travel::check_booking(&mut tx, ctx, b).await?;
+        let counts = stands(b);
         let on = local_date(b.starts_at, &b.timezone).min(today);
         let mut convert = async |x: &Money| -> ApiResult<Option<i64>> {
             super::travel::convert(&mut tx, x, &currency, on).await
@@ -759,23 +785,29 @@ pub async fn overview(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Projec
         );
         let net_in_currency = match parts {
             (Some(i), Some(c), Some(k), Some(n)) => {
-                income = add(income, i)?;
-                commission = add(commission, c)?;
-                costs = add(costs, k)?;
+                if counts {
+                    income = add(income, i)?;
+                    commission = add(commission, c)?;
+                    costs = add(costs, k)?;
+                }
                 Some(Money {
                     minor: n,
                     currency: currency.clone(),
                 })
             }
             _ => {
-                if !unconverted.contains(&m.currency) {
+                if counts && !unconverted.contains(&m.currency) {
                     unconverted.push(m.currency.clone());
                 }
                 None
             }
         };
-        let trips = super::travel::travel_of(&mut tx, b.id).await?;
-        for c in &m.costs {
+        let trips = if counts {
+            super::travel::travel_of(&mut tx, b.id).await?
+        } else {
+            Vec::new()
+        };
+        for c in m.costs.iter().filter(|_| counts) {
             let category = match (c.category.as_str(), c.source_id) {
                 // Travel entered as travel counts under its kind.
                 ("travel", Some(source)) => trips
@@ -793,7 +825,7 @@ pub async fn overview(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Projec
                 *slot = add(*slot, minor)?;
             }
         }
-        if m.net.minor < 0 {
+        if counts && m.net.minor < 0 {
             losing += 1;
         }
         dates.push(DateSummary {
@@ -972,15 +1004,25 @@ pub struct Itinerary {
 
 pub async fn itinerary(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Itinerary> {
     ctx.authorize(Permission::ProjectRead)?;
+    ctx.authorize(Permission::BookingRead)?;
     let mut tx = begin(state, ctx).await?;
     let project = load(&mut tx, id).await?;
-    let bookings = bookings_of(&mut tx, id).await?;
+    let bookings: Vec<BookingView> = bookings_of(&mut tx, id)
+        .await?
+        .into_iter()
+        .filter(stands)
+        .collect();
     let ids: Vec<Uuid> = bookings.iter().map(|b| b.id).collect();
     let travel: Vec<TravelView> = core_db::travel::list(&mut tx, &ids, Some(id))
         .await?
         .into_iter()
         .map(TravelView::from)
         .filter(|t| t.status != "cancelled")
+        .map(|mut t| {
+            // The itinerary is for the people going: what it costs stays off.
+            t.cost = None;
+            t
+        })
         .collect();
     let crew = core_db::projects::crew(&mut tx, id)
         .await?
@@ -988,7 +1030,8 @@ pub async fn itinerary(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Itine
         .map(CrewView::from)
         .collect();
     let mut contacts = BTreeMap::new();
-    for b in &bookings {
+    let see_contacts = ctx.authorize(Permission::ContactRead).is_ok();
+    for b in bookings.iter().filter(|_| see_contacts) {
         if let Some(c) = b.contact_id
             && let Some(found) = super::contacts::load(&mut tx, c).await?
         {
@@ -1001,13 +1044,14 @@ pub async fn itinerary(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Itine
         .iter()
         .map(|b| local_date(b.starts_at, &b.timezone))
         .chain(travel.iter().map(|t| local_date(t.starts_at, &t.start_tz)));
-    let ends = bookings
-        .iter()
-        .map(|b| local_date(b.ends_at, &b.timezone))
-        .chain(travel.iter().map(|t| match (t.ends_at, &t.end_tz) {
-            (Some(at), Some(tz)) => local_date(at, tz),
-            _ => local_date(t.starts_at, &t.start_tz),
-        }));
+    let ends =
+        bookings
+            .iter()
+            .map(last_day)
+            .chain(travel.iter().map(|t| match (t.ends_at, &t.end_tz) {
+                (Some(at), Some(tz)) => local_date(at, tz),
+                _ => local_date(t.starts_at, &t.start_tz),
+            }));
     let (Some(first), Some(last)) = (starts.min(), ends.max()) else {
         return Ok(Itinerary {
             project_id: id,
@@ -1022,7 +1066,7 @@ pub async fn itinerary(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Itine
     while day <= last {
         let on_day: Vec<ItineraryDate> = bookings
             .iter()
-            .filter(|b| local_date(b.starts_at, &b.timezone) == day)
+            .filter(|b| local_date(b.starts_at, &b.timezone) <= day && day <= last_day(b))
             .map(|b| ItineraryDate {
                 booking_id: b.id,
                 title: b.title.clone(),

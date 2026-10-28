@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT p.id, p.kind, p.name, p.status, p.currency::text AS \"currency!\", p.owner_id, p.budget,\n                  p.notes, p.tags, p.version, p.created_at, p.updated_at,\n                  p.created_by AS \"created_by: UserId\", p.updated_by AS \"updated_by: UserId\",\n                  d.first_at, d.last_at, coalesce(d.dates, 0) AS \"dates!\", count(*) OVER () AS \"total!\"\n           FROM projects p\n           LEFT JOIN LATERAL (\n               SELECT min(b.starts_at) AS first_at, max(b.starts_at) AS last_at, count(*) AS dates\n               FROM project_bookings pb JOIN bookings b ON b.id = pb.booking_id\n               WHERE pb.project_id = p.id AND b.deleted_at IS NULL\n           ) d ON true\n           WHERE p.workspace_id = app_workspace_id() AND p.deleted_at IS NULL\n             AND ($1::text IS NULL OR p.status = $1)\n           ORDER BY coalesce(d.last_at, p.created_at) < now(),\n                    CASE WHEN coalesce(d.last_at, p.created_at) >= now() THEN d.first_at END ASC NULLS LAST,\n                    d.last_at DESC NULLS LAST, p.created_at DESC, p.id\n           OFFSET $2 LIMIT $3",
+  "query": "SELECT p.id, p.kind, p.name, p.status, p.currency::text AS \"currency!\", p.owner_id, p.budget,\n                  p.notes, p.tags, p.version, p.created_at, p.updated_at,\n                  p.created_by AS \"created_by: UserId\", p.updated_by AS \"updated_by: UserId\",\n                  d.first_at, d.last_at, coalesce(d.dates, 0) AS \"dates!\", count(*) OVER () AS \"total!\"\n           FROM projects p\n           LEFT JOIN LATERAL (\n               SELECT min(b.starts_at) AS first_at, max(b.starts_at) AS last_at, count(*) AS dates\n               FROM project_bookings pb JOIN bookings b ON b.id = pb.booking_id\n               WHERE pb.project_id = p.id AND b.deleted_at IS NULL\n           ) d ON true\n           WHERE p.workspace_id = app_workspace_id() AND p.deleted_at IS NULL\n             AND ($1::text IS NULL OR p.status = $1)\n           ORDER BY coalesce(d.last_at < now(), false),\n                    CASE WHEN d.last_at IS NULL OR d.last_at >= now() THEN d.first_at END ASC NULLS FIRST,\n                    d.last_at DESC NULLS LAST, p.created_at DESC, p.id\n           OFFSET $2 LIMIT $3",
   "describe": {
     "columns": [
       {
@@ -205,5 +205,5 @@
       null
     ]
   },
-  "hash": "cf724795bc091db576491e2c47a33c5b1a41b2ea44138905ce3a85d4b6593af9"
+  "hash": "4e4fcfe8337b81191d529980c47132372c242f65cfce72ab24f3e2bab731efc7"
 }

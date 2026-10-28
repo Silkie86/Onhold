@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE travel_items SET deleted_at = now(), updated_by = $2\n           WHERE workspace_id = app_workspace_id() AND project_id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f58519857fbddfade178cefbd561a6709ec424d51132fbe71e3e5805b770e3db"
+}

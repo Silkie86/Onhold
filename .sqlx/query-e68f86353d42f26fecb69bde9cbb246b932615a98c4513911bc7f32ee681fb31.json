@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE project_crew SET deleted_at = now(), updated_by = $2\n           WHERE workspace_id = app_workspace_id() AND project_id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e68f86353d42f26fecb69bde9cbb246b932615a98c4513911bc7f32ee681fb31"
+}

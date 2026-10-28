@@ -341,3 +341,91 @@ async fn a_tour_adds_up_across_its_dates(pool: PgPool) {
         assert!(actions.contains(&a.to_owned()), "{a}");
     }
 }
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn cancelled_dates_count_for_nothing_and_long_dates_fill_their_days(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let talent = post(&app, &owner, "/api/v1/talent", json!({ "name": "Ada" }))
+        .await
+        .ok()
+        .id("/id");
+    let gbp = |minor: i64| json!({ "minor": minor, "currency": "GBP" });
+    // A residency over three days, and a date that falls through.
+    let residency = post(
+        &app,
+        &owner,
+        "/api/v1/bookings",
+        json!({ "title": "Residency", "talent_ids": [talent], "status": "pending", "timezone": "Europe/London",
+                "starts_at": "2031-07-01T09:00:00Z", "ends_at": "2031-07-03T17:00:00Z", "fee": gbp(100_000) }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let dropped = date(
+        &app,
+        &owner,
+        talent,
+        "Dropped",
+        "Europe/London",
+        "2031-07-05T19:00:00Z",
+        gbp(200_000),
+    )
+    .await;
+    let project = post(
+        &app,
+        &owner,
+        "/api/v1/projects",
+        json!({ "name": "July", "budget": { "travel": 1_000 }, "booking_ids": [residency, dropped] }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    post(
+        &app,
+        &owner,
+        &format!("/api/v1/bookings/{dropped}/status"),
+        json!({ "status": "cancelled", "reason": "Venue closed" }),
+    )
+    .await
+    .ok();
+
+    let o = get(
+        &app,
+        &owner,
+        &format!("/api/v1/projects/{project}/overview"),
+    )
+    .await;
+    assert_eq!(o.body["dates"].as_array().unwrap().len(), 2);
+    assert_eq!(o.body["total_income"]["minor"], 100_000, "{}", o.body);
+
+    let it = get(
+        &app,
+        &owner,
+        &format!("/api/v1/projects/{project}/itinerary"),
+    )
+    .await;
+    let days: Vec<(&str, &str)> = it.body["days"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| (d["date"].as_str().unwrap(), d["kind"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        days,
+        [
+            ("2031-07-01", "show"),
+            ("2031-07-02", "show"),
+            ("2031-07-03", "show")
+        ]
+    );
+
+    // The budget is in the project's currency, so a new currency needs it again.
+    let changed = app
+        .patch(&format!("/api/v1/projects/{project}"))
+        .signed_in(&owner)
+        .json(json!({ "currency": "EUR" }))
+        .send()
+        .await;
+    assert_eq!(changed.status, StatusCode::BAD_REQUEST);
+}

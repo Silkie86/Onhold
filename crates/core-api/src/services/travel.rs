@@ -353,10 +353,27 @@ pub async fn list_travel(
     Ok(items)
 }
 
+/// The permission that changes what belongs to `owner`.
+fn write_permission(owner: Owner) -> Permission {
+    match owner {
+        Owner::Booking(_) => Permission::BookingWrite,
+        Owner::Project(_) => Permission::ProjectWrite,
+    }
+}
+
+/// Refuses before any lookup someone who could change no item at all, so a
+/// refusal says nothing about which items exist.
+fn may_write_some(ctx: &Ctx) -> ApiResult<()> {
+    if ctx.authorize(Permission::ProjectWrite).is_ok() {
+        return Ok(());
+    }
+    Ok(ctx.authorize(Permission::BookingWrite)?)
+}
+
 /// Who may change an item, and the zone its times default to.
 async fn owner_rules(tx: &mut Tx, ctx: &Ctx, owner: Owner) -> ApiResult<(Permission, String)> {
     match owner {
-        Owner::Booking(id) => Ok((Permission::BookingWrite, booking(tx, id).await?.timezone)),
+        Owner::Booking(id) => Ok((write_permission(owner), booking(tx, id).await?.timezone)),
         Owner::Project(id) => {
             core_db::projects::get(tx, id)
                 .await?
@@ -364,7 +381,7 @@ async fn owner_rules(tx: &mut Tx, ctx: &Ctx, owner: Owner) -> ApiResult<(Permiss
             let tz = core_db::workspaces::get(tx, ctx.workspace_id)
                 .await?
                 .map_or_else(|| "UTC".to_owned(), |w| w.default_timezone);
-            Ok((Permission::ProjectWrite, tz))
+            Ok((write_permission(owner), tz))
         }
     }
 }
@@ -384,10 +401,7 @@ pub async fn create_travel(
     owner: Owner,
     input: TravelInput,
 ) -> ApiResult<TravelView> {
-    ctx.authorize(match owner {
-        Owner::Booking(_) => Permission::BookingWrite,
-        Owner::Project(_) => Permission::ProjectWrite,
-    })?;
+    ctx.authorize(write_permission(owner))?;
     let mut tx = begin(state, ctx).await?;
     let (_, tz) = owner_rules(&mut tx, ctx, owner).await?;
     let c = check_travel(input, &tz)?;
@@ -421,6 +435,7 @@ pub async fn update_travel(
     input: TravelInput,
     if_match: Option<i64>,
 ) -> ApiResult<TravelView> {
+    may_write_some(ctx)?;
     let mut tx = begin(state, ctx).await?;
     let version = core_db::travel::lock(&mut tx, id)
         .await?
@@ -461,6 +476,7 @@ pub async fn update_travel(
 }
 
 pub async fn delete_travel(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
+    may_write_some(ctx)?;
     let mut tx = begin(state, ctx).await?;
     let before: TravelView = core_db::travel::get(&mut tx, id)
         .await?
@@ -618,10 +634,7 @@ pub async fn create_line(
     owner: Owner,
     input: MoneyLineInput,
 ) -> ApiResult<MoneyLineView> {
-    ctx.authorize(match owner {
-        Owner::Booking(_) => Permission::BookingWrite,
-        Owner::Project(_) => Permission::ProjectWrite,
-    })?;
+    ctx.authorize(write_permission(owner))?;
     let c = check_line(input)?;
     let mut tx = begin(state, ctx).await?;
     owner_rules(&mut tx, ctx, owner).await?;
@@ -655,6 +668,7 @@ pub async fn update_line(
     input: MoneyLineInput,
     if_match: Option<i64>,
 ) -> ApiResult<MoneyLineView> {
+    may_write_some(ctx)?;
     let c = check_line(input)?;
     let mut tx = begin(state, ctx).await?;
     let version = core_db::travel::lock_line(&mut tx, id)
@@ -695,6 +709,7 @@ pub async fn update_line(
 }
 
 pub async fn delete_line(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
+    may_write_some(ctx)?;
     let mut tx = begin(state, ctx).await?;
     let before: MoneyLineView = core_db::travel::line(&mut tx, id)
         .await?

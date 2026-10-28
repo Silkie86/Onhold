@@ -15,6 +15,7 @@ import { type Booking, fromZonedInput, zonedTime } from "../work.ts";
 import { Loading, OfflineNote, PageError, useWorkspaceCurrency } from "./crm.tsx";
 import { NewBookingDialog, StatusBadge } from "./bookings.tsx";
 import { RelatedTasks } from "./tasks.tsx";
+import { isLocalId } from "../offline/store.ts";
 import { COST_LABELS, INCOME_LABELS, TravelLine, travelTitle } from "./travel.tsx";
 
 type Project = Schemas["ProjectView"];
@@ -233,13 +234,16 @@ export function ProjectPage() {
     void qc.invalidateQueries({ queryKey: ["itinerary", id] });
     void qc.invalidateQueries({ queryKey: ["projects"] });
   };
+  /** Runs a change and refreshes; false (with the error shown) when it fails. */
   const act = async (run: () => Promise<unknown>) => {
     setError(null);
     try {
       await run();
       refresh();
+      return true;
     } catch (e) {
       setError(failure(e));
+      return false;
     }
   };
   const patch = (body: Schemas["ProjectPatch"]) =>
@@ -352,7 +356,7 @@ export function ProjectPage() {
 
           <section aria-label="Shared costs and travel" className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="flex-1 font-semibold">Shared costs and income</h2>
+              <h2 className="flex-1 font-semibold">Shared travel, costs and income</h2>
               {online && (
                 <>
                   <Button size="sm" variant="outline" onClick={() => setAdding("cost")}>
@@ -365,6 +369,28 @@ export function ProjectPage() {
               )}
             </div>
             <p className="text-xs text-muted-foreground">For what belongs to no one date: rehearsals, insurance, wages, tour support. Travel on days between dates is added from the itinerary.</p>
+            {o.travel.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {o.travel.map((t) => (
+                  <TravelLine
+                    key={t.id}
+                    item={t}
+                    actions={
+                      online && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label={`Remove ${travelTitle(t)}`}
+                          onClick={() => void act(() => ok(api.DELETE("/api/v1/travel/{id}", { params: { path: { id: t.id } } })))}
+                        >
+                          <Trash2 />
+                        </Button>
+                      )
+                    }
+                  />
+                ))}
+              </ul>
+            )}
             {o.lines.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nothing yet.</p>
             ) : (
@@ -443,8 +469,9 @@ export function ProjectPage() {
               className="self-start"
               onClick={async () => {
                 if (!window.confirm(`Delete ${p.name}? Its dates stay as bookings.`)) return;
-                await act(() => ok(api.DELETE("/api/v1/projects/{id}", { params: { path: { id } } })));
-                void navigate({ to: "/projects" });
+                if (await act(() => ok(api.DELETE("/api/v1/projects/{id}", { params: { path: { id } } })))) {
+                  void navigate({ to: "/projects" });
+                }
               }}
             >
               <Trash2 /> Delete
@@ -457,7 +484,14 @@ export function ProjectPage() {
         <NewBookingDialog
           initial={{ talent: [] }}
           onClose={() => setAdding(null)}
-          onCreated={(b: Booking) => void act(() => ok(api.POST("/api/v1/projects/{id}/dates", { params: { path: { id } }, body: { booking_id: b.id } })))}
+          onCreated={(b: Booking) => {
+            // A booking still waiting to be sent has no id the server knows yet.
+            if (isLocalId(b.id)) {
+              setError("The new booking is saved on this device. Add it to the tour once it has been sent.");
+              return;
+            }
+            void act(() => ok(api.POST("/api/v1/projects/{id}/dates", { params: { path: { id } }, body: { booking_id: b.id } })));
+          }}
         />
       )}
       {adding === "existing" && (
@@ -591,7 +625,7 @@ function ExistingBookingDialog({ exclude, onClose, onPick }: { exclude: string[]
   const [q, setQ] = useState("");
   const found = useQuery({
     queryKey: ["bookings", "pick", q],
-    queryFn: () => ok(api.GET("/api/v1/bookings", { params: { query: { q: q || undefined, sort: "starts_at", limit: 50 } } })),
+    queryFn: () => ok(api.GET("/api/v1/bookings", { params: { query: { q: q || undefined, sort: "starts_at", from: q ? undefined : new Date(Date.now() - 86_400_000).toISOString(), limit: 50 } } })),
   });
   const items = (found.data?.items ?? []).filter((b) => !exclude.includes(b.id));
   return (
@@ -792,6 +826,18 @@ export function ProjectDayPage() {
   if (itinerary.isError) return <PageError error={itinerary.error} />;
   const it = itinerary.data.data;
   const index = it.days.findIndex((d) => d.date === date);
+  if (index < 0) {
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col gap-3 p-4 sm:p-6">
+        <p>{dayLabel(date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} is not a day of {it.name}.</p>
+        <Button variant="outline" className="self-start" asChild>
+          <Link to="/projects/$id" params={{ id }}>
+            <ArrowLeft /> Back to {it.name}
+          </Link>
+        </Button>
+      </div>
+    );
+  }
   const day: Day | undefined = it.days[index];
   const prev = it.days[index - 1];
   const next = it.days[index + 1];
@@ -893,7 +939,31 @@ export function ProjectDayPage() {
             ) : (
               <ul className="flex flex-col gap-2">
                 {day.travel.map((t) => (
-                  <TravelLine key={t.id} item={t} />
+                  <TravelLine
+                    key={t.id}
+                    item={t}
+                    actions={
+                      online &&
+                      t.project_id && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="print:hidden"
+                          aria-label={`Remove ${travelTitle(t)}`}
+                          onClick={() =>
+                            void ok(api.DELETE("/api/v1/travel/{id}", { params: { path: { id: t.id } } }))
+                              .then(() => {
+                                void qc.invalidateQueries({ queryKey: ["itinerary", id] });
+                                void qc.invalidateQueries({ queryKey: ["project", id] });
+                              })
+                              .catch((e: unknown) => window.alert(failure(e)))
+                          }
+                        >
+                          <Trash2 />
+                        </Button>
+                      )
+                    }
+                  />
                 ))}
               </ul>
             )}

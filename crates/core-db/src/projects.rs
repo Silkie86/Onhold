@@ -52,8 +52,8 @@ pub async fn list(
            ) d ON true
            WHERE p.workspace_id = app_workspace_id() AND p.deleted_at IS NULL
              AND ($1::text IS NULL OR p.status = $1)
-           ORDER BY coalesce(d.last_at, p.created_at) < now(),
-                    CASE WHEN coalesce(d.last_at, p.created_at) >= now() THEN d.first_at END ASC NULLS LAST,
+           ORDER BY coalesce(d.last_at < now(), false),
+                    CASE WHEN d.last_at IS NULL OR d.last_at >= now() THEN d.first_at END ASC NULLS FIRST,
                     d.last_at DESC NULLS LAST, p.created_at DESC, p.id
            OFFSET $2 LIMIT $3"#,
         status,
@@ -183,8 +183,34 @@ pub async fn update(
     Ok(())
 }
 
-/// Deletes the project and lets go of its dates (which stay bookings).
+/// Deletes the project with its own travel, costs and crew, and lets go of
+/// its dates (which stay bookings).
 pub async fn soft_delete(conn: &mut PgConnection, id: Uuid, by: Option<UserId>) -> Result<bool> {
+    let by = by.map(|u| u.0);
+    sqlx::query!(
+        r#"UPDATE travel_items SET deleted_at = now(), updated_by = $2
+           WHERE workspace_id = app_workspace_id() AND project_id = $1 AND deleted_at IS NULL"#,
+        id,
+        by
+    )
+    .execute(&mut *conn)
+    .await?;
+    sqlx::query!(
+        r#"UPDATE money_lines SET deleted_at = now(), updated_by = $2
+           WHERE workspace_id = app_workspace_id() AND project_id = $1 AND deleted_at IS NULL"#,
+        id,
+        by
+    )
+    .execute(&mut *conn)
+    .await?;
+    sqlx::query!(
+        r#"UPDATE project_crew SET deleted_at = now(), updated_by = $2
+           WHERE workspace_id = app_workspace_id() AND project_id = $1 AND deleted_at IS NULL"#,
+        id,
+        by
+    )
+    .execute(&mut *conn)
+    .await?;
     sqlx::query!(
         r#"DELETE FROM project_bookings WHERE workspace_id = app_workspace_id() AND project_id = $1"#,
         id
@@ -195,7 +221,7 @@ pub async fn soft_delete(conn: &mut PgConnection, id: Uuid, by: Option<UserId>) 
         r#"UPDATE projects SET deleted_at = now(), updated_by = $2
            WHERE workspace_id = app_workspace_id() AND id = $1 AND deleted_at IS NULL"#,
         id,
-        by.map(|u| u.0)
+        by
     )
     .execute(conn)
     .await?;
