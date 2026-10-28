@@ -7123,8 +7123,8 @@ export interface components {
             entity: string;
             filename?: string | null;
             /**
-             * @description An Excel (`.xlsx`, `.xls`) or OpenDocument (`.ods`) file, base64:
-             *     its first sheet with anything on it is imported. Up to 7 MB.
+             * @description An Excel workbook (`.xlsx`), base64: its first visible sheet with
+             *     anything on it is imported. Up to 7 MB.
              */
             workbook?: string | null;
         };

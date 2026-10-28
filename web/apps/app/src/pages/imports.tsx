@@ -58,11 +58,15 @@ export function stripCardAttachments(text: string): string {
   return out.join("\n");
 }
 
-/** Whether the bytes are an Excel or OpenDocument workbook rather than text. */
+/** Whether the bytes are an Excel (.xlsx) workbook rather than text. */
 export function isWorkbook(bytes: Uint8Array): boolean {
-  const zip = bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
-  const ole = bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0;
-  return zip || ole;
+  return bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
+}
+
+/** Spreadsheet files read here only once saved as .xlsx or CSV: .xlsb,
+ * OpenDocument, Numbers and old Excel (.xls, often a web page in disguise). */
+export function needsResaving(name: string, bytes: Uint8Array): boolean {
+  return /\.(xlsb|ods|numbers)$/i.test(name) || (/\.xls$/i.test(name) && !isWorkbook(bytes));
 }
 
 function base64(bytes: Uint8Array): string {
@@ -447,15 +451,15 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
           <Input
             id="import-file"
             type="file"
-            accept=".csv,.tsv,.txt,.vcf,.vcard,.xlsx,.xls,.ods,text/csv,text/tab-separated-values,text/vcard,text/x-vcard,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet"
+            accept=".csv,.tsv,.txt,.vcf,.vcard,.xlsx,text/csv,text/tab-separated-values,text/vcard,text/x-vcard,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="py-1.5"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
           <p className="text-xs text-muted-foreground">
             A CSV export from the app you are moving from, as it comes: Google Contacts, Outlook, HubSpot, Salesforce, Pipedrive,
-            Mailchimp, LinkedIn or a booking system. Excel and OpenDocument files work as they are (the first sheet is read), and so do contact
-            cards (.vcf) from Apple Contacts, iCloud or Android. From Numbers or Google Sheets, export as Excel or CSV. Up to 10 MB (7 MB
-            for Excel) and 50,000 rows.
+            Mailchimp, LinkedIn or a booking system. Excel files (.xlsx) work as they are (the first visible sheet is read), and so do
+            contact cards (.vcf) from Apple Contacts, iCloud or Android. Older .xls, Numbers or OpenDocument files: save them as .xlsx or
+            CSV first. Up to 10 MB (7 MB for Excel) and 50,000 rows.
           </p>
         </div>
         {error && <Alert>{error}</Alert>}
@@ -470,6 +474,8 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
                 if (!file) return;
                 if (file.size > 100 * 1024 * 1024) throw new Error("The file is over 100 MB. Split it into smaller files.");
                 const bytes = new Uint8Array(await file.arrayBuffer());
+                if (needsResaving(file.name, bytes))
+                  throw new Error("Open this file in Excel, Numbers or Google Sheets and save it as .xlsx or CSV UTF-8, then upload that.");
                 let body: Schemas["NewImport"];
                 if (isWorkbook(bytes)) {
                   if (bytes.length > 7 * 1024 * 1024) throw new Error("The spreadsheet is over 7 MB. Save it as CSV, or split it.");

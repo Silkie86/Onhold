@@ -1,5 +1,5 @@
 import { safeRedirect } from "./auth.tsx";
-import { decodeFile, isWorkbook, stripCardAttachments } from "./imports.tsx";
+import { decodeFile, isWorkbook, needsResaving, stripCardAttachments } from "./imports.tsx";
 import { validateListSearch } from "./crm.tsx";
 import { keyFrom } from "./settings.tsx";
 
@@ -51,6 +51,11 @@ test("contact cards lose their photos before upload", () => {
 
 test("Excel files are told apart from text", () => {
   expect(isWorkbook(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14]))).toBe(true);
-  expect(isWorkbook(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1]))).toBe(true);
+  expect(isWorkbook(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1]))).toBe(false);
+  // Old .xls (or a web page saved as .xls) and OpenDocument need saving as .xlsx first.
+  expect(needsResaving("export.xls", new TextEncoder().encode("<html>"))).toBe(true);
+  expect(needsResaving("book.ods", new Uint8Array([0x50, 0x4b, 0x03, 0x04]))).toBe(true);
+  expect(needsResaving("book.xlsx", new Uint8Array([0x50, 0x4b, 0x03, 0x04]))).toBe(false);
+  expect(needsResaving("people.csv", new TextEncoder().encode("Name"))).toBe(false);
   expect(isWorkbook(new TextEncoder().encode("PK,Name\n1,Ada"))).toBe(false);
 });

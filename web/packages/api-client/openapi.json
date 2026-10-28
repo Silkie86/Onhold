@@ -34237,7 +34237,7 @@
               "string",
               "null"
             ],
-            "description": "An Excel (`.xlsx`, `.xls`) or OpenDocument (`.ods`) file, base64:\nits first sheet with anything on it is imported. Up to 7 MB."
+            "description": "An Excel workbook (`.xlsx`), base64: its first visible sheet with\nanything on it is imported. Up to 7 MB."
           }
         }
       },

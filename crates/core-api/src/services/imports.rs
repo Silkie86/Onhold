@@ -271,8 +271,8 @@ pub struct NewImport {
     /// when sending `workbook`.
     #[serde(default)]
     pub csv: String,
-    /// An Excel (`.xlsx`, `.xls`) or OpenDocument (`.ods`) file, base64:
-    /// its first sheet with anything on it is imported. Up to 7 MB.
+    /// An Excel workbook (`.xlsx`), base64: its first visible sheet with
+    /// anything on it is imported. Up to 7 MB.
     pub workbook: Option<String>,
 }
 
@@ -712,11 +712,14 @@ pub async fn upload(state: &AppState, ctx: &Ctx, mut new: NewImport) -> ApiResul
         if !core_engines::workbook::is_workbook(&bytes) {
             return Err(ApiError::invalid(
                 "workbook",
-                "this is not an Excel or OpenDocument spreadsheet",
+                "this is not an Excel (.xlsx) workbook; save it as .xlsx or CSV",
             ));
         }
-        new.csv =
-            core_engines::workbook::to_csv(&bytes).map_err(|m| ApiError::invalid("workbook", m))?;
+        // Unpacking and reading takes a while: off the request threads.
+        new.csv = tokio::task::spawn_blocking(move || core_engines::workbook::to_csv(&bytes))
+            .await
+            .map_err(ApiError::internal)?
+            .map_err(|m| ApiError::invalid("workbook", m))?;
         if new.csv.len() > MAX_CSV_BYTES {
             return Err(ApiError::invalid(
                 "workbook",
