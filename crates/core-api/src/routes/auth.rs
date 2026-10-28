@@ -573,6 +573,9 @@ pub struct InvitationPreviewView {
     pub workspace_name: String,
     pub email: String,
     pub role: Role,
+    /// The workspace's logo, colour and theme.
+    #[schema(value_type = Object)]
+    pub branding: serde_json::Value,
 }
 
 /// What an invitation is for, so the accept page can show it.
@@ -587,6 +590,7 @@ async fn preview_invitation(
         workspace_name: p.workspace_name,
         email: p.email,
         role: p.role,
+        branding: p.branding,
     }))
 }
 

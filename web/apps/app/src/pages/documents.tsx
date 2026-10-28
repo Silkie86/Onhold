@@ -76,7 +76,7 @@ function downloadDocument(id: string, title: string, version?: number) {
 function SignatureBadge({ status }: { status: string }) {
   if (!SIGNATURE_LABEL[status]) return null;
   return (
-    <Badge className={cn("border", status === "signed" && "border-emerald-700 bg-emerald-700 text-white", status === "declined" && "border-destructive text-destructive")}>
+    <Badge className={cn("border", status === "signed" && "border-success bg-success text-success-foreground", status === "declined" && "border-destructive text-destructive")}>
       {SIGNATURE_LABEL[status]}
     </Badge>
   );
@@ -909,7 +909,7 @@ export function PublicSigningPage() {
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-5 p-4 sm:p-8">
       <header className="flex items-center gap-3">
-        {logo && <img src={logo} alt="" className="h-10 w-auto max-w-40 rounded object-contain" />}
+        {logo && <img src={logo} alt="" className="h-10 w-auto max-w-40 rounded object-contain brand-logo" />}
         <div>
           <p className="text-sm text-muted-foreground">{p.workspace_name} asks you to sign</p>
           <h1 className="text-2xl font-semibold">{p.document_title}</h1>

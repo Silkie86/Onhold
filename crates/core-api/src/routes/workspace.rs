@@ -37,6 +37,34 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(revoke_api_key))
         .routes(routes!(audit))
         .routes(routes!(audit_export))
+        .routes(routes!(public_logo))
+}
+
+/// A workspace's logo for emails; see [`svc::public_logo`].
+#[utoipa::path(get, path = "/public/workspaces/{id}/logo", tag = "public", params(("id" = Uuid, Path)),
+    responses((status = 200, content_type = "image/*", body = Vec<u8>), (status = 404, body = ErrorBody)))]
+async fn public_logo(State(state): State<AppState>, Path(id): Path<Uuid>) -> ApiResult<Response> {
+    let (content_type, bytes) = svc::public_logo(&state, WorkspaceId(id)).await?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_static(content_type)),
+            // The address carries the logo's version, so it can be kept a long time.
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("public, max-age=2592000, immutable"),
+            ),
+            (
+                header::X_CONTENT_TYPE_OPTIONS,
+                HeaderValue::from_static("nosniff"),
+            ),
+            (
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static("default-src 'none'; sandbox"),
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 // Workspace ---------------------------------------------------------------------------

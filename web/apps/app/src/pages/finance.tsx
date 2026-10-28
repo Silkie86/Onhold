@@ -52,9 +52,9 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
 };
 
 const STATUS_STYLE: Partial<Record<InvoiceStatus, string>> = {
-  issued: "border-sky-500 text-sky-800 dark:text-sky-300",
-  part_paid: "border-amber-500 text-amber-800 dark:text-amber-300",
-  paid: "border-emerald-700 bg-emerald-700 text-white",
+  issued: "border-info text-info",
+  part_paid: "border-warning text-warning",
+  paid: "border-success bg-success text-success-foreground",
   overdue: "border-destructive bg-destructive text-destructive-foreground",
   void: "text-muted-foreground line-through",
 };
@@ -1512,7 +1512,7 @@ export function PublicInvoicePage() {
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 p-4 sm:p-8">
       <header className="flex items-center gap-3">
-        {logo && <img src={logo} alt="" className="h-10 w-auto max-w-40 rounded object-contain" />}
+        {logo && <img src={logo} alt="" className="h-10 w-auto max-w-40 rounded object-contain brand-logo" />}
         <div>
           <p className="text-sm text-muted-foreground">{issuer?.name ?? i.workspace_name}</p>
           <h1 className="text-2xl font-semibold">

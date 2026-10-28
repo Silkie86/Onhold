@@ -2448,6 +2448,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/workspaces/{id}/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A workspace's logo for emails; see [`svc::public_logo`]. */
+        get: operations["public_logo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quotes": {
         parameters: {
             query?: never;
@@ -4736,6 +4753,8 @@ export interface components {
             version: number;
         };
         InvitationPreviewView: {
+            /** @description The workspace's logo, colour and theme. */
+            branding: Record<string, never>;
             email: string;
             role: components["schemas"]["Role"];
             workspace_name: string;
@@ -13913,6 +13932,35 @@ export interface operations {
                 };
                 content: {
                     "application/pdf": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_logo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": number[];
                 };
             };
             404: {

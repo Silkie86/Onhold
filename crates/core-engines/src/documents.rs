@@ -21,6 +21,71 @@ pub struct Branding {
     pub primary: Option<String>,
     /// The issuer's address and numbers, one line, under the name.
     pub header_line: Option<String>,
+    /// The theme's typeface, by its key (see [`font_stack`]).
+    pub font: Option<String>,
+}
+
+/// The fonts a theme may use, as system font stacks so nothing is
+/// downloaded; the same list as the web app's.
+pub fn font_stack(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "default" => {
+            r#""Inter", "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif"#
+        }
+        "system" => {
+            r#"system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif"#
+        }
+        "humanist" => {
+            r#"Seravek, "Gill Sans Nova", Ubuntu, Calibri, "DejaVu Sans", source-sans-pro, sans-serif"#
+        }
+        "geometric" => r#"Avenir, Montserrat, Corbel, "URW Gothic", source-sans-pro, sans-serif"#,
+        "serif" => r#"Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif"#,
+        "rounded" => {
+            r#"ui-rounded, "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, Manjari, "Arial Rounded MT", Calibri, sans-serif"#
+        }
+        "mono" => {
+            r#"ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace"#
+        }
+        _ => return None,
+    })
+}
+
+fn channels(hex: &str) -> Option<[f64; 3]> {
+    let h = hex.strip_prefix('#')?;
+    let h: String = if h.len() == 3 {
+        h.chars().flat_map(|c| [c, c]).collect()
+    } else {
+        h.to_owned()
+    };
+    let v = |i: usize| u8::from_str_radix(h.get(i..i + 2)?, 16).ok().map(f64::from);
+    Some([v(0)?, v(2)?, v(4)?])
+}
+
+fn luminance(rgb: [f64; 3]) -> f64 {
+    let lin = |c: f64| {
+        let c = c / 255.0;
+        if c <= 0.03928 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2])
+}
+
+/// A brand colour that reads as text on white paper and in email (at least
+/// 4.5:1): the colour itself, or a darker shade of it when it is too light.
+pub fn readable_on_white(hex: &str) -> Option<String> {
+    let rgb = channels(&colour(hex)?)?;
+    for step in 0..=20 {
+        let k = 1.0 - f64::from(step) * 0.05;
+        let shade = rgb.map(|c| (c * k).round());
+        if 1.05 / (luminance(shade) + 0.05) >= 4.5 {
+            let [r, g, b] = shade.map(|c| c as u8);
+            return Some(format!("#{r:02x}{g:02x}{b:02x}"));
+        }
+    }
+    None
 }
 
 /// A colour if it is `#rgb` or `#rrggbb`; anything else is ignored.
@@ -65,7 +130,7 @@ const BASE_CSS: &str = r#"
 @page { size: A4; margin: 16mm 16mm 18mm; }
 * { box-sizing: border-box; }
 html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-body { margin: 0; font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
+body { margin: 0; font-family: var(--font);
   font-size: 10pt; line-height: 1.45; color: #1d1d1f; }
 h1 { font-size: 20pt; margin: 0 0 4mm; color: var(--brand); font-weight: 600; }
 h2 { font-size: 12pt; margin: 7mm 0 2mm; color: var(--brand); font-weight: 600; }
@@ -100,8 +165,13 @@ pub fn page(title: &str, body: &str, branding: &Branding) -> String {
     let brand = branding
         .primary
         .as_deref()
-        .and_then(colour)
+        .and_then(readable_on_white)
         .unwrap_or_else(|| "#1d1d1f".into());
+    let font = branding
+        .font
+        .as_deref()
+        .and_then(font_stack)
+        .unwrap_or(r#""Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif"#);
     let mark = match branding.logo.as_deref().and_then(logo) {
         Some(src) => format!(
             "<img src=\"{}\" alt=\"{}\">",
@@ -118,7 +188,7 @@ pub fn page(title: &str, body: &str, branding: &Branding) -> String {
     format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
          <meta http-equiv=\"Content-Security-Policy\" content=\"{POLICY}\">\
-         <title>{title}</title><style>:root {{ --brand: {brand}; }}{BASE_CSS}</style></head>\
+         <title>{title}</title><style>:root {{ --brand: {brand}; --font: {font}; }}{BASE_CSS}</style></head>\
          <body><header class=\"doc-header\"><div>{mark}</div><div class=\"issuer\">{line}</div></header>\
          {body}</body></html>",
         title = escape(title),
@@ -386,6 +456,19 @@ mod tests {
     }
 
     #[test]
+    fn brand_colours_read_on_white() {
+        assert_eq!(readable_on_white("#123456").as_deref(), Some("#123456"));
+        // A pale yellow is darkened until it reads.
+        let dark = readable_on_white("#ffe066").expect("a shade");
+        assert_ne!(dark, "#ffe066");
+        let rgb = channels(&dark).expect("hex");
+        assert!(1.05 / (luminance(rgb) + 0.05) >= 4.5);
+        assert_eq!(readable_on_white("nope"), None);
+        assert!(font_stack("serif").is_some_and(|f| f.contains("Charter")));
+        assert_eq!(font_stack("comic"), None);
+    }
+
+    #[test]
     fn pages_carry_the_policy_and_escape_branding() {
         let html = page(
             "A <title>",
@@ -395,10 +478,12 @@ mod tests {
                 logo: None,
                 primary: Some("#123456".into()),
                 header_line: Some("1 High St".into()),
+                font: Some("serif".into()),
             },
         );
         assert!(html.contains(POLICY));
         assert!(html.contains("--brand: #123456"));
+        assert!(html.contains("Charter"));
         assert!(html.contains("Rock &amp; &lt;Roll&gt;"));
         assert!(html.contains("<title>A &lt;title&gt;</title>"));
         let evil = page(

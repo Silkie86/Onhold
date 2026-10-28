@@ -231,6 +231,12 @@ pub const THEME_TOKENS: &[&str] = &[
     "accent-foreground",
     "destructive",
     "destructive-foreground",
+    "success",
+    "success-foreground",
+    "warning",
+    "warning-foreground",
+    "info",
+    "info-foreground",
 ];
 
 /// Typefaces a theme may use: system font stacks, so nothing is downloaded.
@@ -1080,5 +1086,68 @@ mod tests {
         for bad in ["", "a", "a@b", "@b.co", "a@.co", "a b@c.co", "a@b.co."] {
             assert!(validate_email(bad).is_err(), "{bad}");
         }
+    }
+}
+
+/// A workspace's logo as image bytes, for emails: most mail apps do not show
+/// a logo kept as a data URI. Raster images only, never SVG, since the file
+/// is served from OnHold's own address. Closed or suspended workspaces have
+/// none.
+pub async fn public_logo(state: &AppState, id: WorkspaceId) -> ApiResult<(&'static str, Vec<u8>)> {
+    let mut tx = core_db::begin(&state.db, Some(id), None).await?;
+    let w = core_db::workspaces::get(&mut tx, id)
+        .await?
+        .filter(|w| matches!(w.status, WorkspaceStatus::Trial | WorkspaceStatus::Active))
+        .ok_or(ApiError::NotFound)?;
+    tx.commit().await?;
+    let logo = w
+        .branding
+        .get("logo")
+        .and_then(Value::as_str)
+        .and_then(core_engines::documents::logo)
+        .ok_or(ApiError::NotFound)?;
+    raster_logo(&logo).ok_or(ApiError::NotFound)
+}
+
+/// The type and bytes of a raster image data URI.
+fn raster_logo(data_uri: &str) -> Option<(&'static str, Vec<u8>)> {
+    let (mime, data) = data_uri.strip_prefix("data:")?.split_once(";base64,")?;
+    let mime = match mime {
+        "image/png" => "image/png",
+        "image/jpeg" => "image/jpeg",
+        "image/gif" => "image/gif",
+        "image/webp" => "image/webp",
+        _ => return None,
+    };
+    Some((mime, data_encoding::BASE64.decode(data.as_bytes()).ok()?))
+}
+
+/// Where emails find a workspace's logo, if it has one they can show. The
+/// address changes with the logo, so mail apps never show an old one.
+pub fn email_logo_url(state: &AppState, id: WorkspaceId, branding: &Value) -> Option<String> {
+    let logo = branding
+        .get("logo")
+        .and_then(Value::as_str)
+        .and_then(core_engines::documents::logo)?;
+    raster_logo(&logo)?;
+    let version = &data_encoding::HEXLOWER.encode(&hash_token(&logo))[..12];
+    let mut url = state.config.public_base_url.clone();
+    url.set_path(&format!("/api/v1/public/workspaces/{}/logo", id.0));
+    url.set_query(Some(&format!("v={version}")));
+    Some(url.to_string())
+}
+
+#[cfg(test)]
+mod logo_tests {
+    use super::raster_logo;
+
+    #[test]
+    fn only_raster_logos_are_served() {
+        assert_eq!(
+            raster_logo("data:image/png;base64,iVBORw0KGgo=").map(|l| l.0),
+            Some("image/png")
+        );
+        assert!(raster_logo("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=").is_none());
+        assert!(raster_logo("data:image/png;base64,***").is_none());
     }
 }
