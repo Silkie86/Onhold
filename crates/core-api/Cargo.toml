@@ -17,6 +17,7 @@ core-domain.workspace = true
 core-engines.workspace = true
 core-pdf.workspace = true
 core-integrations.workspace = true
+core-modules.workspace = true
 chrono-tz.workspace = true
 futures-util.workspace = true
 csv.workspace = true

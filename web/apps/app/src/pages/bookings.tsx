@@ -60,6 +60,7 @@ import { Loading, OfflineNote, PageError, failureIssues, useSchema, useWorkspace
 import { RelationPicker, TalentPicker } from "./pickers.tsx";
 import { QuotesPanel } from "./quotes.tsx";
 import { BookingFinancePanel } from "./finance.tsx";
+import { useSetup } from "../setup.ts";
 import { BookingDocumentsPanel } from "./documents.tsx";
 import { RelatedTasks } from "./tasks.tsx";
 import { RelatedConversations } from "./inbox.tsx";
@@ -542,6 +543,9 @@ function StatusActions({ booking: b, onChanged }: { booking: Booking; onChanged:
 
 export function BookingPage() {
   const { id } = useParams({ from: "/app/bookings/$id" });
+  // Quotes and invoices show where the workspace uses them.
+  const setup = useSetup();
+  const finance = setup.has("finance");
   const qc = useQueryClient();
   const navigate = useNavigate();
   const sync = useOffline();
@@ -711,9 +715,13 @@ export function BookingPage() {
               }
             }}
           />
-          <QuotesPanel booking={b} onBookingChanged={() => void booking.refetch()} />
-          <BookingFinancePanel booking={b} />
-          <BookingDocumentsPanel booking={b} />
+          {finance && (
+            <>
+              {setup.shows("section:booking.quotes") && <QuotesPanel booking={b} onBookingChanged={() => void booking.refetch()} />}
+              {setup.shows("section:booking.finance") && <BookingFinancePanel booking={b} />}
+            </>
+          )}
+          {setup.has("documents") && setup.shows("section:booking.documents") && <BookingDocumentsPanel booking={b} />}
         </section>
         <section aria-label="Travel, tasks and activity" className="flex flex-col gap-6">
           <div className="hidden flex-col gap-6 lg:flex">{trip}</div>

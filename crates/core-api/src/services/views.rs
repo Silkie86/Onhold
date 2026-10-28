@@ -545,8 +545,52 @@ fn write_permission(entity: &str) -> Permission {
     }
 }
 
-/// An entity's fields, core and custom, as forms and lists draw them.
+/// An entity's fields, core and custom, as forms and lists draw them:
+/// without the ones OnHold's team hid for the workspace, nor commission
+/// where it takes none. Hiding a field never drops a required one.
 pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<EntitySchema> {
+    authorize_read(ctx, entity)?;
+    let mut tx = begin(state, ctx).await?;
+    let mut schema = full_schema_in(&mut tx, ctx, entity).await?;
+    let w = core_db::workspaces::shape(&mut tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    tx.commit().await?;
+    let commission = w.extras.iter().any(|e| e == "commission");
+    schema.fields.retain(|f| {
+        let hidden = w.hidden.contains(&format!("field:{entity}.{}", f.key))
+            || (f.key == "commission_percent" && !commission);
+        f.required || !hidden
+    });
+    // Named in the workspace's own words ("DJs", "Gigs", "Offers").
+    let term = match entity {
+        "talent" => Some(("crm", "talent")),
+        "enquiry" => Some(("bookings", "enquiry")),
+        "booking" => Some(("bookings", "booking")),
+        _ => None,
+    };
+    if let Some((module, term)) = term {
+        let word = |n: &str| {
+            w.vocabulary
+                .pointer(&format!("/{module}/{term}/{n}"))
+                .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_owned)
+        };
+        if let (Some(one), Some(many)) = (word("one"), word("many")) {
+            schema.label = one;
+            schema.label_plural = many;
+        }
+    }
+    Ok(schema)
+}
+
+/// Every field of an entity, hidden or not, read in the caller's transaction.
+pub async fn full_schema_in(
+    tx: &mut core_db::Tx,
+    ctx: &Ctx,
+    entity: &str,
+) -> ApiResult<EntitySchema> {
     authorize_read(ctx, entity)?;
     let (label, plural) = match entity {
         "talent" => ("Talent", "Talent"),
@@ -581,9 +625,7 @@ pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<Enti
             validation: None,
         })
         .collect();
-    let mut tx = begin(state, ctx).await?;
-    let defs = core_db::fields::list(&mut tx, Some(entity), false).await?;
-    tx.commit().await?;
+    let defs = core_db::fields::list(tx, Some(entity), false).await?;
     for d in defs {
         let Some(def) = super::fields::to_engine(&d) else {
             continue;

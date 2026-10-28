@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 /** Creates a fresh workspace for each run and hands its owner's invitation to the tests. */
 export default function setup() {
   const bin = process.env.ONHOLD_BIN ?? "../../../target/debug/onhold";
-  const runs = ["desktop", "phone", "app", "installed", "installed-bookings", "bookings-desktop", "bookings-phone", "inbox-desktop", "inbox-phone", "installed-inbox", "branding-desktop", "branding-phone", "theme-desktop", "theme-phone"];
+  const runs = ["desktop", "phone", "app", "installed", "installed-bookings", "bookings-desktop", "bookings-phone", "inbox-desktop", "inbox-phone", "installed-inbox", "branding-desktop", "branding-phone", "theme-desktop", "theme-phone", "setup-desktop", "setup-phone"];
   for (const project of runs) {
     const slug = `e2e-${project}-${Date.now().toString(36)}`;
     const out = execFileSync(

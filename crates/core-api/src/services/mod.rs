@@ -37,6 +37,7 @@ pub mod rules;
 pub mod search;
 pub mod sender_domains;
 pub mod settlements;
+pub mod setup;
 pub mod signatures;
 pub mod stripe;
 pub mod talent;

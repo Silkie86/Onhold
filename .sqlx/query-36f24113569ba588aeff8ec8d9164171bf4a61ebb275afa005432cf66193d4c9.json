@@ -1,0 +1,117 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id AS \"id!: WorkspaceId\", slug AS \"slug!\", name AS \"name!\", plan AS \"plan!\",\n                  status AS \"status!: WorkspaceStatus\", created_at AS \"created_at!\",\n                  member_count AS \"member_count!\", presets AS \"presets!\",\n                  enabled_modules AS \"enabled_modules!\", extras AS \"extras!\", setup, setup_at,\n                  open_requests AS \"open_requests!\"\n           FROM admin_list_workspaces()",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: WorkspaceId",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "slug!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "name!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "plan!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "status!: WorkspaceStatus",
+        "type_info": {
+          "Custom": {
+            "name": "workspace_status",
+            "kind": {
+              "Enum": [
+                "trial",
+                "active",
+                "suspended",
+                "closed"
+              ]
+            }
+          }
+        },
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 6,
+        "name": "member_count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 7,
+        "name": "presets!",
+        "type_info": "TextArray",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 8,
+        "name": "enabled_modules!",
+        "type_info": "TextArray",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 9,
+        "name": "extras!",
+        "type_info": "TextArray",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 10,
+        "name": "setup",
+        "type_info": "Jsonb",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 11,
+        "name": "setup_at",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 12,
+        "name": "open_requests!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "36f24113569ba588aeff8ec8d9164171bf4a61ebb275afa005432cf66193d4c9"
+}

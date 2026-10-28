@@ -1,0 +1,9 @@
+# Artist manager. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Artist manager"
+perspective = "sells"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "portal"]
+extras = ["commission", "advanced"]
+[vocabulary.crm.talent]
+one = "Artist"
+many = "Artists"

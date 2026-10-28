@@ -1,7 +1,7 @@
 //! Operator routes (superadmin with two-factor authentication only).
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
 use core_db::jobs::JobStatus;
@@ -17,13 +17,16 @@ use super::auth::ImpersonationView;
 use crate::AppState;
 use crate::error::{ApiResult, ErrorBody};
 use crate::extract::CurrentSession;
-use crate::services::{admin as svc, tenancy};
+use crate::services::{admin as svc, setup, tenancy};
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(list_workspaces, create_workspace))
         .routes(routes!(start_impersonation, end_impersonation))
         .routes(routes!(job_summary))
+        .routes(routes!(list_setup_requests))
+        .routes(routes!(resolve_setup_request))
+        .routes(routes!(get_price_list, set_price_list))
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -35,6 +38,15 @@ pub struct AdminWorkspaceView {
     pub status: WorkspaceStatus,
     pub created_at: DateTime<Utc>,
     pub member_count: i64,
+    pub presets: Vec<String>,
+    pub enabled_modules: Vec<String>,
+    pub extras: Vec<String>,
+    /// The setup form's answers; absent until the client sends it.
+    #[schema(value_type = Option<Object>)]
+    pub setup: Option<serde_json::Value>,
+    pub setup_at: Option<DateTime<Utc>>,
+    /// Comments from the setup form not yet marked done.
+    pub open_requests: i64,
 }
 
 /// Every workspace on the platform.
@@ -55,6 +67,12 @@ async fn list_workspaces(
                 status: w.status,
                 created_at: w.created_at,
                 member_count: w.member_count,
+                presets: w.presets,
+                enabled_modules: w.enabled_modules,
+                extras: w.extras,
+                setup: w.setup,
+                setup_at: w.setup_at,
+                open_requests: w.open_requests,
             })
             .collect(),
     ))
@@ -78,6 +96,9 @@ pub struct CreateWorkspaceRequest {
     pub plugin_slug: Option<String>,
     /// Who receives the owner invitation.
     pub owner_email: String,
+    /// Presets to combine, e.g. `["solo", "promoter"]`.
+    #[serde(default)]
+    pub presets: Vec<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -114,6 +135,7 @@ async fn create_workspace(
             perspective: body.perspective,
             plugin_slug: body.plugin_slug,
             owner_email: body.owner_email,
+            presets: body.presets,
         },
     )
     .await?;
@@ -195,4 +217,74 @@ async fn job_summary(
             })
             .collect(),
     ))
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminSetupRequestView {
+    pub id: Uuid,
+    pub workspace_id: WorkspaceId,
+    pub workspace_name: String,
+    pub body: String,
+    pub author_name: Option<String>,
+    pub author_email: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub resolved_at: Option<DateTime<Utc>>,
+}
+
+/// Requests and questions clients left in the setup form, open ones first.
+#[utoipa::path(get, path = "/admin/setup-requests", tag = "admin",
+    responses((status = 200, body = Vec<AdminSetupRequestView>), (status = 403, body = ErrorBody)), security(("session" = [])))]
+async fn list_setup_requests(
+    State(state): State<AppState>,
+    CurrentSession(session): CurrentSession,
+) -> ApiResult<Json<Vec<AdminSetupRequestView>>> {
+    let rows = setup::admin_requests(&state, &session).await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| AdminSetupRequestView {
+                id: r.id,
+                workspace_id: r.workspace_id,
+                workspace_name: r.workspace_name,
+                body: r.body,
+                author_name: r.author_name,
+                author_email: r.author_email,
+                created_at: r.created_at,
+                resolved_at: r.resolved_at,
+            })
+            .collect(),
+    ))
+}
+
+/// Mark a client's request dealt with.
+#[utoipa::path(post, path = "/admin/setup-requests/{id}/resolve", tag = "admin", params(("id" = Uuid, Path)),
+    responses((status = 204), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody)), security(("session" = [])))]
+async fn resolve_setup_request(
+    State(state): State<AppState>,
+    CurrentSession(session): CurrentSession,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    setup::admin_resolve(&state, &session, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The price list the setup form's estimate uses (minor units a month).
+#[utoipa::path(get, path = "/admin/price-list", tag = "admin",
+    responses((status = 200, body = setup::PriceList), (status = 403, body = ErrorBody)), security(("session" = [])))]
+async fn get_price_list(
+    State(state): State<AppState>,
+    CurrentSession(session): CurrentSession,
+) -> ApiResult<Json<setup::PriceList>> {
+    Ok(Json(setup::admin_price_list(&state, &session).await?))
+}
+
+/// Replace the price list: `currency`, `base`, `features` and `team` amounts in minor units a month.
+#[utoipa::path(put, path = "/admin/price-list", tag = "admin", request_body = setup::PriceList,
+    responses((status = 204), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody)), security(("session" = [])))]
+async fn set_price_list(
+    State(state): State<AppState>,
+    CurrentSession(session): CurrentSession,
+    Json(body): Json<setup::PriceList>,
+) -> ApiResult<StatusCode> {
+    setup::admin_set_price_list(&state, &session, &body).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

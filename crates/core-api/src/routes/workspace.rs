@@ -28,6 +28,9 @@ use crate::services::tenancy as svc;
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(get_workspace, update_workspace))
+        .routes(routes!(get_setup, save_setup))
+        .routes(routes!(preview_setup))
+        .routes(routes!(get_streamline, set_streamline))
         .routes(routes!(close_workspace))
         .routes(routes!(get_signatures))
         .routes(routes!(set_my_signature))
@@ -86,6 +89,18 @@ pub struct WorkspaceView {
     pub default_timezone: String,
     pub locale: String,
     pub enabled_modules: Vec<String>,
+    /// The presets the workspace combines, from its setup.
+    pub presets: Vec<String>,
+    /// Finer switches inside modules: `team`, `commission`, `advanced`.
+    pub extras: Vec<String>,
+    /// Its own words, per module: `{"crm": {"talent": {"one": "DJ", "many": "DJs"}}}`.
+    #[schema(value_type = Object)]
+    pub vocabulary: Value,
+    /// When the setup form was last sent; absent until it has been.
+    pub setup_at: Option<DateTime<Utc>>,
+    /// What OnHold's team hid on top of the setup: `nav:<path>`,
+    /// `section:<key>` and `field:<entity>.<key>`.
+    pub hidden: Vec<String>,
     #[schema(value_type = Object)]
     pub branding: Value,
     /// Only shown to roles with `billing:read`.
@@ -114,6 +129,11 @@ fn workspace_view(w: core_db::workspaces::Workspace, show_billing: bool) -> Work
         default_timezone: w.default_timezone,
         locale: w.locale,
         enabled_modules: w.enabled_modules,
+        presets: w.presets,
+        extras: w.extras,
+        vocabulary: w.vocabulary,
+        setup_at: w.setup_at,
+        hidden: w.hidden,
         branding: w.branding,
         billing_contact: show_billing.then_some(w.billing_contact),
         plugin_slug: w.plugin_slug,
@@ -218,6 +238,165 @@ async fn update_workspace(
         hold_days: body.hold_days,
     };
     let w = svc::update_workspace(&state, &ctx, patch, if_match).await?;
+    let show = ctx.authorize(Permission::BillingRead).is_ok();
+    Ok(with_etag(w.version, workspace_view(w, show)))
+}
+
+// Setup ---------------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SetupRequestView {
+    pub id: Uuid,
+    pub body: String,
+    pub created_by: Option<UserId>,
+    pub created_at: DateTime<Utc>,
+    /// When OnHold's team marked it dealt with.
+    pub resolved_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SetupView {
+    pub questions: Vec<core_modules::setup::Question>,
+    /// The answers last sent, or what the workspace's presets suggest.
+    pub answers: core_modules::setup::Answers,
+    /// When the form was last sent; absent if never.
+    pub done_at: Option<DateTime<Utc>>,
+    /// What is set up now.
+    pub current: core_modules::setup::Plan,
+    /// This workspace's latest comments, newest first.
+    pub requests: Vec<SetupRequestView>,
+    /// OnHold's prices for the estimate.
+    pub price_list: crate::services::setup::PriceList,
+    /// Send back as `If-Match` when saving.
+    pub version: i64,
+}
+
+/// The setup form ("what will you use OnHold for?"), its answers so far and what they set up.
+#[utoipa::path(get, path = "/workspace/setup", tag = "workspace", params(WorkspaceHeader),
+    responses((status = 200, body = SetupView), (status = 403, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn get_setup(State(state): State<AppState>, WsCtx(ctx): WsCtx) -> ApiResult<Json<SetupView>> {
+    let s = crate::services::setup::get(&state, &ctx).await?;
+    Ok(Json(SetupView {
+        questions: s.questions,
+        answers: s.answers,
+        done_at: s.done_at,
+        current: s.current,
+        requests: s
+            .requests
+            .into_iter()
+            .map(|r| SetupRequestView {
+                id: r.id,
+                body: r.body,
+                created_by: r.created_by,
+                created_at: r.created_at,
+                resolved_at: r.resolved_at,
+            })
+            .collect(),
+        price_list: s.price_list,
+        version: s.version,
+    }))
+}
+
+/// What a set of answers would set up, without saving it.
+#[utoipa::path(post, path = "/workspace/setup/preview", tag = "workspace", params(WorkspaceHeader),
+    request_body = core_modules::setup::Answers,
+    responses((status = 200, body = core_modules::setup::Plan), (status = 400, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn preview_setup(
+    WsCtx(ctx): WsCtx,
+    Json(body): Json<core_modules::setup::Answers>,
+) -> ApiResult<Json<core_modules::setup::Plan>> {
+    Ok(Json(crate::services::setup::preview(&ctx, &body)?))
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SaveSetupRequest {
+    pub answers: core_modules::setup::Answers,
+    /// A request or question for OnHold's team (up to 4,000 characters).
+    pub comment: Option<String>,
+}
+
+/// Set the workspace up from the form's answers. Modules left out are only
+/// hidden, never deleted, and the form can be sent again at any time.
+#[utoipa::path(put, path = "/workspace/setup", tag = "workspace", params(WorkspaceHeader, IfMatchHeader, IdempotencyHeader),
+    request_body = SaveSetupRequest,
+    responses((status = 200, body = WorkspaceView), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody), (status = 412, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn save_setup(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    IfMatch(if_match): IfMatch,
+    Json(body): Json<SaveSetupRequest>,
+) -> ApiResult<Response> {
+    let w =
+        crate::services::setup::save(&state, &ctx, body.answers, body.comment, if_match).await?;
+    let show = ctx.authorize(Permission::BillingRead).is_ok();
+    Ok(with_etag(w.version, workspace_view(w, show)))
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HideableFieldView {
+    pub entity: String,
+    pub key: String,
+    pub label: String,
+    pub hidden: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct StreamlineView {
+    /// What is hidden now.
+    pub hidden: Vec<String>,
+    /// Every optional field that can be hidden; required ones always show.
+    pub fields: Vec<HideableFieldView>,
+    pub version: i64,
+}
+
+/// What OnHold's team hid in this workspace, and the fields that could be.
+#[utoipa::path(get, path = "/workspace/streamline", tag = "workspace", params(WorkspaceHeader),
+    responses((status = 200, body = StreamlineView), (status = 403, body = ErrorBody)),
+    security(("session" = [])))]
+async fn get_streamline(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+) -> ApiResult<Json<StreamlineView>> {
+    let (hidden, fields, version) =
+        crate::services::setup::streamline_options(&state, &ctx).await?;
+    Ok(Json(StreamlineView {
+        hidden,
+        fields: fields
+            .into_iter()
+            .map(|f| HideableFieldView {
+                entity: f.entity.to_owned(),
+                key: f.key,
+                label: f.label,
+                hidden: f.hidden,
+            })
+            .collect(),
+        version,
+    }))
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct StreamlineRequest {
+    /// The full list of what to hide; anything left out shows again.
+    pub hidden: Vec<String>,
+}
+
+/// Hide menu items, page sections and optional fields to streamline the
+/// app (OnHold's team only). Data is never deleted, and it survives the
+/// client sending their setup form again.
+#[utoipa::path(put, path = "/workspace/streamline", tag = "workspace", params(WorkspaceHeader, IfMatchHeader, IdempotencyHeader),
+    request_body = StreamlineRequest,
+    responses((status = 200, body = WorkspaceView), (status = 400, body = ErrorBody), (status = 403, body = ErrorBody), (status = 412, body = ErrorBody)),
+    security(("session" = [])))]
+async fn set_streamline(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    IfMatch(if_match): IfMatch,
+    Json(body): Json<StreamlineRequest>,
+) -> ApiResult<Response> {
+    let w = crate::services::setup::set_hidden(&state, &ctx, body.hidden, if_match).await?;
     let show = ctx.authorize(Permission::BillingRead).is_ok();
     Ok(with_etag(w.version, workspace_view(w, show)))
 }
