@@ -116,7 +116,7 @@ pub enum OutcomeTag {
 
 /// An answer to a pitch: "Interested", "Not now", "No answer"…
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct Outcome {
+pub struct PitchOutcome {
     pub key: String,
     pub label: String,
     pub tag: OutcomeTag,
@@ -124,7 +124,7 @@ pub struct Outcome {
 
 /// Something done to win them over: pitched, followed up, called…
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct ActionType {
+pub struct PitchAction {
     pub key: String,
     pub label: String,
 }
@@ -139,10 +139,10 @@ pub struct PitchingSettings {
     pub items: Vec<ItemKind>,
     /// The answers a pitch can get.
     #[serde(default = "default_outcomes")]
-    pub outcomes: Vec<Outcome>,
+    pub outcomes: Vec<PitchOutcome>,
     /// The kinds of thing logged as done.
     #[serde(default = "default_actions")]
-    pub actions: Vec<ActionType>,
+    pub actions: Vec<PitchAction>,
 }
 
 impl Default for PitchingSettings {
@@ -207,8 +207,8 @@ fn default_items() -> Vec<ItemKind> {
     vec![ItemKind::Talent]
 }
 
-fn default_outcomes() -> Vec<Outcome> {
-    let o = |key: &str, label: &str, tag| Outcome {
+fn default_outcomes() -> Vec<PitchOutcome> {
+    let o = |key: &str, label: &str, tag| PitchOutcome {
         key: key.into(),
         label: label.into(),
         tag,
@@ -222,8 +222,8 @@ fn default_outcomes() -> Vec<Outcome> {
     ]
 }
 
-fn default_actions() -> Vec<ActionType> {
-    let a = |key: &str, label: &str| ActionType {
+fn default_actions() -> Vec<PitchAction> {
+    let a = |key: &str, label: &str| PitchAction {
         key: key.into(),
         label: label.into(),
     };
@@ -262,11 +262,11 @@ impl PitchingSettings {
         self.regions.iter().find(|r| r.key == key)
     }
 
-    pub fn outcome(&self, key: &str) -> Option<&Outcome> {
+    pub fn outcome(&self, key: &str) -> Option<&PitchOutcome> {
         self.outcomes.iter().find(|o| o.key == key)
     }
 
-    pub fn action(&self, key: &str) -> Option<&ActionType> {
+    pub fn action(&self, key: &str) -> Option<&PitchAction> {
         self.actions.iter().find(|a| a.key == key)
     }
 }
@@ -369,13 +369,13 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
     if input.outcomes.is_empty() || input.outcomes.len() > MAX_OUTCOMES {
         check.issue("outcomes", format!("give 1 to {MAX_OUTCOMES} answers"));
     }
-    let mut outcomes: Vec<Outcome> = Vec::new();
+    let mut outcomes: Vec<PitchOutcome> = Vec::new();
     for (i, o) in input.outcomes.iter().enumerate() {
         let key = checked_key(&mut check, &format!("outcomes[{i}].key"), &o.key, |k| {
             outcomes.iter().any(|x| x.key == k)
         });
         let label = check.required(&format!("outcomes[{i}].label"), &o.label, 60);
-        outcomes.push(Outcome {
+        outcomes.push(PitchOutcome {
             key,
             label,
             tag: o.tag,
@@ -384,13 +384,13 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
     if input.actions.is_empty() || input.actions.len() > MAX_ACTIONS {
         check.issue("actions", format!("give 1 to {MAX_ACTIONS} kinds of action"));
     }
-    let mut actions: Vec<ActionType> = Vec::new();
+    let mut actions: Vec<PitchAction> = Vec::new();
     for (i, a) in input.actions.iter().enumerate() {
         let key = checked_key(&mut check, &format!("actions[{i}].key"), &a.key, |k| {
             actions.iter().any(|x| x.key == k)
         });
         let label = check.required(&format!("actions[{i}].label"), &a.label, 60);
-        actions.push(ActionType { key, label });
+        actions.push(PitchAction { key, label });
     }
     check.finish()?;
     Ok(PitchingSettings {

@@ -13800,6 +13800,100 @@
         ]
       }
     },
+    "/api/v1/organisations/{id}/pitches": {
+      "get": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "An organisation's pitch log, latest first.",
+        "operationId": "list_pitches",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200, default 50.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PitchPage"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/organisations/{id}/timeline": {
       "get": {
         "tags": [
@@ -15405,6 +15499,246 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PipelineView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pitches": {
+      "post": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "Log something done to win an organisation over, or an answer it gave.\nIt can be backdated.",
+        "operationId": "log_pitch",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPitch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PitchView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pitches/{id}": {
+      "delete": {
+        "tags": [
+          "pitching"
+        ],
+        "operationId": "delete_pitch",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "Change an entry: who, what, how, when, or the note. Its organisation and\nwhether it is an action or an answer stay.",
+        "operationId": "update_pitch",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PitchPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PitchView"
                 }
               }
             }
@@ -34989,6 +35323,68 @@
           }
         }
       },
+      "NewPitch": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "kind",
+          "type_key"
+        ],
+        "properties": {
+          "channel": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PitchChannel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "happened_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it happened; default now. Can be in the past."
+          },
+          "item": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PitchKind"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "organisation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type_key": {
+            "type": "string",
+            "description": "A key from the workspace's actions or outcomes, as `kind` says."
+          }
+        }
+      },
       "NewProject": {
         "type": "object",
         "required": [
@@ -35711,6 +36107,16 @@
           "lost"
         ]
       },
+      "OutcomeTag": {
+        "type": "string",
+        "description": "What an answer means for pitching them again: good news, wait a while,\nno for now, or never.",
+        "enum": [
+          "good",
+          "wait",
+          "no",
+          "never"
+        ]
+      },
       "OutstandingRow": {
         "type": "object",
         "required": [
@@ -36294,14 +36700,285 @@
           }
         }
       },
+      "PitchAction": {
+        "type": "object",
+        "description": "Something done to win them over: pitched, followed up, called…",
+        "required": [
+          "key",
+          "label"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "PitchChannel": {
+        "type": "string",
+        "description": "How it was done or how the answer came.",
+        "enum": [
+          "email",
+          "phone",
+          "text",
+          "whatsapp",
+          "social",
+          "in_person",
+          "other"
+        ]
+      },
+      "PitchKind": {
+        "type": "string",
+        "description": "Whether an entry is something done or an answer.",
+        "enum": [
+          "action",
+          "outcome"
+        ]
+      },
+      "PitchOutcome": {
+        "type": "object",
+        "description": "An answer to a pitch: \"Interested\", \"Not now\", \"No answer\"…",
+        "required": [
+          "key",
+          "label",
+          "tag"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "tag": {
+            "$ref": "#/components/schemas/OutcomeTag"
+          }
+        }
+      },
+      "PitchPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PitchView"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PitchPatch": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PitchChannel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "happened_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "item": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PitchView": {
+        "type": "object",
+        "required": [
+          "id",
+          "organisation_id",
+          "kind",
+          "type_key",
+          "happened_at",
+          "source",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "channel": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PitchChannel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The person there it was with, if anyone in particular."
+          },
+          "contact_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "happened_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "item": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemRef",
+                "description": "What was pitched, if it still exists."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PitchKind"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "organisation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source": {
+            "type": "string",
+            "description": "`manual`: logged by hand."
+          },
+          "tag": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OutcomeTag",
+                "description": "For an answer: what it means for pitching them again."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type_key": {
+            "type": "string",
+            "description": "A key from the workspace's actions or outcomes."
+          },
+          "type_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its label, while the workspace still lists it."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "PitchingSettings": {
         "type": "object",
         "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PitchAction"
+            },
+            "description": "The kinds of thing logged as done."
+          },
           "items": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ItemKind"
             }
+          },
+          "outcomes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PitchOutcome"
+            },
+            "description": "The answers a pitch can get."
           },
           "regions": {
             "type": "array",
