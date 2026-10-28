@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id FROM organisations\n           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL\n             AND lower(btrim(name)) = lower(btrim($1))\n           LIMIT 2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "949157d16032d1f729ab420fbd1be6146c4bd4efef91b696afaf9339718b87eb"
+}

@@ -105,6 +105,7 @@ fn scopes(provider: Provider) -> &'static [&'static str] {
     match provider {
         Provider::Google => calendar_events::GOOGLE_WRITE_SCOPES,
         Provider::Microsoft => calendar_events::MICROSOFT_WRITE_SCOPES,
+        Provider::Xero | Provider::QuickBooks => &[],
     }
 }
 
@@ -304,10 +305,7 @@ pub async fn finish(
         ));
     }
     let app = oauth_app(state, &flow.provider)?;
-    let name = match app.provider {
-        Provider::Google => "Google",
-        Provider::Microsoft => "Microsoft",
-    };
+    let name = app.provider.name();
     let cfg = &state.config.mailboxes;
     let tokens = app
         .exchange(&cfg.http, req.code.trim(), &redirect_uri(state))
@@ -367,6 +365,9 @@ pub async fn finish(
             )
             .address()
             .await
+        }
+        Provider::Xero | Provider::QuickBooks => {
+            Err(ProviderError::Invalid("not a calendar provider".into()))
         }
     }
     .map_err(|e| provider_error(name, e))?

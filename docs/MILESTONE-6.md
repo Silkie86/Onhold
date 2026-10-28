@@ -8,7 +8,7 @@ M6 comes in several PRs. This page grows with each.
 2. **Own-domain sending**: verified sender domains (SPF, DKIM), with automatic DNS setup through Domain Connect and a guided manual fallback.
 3. **Talent's own calendars**: busy times read from the calendars talent connect through a link (Google, Microsoft or a private iCal link), counted by clash checks.
 3b. **Bookings in members' own calendars**: a member connects Google Calendar or Outlook and OnHold keeps the bookings in a calendar of its own there.
-4. Xero and QuickBooks, including importing past invoices.
+4. **The workspace's books**: Xero and QuickBooks Online, sent what OnHold issues and read back for what was paid, with past invoices imported.
 5. SMS, WhatsApp and follow-up rules.
 
 Alongside: **email signatures** for members and the workspace.
@@ -120,6 +120,36 @@ Runs end to end in `crates/core-worker/tests/calendar_push.rs`, against stand-in
 
 - Writing into a talent's own calendar through the connect link (the link reads busy times only).
 - `calendar.app.created` is a sensitive scope: until Google verifies the app, people outside the operator's own domain see an "unverified app" warning.
+
+## The workspace's books: Xero and QuickBooks
+
+Runs end to end in `crates/core-worker/tests/accounting.rs`, against stand-ins for Xero (OAuth, connections and the accounting API) and QuickBooks Online (OAuth and Intuit's API):
+
+- The owner connects Xero from Settings → Accounting; the organisation they picked is the one connected. Nothing is sent until they choose the revenue account sales go to, the bank account payments go into, and which tax rate each of OnHold's tax codes is. Another workspace sees nothing of it.
+- An issued invoice is sent to the contact the books already have of that name (or a new one), with its number, dates, lines and tax, and the totals match. A payment recorded in OnHold is sent against it and taken back when voided. Paid in Xero, it is read back and shows paid in OnHold, and that payment is not sent back.
+- A credit note is sent and set against its invoice; voided, it is taken off again and voided. An invoice voided after it was sent is voided there; one voided before it was sent is never sent.
+- A contact the books refuse is kept with the reason (Settings → Accounting lists it) and the rest go on; once put right, the next send gets it there. An answer lost after Xero added an invoice is tried again with the same idempotency key, so it is there once.
+- Importing brings in the invoices from before the start date (not voided ones) as past invoices, with what they still owe, matched to the organisation of the same name; they are never sent back, and importing again adds nothing.
+- A withdrawn grant waits to be connected again; connecting the same books again picks up where it was, sending nothing twice. Other books cannot be connected meanwhile. Disconnecting revokes the grant and forgets it.
+- QuickBooks: the company comes from Intuit's redirect; a US company's tax is worked out by QuickBooks, so lines say only taxable or not; payments go into the chosen account with their reference; voids, paid in QuickBooks, importing and disconnecting as above (Intuit revokes with JSON).
+
+### Built
+
+- **Settings → Accounting** (owners, admins and finance). Connect Xero or QuickBooks, choose where things go and from which day issued invoices are sent (the day of connecting, by default), see what was refused and why, "send now", import past invoices, connect again, disconnect. One set of books per workspace.
+- **Sending.** The event dispatcher asks for a sync when an invoice is issued or voided or a payment changes, and every connection is compared every 6 hours and on "send now". A sync sends, in order: invoices and credit notes, credit notes set against their invoices, payments; then reads back what was paid (every 3 hours, and on "send now"); then a page of past invoices when importing. At most 50 calls a run, the rest following a minute later. Payments are capped at what the books still say is owed, so nothing is paid twice there.
+- **Read back.** An invoice paid (or credited) in the books by more than OnHold has recorded gets a payment for the difference, "Paid in Xero" (or QuickBooks), capped at what OnHold still shows as owing. Nothing read back is sent again.
+- **No doubles.** Every create carries a key made from the connection, the item and how many times it was refused (Xero's `Idempotency-Key`, Intuit's `requestid`), so a lost answer is not added twice, and a refused item put right is a new request. One sync runs at a time per connection, holding a lease it checks before recording anything; a change that arrives while a sync runs gets another straight after. Refresh tokens are used once, so refreshing happens under the connection's row lock.
+- **Failures.** A refusal (validation) is kept per item and tried again when it changes or on the next "send now". The provider being down or limiting waits 5 minutes doubling to 6 hours (rate limits as told), shown from the third failure in a row. A withdrawn grant, or one this server can no longer read, waits for connecting again.
+- **What is sent.** Workspace-issued invoices and credit notes on or after the start date (drafts and talent-issued self-billing never), the payer as a contact (organisation or talent by link, else by name), lines net of tax with their tax rate, and payments with their date and reference. Xero takes each line against the chosen revenue account; QuickBooks against the chosen service item.
+- **Disconnecting.** The worker revokes the grant, trying again every 10 minutes for up to 3 days while the provider is unavailable, then forgets it. Connecting the same books again calls off a revoke still waiting. What is in the books stays there, and the record of what was sent is kept, so reconnecting sends nothing twice. Closing a workspace disconnects its books.
+- **Small.** One row per connection, and one small row per item sent (its id in the books and what was sent last); past invoices are imported as totals with their lines in the notes (up to ten). Nothing is kept on devices.
+- **Configuration.** `XERO_CLIENT_ID`/`XERO_CLIENT_SECRET` and `QUICKBOOKS_CLIENT_ID`/`QUICKBOOKS_CLIENT_SECRET` (`QUICKBOOKS_SANDBOX=true` for Intuit's sandbox), each app with the redirect URI `<PUBLIC_BASE_URL>/settings/accounting`.
+
+### Not yet
+
+- Refunds are not sent.
+- Changes made to a sent invoice in the books are not read back, only what was paid.
+- QuickBooks outside the US needs each tax code mapped to one of the company's tax codes; Intuit gives production keys only after its app assessment.
 
 ## Email signatures
 

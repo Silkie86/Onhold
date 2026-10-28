@@ -1,0 +1,102 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT kind, local_id, remote_id, state, status, error, attempts FROM accounting_links\n           WHERE workspace_id = app_workspace_id() AND connection_id = $1 AND kind = $2 AND local_id = $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "local_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "local_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "remote_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "remote_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "state"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "error"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "attempts",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "attempts"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "f5b499a3065e455fd653e871b13007cdaf42a4dc5500aa970acddbe7d542b165"
+}

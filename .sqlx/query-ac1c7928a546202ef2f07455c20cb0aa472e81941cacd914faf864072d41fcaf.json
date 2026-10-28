@@ -1,0 +1,132 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT a.id, a.invoice_id, li.remote_id AS \"remote_invoice!\", a.amount_minor,\n                  p.currency AS \"currency!\", p.paid_on, p.reference,\n                  (a.removed_at IS NOT NULL) AS \"removed!\", la.remote_id AS \"remote_id?\",\n                  la.state AS \"state?\"\n           FROM payment_allocations a\n           JOIN payments p ON p.id = a.payment_id\n           JOIN accounting_links li\n             ON li.connection_id = $1 AND li.kind = 'invoice' AND li.local_id = a.invoice_id\n            AND li.status = 'synced' AND li.remote_id IS NOT NULL\n           LEFT JOIN accounting_links la\n             ON la.connection_id = $1 AND la.kind = 'allocation' AND la.local_id = a.id\n           WHERE a.workspace_id = app_workspace_id() AND p.kind = 'payment'\n             AND ((la.id IS NULL AND a.removed_at IS NULL)\n                  OR la.status = 'failed'\n                  OR (la.status = 'synced' AND a.removed_at IS NOT NULL AND la.state = 'live'))\n           ORDER BY a.created_at, a.id\n           LIMIT $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payment_allocations",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "invoice_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payment_allocations",
+            "name": "invoice_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "remote_invoice!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "remote_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "amount_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "payment_allocations",
+            "name": "amount_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "currency!",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "paid_on",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "paid_on"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "reference",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "reference"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "removed!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 8,
+        "name": "remote_id?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "remote_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "state?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "state"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      null,
+      true,
+      true
+    ]
+  },
+  "hash": "ac1c7928a546202ef2f07455c20cb0aa472e81941cacd914faf864072d41fcaf"
+}

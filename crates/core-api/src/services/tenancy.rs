@@ -516,6 +516,7 @@ pub async fn close_workspace(state: &AppState, ctx: &Ctx, confirm_slug: &str) ->
     super::sender_domains::remove_all(&mut tx, ctx).await?;
     super::talent_calendars::disconnect_all(&mut tx, ctx, None, "workspace_closed").await?;
     super::calendar_push::disconnect_all(&mut tx, ctx, None, "workspace_closed").await?;
+    super::accounting::disconnect_on_close(&mut tx, ctx).await?;
     record(
         &mut tx,
         ctx,

@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT local_id FROM accounting_links\n           WHERE workspace_id = app_workspace_id() AND connection_id = $1 AND kind = $2 AND remote_id = $3\n           LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "local_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "local_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1e4c06cb32a81c5a59187dfb6d364ee8d40ffd13be0b1fe3c25e37a0379bce07"
+}

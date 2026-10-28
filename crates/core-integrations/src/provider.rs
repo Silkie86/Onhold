@@ -119,11 +119,15 @@ pub async fn send_json<T: DeserializeOwned>(
 
 /// Sorts a failed answer. Google, Microsoft, Xero and Intuit all put a
 /// message under `error.message`, `error_description`, `Message` or a plain
-/// `error` string.
+/// `error` string; Xero's validation failures say what was wrong under
+/// `Elements`, and Intuit's under `Fault.Error`.
 pub fn classify(status: u16, retry_after: Option<u64>, body: &[u8]) -> ProviderError {
     let v: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
     let message = v
-        .pointer("/error/message")
+        .pointer("/Elements/0/ValidationErrors/0/Message")
+        .or_else(|| v.pointer("/Fault/Error/0/Detail"))
+        .or_else(|| v.pointer("/Fault/Error/0/Message"))
+        .or_else(|| v.pointer("/error/message"))
         .or_else(|| v.get("error_description"))
         .or_else(|| v.get("Message"))
         .or_else(|| v.get("message"))
@@ -213,5 +217,19 @@ mod tests {
             ProviderError::Refused { status: 403, message } if message == "Insufficient Permission"
         ));
         assert!(classify(503, None, b"").is_temporary());
+    }
+
+    #[test]
+    fn accounting_validation_failures_say_what_was_wrong() {
+        let xero = br#"{"ErrorNumber":10,"Type":"ValidationException","Message":"A validation exception occurred","Elements":[{"ValidationErrors":[{"Message":"The Currency code USD is not enabled"}]}]}"#;
+        assert!(matches!(
+            classify(400, None, xero),
+            ProviderError::Refused { status: 400, message } if message == "The Currency code USD is not enabled"
+        ));
+        let intuit = br#"{"Fault":{"Error":[{"Message":"Duplicate Name Exists Error","Detail":"The name supplied already exists.","code":"6240"}],"type":"ValidationFault"}}"#;
+        assert!(matches!(
+            classify(400, None, intuit),
+            ProviderError::Refused { message, .. } if message == "The name supplied already exists."
+        ));
     }
 }

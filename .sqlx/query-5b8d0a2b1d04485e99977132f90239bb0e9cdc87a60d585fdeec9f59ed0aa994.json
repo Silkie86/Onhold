@@ -1,0 +1,90 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT i.id, l.remote_id AS \"remote_id!\", i.currency AS \"currency!\", i.total_minor,\n                  i.paid_minor, i.credited_minor\n           FROM invoices i\n           JOIN accounting_links l\n             ON l.connection_id = $1 AND l.kind = 'invoice' AND l.local_id = i.id\n            AND l.status = 'synced' AND l.remote_id IS NOT NULL\n           WHERE i.workspace_id = app_workspace_id() AND i.kind = 'invoice'\n             AND i.status IN ('issued', 'part_paid', 'overdue') AND i.deleted_at IS NULL\n             AND i.id > $2\n           ORDER BY i.id LIMIT $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "remote_id!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "remote_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "currency!",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "total_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "total_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "paid_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "paid_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "credited_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "credited_minor"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5b8d0a2b1d04485e99977132f90239bb0e9cdc87a60d585fdeec9f59ed0aa994"
+}

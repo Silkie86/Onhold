@@ -9,6 +9,7 @@
 //! queue tables of every workspace and nothing else; a job that touches a
 //! workspace's data does so through the app pool, like a request.
 
+pub mod accounting;
 pub mod api_keys;
 pub mod app_sign_ins;
 pub mod audit;

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounting_connections SET secret = '\\x'::bytea, revoke_at = NULL\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3bef39c2b147064d311849a01dcd3bcbef57eb8e1c6765b77fb70290d233e87c"
+}

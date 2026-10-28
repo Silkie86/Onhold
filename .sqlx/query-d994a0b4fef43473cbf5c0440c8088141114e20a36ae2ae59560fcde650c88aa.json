@@ -1,0 +1,84 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT l.kind, l.local_id, l.error, l.attempts, l.updated_at,\n                  coalesce(i.reference, ai.reference) AS reference\n           FROM accounting_links l\n           LEFT JOIN invoices i ON l.kind IN ('invoice', 'credit') AND i.id = l.local_id\n           LEFT JOIN payment_allocations a ON l.kind = 'allocation' AND a.id = l.local_id\n           LEFT JOIN invoices ai ON ai.id = a.invoice_id\n           WHERE l.workspace_id = app_workspace_id() AND l.connection_id = $1 AND l.status = 'failed'\n           ORDER BY l.updated_at DESC LIMIT $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "local_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "local_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "error"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "attempts",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "attempts"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "reference",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "d994a0b4fef43473cbf5c0440c8088141114e20a36ae2ae59560fcde650c88aa"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounting_connections SET revoke_at = $2\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND revoke_at IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "57298d8bd4515ed623fd3ce5950300777aae0557ee041509e4da06c24175d4ec"
+}

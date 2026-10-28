@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT local_id, remote_id AS \"remote_id!\" FROM accounting_links\n           WHERE workspace_id = app_workspace_id() AND connection_id = $1 AND kind = 'tax_code'\n             AND remote_id IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "local_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "local_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "remote_id!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounting_links",
+            "name": "remote_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "4203ce83f9ba9b2f1e576f7507167bd3d02954e67f40ea63a24d2ae869e18cfc"
+}

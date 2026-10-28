@@ -98,6 +98,32 @@ impl Default for MailboxConfig {
     }
 }
 
+/// Connecting a workspace's books: Xero and QuickBooks Online.
+#[derive(Debug, Clone)]
+pub struct AccountingConfig {
+    /// `None` when Xero is not set up on this server.
+    pub xero: Option<OAuthApp>,
+    pub quickbooks: Option<OAuthApp>,
+    pub xero_api: Url,
+    /// Intuit's production API, or its sandbox while an app is being built.
+    pub quickbooks_api: Url,
+    pub http: reqwest::Client,
+}
+
+impl Default for AccountingConfig {
+    fn default() -> Self {
+        #[allow(clippy::expect_used)]
+        Self {
+            xero: None,
+            quickbooks: None,
+            xero_api: Url::parse(core_integrations::accounting::XERO_API).expect("static URL"),
+            quickbooks_api: Url::parse(core_integrations::accounting::QUICKBOOKS_API)
+                .expect("static URL"),
+            http: core_integrations::provider::http_client().unwrap_or_default(),
+        }
+    }
+}
+
 /// Workspaces' own sender domains: the provider that verifies them, the
 /// DNS lookups, and Domain Connect when OnHold's template is published.
 #[derive(Debug, Clone)]
@@ -149,6 +175,7 @@ pub struct Config {
     /// paid by bank transfer only.
     pub stripe: Option<StripeClient>,
     pub mailboxes: MailboxConfig,
+    pub accounting: AccountingConfig,
     /// Sending from workspaces' own domains; `None`: everything is sent
     /// from the platform's address.
     pub sender_domains: Option<SenderDomainsConfig>,
@@ -181,6 +208,7 @@ impl Config {
             max_upload_bytes: 25 * 1024 * 1024,
             stripe: None,
             mailboxes: MailboxConfig::default(),
+            accounting: AccountingConfig::default(),
             sender_domains: None,
         }
     }

@@ -10,6 +10,596 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/accounting": {
+      "get": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "The connection to the workspace's books, and which providers this\nserver can connect to.",
+        "operationId": "get_accounting",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Accounting"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Stop sending to the books, and revoke OnHold's access to them.",
+        "operationId": "disconnect_accounting",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounting/failures": {
+      "get": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "What the books refused, and why.",
+        "operationId": "accounting_failures",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccountingFailure"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounting/finish": {
+      "post": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Finish connecting with what the provider sent back.",
+        "operationId": "finish_accounting",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinishAccounting"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountingConnection"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounting/import": {
+      "post": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Import the invoices issued in the books before OnHold, as past invoices.",
+        "operationId": "import_from_accounting",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountingConnection"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounting/options": {
+      "get": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "The accounts, items and tax rates in the books to choose from, read\nfrom the books now.",
+        "operationId": "accounting_options",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountingOptions"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounting/settings": {
+      "put": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Where sales and payments go in the books, and which tax rate each tax\ncode is there.",
+        "operationId": "update_accounting_settings",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountingSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountingConnection"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounting/start": {
+      "post": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Start connecting Xero or QuickBooks Online.",
+        "operationId": "start_accounting",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartAccounting"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountingStart"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/accounting/sync": {
+      "post": {
+        "tags": [
+          "finance"
+        ],
+        "summary": "Send to the books now, trying again what they refused.",
+        "operationId": "sync_accounting",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountingConnection"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/impersonation": {
       "post": {
         "tags": [
@@ -21109,6 +21699,298 @@
           }
         }
       },
+      "Accounting": {
+        "type": "object",
+        "required": [
+          "xero",
+          "quickbooks"
+        ],
+        "properties": {
+          "connection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountingConnection",
+                "description": "The live connection, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quickbooks": {
+            "type": "boolean",
+            "description": "QuickBooks can be connected on this server."
+          },
+          "xero": {
+            "type": "boolean",
+            "description": "Xero can be connected on this server."
+          }
+        }
+      },
+      "AccountingChoice": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountingConnection": {
+        "type": "object",
+        "description": "The workspace's books. Never carries the grant.",
+        "required": [
+          "id",
+          "provider",
+          "tenant_name",
+          "status",
+          "start_date",
+          "automatic_tax",
+          "ready",
+          "refused",
+          "import",
+          "connected_at"
+        ],
+        "properties": {
+          "automatic_tax": {
+            "type": "boolean",
+            "description": "QuickBooks works out US sales tax itself: tax codes are only taxable or not."
+          },
+          "bank_account": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account payments are paid into."
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "import": {
+            "$ref": "#/components/schemas/AccountingImport"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "paid_checked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When what was paid in the books was last read back."
+          },
+          "provider": {
+            "type": "string",
+            "description": "`xero` or `quickbooks`."
+          },
+          "ready": {
+            "type": "boolean",
+            "description": "Sending has started: where sales go is chosen."
+          },
+          "refused": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Things the books refused, waiting to be put right."
+          },
+          "sales_account": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Xero: the revenue account's code. QuickBooks: the service item."
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "description": "What is issued on or after this day is sent; earlier invoices can be imported."
+          },
+          "status": {
+            "type": "string",
+            "description": "`active`, `failing` (being retried) or `reconnect`."
+          },
+          "tenant_name": {
+            "type": "string",
+            "description": "The organisation (Xero) or company (QuickBooks)."
+          }
+        }
+      },
+      "AccountingFailure": {
+        "type": "object",
+        "required": [
+          "kind",
+          "local_id",
+          "attempts",
+          "at"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "description": "`invoice` (or credit note), `allocation` (a payment), `credit` (a\ncredit note set against its invoice) or `contact`."
+          },
+          "local_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The invoice's or credit note's number."
+          }
+        }
+      },
+      "AccountingImport": {
+        "type": "object",
+        "required": [
+          "status",
+          "imported"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imported": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Past invoices brought in so far."
+          },
+          "status": {
+            "type": "string",
+            "description": "`none`, `running`, `done` or `failed`."
+          }
+        }
+      },
+      "AccountingOptions": {
+        "type": "object",
+        "required": [
+          "sales",
+          "banks",
+          "taxes",
+          "tax_codes"
+        ],
+        "properties": {
+          "banks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountingChoice"
+            },
+            "description": "Accounts payments are paid into."
+          },
+          "sales": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountingChoice"
+            },
+            "description": "Xero: revenue accounts. QuickBooks: service items."
+          },
+          "tax_codes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaxCodeMapping"
+            },
+            "description": "OnHold's tax codes and which of those each is."
+          },
+          "taxes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountingChoice"
+            },
+            "description": "Tax rates (Xero) or codes (QuickBooks)."
+          }
+        }
+      },
+      "AccountingSettings": {
+        "type": "object",
+        "properties": {
+          "bank_account": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account payments are paid into (Xero needs one to send payments)."
+          },
+          "sales_account": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Xero: a revenue account's code. QuickBooks: a service item's id."
+          },
+          "start_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "What is issued on or after this day is sent. Default: unchanged."
+          },
+          "tax_codes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaxCodeChoice"
+            }
+          }
+        }
+      },
+      "AccountingStart": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Send the person here; the provider sends them back to\n`/settings/accounting` with `code`, `state` (and QuickBooks'\n`realmId`), which the page passes to the finish call."
+          }
+        }
+      },
       "ActionResult": {
         "type": "object",
         "description": "One action as planned or done, for the run log.",
@@ -25192,6 +26074,30 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "FinishAccounting": {
+        "type": "object",
+        "required": [
+          "code",
+          "state"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "From the provider's redirect."
+          },
+          "realm_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "QuickBooks' company, from its redirect (`realmId`)."
+          },
+          "state": {
+            "type": "string",
+            "description": "From the provider's redirect, as the start call made it."
           }
         }
       },
@@ -31136,6 +32042,18 @@
           }
         }
       },
+      "StartAccounting": {
+        "type": "object",
+        "required": [
+          "provider"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "`xero` or `quickbooks`."
+          }
+        }
+      },
       "StartAppSignInRequest": {
         "type": "object",
         "required": [
@@ -32033,6 +32951,25 @@
           }
         }
       },
+      "TaxCodeChoice": {
+        "type": "object",
+        "required": [
+          "tax_code_id"
+        ],
+        "properties": {
+          "remote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "None: let the books decide (Xero uses the account's default)."
+          },
+          "tax_code_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "TaxCodeInput": {
         "type": "object",
         "required": [
@@ -32079,6 +33016,34 @@
           "rate_bps": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "TaxCodeMapping": {
+        "type": "object",
+        "required": [
+          "tax_code_id",
+          "name",
+          "rate_bps"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "rate_bps": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "remote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tax rate (Xero) or code (QuickBooks) it is in the books."
+          },
+          "tax_code_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
