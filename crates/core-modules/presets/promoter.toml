@@ -1,0 +1,13 @@
+# Promoter booking acts for their events. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Promoter booking acts for their events"
+perspective = "buys"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "events"]
+extras = ["team"]
+[vocabulary.crm.talent]
+one = "Artist"
+many = "Artists"
+
+[vocabulary.bookings.enquiry]
+one = "Offer"
+many = "Offers"

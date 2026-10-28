@@ -7,6 +7,11 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
+core-domain.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
+utoipa.workspace = true
 
 [lints]
 workspace = true

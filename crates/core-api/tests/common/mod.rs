@@ -93,6 +93,7 @@ impl TestApp {
                 perspective: None,
                 plugin_slug: None,
                 owner_email: owner_email.into(),
+                presets: Vec::new(),
             },
         )
         .await

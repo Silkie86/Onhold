@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id AS \"id: WorkspaceId\", slug, name, plan, status AS \"status: WorkspaceStatus\",\n                  perspective AS \"perspective: Perspective\", country, default_currency, default_timezone,\n                  locale, enabled_modules, branding, billing_contact, plugin_slug, require_staff_2fa,\n                  hold_days, version, created_at, updated_at\n           FROM workspaces WHERE id = $1",
+  "query": "SELECT id AS \"id: WorkspaceId\", slug, name, plan, status AS \"status: WorkspaceStatus\",\n                  perspective AS \"perspective: Perspective\", country, default_currency, default_timezone,\n                  locale, enabled_modules, presets, extras, vocabulary, setup, setup_at,\n                  branding, billing_contact, plugin_slug, require_staff_2fa,\n                  hold_days, version, created_at, updated_at\n           FROM workspaces WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -149,6 +149,61 @@
       },
       {
         "ordinal": 11,
+        "name": "presets",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "presets"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "extras",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "extras"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "vocabulary",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "vocabulary"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "setup",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "setup"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "setup_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "setup_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
         "name": "branding",
         "type_info": "Jsonb",
         "origin": {
@@ -159,7 +214,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 17,
         "name": "billing_contact",
         "type_info": "Jsonb",
         "origin": {
@@ -170,7 +225,7 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 18,
         "name": "plugin_slug",
         "type_info": "Text",
         "origin": {
@@ -181,7 +236,7 @@
         }
       },
       {
-        "ordinal": 14,
+        "ordinal": 19,
         "name": "require_staff_2fa",
         "type_info": "Bool",
         "origin": {
@@ -192,7 +247,7 @@
         }
       },
       {
-        "ordinal": 15,
+        "ordinal": 20,
         "name": "hold_days",
         "type_info": "Int4",
         "origin": {
@@ -203,7 +258,7 @@
         }
       },
       {
-        "ordinal": 16,
+        "ordinal": 21,
         "name": "version",
         "type_info": "Int8",
         "origin": {
@@ -214,7 +269,7 @@
         }
       },
       {
-        "ordinal": 17,
+        "ordinal": 22,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -225,7 +280,7 @@
         }
       },
       {
-        "ordinal": 18,
+        "ordinal": 23,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -255,6 +310,11 @@
       false,
       false,
       false,
+      false,
+      true,
+      true,
+      false,
+      false,
       true,
       false,
       false,
@@ -263,5 +323,5 @@
       false
     ]
   },
-  "hash": "2e2e0a7915e0d24b432856174d6dab9f1516dc314f8869b4f1e8291b2527cca7"
+  "hash": "e41ad32de8b01a7d7d227ed9b9c1ee1d3d18d663b5c2bf4ad08a8f65f068ed6a"
 }

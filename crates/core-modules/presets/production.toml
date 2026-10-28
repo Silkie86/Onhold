@@ -1,0 +1,13 @@
+# Production company or crew. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Production company or crew"
+perspective = "both"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "events"]
+extras = ["team", "advanced"]
+[vocabulary.crm.talent]
+one = "Crew member"
+many = "Crew"
+
+[vocabulary.bookings.booking]
+one = "Job"
+many = "Jobs"

@@ -1,0 +1,13 @@
+# Equipment hire. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Equipment hire"
+perspective = "sells"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents"]
+extras = ["team"]
+[vocabulary.crm.talent]
+one = "Item"
+many = "Kit"
+
+[vocabulary.bookings.booking]
+one = "Hire"
+many = "Hires"
