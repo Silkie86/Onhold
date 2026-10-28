@@ -37,13 +37,29 @@ export function SetupSettingsPage() {
   const form = useQuery({ queryKey: ["setup"], queryFn: () => ok(api.GET("/api/v1/workspace/setup")) });
   const [answers, setAnswers] = useState<Answers | null>(null);
   const [comment, setComment] = useState("");
-  // Choices whose fuller explanation is open.
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  // The choice whose fuller explanation is open, shown over the form so the grid never shifts.
+  const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => {
     if (form.data && answers === null) setAnswers(form.data.answers);
   }, [form.data, answers]);
+  // An open explanation closes on a tap elsewhere or Escape.
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!(e.target instanceof Element) || !e.target.closest(`[data-choice="${open}"]`)) setOpen(null);
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(null);
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
   const preview = useQuery({
     queryKey: ["setup-preview", answers],
     queryFn: () => ok(api.POST("/api/v1/workspace/setup/preview", { body: answers! })),
@@ -122,63 +138,58 @@ export function SetupSettingsPage() {
               <fieldset className="flex flex-col gap-3">
                 <legend className="font-semibold">{q.title}</legend>
                 {q.help && <p className="-mt-1 text-sm text-muted-foreground">{q.help}</p>}
-                <div className="grid items-start gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 sm:auto-rows-fr sm:grid-cols-2">
                   {q.choices.map((c) => {
                     const id = `setup-${q.key}-${c.key}`;
                     const checked = q.multiple ? list(q.key).includes(c.key) : answers.team === c.key;
-                    const more = open.has(id);
+                    const more = open === id;
                     return (
                       <div
                         key={c.key}
-                        className={cn("flex flex-col rounded-md border text-sm", checked && "border-primary bg-accent")}
+                        data-choice={id}
+                        className={cn("relative flex items-center rounded-md border text-sm", checked && "border-primary bg-accent", more && "z-20")}
                       >
-                        <div className="flex items-start">
-                          <label htmlFor={id} className="flex min-h-11 flex-1 cursor-pointer items-start gap-3 rounded-md p-3 hover:bg-accent">
-                            {q.multiple ? (
-                              <Checkbox
-                                id={id}
-                                className="mt-0.5 shrink-0"
-                                disabled={!canChange}
-                                checked={checked}
-                                onChange={(e) => toggle(q.key, c.key, e.target.checked, c.suggests)}
-                              />
-                            ) : (
-                              <input
-                                id={id}
-                                type="radio"
-                                name={`setup-${q.key}`}
-                                className="mt-0.5 size-4 shrink-0 accent-primary"
-                                disabled={!canChange}
-                                checked={checked}
-                                onChange={() => toggle(q.key, c.key, true, [])}
-                              />
-                            )}
-                            <span className="flex flex-col gap-0.5">
-                              <span>{c.label}</span>
-                              {c.hint && <span className="text-xs text-muted-foreground">{c.hint}</span>}
-                            </span>
-                          </label>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="m-1 shrink-0 text-muted-foreground"
-                            aria-expanded={more}
-                            aria-controls={`${id}-details`}
-                            aria-label={`More about ${c.label}`}
-                            onClick={() =>
-                              setOpen((o) => {
-                                const next = new Set(o);
-                                if (o.has(id)) next.delete(id);
-                                else next.add(id);
-                                return next;
-                              })
-                            }
-                          >
-                            <Info className="size-4" />
-                          </Button>
-                        </div>
+                        <label htmlFor={id} className="flex h-full min-h-11 flex-1 cursor-pointer items-center gap-3 rounded-md p-3 hover:bg-accent">
+                          {q.multiple ? (
+                            <Checkbox
+                              id={id}
+                              className="shrink-0"
+                              disabled={!canChange}
+                              checked={checked}
+                              onChange={(e) => toggle(q.key, c.key, e.target.checked, c.suggests)}
+                            />
+                          ) : (
+                            <input
+                              id={id}
+                              type="radio"
+                              name={`setup-${q.key}`}
+                              className="size-4 shrink-0 accent-primary"
+                              disabled={!canChange}
+                              checked={checked}
+                              onChange={() => toggle(q.key, c.key, true, [])}
+                            />
+                          )}
+                          <span className="flex flex-col gap-0.5">
+                            <span>{c.label}</span>
+                            {c.hint && <span className="text-xs text-muted-foreground">{c.hint}</span>}
+                          </span>
+                        </label>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="m-1 shrink-0 text-muted-foreground"
+                          aria-expanded={more}
+                          aria-controls={`${id}-details`}
+                          aria-label={`More about ${c.label}`}
+                          onClick={() => setOpen((o) => (o === id ? null : id))}
+                        >
+                          <Info className="size-4" />
+                        </Button>
                         {more && (
-                          <p id={`${id}-details`} className="border-t px-3 py-2 text-sm text-muted-foreground">
+                          <p
+                            id={`${id}-details`}
+                            className="absolute inset-x-0 top-full z-20 mt-1 rounded-md border bg-card p-3 text-sm text-card-foreground shadow-lg"
+                          >
                             {c.details}
                           </p>
                         )}
