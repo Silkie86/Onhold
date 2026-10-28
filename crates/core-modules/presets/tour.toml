@@ -1,0 +1,9 @@
+# Tour management. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Tour management"
+perspective = "both"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "events"]
+extras = ["team"]
+[vocabulary.bookings.booking]
+one = "Show"
+many = "Shows"

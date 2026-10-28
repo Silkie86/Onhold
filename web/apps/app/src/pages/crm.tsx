@@ -44,6 +44,7 @@ import { isLocalId } from "../offline/store.ts";
 import { useSession } from "../session.tsx";
 import { AvailabilityEditor } from "./availability.tsx";
 import { TalentMembers } from "./members.tsx";
+import { useSetup } from "../setup.ts";
 import { RelatedConversations } from "./inbox.tsx";
 import { TalentCalendarsCard } from "./talent-calendars.tsx";
 
@@ -438,6 +439,9 @@ function OrganisationSearch({
 
 export function EntityRecordPage() {
   const entity = useEntity();
+  // OnHold's team may have streamlined these away; email conversations need the inbox too.
+  const setup = useSetup();
+  const conversations = setup.has("messaging") && setup.shows("section:records.conversations");
   const { id } = useParams({ from: "/app/crm/$entity/$id" });
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -549,14 +553,16 @@ export function EntityRecordPage() {
               <p className="text-sm text-muted-foreground">Members can be seen and changed when you are online.</p>
             ) : (
               <>
-                <TalentMembers talentId={id} canWrite={schema.data.can_write} />
-                <AvailabilityEditor talentId={id} canWrite={schema.data.can_write} />
-                <TalentCalendarsCard talentId={id} canWrite={schema.data.can_write} />
+                {setup.shows("section:talent.members") && <TalentMembers talentId={id} canWrite={schema.data.can_write} />}
+                {setup.shows("section:talent.availability") && <AvailabilityEditor talentId={id} canWrite={schema.data.can_write} />}
+                {setup.shows("section:talent.calendars") && <TalentCalendarsCard talentId={id} canWrite={schema.data.can_write} />}
               </>
             ))}
           {entity.entity === "organisation" && <OrganisationContacts organisation={r} />}
-          {!offline && !isLocalId(id) && entity.entity === "contact" && <RelatedConversations filter={{ contact_id: id }} />}
-          {!offline && !isLocalId(id) && entity.entity === "organisation" && <RelatedConversations filter={{ organisation_id: id }} />}
+          {!offline && !isLocalId(id) && conversations && entity.entity === "contact" && <RelatedConversations filter={{ contact_id: id }} />}
+          {!offline && !isLocalId(id) && conversations && entity.entity === "organisation" && (
+            <RelatedConversations filter={{ organisation_id: id }} />
+          )}
         </section>
         <section aria-label="Activity" className="flex flex-col gap-3">
           <h2 className="font-semibold">Activity</h2>

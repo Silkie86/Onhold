@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT extras, hidden, vocabulary FROM workspaces WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "extras",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "extras"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "hidden",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "hidden"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "vocabulary",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "workspaces",
+            "name": "vocabulary"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "55c61442d2df8941bb5de3b36605f1080d527d34f8fc762cdf6285defc6884dc"
+}

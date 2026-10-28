@@ -40,6 +40,8 @@ pub struct NewWorkspace {
     pub perspective: Option<Perspective>,
     pub plugin_slug: Option<String>,
     pub owner_email: String,
+    /// Presets to combine (`agency`, `solo`…); none gives every module.
+    pub presets: Vec<String>,
 }
 
 pub struct CreatedWorkspace {
@@ -85,8 +87,25 @@ pub async fn create_workspace(
     }
     let owner_email = validate_email(&input.owner_email)?;
 
+    // Presets decide the modules, extras and words; without any, the
+    // workspace starts with everything and its owner trims it with the
+    // setup form.
+    let (modules, extras, vocabulary, preset_perspective, presets) = if input.presets.is_empty() {
+        let all = |l: &[&str]| l.iter().map(|m| (*m).to_owned()).collect::<Vec<_>>();
+        (
+            all(ws::MODULES),
+            all(ws::EXTRAS),
+            json!({}),
+            None,
+            Vec::new(),
+        )
+    } else {
+        let c = core_modules::presets::combine(&input.presets)
+            .map_err(|e| ApiError::invalid("presets", e.to_string()))?;
+        let vocabulary = serde_json::to_value(&c.vocabulary).map_err(ApiError::internal)?;
+        (c.modules, c.extras, vocabulary, c.perspective, c.presets)
+    };
     let id = WorkspaceId::new();
-    let modules: Vec<String> = ws::MODULES.iter().map(|m| (*m).to_owned()).collect();
     let mut tx = core_db::begin(&state.db, Some(id), created_by).await?;
     let inserted = core_db::workspaces::insert(
         &mut tx,
@@ -95,12 +114,18 @@ pub async fn create_workspace(
             slug: &input.slug,
             name: &name,
             plan: &plan,
-            perspective: input.perspective.unwrap_or(Perspective::Sells),
+            perspective: input
+                .perspective
+                .or(preset_perspective)
+                .unwrap_or(Perspective::Sells),
             country: &input.country,
             default_currency: &input.default_currency,
             default_timezone: &input.default_timezone,
             locale: &locale,
             enabled_modules: &modules,
+            presets: &presets,
+            extras: &extras,
+            vocabulary: &vocabulary,
             plugin_slug: input.plugin_slug.as_deref(),
             created_by,
         },
@@ -179,7 +204,8 @@ fn workspace_audit_view(w: &core_db::workspaces::Workspace) -> Value {
     json!({
         "slug": w.slug, "name": w.name, "plan": w.plan, "status": w.status, "perspective": w.perspective,
         "country": w.country, "default_currency": w.default_currency, "default_timezone": w.default_timezone,
-        "locale": w.locale, "enabled_modules": w.enabled_modules, "branding": branding,
+        "locale": w.locale, "enabled_modules": w.enabled_modules, "presets": w.presets,
+        "extras": w.extras, "vocabulary": w.vocabulary, "branding": branding,
         "plugin_slug": w.plugin_slug,
         "require_staff_2fa": w.require_staff_2fa, "hold_days": w.hold_days,
     })
