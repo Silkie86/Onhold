@@ -445,7 +445,8 @@ function SyncIndicator() {
       : "Offline"
     : status.attention
       ? `${status.attention} need${status.attention === 1 ? "s" : ""} attention`
-      : status.syncing || status.pending
+      : // Not "up to date" before the first download has finished.
+        status.syncing || status.pending || !status.ready
         ? "Syncing…"
         : "Up to date";
   const warn = !status.online || status.attention > 0;
