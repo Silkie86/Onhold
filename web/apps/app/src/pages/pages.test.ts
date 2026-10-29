@@ -2,7 +2,7 @@ import { safeRedirect } from "./auth.tsx";
 import { canUndo, decodeFile, isWorkbook, needsResaving, rowLabel, sheetsSummary, stripCardAttachments } from "./imports.tsx";
 import { dialable, phonesOf } from "../phones.ts";
 import { validateListSearch } from "./crm.tsx";
-import { awaitingOutcome, dayOf, happenedAt, keyFor, mailtoLink, newKey, smsLink, uniqueItems, unfilled, whatsappLink } from "./pitching.tsx";
+import { awaitingOutcome, dayOf, dueLabel, dueWhat, happenedAt, keyFor, mailtoLink, newKey, smsLink, uniqueItems, unfilled, whatsappLink } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
 
 test("after signing in, only paths on this site are followed", () => {
@@ -128,6 +128,20 @@ test("an answered pitch asks what they said until an answer is logged", () => {
   expect(awaitingOutcome(pitch, [pitch, before])).toBe(true);
   expect(awaitingOutcome(pitch, [after, pitch])).toBe(false);
   expect(awaitingOutcome({ ...pitch, answered_at: null }, [pitch])).toBe(false);
+});
+
+test("follow-ups say when they are due and what they are", () => {
+  expect(dueLabel("2026-10-29", "2026-10-29")).toBe("Due today");
+  expect(dueLabel("2026-10-26", "2026-10-29")).toBe("3 days overdue");
+  expect(dueLabel("2026-10-30", "2026-10-29")).toBe("Due tomorrow");
+  expect(dueLabel("2026-11-05", "2026-10-29")).toBe("Due in 7 days");
+  const templates = [{ key: "follow_up", name: "Follow-up", action: "followed_up", subject: "S", body: "B" }];
+  const base = { organisation_id: "o", organisation_name: "Club", due_on: "2026-10-29", steps: 2 };
+  expect(dueWhat({ ...base, kind: "step", step: 1, channel: "email", template_key: "follow_up" }, templates)).toBe(
+    'Follow-up 1 of 2: Email, "Follow-up"',
+  );
+  expect(dueWhat({ ...base, kind: "step", step: 2, channel: "phone", action_label: "Called" }, templates)).toBe("Follow-up 2 of 2: Phone (Called)");
+  expect(dueWhat({ ...base, kind: "no_answer" }, templates)).toBe("No answer after the follow-ups: what came of it?");
 });
 
 test("numbers changed offline are dialled as written, not as the server last wrote them", () => {

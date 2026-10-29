@@ -1275,9 +1275,17 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
     queryFn: async () => (await fetchList(sync, "contact", { organisation_id: organisationId, limit: 100 })).data,
   });
   const [editing, setEditing] = useState<Pitch | PitchKind | null>(null);
-  const [pitching, setPitching] = useState(false);
+  // The Pitch dialog: open, from a follow-up's template if one.
+  const [pitching, setPitching] = useState<false | { initial?: Due }>(false);
+  const next = useQuery({
+    queryKey: ["follow-ups", "organisation", organisationId],
+    queryFn: () => ok(api.GET("/api/v1/pitching/follow-ups", { params: { query: { organisation_id: organisationId } } })),
+  });
   const [error, setError] = useState<string | null>(null);
-  const refresh = () => void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
+    void qc.invalidateQueries({ queryKey: ["follow-ups"] });
+  };
   const remove = async (p: Pitch) => {
     if (!window.confirm(`Remove "${p.type_label ?? "this entry"}" from the log?`)) return;
     setError(null);
@@ -1321,7 +1329,7 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
         </div>
         {canWrite && settings.data && (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" disabled={!people.data} onClick={() => setPitching(true)}>
+            <Button size="sm" disabled={!people.data} onClick={() => setPitching({})}>
               <Send /> Pitch
             </Button>
             <Button variant="outline" size="sm" onClick={() => setEditing("action")}>
@@ -1333,6 +1341,17 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
           </div>
         )}
       </div>
+      {next.data?.map((d) => (
+        <p key={d.kind} className="flex flex-wrap items-center gap-2 rounded-md bg-muted px-3 py-2">
+          <span className="font-medium">{dueLabel(d.due_on, dayOf(new Date().toISOString()))}:</span>
+          <span>{dueWhat(d, settings.data?.templates ?? [])}</span>
+          {canWrite && d.kind === "step" && d.template_key && settings.data && (
+            <Button size="sm" variant="outline" disabled={!people.data} onClick={() => setPitching({ initial: d })}>
+              <Send /> Write it
+            </Button>
+          )}
+        </p>
+      ))}
       {error && <Alert>{error}</Alert>}
       {canWrite && settings.data && <InSent organisationId={organisationId} settings={settings.data} onChanged={refresh} />}
       {log.isPending ? (
@@ -1423,6 +1442,13 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
           settings={settings.data}
           people={(people.data?.items ?? []).map(person)}
           items={items}
+          initial={
+            pitching.initial && {
+              template: pitching.initial.template_key ?? null,
+              contact: pitching.initial.contact_id ?? null,
+              item: pitching.initial.item ?? null,
+            }
+          }
           onClose={() => setPitching(false)}
           onLogged={() => {
             setPitching(false);
