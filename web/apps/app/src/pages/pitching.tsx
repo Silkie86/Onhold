@@ -621,8 +621,23 @@ function SettingsForm({
             };
             return (
               <li key={i} className="flex flex-wrap items-end gap-2 rounded-md border p-3">
-                <span className="w-full font-medium">Follow-up {i + 1}</span>
-                <div className="flex w-28 flex-col gap-1">
+                <span className="flex w-full items-center justify-between">
+                  <span className="font-medium">Follow-up {i + 1}</span>
+                  {admin && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove follow-up ${i + 1}`}
+                      onClick={() => {
+                        changed();
+                        setFollowUps((xs) => xs.filter((_, j) => j !== i));
+                      }}
+                    >
+                      <Trash2 />
+                    </Button>
+                  )}
+                </span>
+                <div className="flex w-24 flex-col gap-1">
                   <Label htmlFor={`follow-up-${i}-days`}>Days after</Label>
                   <Input
                     id={`follow-up-${i}-days`}
@@ -660,7 +675,7 @@ function SettingsForm({
                       set({ template_key: t?.key ?? null, ...(t && { action: t.action }) });
                     }}
                   >
-                    <option value="">Nothing: a reminder</option>
+                    <option value="">A reminder only</option>
                     {templates.map((t) => (
                       <option key={t.key} value={t.key}>
                         {t.name || "Unnamed template"}
@@ -679,19 +694,6 @@ function SettingsForm({
                     ))}
                   </NativeSelect>
                 </div>
-                {admin && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Remove follow-up ${i + 1}`}
-                    onClick={() => {
-                      changed();
-                      setFollowUps((xs) => xs.filter((_, j) => j !== i));
-                    }}
-                  >
-                    <Trash2 />
-                  </Button>
-                )}
               </li>
             );
           })}
@@ -1903,7 +1905,7 @@ function PitchDialog({
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
           <label className="flex items-center gap-2 text-muted-foreground">
             Usually I
-            <NativeSelect aria-label="How you usually pitch" className="w-60" value={me.data?.send_with ?? ""} onChange={(e) => void setUsual(e.target.value as SendWith | "")}>
+            <NativeSelect aria-label="How you usually pitch" className="w-64" value={me.data?.send_with ?? ""} onChange={(e) => void setUsual(e.target.value as SendWith | "")}>
               <option value="">Do as the workspace does</option>
               {SEND_WITH.map((w) => (
                 <option key={w.value} value={w.value}>
