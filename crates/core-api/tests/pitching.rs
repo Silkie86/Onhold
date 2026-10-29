@@ -715,7 +715,7 @@ async fn pitches_are_drafted_and_sent(pool: PgPool) {
     let club = organisation(
         &app,
         &owner,
-        json!({ "name": "Hyde Park Book Club", "city": "Leeds", "country_code": "GB" }),
+        json!({ "name": "Hyde Park Book Club", "addresses": [{ "city": "Leeds", "country": "England" }] }),
     )
     .await;
     let club_id = club["id"].as_str().unwrap().to_owned();
@@ -723,7 +723,8 @@ async fn pitches_are_drafted_and_sent(pool: PgPool) {
         &app,
         &owner,
         "/api/v1/contacts",
-        json!({ "name": "Jo Booker", "organisation_id": club_id, "emails": ["jo@club.test"] }),
+        json!({ "name": "Jo Booker", "organisation_id": club_id, "emails": ["jo@club.test"],
+                "phones": ["07700 900123"] }),
     )
     .await
     .ok()
@@ -757,6 +758,11 @@ async fn pitches_are_drafted_and_sent(pool: PgPool) {
     assert!(body.contains("{link}"), "{body}");
     assert_eq!(draft.body["missing"], json!(["link"]));
     assert_eq!(draft.body["email"], "jo@club.test");
+    assert!(
+        draft.body["phone"].as_str().unwrap().starts_with("+44"),
+        "{}",
+        draft.body
+    );
     assert_eq!(draft.body["action"], "pitched");
 
     // Not sent while a placeholder is left, nor by a viewer.

@@ -212,7 +212,8 @@ pub struct PitchDraft {
     pub body: String,
     /// Placeholders nothing filled in, left in the text to fill by hand.
     pub missing: Vec<String>,
-    /// Where it can go: the person's first email address and phone number.
+    /// Where it can go: the person's first email address, and first phone
+    /// number written internationally where its country is known.
     pub email: Option<String>,
     pub phone: Option<String>,
 }
@@ -257,7 +258,13 @@ pub async fn draft(
         body,
         missing: missing.into_iter().collect(),
         email: contact.as_ref().and_then(|c| c.emails.first().cloned()),
-        phone: contact.as_ref().and_then(|c| c.phones.first().cloned()),
+        phone: contact.as_ref().and_then(|c| {
+            let p = c.phones.first()?;
+            Some(
+                core_engines::countries::international_phone(p, c.organisation_country.as_deref())
+                    .unwrap_or_else(|| p.clone()),
+            )
+        }),
     })
 }
 
