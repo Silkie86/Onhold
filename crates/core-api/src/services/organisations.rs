@@ -59,6 +59,30 @@ pub struct ItemRef {
     pub name: String,
 }
 
+impl ItemRef {
+    /// From a talent or project id and the name found for it; none when
+    /// neither is set or the item is gone.
+    pub fn from_parts(
+        talent: Option<Uuid>,
+        project: Option<Uuid>,
+        name: Option<String>,
+    ) -> Option<Self> {
+        match (talent, project, name) {
+            (Some(id), _, Some(name)) => Some(ItemRef {
+                kind: ItemKind::Talent,
+                id,
+                name,
+            }),
+            (None, Some(id), Some(name)) => Some(ItemRef {
+                kind: ItemKind::Project,
+                id,
+                name,
+            }),
+            _ => None,
+        }
+    }
+}
+
 /// Talent or a project to put on one of an organisation's lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
 pub struct ItemInput {

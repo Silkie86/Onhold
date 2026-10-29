@@ -6111,6 +6111,11 @@ export interface components {
             contact_id?: string | null;
             contact_name?: string | null;
             /**
+             * Format: int64
+             * @description Days from the workspace's today: 0 today, less than 0 overdue.
+             */
+            due_in_days: number;
+            /**
              * Format: date
              * @description The day it is due, in the workspace's timezone.
              */

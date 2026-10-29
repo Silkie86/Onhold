@@ -11,10 +11,9 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::begin;
-use super::finance::today;
 use super::organisations::ItemRef;
 use super::pitches::PitchChannel;
-use super::pitching::{FollowUpStep, ItemKind, PitchingSettings, settings_in};
+use super::pitching::{FollowUpStep, PitchingSettings, settings_in};
 use crate::AppState;
 use crate::error::{ApiError, ApiResult};
 
@@ -41,6 +40,8 @@ pub struct DueFollowUp {
     pub kind: FollowUpKind,
     /// The day it is due, in the workspace's timezone.
     pub due_on: NaiveDate,
+    /// Days from the workspace's today: 0 today, less than 0 overdue.
+    pub due_in_days: i64,
     /// For a step: which, from 1, and how many there are.
     pub step: Option<i32>,
     pub steps: i32,
@@ -67,11 +68,14 @@ pub struct FollowUpFilter {
 
 /// What is due for one run, if anything is: the next step, or asking what
 /// came of it once the steps are done.
+/// A step, which (from 1) and the step itself.
+type Step<'a> = (i32, &'a FollowUpStep);
+
 fn next<'a>(
     settings: &'a PitchingSettings,
     run: &core_db::pitches::Run,
     tz: chrono_tz::Tz,
-) -> Option<(FollowUpKind, NaiveDate, Option<&'a FollowUpStep>, i32)> {
+) -> Option<(FollowUpKind, NaiveDate, Option<Step<'a>>)> {
     if run.answered {
         // Their answer waits to be logged ("What did they say?").
         return None;
@@ -82,14 +86,12 @@ fn next<'a>(
         Some(step) => Some((
             FollowUpKind::Step,
             last + Duration::days(i64::from(step.after_days)),
-            Some(step),
-            i32::try_from(done + 1).unwrap_or(i32::MAX),
+            Some((i32::try_from(done + 1).unwrap_or(i32::MAX), step)),
         )),
         None if settings.give_up_after_days > 0 => Some((
             FollowUpKind::NoAnswer,
             last + Duration::days(i64::from(settings.give_up_after_days)),
             None,
-            0,
         )),
         None => None,
     }
@@ -117,7 +119,8 @@ pub async fn due(state: &AppState, ctx: &Ctx, f: &FollowUpFilter) -> ApiResult<V
         .await?
         .and_then(|w| w.default_timezone.parse().ok())
         .unwrap_or(chrono_tz::UTC);
-    let until = today(&mut tx, ctx).await? + Duration::days(days_ahead);
+    let today = Utc::now().with_timezone(&tz).date_naive();
+    let until = today + Duration::days(days_ahead);
     // For one organisation, its next whenever it is.
     let horizon = if f.organisation_id.is_some() {
         NaiveDate::MAX
@@ -136,31 +139,21 @@ pub async fn due(state: &AppState, ctx: &Ctx, f: &FollowUpFilter) -> ApiResult<V
     let steps = i32::try_from(settings.follow_ups.len()).unwrap_or(i32::MAX);
     let mut out = Vec::new();
     for run in runs {
-        let Some((kind, due_on, step, n)) = next(&settings, &run, tz) else {
+        let Some((kind, due_on, step)) = next(&settings, &run, tz) else {
             continue;
         };
         if due_on > horizon {
             continue;
         }
-        let item = match (run.talent_id, run.project_id, run.item_name) {
-            (Some(id), _, Some(name)) => Some(ItemRef {
-                kind: ItemKind::Talent,
-                id,
-                name,
-            }),
-            (None, Some(id), Some(name)) => Some(ItemRef {
-                kind: ItemKind::Project,
-                id,
-                name,
-            }),
-            _ => None,
-        };
+        let item = ItemRef::from_parts(run.talent_id, run.project_id, run.item_name);
+        let (n, step) = step.unzip();
         out.push(DueFollowUp {
             organisation_id: run.organisation_id,
             organisation_name: run.organisation_name,
             kind,
             due_on,
-            step: step.map(|_| n),
+            due_in_days: (due_on - today).num_days(),
+            step: n,
             steps,
             channel: step.map(|s| s.channel),
             action: step.map(|s| s.action.clone()),
@@ -179,6 +172,7 @@ pub async fn due(state: &AppState, ctx: &Ctx, f: &FollowUpFilter) -> ApiResult<V
         organisation_name: d.organisation_name,
         kind: FollowUpKind::Date,
         due_on: d.follow_up_on,
+        due_in_days: (d.follow_up_on - today).num_days(),
         step: None,
         steps,
         channel: None,
@@ -223,24 +217,21 @@ mod tests {
         let tz = chrono_tz::Europe::London;
         let day = |d: &str| d.parse::<NaiveDate>().expect("a day");
         // Pitched on the 1st: the email follow-up a week on.
-        let (kind, due, step, n) =
-            next(&s, &run(1, "2026-10-01T23:30:00Z", false), tz).expect("due");
+        let (kind, due, step) = next(&s, &run(1, "2026-10-01T23:30:00Z", false), tz).expect("due");
         assert_eq!(kind, FollowUpKind::Step);
         // Half past midnight in London is the 2nd.
         assert_eq!(due, day("2026-10-09"));
-        assert_eq!(
-            step.expect("a step").template_key.as_deref(),
-            Some("follow_up")
-        );
+        let (n, step) = step.expect("a step");
+        assert_eq!(step.template_key.as_deref(), Some("follow_up"));
         assert_eq!(n, 1);
         // Followed up: then the call.
-        let (_, due, step, n) = next(&s, &run(2, "2026-10-09T10:00:00Z", false), tz).expect("due");
+        let (_, due, step) = next(&s, &run(2, "2026-10-09T10:00:00Z", false), tz).expect("due");
         assert_eq!(due, day("2026-10-16"));
-        assert_eq!(step.expect("a step").action, "called");
+        let (n, step) = step.expect("a step");
+        assert_eq!(step.action, "called");
         assert_eq!(n, 2);
         // Both done: two weeks on, ask what came of it.
-        let (kind, due, step, _) =
-            next(&s, &run(3, "2026-10-16T10:00:00Z", false), tz).expect("due");
+        let (kind, due, step) = next(&s, &run(3, "2026-10-16T10:00:00Z", false), tz).expect("due");
         assert_eq!(kind, FollowUpKind::NoAnswer);
         assert_eq!(due, day("2026-10-30"));
         assert!(step.is_none());
