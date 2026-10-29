@@ -825,9 +825,13 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex flex-wrap items-center gap-2">
                   {p.kind === "outcome" ? (
-                    <StatusDot colour={p.tag ? TAG_COLOUR[p.tag] : "grey"} label={p.type_label ?? "An answer no longer listed"} />
-                  ) : null}
-                  <span className="font-medium">{p.type_label ?? (p.kind === "outcome" ? "An answer no longer listed" : "An action no longer listed")}</span>
+                    <StatusDot
+                      colour={p.tag ? TAG_COLOUR[p.tag] : "grey"}
+                      label={<span className="font-medium">{p.type_label ?? "An answer no longer listed"}</span>}
+                    />
+                  ) : (
+                    <span className="font-medium">{p.type_label ?? "An action no longer listed"}</span>
+                  )}
                   {p.item && <Badge>{p.item.name}</Badge>}
                 </span>
                 <span className="text-muted-foreground">
