@@ -560,6 +560,55 @@ async fn workspace_settings_update_with_versions(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_replaced_uploaded_logo_is_let_go(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let mut ids = Vec::new();
+    for name in ["one.png", "two.png"] {
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        png.extend_from_slice(name.as_bytes());
+        let res = app
+            .post(&format!("/api/v1/files?filename={name}"))
+            .signed_in(&owner)
+            .bytes("image/png", png)
+            .send()
+            .await;
+        assert!(res.status.is_success(), "{}", res.body);
+        ids.push(res.body["id"].as_str().unwrap().to_owned());
+    }
+    let attached = |id: String| {
+        let pool = app.owner.clone();
+        async move {
+            sqlx::query_scalar::<_, bool>(
+                "SELECT attached_at IS NOT NULL FROM files WHERE id = $1::uuid",
+            )
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+        }
+    };
+    for logo in [json!(ids[0]), json!(ids[1]), Value::Null] {
+        app.patch("/api/v1/workspace")
+            .signed_in(&owner)
+            .json(json!({ "branding": { "logo_file_id": logo } }))
+            .send()
+            .await
+            .ok();
+    }
+    // The first went when the second replaced it, the second when removed.
+    assert!(!attached(ids[0].clone()).await);
+    assert!(!attached(ids[1].clone()).await);
+    app.patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "logo_file_id": ids[1] } }))
+        .send()
+        .await
+        .ok();
+    assert!(attached(ids[1].clone()).await);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn branding_takes_a_colour_and_a_logo(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let (_, owner) = app.workspace_with_owner("acme").await;
@@ -1305,6 +1354,28 @@ async fn impersonation_is_time_boxed_and_audited(pool: PgPool) {
     app.post("/api/v1/api-keys")
         .signed_in(&in_customer)
         .json(json!({ "name": "support", "permissions": ["member:read"] }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
+    // Nor would an import or its undoing, which the worker runs as the
+    // member who started it: refused up front rather than failing later.
+    let some_import = uuid::Uuid::new_v4();
+    app.post(&format!("/api/v1/imports/{some_import}/run"))
+        .signed_in(&in_customer)
+        .json(json!({ "columns": ["name"] }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
+    app.post(&format!("/api/v1/imports/{some_import}/undo"))
+        .signed_in(&in_customer)
+        .json(json!({}))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
+    // Nor a calendar link, which shows what its maker may see.
+    app.post("/api/v1/calendar/feeds")
+        .signed_in(&in_customer)
+        .json(json!({ "name": "Support's view" }))
         .send()
         .await
         .expect(StatusCode::FORBIDDEN, "not_a_member");

@@ -41,11 +41,40 @@ async fn public_link_tokens_stay_out_of_the_logs() {
         .connect_lazy("postgres://nobody:nothing@127.0.0.1:1/none")
         .expect("lazy pool");
     let app = router(AppState::new(pool, Config::for_development()).expect("state"));
-    for (method, path) in [
-        ("GET", "/api/v1/public/quotes/quote-secret-123"),
-        ("POST", "/api/v1/public/quotes/quote-secret-123/accept"),
-        ("GET", "/api/v1/public/calendar/feed-secret-456.ics"),
-    ] {
+    // Every documented path that carries a token, too.
+    let tokened: Vec<String> = core_api::openapi()
+        .paths
+        .paths
+        .keys()
+        .filter(|p| p.contains("{token}"))
+        .map(|p| {
+            let p = p.replace("{token}", "link-secret-789");
+            if p.starts_with("/api/v1") {
+                p
+            } else {
+                format!("/api/v1{p}")
+            }
+        })
+        .collect();
+    assert!(
+        tokened.iter().any(|p| p.contains("/public/sign/")),
+        "{tokened:?}"
+    );
+    let fixed = [
+        ("GET", "/api/v1/public/quotes/quote-secret-123".to_owned()),
+        (
+            "POST",
+            "/api/v1/public/quotes/quote-secret-123/accept".to_owned(),
+        ),
+        (
+            "GET",
+            "/api/v1/public/calendar/feed-secret-456.ics".to_owned(),
+        ),
+    ];
+    for (method, path) in fixed
+        .into_iter()
+        .chain(tokened.into_iter().map(|p| ("GET", p)))
+    {
         let req = axum::http::Request::builder()
             .method(method)
             .uri(path)
@@ -60,4 +89,7 @@ async fn public_link_tokens_stay_out_of_the_logs() {
     assert!(logs.contains("/public/calendar/<redacted>"), "{logs}");
     assert!(!logs.contains("quote-secret-123"), "{logs}");
     assert!(!logs.contains("feed-secret-456"), "{logs}");
+    assert!(logs.contains("/public/sign/<redacted>"), "{logs}");
+    assert!(logs.contains("/public/invoices/<redacted>/pay"), "{logs}");
+    assert!(!logs.contains("link-secret-789"), "{logs}");
 }

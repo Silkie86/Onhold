@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, provider, purposes, owner_id AS \"owner_id: UserId\", account, shared_mailbox, shared,\n                      display_name, settings, secret, scopes, status, failures, last_error, last_error_at,\n                      last_synced_at, mail_cursor, mail_since, next_poll_at, connected_at, disconnected_at, version\n               FROM integrations WHERE workspace_id = app_workspace_id() AND provider = $1 AND coalesce(shared_mailbox, account) = $2 AND owner_id = $3\n         AND disconnected_at IS NOT NULL ORDER BY disconnected_at DESC LIMIT 1 FOR UPDATE",
+  "query": "SELECT id, provider, purposes, owner_id AS \"owner_id: UserId\", account, shared_mailbox, shared,\n                      display_name, settings, secret, scopes, status, failures, last_error, last_error_at,\n                      last_synced_at, mail_cursor, mail_since, next_poll_at, connected_at, disconnected_at, version\n               FROM integrations WHERE workspace_id = app_workspace_id() AND provider = $1 AND coalesce(shared_mailbox, account) = $2 AND (owner_id = $3 OR shared)\n         AND disconnected_at IS NOT NULL ORDER BY disconnected_at DESC LIMIT 1 FOR UPDATE",
   "describe": {
     "columns": [
       {
@@ -278,5 +278,5 @@
       false
     ]
   },
-  "hash": "0e871035a46a665e5cf86fa5324d6b5728de4c865a3dd4572b9227d24159813d"
+  "hash": "0b284dc818e453a4647bdea254572ce20a8ad243f8ac924daec48d6ab84f2785"
 }

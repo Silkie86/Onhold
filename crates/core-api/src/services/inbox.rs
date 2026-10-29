@@ -9,10 +9,13 @@
 //! Events about threads name the thread and what it is linked to, never
 //! its addresses or text, since webhooks carry events outside OnHold.
 
+use std::collections::HashMap;
+
 use ammonia::Builder;
 use chrono::{DateTime, Duration, Utc};
-use core_db::inbox::{Links, NewMessage, NewThread, Thread};
+use core_db::inbox::{Links, Message, MessageFile, NewMessage, NewThread, Thread};
 use core_db::integrations::Integration;
+use core_domain::workspace::WorkspaceStatus;
 use core_domain::{Ctx, Permission, UserId, WorkspaceId};
 use core_integrations::mail::{Attachment, Email, MailError, Mailer};
 use core_integrations::mailbox::{self, FetchedMail, OutgoingMail};
@@ -31,6 +34,9 @@ use crate::error::{ApiError, ApiResult};
 pub const ENTITY: &str = "thread";
 /// Sends one message written in OnHold (`message_id`).
 pub const JOB_SEND: &str = "inbox.send";
+/// How long a message queued in a suspended workspace waits before it is
+/// tried again.
+const SUSPENDED_RETRY_MINS: i64 = 60;
 /// Wakes a snoozed thread (`thread_id`, `at`).
 pub const JOB_WAKE: &str = "inbox.wake";
 
@@ -39,6 +45,9 @@ const STATUSES: &[&str] = &["open", "snoozed", "resolved"];
 const MAX_RECIPIENTS: usize = 50;
 /// How long the body of a message written here may be.
 const MAX_BODY: usize = 100_000;
+/// The most HTML a message written here may store, in characters (the
+/// column's limit).
+const MAX_WRITTEN_HTML: usize = 500_000;
 
 // Views ------------------------------------------------------------------------------
 
@@ -181,7 +190,10 @@ pub(crate) async fn detail(
     t: Thread,
 ) -> ApiResult<ThreadDetail> {
     let messages = core_db::inbox::messages(tx, t.id).await?;
-    let files = core_db::inbox::files(tx, t.id).await?;
+    let mut files: HashMap<Uuid, Vec<MessageFile>> = HashMap::new();
+    for f in core_db::inbox::files(tx, t.id).await? {
+        files.entry(f.message_id).or_default().push(f);
+    }
     let mailbox = match t.integration_id {
         Some(i) => core_db::integrations::get(tx, i)
             .await?
@@ -192,34 +204,9 @@ pub(crate) async fn detail(
     let _ = state;
     let messages = messages
         .into_iter()
-        .map(|m| MessageView {
-            files: files
-                .iter()
-                .filter(|f| f.message_id == m.id)
-                .map(|f| MessageFileView {
-                    id: f.id,
-                    filename: f.filename.clone(),
-                    content_type: f.content_type.clone(),
-                    size_bytes: f.size_bytes,
-                })
-                .collect(),
-            id: m.id,
-            direction: m.direction,
-            from_address: m.from_address,
-            from_name: m.from_name,
-            reply_to: m.reply_to,
-            to: m.to_addresses,
-            cc: m.cc_addresses,
-            subject: m.subject,
-            text: m.body_text,
-            html: m.body_html,
-            sent_at: m.sent_at,
-            status: m.status,
-            error: m.error,
-            automatic: m.automatic,
-            bulk: m.bulk,
-            author_id: m.author_id,
-            template_key: m.template_key,
+        .map(|m| {
+            let files = files.remove(&m.id).unwrap_or_default();
+            message_view(m, files)
         })
         .collect();
     Ok(ThreadDetail {
@@ -227,6 +214,47 @@ pub(crate) async fn detail(
         messages,
         mailbox,
     })
+}
+
+/// One message as the thread shows it, for answering a write without
+/// loading the whole thread again.
+pub(crate) async fn one_message(tx: &mut core_db::Tx, id: Uuid) -> ApiResult<MessageView> {
+    let m = core_db::inbox::message(tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let files = core_db::inbox::message_files(tx, id).await?;
+    Ok(message_view(m, files))
+}
+
+fn message_view(m: Message, files: Vec<MessageFile>) -> MessageView {
+    MessageView {
+        files: files
+            .into_iter()
+            .map(|f| MessageFileView {
+                id: f.id,
+                filename: f.filename,
+                content_type: f.content_type,
+                size_bytes: f.size_bytes,
+            })
+            .collect(),
+        id: m.id,
+        direction: m.direction,
+        from_address: m.from_address,
+        from_name: m.from_name,
+        reply_to: m.reply_to,
+        to: m.to_addresses,
+        cc: m.cc_addresses,
+        subject: m.subject,
+        text: m.body_text,
+        html: m.body_html,
+        sent_at: m.sent_at,
+        status: m.status,
+        error: m.error,
+        automatic: m.automatic,
+        bulk: m.bulk,
+        author_id: m.author_id,
+        template_key: m.template_key,
+    }
 }
 
 // Reading ------------------------------------------------------------------------------
@@ -773,10 +801,14 @@ async fn write_body(
                     format!("must be at most {MAX_BODY} characters"),
                 ));
             }
+            let html = text_to_html(b);
+            if html.chars().count() > MAX_WRITTEN_HTML {
+                return Err(ApiError::invalid("body", "the message is too long"));
+            }
             Ok(Written {
                 subject: None,
                 text: b.to_owned(),
-                html: text_to_html(b),
+                html,
                 template_key: None,
             })
         }
@@ -795,6 +827,15 @@ async fn write_body(
                 &options,
             )
             .await?;
+            // Held to what is kept of mail read from a mailbox.
+            if rendered.text.chars().count() > MAX_STORED_TEXT
+                || rendered.body.len() > MAX_STORED_HTML
+            {
+                return Err(ApiError::invalid(
+                    "template_key",
+                    "the template makes a message that is too long",
+                ));
+            }
             Ok(Written {
                 subject: rendered.subject.filter(|s| !s.trim().is_empty()),
                 text: rendered.text,
@@ -892,13 +933,7 @@ pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult
     }
     if thread.channel == "portal" {
         let message = super::portal::reply_in(state, &mut tx, ctx, id, r).await?;
-        let t = load(&mut tx, ctx, id).await?;
-        let view = detail(state, &mut tx, t)
-            .await?
-            .messages
-            .into_iter()
-            .find(|m| m.id == message)
-            .ok_or(ApiError::NotFound)?;
+        let view = one_message(&mut tx, message).await?;
         tx.commit().await?;
         return Ok(view);
     }
@@ -1273,20 +1308,19 @@ async fn queue_outbound(
         },
     )
     .await?;
-    let t = load(tx, ctx, thread.id).await?;
-    let d = detail(state, tx, t).await?;
-    d.messages
-        .into_iter()
-        .find(|m| m.id == id)
-        .ok_or(ApiError::NotFound)
+    one_message(tx, id).await
 }
 
 /// What sending did, for the job's log.
 #[derive(Debug)]
 pub enum SendOutcome {
-    Sent { via: String },
+    Sent {
+        via: String,
+    },
     AlreadyDone,
     Failed(String),
+    /// Still queued, for a later job.
+    Waiting(String),
 }
 
 impl std::fmt::Display for SendOutcome {
@@ -1295,6 +1329,7 @@ impl std::fmt::Display for SendOutcome {
             Self::Sent { via } => write!(f, "sent through {via}"),
             Self::AlreadyDone => f.write_str("already sent or given up on"),
             Self::Failed(why) => write!(f, "not sent: {why}"),
+            Self::Waiting(why) => write!(f, "not sent yet: {why}"),
         }
     }
 }
@@ -1334,6 +1369,33 @@ pub async fn send(
     }
     if m.status != "queued" {
         return Ok(SendOutcome::AlreadyDone);
+    }
+    // A workspace closed while this waited sends nothing more; a suspended
+    // one sends nothing for now, and the message waits until it is back.
+    match core_db::workspaces::get(&mut tx, ws)
+        .await?
+        .map(|w| w.status)
+    {
+        Some(WorkspaceStatus::Trial | WorkspaceStatus::Active) => {}
+        Some(WorkspaceStatus::Suspended) => {
+            let payload = json!({ "message_id": m.id });
+            core_db::jobs::enqueue(
+                &mut tx,
+                core_db::jobs::NewJob {
+                    run_at: Some(Utc::now() + Duration::minutes(SUSPENDED_RETRY_MINS)),
+                    ..core_db::jobs::NewJob::new(Some(ws), JOB_SEND, &payload)
+                },
+            )
+            .await?;
+            tx.commit().await?;
+            return Ok(SendOutcome::Waiting(
+                "the workspace is suspended; it is tried again later".into(),
+            ));
+        }
+        Some(WorkspaceStatus::Closed) | None => {
+            tx.commit().await?;
+            return finish(state, &ctx, &m, Err("the workspace was closed".into())).await;
+        }
     }
     let thread = core_db::inbox::get(&mut tx, m.thread_id, None)
         .await?

@@ -1,0 +1,411 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT b.id, b.enquiry_id, b.title, b.status AS \"status: BookingStatus\", b.status_changed_at,\n                  b.organisation_id,\n                  (SELECT name FROM organisations o WHERE o.id = b.organisation_id) AS organisation_name,\n                  b.contact_id, (SELECT name FROM contacts c WHERE c.id = b.contact_id) AS contact_name,\n                  b.venue_id, (SELECT name FROM organisations o WHERE o.id = b.venue_id) AS venue_name,\n                  b.venue_text, b.timezone, b.starts_at, b.ends_at, b.all_day, b.schedule, b.hold_expires_at,\n                  b.fee_minor, b.fee_currency, b.deposit_bps, b.cancel_reason, b.clash_override,\n                  b.override_reason, b.override_by, b.notes, b.tags, b.custom, b.version, b.created_at,\n                  b.updated_at, b.created_by AS \"created_by: UserId\", b.updated_by AS \"updated_by: UserId\"\n           FROM bookings b\n           WHERE b.workspace_id = app_workspace_id() AND b.id = ANY($1) AND b.deleted_at IS NULL\n           ORDER BY b.starts_at, b.id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "enquiry_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "enquiry_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status: BookingStatus",
+        "type_info": {
+          "Custom": {
+            "name": "booking_status",
+            "kind": {
+              "Enum": [
+                "hold",
+                "pending",
+                "confirmed",
+                "cancelled",
+                "completed",
+                "expired"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "status_changed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "status_changed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "organisation_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "organisation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "organisation_name",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 7,
+        "name": "contact_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "contact_id"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "contact_name",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 9,
+        "name": "venue_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "venue_id"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "venue_name",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 11,
+        "name": "venue_text",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "venue_text"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "timezone",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "timezone"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "starts_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "starts_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "ends_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "ends_at"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "all_day",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "all_day"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "schedule",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "schedule"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "hold_expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "hold_expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "fee_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "fee_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "fee_currency",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "fee_currency"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "deposit_bps",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "deposit_bps"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "cancel_reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "cancel_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "clash_override",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "clash_override"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "override_reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "override_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "override_by",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "override_by"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 26,
+        "name": "tags",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "tags"
+          }
+        }
+      },
+      {
+        "ordinal": 27,
+        "name": "custom",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "custom"
+          }
+        }
+      },
+      {
+        "ordinal": 28,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 29,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 30,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 31,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 32,
+        "name": "updated_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "bookings",
+            "name": "updated_by"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      null,
+      true,
+      null,
+      true,
+      null,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "443a3eae86c68e359faa6fe7b22b7d1a395fa2b583a8c5fb7b2621145548c9f7"
+}

@@ -279,35 +279,53 @@ pub async fn note_answer(
 
 /// Works out again when an action was answered: the first message from
 /// someone at its organisation (the person it was with, if anyone) after
-/// it, within [`ANSWER_WINDOW_DAYS`]. For an action logged or changed
-/// after their answer had come in. Returns when, if it was.
+/// it, within [`ANSWER_WINDOW_DAYS`]. Mail is theirs when it comes from or
+/// asks for replies to one of their addresses, as reading it in decides;
+/// a text or portal message when its thread is with them. For an action
+/// logged or changed after their answer had come in. Returns when, if it
+/// was.
 pub async fn recheck_answer(conn: &mut PgConnection, id: Uuid) -> Result<Option<DateTime<Utc>>> {
     Ok(sqlx::query_scalar!(
-        r#"WITH a AS (
-               SELECT p.id,
-                      (SELECT m.id FROM thread_messages m
-                       JOIN threads t ON t.workspace_id = m.workspace_id AND t.id = m.thread_id
-                       WHERE m.workspace_id = p.workspace_id AND m.direction = 'inbound'
-                         AND NOT m.automatic AND NOT m.bulk
-                         AND m.sent_at > p.happened_at
-                         AND m.sent_at <= p.happened_at + make_interval(days => $2)
-                         AND EXISTS (SELECT 1 FROM contacts c
-                                     WHERE c.workspace_id = m.workspace_id AND c.deleted_at IS NULL
-                                       AND c.organisation_id = p.organisation_id
-                                       AND (p.contact_id IS NULL OR c.id = p.contact_id)
-                                       AND ((t.channel = 'email' AND m.from_address = ANY (c.emails))
-                                            OR (t.channel <> 'email' AND t.contact_id = c.id)))
-                       ORDER BY m.sent_at, m.id LIMIT 1) AS message_id
-               FROM pitch_log p
-               WHERE p.workspace_id = app_workspace_id() AND p.id = $1 AND p.kind = 'action'
+        r#"WITH p AS (
+               SELECT id, workspace_id, organisation_id, contact_id, happened_at,
+                      happened_at + make_interval(days => $2) AS until
+               FROM pitch_log
+               WHERE workspace_id = app_workspace_id() AND id = $1 AND kind = 'action'
+           ),
+           c AS (
+               SELECT c.id, c.emails FROM contacts c, p
+               WHERE c.workspace_id = p.workspace_id AND c.organisation_id = p.organisation_id
+                 AND c.deleted_at IS NULL AND (p.contact_id IS NULL OR c.id = p.contact_id)
+           ),
+           -- Each way in starts from the organisation's people, so only
+           -- their own messages are read.
+           answer AS (
+               (SELECT m.id, m.sent_at FROM p, c, unnest(c.emails) e, thread_messages m
+                JOIN threads t ON t.workspace_id = m.workspace_id AND t.id = m.thread_id
+                WHERE m.workspace_id = p.workspace_id AND m.direction = 'inbound' AND m.from_address = e
+                  AND m.sent_at > p.happened_at AND m.sent_at <= p.until
+                  AND NOT m.automatic AND NOT m.bulk AND t.channel = 'email'
+                UNION ALL
+                SELECT m.id, m.sent_at FROM p, c, unnest(c.emails) e, thread_messages m
+                JOIN threads t ON t.workspace_id = m.workspace_id AND t.id = m.thread_id
+                WHERE m.workspace_id = p.workspace_id AND m.direction = 'inbound' AND m.reply_to = e
+                  AND m.sent_at > p.happened_at AND m.sent_at <= p.until
+                  AND NOT m.automatic AND NOT m.bulk AND t.channel = 'email'
+                UNION ALL
+                SELECT m.id, m.sent_at FROM p, c
+                JOIN threads t ON t.contact_id = c.id
+                JOIN thread_messages m ON m.workspace_id = t.workspace_id AND m.thread_id = t.id
+                WHERE t.workspace_id = p.workspace_id AND t.channel <> 'email'
+                  AND m.direction = 'inbound' AND NOT m.automatic AND NOT m.bulk
+                  AND m.sent_at > p.happened_at AND m.sent_at <= p.until)
+               ORDER BY sent_at, id LIMIT 1
            )
-           UPDATE pitch_log p
-           SET answer_message_id = a.message_id,
-               answered_at = (SELECT sent_at FROM thread_messages m
-                              WHERE m.workspace_id = p.workspace_id AND m.id = a.message_id)
-           FROM a
-           WHERE p.workspace_id = app_workspace_id() AND p.id = a.id
-           RETURNING p.answered_at"#,
+           UPDATE pitch_log l
+           SET answer_message_id = (SELECT id FROM answer),
+               answered_at = (SELECT sent_at FROM answer)
+           FROM p
+           WHERE l.workspace_id = p.workspace_id AND l.id = p.id
+           RETURNING l.answered_at"#,
         id,
         ANSWER_WINDOW_DAYS
     )

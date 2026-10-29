@@ -1126,6 +1126,60 @@ async fn the_calendar_shows_bookings_and_availability_and_publishes_ical(pool: P
     assert!(listed.body[0]["last_used_at"].is_string());
     assert!(!listed.body.to_string().contains(&url));
 
+    // A member's link works while their role sees bookings, and stops for
+    // good when they leave: rejoining (as talent, say) does not revive it.
+    let agent = app.add_member(&owner, "agent@acme.test", "agent").await;
+    let theirs = post(
+        &app,
+        &agent,
+        "/api/v1/calendar/feeds",
+        json!({ "name": "Agent's phone" }),
+    )
+    .await
+    .ok();
+    let their_url = theirs.body["url"].as_str().unwrap().to_owned();
+    let their_path = &their_url[their_url.find("/api/v1/public/").unwrap()..];
+    app.get(their_path).send().await.ok();
+    let agent_id = app.user_id("agent@acme.test").await;
+    let set_role = |role: &'static str| {
+        let pool = &app.owner;
+        async move {
+            sqlx::query(
+                "UPDATE memberships SET role = $2::member_role WHERE user_id = $1 AND deleted_at IS NULL",
+            )
+            .bind(agent_id.0)
+            .bind(role)
+            .execute(pool)
+            .await
+            .unwrap();
+        }
+    };
+    set_role("talent").await;
+    app.get(their_path)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+    set_role("agent").await;
+    app.get(their_path).send().await.ok();
+    app.delete(&format!("/api/v1/members/{}", agent_id.0))
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::NO_CONTENT, "");
+    sqlx::query(
+        "INSERT INTO memberships (id, workspace_id, user_id, role)
+         SELECT gen_random_uuid(), workspace_id, user_id, 'agent' FROM memberships
+         WHERE user_id = $1 LIMIT 1",
+    )
+    .bind(agent_id.0)
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    app.get(their_path)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+
     // Revoking stops the link.
     app.delete(&format!("/api/v1/calendar/feeds/{feed_id}"))
         .signed_in(&owner)
@@ -1465,4 +1519,40 @@ async fn links_stop_working_when_the_workspace_is_suspended_or_closed(pool: PgPo
         status, "viewed",
         "nothing was decided in a closed workspace"
     );
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_calendar_too_full_to_list_says_so_rather_than_cutting_short(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let c = cast(&app, &owner).await;
+    let add = |n: i32| {
+        let pool = app.owner.clone();
+        async move {
+            sqlx::query(
+                "INSERT INTO availability (id, workspace_id, talent_id, starts_at, ends_at)
+                 SELECT gen_random_uuid(), $1, $2, '2031-06-01'::timestamptz + i * interval '1 hour',
+                        '2031-06-01'::timestamptz + i * interval '1 hour' + interval '30 minutes'
+                 FROM generate_series(1, $3) i",
+            )
+            .bind(ws.0)
+            .bind(c.talent)
+            .bind(n)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+    };
+    // As many marked stretches as one list holds.
+    add(5000).await;
+    let window = "from=2031-06-01T00:00:00Z&to=2032-01-01T00:00:00Z";
+    let cal = get(&app, &owner, &format!("/api/v1/calendar?{window}")).await;
+    assert_eq!(cal.body["availability"].as_array().unwrap().len(), 5000);
+    // One more and the list is refused, never silently short.
+    add(1).await;
+    app.get(&format!("/api/v1/calendar?{window}"))
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
 }

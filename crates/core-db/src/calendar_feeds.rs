@@ -77,6 +77,18 @@ pub async fn revoke(conn: &mut PgConnection, id: Uuid) -> Result<bool> {
     Ok(done.rows_affected() == 1)
 }
 
+/// Stops every feed someone made: a member who leaves takes theirs away.
+pub async fn revoke_created_by(conn: &mut PgConnection, created_by: Uuid) -> Result<u64> {
+    let done = sqlx::query!(
+        r#"UPDATE calendar_feeds SET revoked_at = now()
+           WHERE workspace_id = app_workspace_id() AND created_by = $1 AND revoked_at IS NULL"#,
+        created_by
+    )
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected())
+}
+
 /// The feed behind a link, in any workspace, if it still works. Notes the use.
 #[derive(Debug, Clone)]
 pub struct Found {

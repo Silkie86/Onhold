@@ -481,6 +481,9 @@ pub fn parse_date(s: &str, order: DateOrder) -> Option<NaiveDate> {
 
 /// Reads a date and time: RFC 3339, or a date as [`parse_date`] reads it
 /// followed by `HH:MM` or `HH:MM:SS`, in `tz`. A bare date is midnight.
+/// A time skipped by a clock change moves on by an hour (where the clocks
+/// go forward at midnight, a bare date is the first moment of the day); a
+/// repeated one takes the first.
 pub fn parse_datetime(
     s: &str,
     order: DateOrder,
@@ -501,8 +504,13 @@ pub fn parse_datetime(
             .or_else(|_| NaiveTime::parse_from_str(t, "%H:%M"))
             .ok()?,
     };
-    tz.from_local_datetime(&NaiveDateTime::new(date, time))
+    let local = NaiveDateTime::new(date, time);
+    tz.from_local_datetime(&local)
         .earliest()
+        .or_else(|| {
+            tz.from_local_datetime(&(local + chrono::Duration::hours(1)))
+                .earliest()
+        })
         .map(|dt| dt.with_timezone(&Utc))
 }
 
@@ -826,6 +834,21 @@ mod tests {
         let dt = parse_datetime("2027-07-07T19:30:00Z", DateOrder::Dmy, london).expect("rfc3339");
         assert_eq!(dt.to_rfc3339(), "2027-07-07T19:30:00+00:00");
         assert!(parse_datetime("07/07/2027 7pm", DateOrder::Dmy, london).is_none());
+    }
+
+    #[test]
+    fn times_skipped_by_a_clock_change_move_on() {
+        // Santiago's clocks go from 00:00 to 01:00 on 6 September 2026, so
+        // the day starts at 01:00 (-03:00).
+        let santiago = chrono_tz::America::Santiago;
+        let dt = parse_datetime("2026-09-06", DateOrder::Dmy, santiago).expect("a bare date");
+        assert_eq!(dt.to_rfc3339(), "2026-09-06T04:00:00+00:00");
+        let dt = parse_datetime("06/09/2026 00:30", DateOrder::Dmy, santiago).expect("in the gap");
+        assert_eq!(dt.to_rfc3339(), "2026-09-06T04:30:00+00:00");
+        // London's 01:30 on 29 March 2026 does not exist: 02:30 BST.
+        let london = chrono_tz::Europe::London;
+        let dt = parse_datetime("29/03/2026 01:30", DateOrder::Dmy, london).expect("in the gap");
+        assert_eq!(dt.to_rfc3339(), "2026-03-29T01:30:00+00:00");
     }
 
     #[test]

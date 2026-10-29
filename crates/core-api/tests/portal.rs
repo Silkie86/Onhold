@@ -347,12 +347,13 @@ async fn a_talent_keeps_their_availability_and_access_can_end(pool: PgPool) {
     // A link to connect her own calendar, like the one an agency sends.
     let link = post(&app, &me, "/api/v1/portal/calendar-link", json!({})).await;
     assert_eq!(link.status, StatusCode::CREATED, "{}", link.body);
-    assert!(
-        link.body["url"]
-            .as_str()
-            .unwrap()
-            .contains("/connect-calendar/")
+    let link_url = link.body["url"].as_str().unwrap().to_owned();
+    assert!(link_url.contains("/connect-calendar/"), "{link_url}");
+    let link_path = format!(
+        "/api/v1/public/calendar-connect/{}",
+        link_url.rsplit('/').next().unwrap()
     );
+    app.get(&link_path).send().await.ok();
 
     // Someone else cannot be invited while her portal is open.
     let res = post(
@@ -373,6 +374,11 @@ async fn a_talent_keeps_their_availability_and_access_can_end(pool: PgPool) {
     assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.body);
     let res = get(&app, &me, "/api/v1/portal").await;
     res.expect(StatusCode::FORBIDDEN, "not_a_member");
+    // The calendar link she made goes with her access.
+    app.get(&link_path)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
     let access = get(&app, &owner, &format!("/api/v1/talent/{ada}/portal"))
         .await
         .ok();
@@ -474,6 +480,101 @@ async fn a_talent_opens_only_the_documents_meant_for_them(pool: PgPool) {
     )
     .await
     .expect(StatusCode::NOT_FOUND, "not_found");
+
+    // On a date shared with another act the fee is theirs together, so its
+    // contracts and confirmations stay hidden, as the fee does; unless she
+    // is asked to sign one.
+    let grace = talent(&app, &owner, "Grace").await;
+    let festival = post(
+        &app,
+        &owner,
+        "/api/v1/bookings",
+        json!({ "title": "Festival", "talent_ids": [ada, grace], "status": "confirmed",
+                "timezone": "Europe/London", "starts_at": "2031-06-20T19:00:00Z",
+                "ends_at": "2031-06-20T22:00:00Z",
+                "fee": { "minor": 1_000_000, "currency": "GBP" } }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let shared_contract = doc("contract", "booking", festival).await;
+    let shared_confirmation = doc("confirmation", "booking", festival).await;
+    let shared_sheet = doc("advance_sheet", "booking", festival).await;
+    let d = get(&app, &me, &format!("/api/v1/portal/dates/{festival}"))
+        .await
+        .ok();
+    assert!(d.body["entries"][0]["fee"].is_null(), "{}", d.body);
+    assert_eq!(kinds_on_date(&d.body), ["advance_sheet"]);
+    let all = get(&app, &me, "/api/v1/portal/documents").await.ok();
+    let listed: Vec<&str> = all
+        .body
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["id"].as_str().unwrap())
+        .collect();
+    assert!(!listed.contains(&shared_contract.to_string().as_str()));
+    assert!(listed.contains(&shared_sheet.to_string().as_str()));
+    for id in [shared_contract, shared_confirmation] {
+        get(
+            &app,
+            &me,
+            &format!("/api/v1/portal/documents/{id}/download"),
+        )
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+    }
+    sqlx::query(
+        "INSERT INTO signature_requests (id, workspace_id, document_id, version_number, round_id,
+                                         signer_name, signer_email, token_hash)
+         VALUES (gen_random_uuid(), $1, $2, 1, gen_random_uuid(), 'Ada', 'ADA@artist.test',
+                 decode(md5(random()::text), 'hex'))",
+    )
+    .bind(ws.0)
+    .bind(shared_contract)
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    let d = get(&app, &me, &format!("/api/v1/portal/dates/{festival}"))
+        .await
+        .ok();
+    let mut kinds = kinds_on_date(&d.body);
+    kinds.sort();
+    assert_eq!(kinds, ["advance_sheet", "contract"]);
+    let file = app
+        .get(&format!(
+            "/api/v1/portal/documents/{shared_contract}/download"
+        ))
+        .signed_in(&me)
+        .send()
+        .await;
+    assert_eq!(file.status, StatusCode::OK);
+
+    // Every act on the date hers (her duo is her too): no one else's fee,
+    // so its confirmation shows.
+    sqlx::query(
+        "UPDATE talent SET portal_user_id = (SELECT portal_user_id FROM talent WHERE id = $1)
+         WHERE id = $2",
+    )
+    .bind(ada)
+    .bind(grace)
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    let d = get(&app, &me, &format!("/api/v1/portal/dates/{festival}"))
+        .await
+        .ok();
+    let mut kinds = kinds_on_date(&d.body);
+    kinds.sort();
+    assert_eq!(kinds, ["advance_sheet", "confirmation", "contract"]);
+    let file = app
+        .get(&format!(
+            "/api/v1/portal/documents/{shared_confirmation}/download"
+        ))
+        .signed_in(&me)
+        .send()
+        .await;
+    assert_eq!(file.status, StatusCode::OK);
 
     // Switched off, documents go.
     app.put("/api/v1/workspace/portal")
@@ -613,12 +714,23 @@ async fn a_talent_and_their_agent_message_each_other(pool: PgPool) {
     assert_eq!(messages[1]["body"], "Yes, you're both on the list.");
     let home = get(&app, &me, "/api/v1/portal").await.ok();
     assert_eq!(home.body["unread_messages"], 0);
-    let to: String =
-        sqlx::query_scalar("SELECT payload->>'to' FROM outbox WHERE topic = 'portal.message_sent'")
+    // The event says a message went, not to whom or what it said: those are
+    // sealed with the link, for the mail alone.
+    let payload: Value =
+        sqlx::query_scalar("SELECT payload FROM outbox WHERE topic = 'portal.message_sent'")
             .fetch_one(&app.owner)
             .await
             .unwrap();
-    assert_eq!(to, "ada@artist.test");
+    assert!(payload.get("to").is_none(), "{payload}");
+    assert!(payload.get("message").is_none(), "{payload}");
+    assert!(
+        !payload.to_string().contains("ada@artist.test"),
+        "{payload}"
+    );
+    assert!(
+        !payload.to_string().contains("both on the list"),
+        "{payload}"
+    );
 
     // Writing from the talent's record joins the same conversation.
     let written = post(

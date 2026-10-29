@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE files f SET attached_at = NULL\n           WHERE f.workspace_id = app_workspace_id() AND f.id = $1\n             AND NOT EXISTS (SELECT 1 FROM document_versions v\n                             WHERE v.workspace_id = f.workspace_id AND v.file_id = f.id)\n             AND NOT EXISTS (SELECT 1 FROM pdf_imports p\n                             WHERE p.workspace_id = f.workspace_id AND p.file_id = f.id)\n             AND NOT EXISTS (SELECT 1 FROM thread_message_files m\n                             WHERE m.workspace_id = f.workspace_id AND m.file_id = f.id)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "85bf6da0f4db77f4b653e351f2e94602a3c4951f7ade181f984b629b3d4afc0f"
+}

@@ -24,11 +24,16 @@ pub struct Availability {
     pub updated_at: DateTime<Utc>,
 }
 
+/// The most entries marked here that [`list`] returns; it returns one more
+/// when there are more, so a caller can tell the list is not complete.
+pub const LIST_CAP: usize = 5000;
+
 /// Live entries of these talent (all talent when empty) overlapping
 /// `[from, to)`, of any of `kinds` (all kinds when empty), with the busy
 /// times read from their own calendars (`source` "external", which cannot
-/// be changed here). Each kind is capped on its own, so busy times can
-/// never push out what was marked here.
+/// be changed here). Each is capped on its own, so busy times can never
+/// push out what was marked here: up to [`LIST_CAP`] + 1 entries marked
+/// here, and 5000 busy times.
 pub async fn list(
     conn: &mut PgConnection,
     talent: &[Uuid],
@@ -48,7 +53,7 @@ pub async fn list(
              AND tstzrange(a.starts_at, a.ends_at, '[)') && tstzrange($2, $3, '[)')
              AND (cardinality($4::availability_kind[]) = 0 OR a.kind = ANY($4))
            ORDER BY a.starts_at, t.name, a.id
-           LIMIT 5000)
+           LIMIT 5001)
            UNION ALL
            -- Busy times from the talent's own calendars, named by whose
            -- calendar they come from.

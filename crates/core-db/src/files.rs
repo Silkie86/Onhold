@@ -106,6 +106,26 @@ pub async fn attach(conn: &mut PgConnection, id: Uuid) -> Result<()> {
     Ok(())
 }
 
+/// Lets go of a file nothing else uses (a logo replaced), so the sweep of
+/// unattached files removes it. A file that a document, an import or a
+/// message holds stays.
+pub async fn detach_unused(conn: &mut PgConnection, id: Uuid) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE files f SET attached_at = NULL
+           WHERE f.workspace_id = app_workspace_id() AND f.id = $1
+             AND NOT EXISTS (SELECT 1 FROM document_versions v
+                             WHERE v.workspace_id = f.workspace_id AND v.file_id = f.id)
+             AND NOT EXISTS (SELECT 1 FROM pdf_imports p
+                             WHERE p.workspace_id = f.workspace_id AND p.file_id = f.id)
+             AND NOT EXISTS (SELECT 1 FROM thread_message_files m
+                             WHERE m.workspace_id = f.workspace_id AND m.file_id = f.id)"#,
+        id
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 /// What reading a PDF's text found.
 pub struct ReadResult<'a> {
     pub state: &'a str,

@@ -458,6 +458,16 @@ pub async fn update_workspace(
             }
         }
     }
+    // One replaced or removed goes, unless something else holds it.
+    if let Some(old) = before
+        .branding
+        .get("logo_file_id")
+        .and_then(Value::as_str)
+        .and_then(|s| s.parse::<Uuid>().ok())
+        && branding.get("logo_file_id") != before.branding.get("logo_file_id")
+    {
+        core_db::files::detach_unused(&mut tx, old).await?;
+    }
 
     let hold_days = patch.hold_days.unwrap_or(before.hold_days);
     if !(0..=365).contains(&hold_days) {
@@ -545,6 +555,7 @@ pub async fn close_workspace(state: &AppState, ctx: &Ctx, confirm_slug: &str) ->
     super::calendar_push::disconnect_all(&mut tx, ctx, None, "workspace_closed").await?;
     super::accounting::disconnect_on_close(&mut tx, ctx).await?;
     super::messaging::disconnect_on_close(&mut tx, ctx).await?;
+    super::stripe::disconnect_on_close(state, &mut tx, ctx).await?;
     record(
         &mut tx,
         ctx,
@@ -701,6 +712,9 @@ pub async fn remove_member(state: &AppState, ctx: &Ctx, user: UserId) -> ApiResu
     core_db::members::soft_delete(&mut tx, user, ctx.user_id()).await?;
     // Talent records stop opening for them in the portal.
     core_db::portal::unlink_user(&mut tx, user, ctx.user_id()).await?;
+    // Calendar links they made stop working, as their own feeds do.
+    core_db::talent_calendars::revoke_links_by(&mut tx, user.0, None).await?;
+    core_db::calendar_feeds::revoke_created_by(&mut tx, user.0).await?;
     // Their mailboxes stop being read; the threads stay with the workspace.
     super::integrations::disconnect_owned(&mut tx, ctx, user).await?;
     super::calendar_push::disconnect_all(&mut tx, ctx, Some(user), "member_removed").await?;
@@ -1098,7 +1112,7 @@ pub async fn audit_csv(state: &AppState, ctx: &Ctx, max_rows: usize) -> ApiResul
 
 /// Neutralises spreadsheet formula injection: a cell starting with `=`, `+`,
 /// `-`, `@`, tab or carriage return is prefixed with `'` (OWASP guidance).
-fn csv_safe(value: String) -> String {
+pub(crate) fn csv_safe(value: String) -> String {
     if value.starts_with(['=', '+', '-', '@', '\t', '\r']) {
         format!("'{value}")
     } else {
