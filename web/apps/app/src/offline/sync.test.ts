@@ -5,7 +5,7 @@
 import "fake-indexeddb/auto";
 import type { RecordJson } from "@onhold/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ORPHANED, type OutboxItem, allRecords, getMeta, outbox, putOutbox, putRecords, setMeta, wipe } from "./store.ts";
+import { ORPHANED, ORPHANED_MAYBE_THERE, type OutboxItem, allRecords, getMeta, outbox, putOutbox, putRecords, setMeta, wipe } from "./store.ts";
 import { KEY_EXPIRED, OfflineSync } from "./sync.ts";
 
 interface Seen {
@@ -480,5 +480,149 @@ describe("reading what changed", () => {
     await engine.syncNow();
     expect(server.seen.find((s) => s.path === "/api/v1/events")).toBeDefined();
     expect(reads()).toBe(0);
+  });
+});
+
+describe("what the feed says changed besides records", () => {
+  type Ev = [topic: string, seq: number, id?: string];
+  /** The feed in pages: each `after` gets its events, the next position, whether there is more and the newest position then. */
+  type FeedPage = { events: Ev[]; next: number; more: boolean; latest: number } | "drop";
+  let feed: Map<string, FeedPage>;
+  const count = (re: RegExp) => server.seen.filter((s) => s.method === "GET" && re.test(s.path)).length;
+  const handle = async (req: Request) => {
+    const url = new URL(req.url);
+    if (url.pathname === "/api/v1/events") {
+      const page = feed.get(url.searchParams.get("after") ?? "");
+      if (page === "drop") throw new TypeError("network connection was lost");
+      const { events = [], next = 0, more = false, latest = 0 } = page ?? {};
+      return json(200, {
+        events: events.map(([topic, seq, id]) => ({ topic, seq, object_id: id ?? null })),
+        next_after: next,
+        has_more: more,
+        latest,
+      });
+    }
+    const id = /^\/api\/v1\/contacts\/(.+)$/.exec(url.pathname)?.[1];
+    if (id && req.method === "GET") return json(200, { id, name: id, version: 1 });
+    return api(req);
+  };
+  beforeEach(() => {
+    server.handle = handle;
+  });
+
+  it("reads them once after the last page, and a record already read after its change only once", async () => {
+    feed = new Map<string, FeedPage>([
+      ["0", { events: [["contact.updated", 1, "c1"], ["custom_field.created", 2], ["availability.created", 3]], next: 3, more: true, latest: 10 }],
+      ["3", { events: [["contact.updated", 4, "c1"], ["availability.updated", 5], ["contact.updated", 11, "c2"]], next: 11, more: false, latest: 11 }],
+    ]);
+    await new OfflineSync("w1").syncNow();
+    expect(count(/^\/api\/v1\/contacts\/c1$/)).toBe(1);
+    expect(count(/^\/api\/v1\/contacts\/c2$/)).toBe(1);
+    expect(count(/^\/api\/v1\/schema\/contact$/)).toBe(1);
+    expect(count(/^\/api\/v1\/calendar$/)).toBe(1);
+    expect(await getMeta("w1:cursor")).toBe(11);
+  });
+
+  it("also reads the members and settings once a day, even when marked-off time changed", async () => {
+    await setMeta("w1:availabilityAt", 0);
+    feed = new Map<string, FeedPage>([["0", { events: [["availability.created", 1]], next: 1, more: false, latest: 1 }]]);
+    await new OfflineSync("w1").syncNow();
+    expect(count(/^\/api\/v1\/calendar$/)).toBe(1);
+    expect(count(/^\/api\/v1\/members$/)).toBe(1);
+    expect(count(/^\/api\/v1\/workspace$/)).toBe(1);
+  });
+
+  it("remembers them when a run is cut short after noting its place", async () => {
+    feed = new Map<string, FeedPage>([
+      ["0", { events: [["custom_field.created", 1]], next: 1, more: true, latest: 1 }],
+      ["1", "drop"],
+    ]);
+    const engine = new OfflineSync("w1");
+    await engine.syncNow();
+    expect(await getMeta("w1:cursor")).toBe(1);
+    expect(count(/^\/api\/v1\/schema\//)).toBe(0);
+
+    feed = new Map<string, FeedPage>([["1", { events: [], next: 1, more: false, latest: 1 }]]);
+    await engine.syncNow();
+    expect(count(/^\/api\/v1\/schema\/contact$/)).toBe(1);
+    expect(await getMeta("w1:pullPending")).toBeUndefined();
+  });
+
+  it("reads marked-off time in smaller windows when the server says one holds too much", async () => {
+    await setMeta("w1:availabilityAt", 0);
+    feed = new Map();
+    let windows = 0;
+    server.handle = async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname !== "/api/v1/calendar") return handle(req);
+      const days = (Date.parse(url.searchParams.get("to") ?? "") - Date.parse(url.searchParams.get("from") ?? "")) / 86_400_000;
+      if (days > 120) return refuse(400, "too_many_entries");
+      windows++;
+      // One marked off for the whole year comes in every window.
+      return json(200, { bookings: [], availability: [{ id: "all-year", source: "manual" }, { id: `w${windows}`, source: "manual" }] });
+    };
+    await new OfflineSync("w1").syncNow();
+    const ids = (await allRecords("w1", "availability")).map((a) => a.id).sort();
+    expect(windows).toBeGreaterThan(1);
+    expect(ids).toEqual(["all-year", ...Array.from({ length: windows }, (_, i) => `w${i + 1}`)].sort());
+  });
+});
+
+describe("settling a change", () => {
+  it("keeps mine when the server's copy could not be read when the conflict was found", async () => {
+    contacts.set("c1", { id: "c1", name: "Ada", version: 2 } as RecordJson);
+    const seq = await putOutbox(queued("w1", { op: "update", id: "c1", body: { phone: "0207" }, version: 1, state: "conflict" }));
+    server.handle = async (req) => {
+      const path = new URL(req.url).pathname;
+      if (req.method === "GET" && path === "/api/v1/contacts/c1") return json(200, contacts.get("c1"));
+      return api(req);
+    };
+    const engine = new OfflineSync("w1");
+    await engine.resolve(seq, "mine");
+    await engine.syncNow();
+    expect(contacts.get("c1")).toMatchObject({ phone: "0207", version: 3 });
+    expect(await outbox("w1")).toEqual([]);
+  });
+
+  it("keeps mine waiting when the server's copy still cannot be read", async () => {
+    const seq = await putOutbox(queued("w1", { op: "update", id: "c1", body: { phone: "0207" }, version: 1, state: "conflict" }));
+    vi.stubGlobal("navigator", { onLine: false });
+    await new OfflineSync("w1").resolve(seq, "mine");
+    expect(await outbox("w1")).toEqual([expect.objectContaining({ seq, state: "pending", body: { phone: "0207" } })]);
+  });
+
+  it("says what to do with changes linking to a creation discarded because it may be there already", async () => {
+    const boss = `local-${crypto.randomUUID()}`;
+    const seq = await putOutbox(queued("w1", { id: boss, state: "failed", error: KEY_EXPIRED }));
+    await putOutbox(queued("w1", { body: { name: "Report", manager_id: boss } }));
+    vi.stubGlobal("navigator", { onLine: false });
+    await new OfflineSync("w1").resolve(seq, "theirs");
+    expect(await outbox("w1")).toEqual([expect.objectContaining({ state: "failed", error: ORPHANED_MAYBE_THERE })]);
+  });
+});
+
+describe("a change made to a record whose creation has reached the server", () => {
+  it("goes to its real id, even when another window sent the creation", async () => {
+    const local = `local-${crypto.randomUUID()}`;
+    await setMeta(`w1:renamed:${local}`, "srv-9");
+    vi.stubGlobal("navigator", { onLine: false });
+    const engine = new OfflineSync("w1");
+    await engine.queue("contact", "create", null, { name: "Report", manager_id: local });
+    await engine.queue("contact", "update", local, { name: "Boss" }, 1);
+    const [report, boss] = await outbox("w1");
+    expect(report?.body).toEqual({ name: "Report", manager_id: "srv-9" });
+    expect(report?.state).toBe("pending");
+    expect(boss?.id).toBe("srv-9");
+  });
+});
+
+describe("an engine stopped while it starts", () => {
+  it("leaves nothing listening", async () => {
+    const listen = vi.spyOn(window, "addEventListener");
+    const engine = new OfflineSync("w1");
+    const started = engine.start();
+    engine.stop();
+    await started;
+    expect(listen).not.toHaveBeenCalled();
   });
 });

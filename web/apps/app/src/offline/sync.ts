@@ -24,6 +24,8 @@ import { ApiFailure, RECORD_PATHS, api, ok } from "../api.ts";
 import {
   type EntityName,
   OFFLINE_ENTITIES,
+  ORPHANED,
+  ORPHANED_MAYBE_THERE,
   type OutboxItem,
   type OutboxOp,
   type QueuedEntity,
@@ -39,6 +41,7 @@ import {
   getMeta,
   getRecord,
   isLocalId,
+  localLinks,
   newLocalId,
   outbox,
   putOutbox,
@@ -97,6 +100,8 @@ const AVAILABILITY_BACK_DAYS = 60;
 const AVAILABILITY_AHEAD_DAYS = 339;
 /** …and the window is moved on once a day. */
 const AVAILABILITY_STALE_MS = 86_400_000;
+/** A window the server says holds too much at once is read in halves, down to a day. */
+const AVAILABILITY_SPLIT_MIN_MS = 86_400_000;
 /**
  * The server recognises an Idempotency-Key for a day. A creation or reply
  * that may have arrived, first sent longer ago than this, is not sent again
@@ -109,6 +114,13 @@ export const KEY_EXPIRED =
 const REFETCH_MAX = 250;
 /** How many changed records are read at once. */
 const REFETCH_AT_ONCE = 6;
+
+/** What the feed said changed besides records, not read again yet. */
+interface PullPending {
+  fields: boolean;
+  availability: boolean;
+  stages: boolean;
+}
 
 /** Engines running on this page, so signing out can stop them all. */
 const engines = new Set<OfflineSync>();
@@ -191,6 +203,8 @@ export class OfflineSync {
     const lastSync = (await getMeta<string>(`${this.ws}:lastSync`)) ?? null;
     this.set({ lastSync, ready: lastSync !== null });
     await this.refreshCounts();
+    // Stopped while reading those: nothing is left listening.
+    if (this.stopping.signal.aborted) return;
     window.addEventListener("online", this.kick);
     window.addEventListener("offline", this.offline);
     document.addEventListener("visibilitychange", this.kick);
@@ -301,6 +315,7 @@ export class OfflineSync {
     await this.downloadStages();
     await this.downloadExtras();
     await setMeta(`${this.ws}:cursor`, latest);
+    await setMeta(`${this.ws}:pullPending`, undefined);
     await setMeta(`${this.ws}:dataVersion`, DATA_VERSION);
     this.notifyChanged();
   }
@@ -356,19 +371,31 @@ export class OfflineSync {
   /** The talent's marked-off time in the window the device keeps. */
   private async downloadAvailability() {
     const now = Date.now();
-    const from = new Date(now - AVAILABILITY_BACK_DAYS * 86_400_000).toISOString();
-    const to = new Date(now + AVAILABILITY_AHEAD_DAYS * 86_400_000).toISOString();
     let items: RecordJson[] = [];
     try {
-      const cal = await ok(api.GET("/api/v1/calendar", { ...this.req, params: { query: { from, to } } }));
-      // Busy times read from talent's own calendars stay on the server: they
-      // change on every read, and offline clash checks go without them.
-      items = cal.availability.filter((a) => a.source !== "external") as unknown as RecordJson[];
+      const all = await this.readAvailability(now - AVAILABILITY_BACK_DAYS * 86_400_000, now + AVAILABILITY_AHEAD_DAYS * 86_400_000);
+      // One marked off across the line between two windows comes in both.
+      items = [...new Map(all.map((a) => [a.id, a])).values()];
     } catch (e) {
       if (!forbidden(e)) throw e;
     }
     await replaceAll(this.ws, "availability", items, new Set());
     await setMeta(`${this.ws}:availabilityAt`, now);
+  }
+
+  /** Marked-off time between two moments; in halves when there is more than the server gives at once. */
+  private async readAvailability(from: number, to: number): Promise<RecordJson[]> {
+    try {
+      const query = { from: new Date(from).toISOString(), to: new Date(to).toISOString() };
+      const cal = await ok(api.GET("/api/v1/calendar", { ...this.req, params: { query } }));
+      // Busy times read from talent's own calendars stay on the server: they
+      // change on every read, and offline clash checks go without them.
+      return cal.availability.filter((a) => a.source !== "external") as unknown as RecordJson[];
+    } catch (e) {
+      if (!(e instanceof ApiFailure && e.status === 400) || to - from <= AVAILABILITY_SPLIT_MIN_MS) throw e;
+      const mid = from + Math.floor((to - from) / 2);
+      return [...(await this.readAvailability(from, mid)), ...(await this.readAvailability(mid, to))];
+    }
   }
 
   private async downloadStages() {
@@ -408,14 +435,23 @@ export class OfflineSync {
   /**
    * Reads the feed a page at a time, fetching what each page names and then
    * noting the position, so a run stopped part way carries on from there.
-   * When more records changed than is worth fetching one by one (an import,
-   * or undoing one), everything is downloaded again instead.
+   * Field, availability and stage changes are read once, after the last
+   * page; until then they are noted on the device, so a run stopped part way
+   * still reads them next time. When more records changed than is worth
+   * fetching one by one (an import, or undoing one), everything is
+   * downloaded again instead.
    */
   private async pullChanges(cursor: number): Promise<void> {
     let after = cursor;
     const topics = (await this.mail.enabled()) ? MAIL_TOPICS : TOPICS;
     const waiting = new Set((await outbox(this.ws)).map((q) => q.id));
-    let fetched = 0;
+    const pendingKey = `${this.ws}:pullPending`;
+    const pending: PullPending = { fields: false, availability: false, stages: false, ...(await getMeta<PullPending>(pendingKey)) };
+    // Before anything is downloaded below, which would make it look fresh.
+    const availabilityAt = (await getMeta<number>(`${this.ws}:availabilityAt`)) ?? 0;
+    const availabilityStale = Date.now() - availabilityAt > AVAILABILITY_STALE_MS;
+    /** Records fetched this run, with the feed's newest position before they were read: what they already show. */
+    const fetchedAt = new Map<string, number>();
     let changed = false;
     try {
       for (;;) {
@@ -430,22 +466,22 @@ export class OfflineSync {
           throw e;
         }
         const touched = new Map<string, EntityName | "enquiry" | "booking" | "task">();
-        let fieldsChanged = false;
-        let availabilityChanged = false;
-        let stagesChanged = false;
+        const flagged = { ...pending };
         for (const ev of page.events) {
           const entity = ev.topic.split(".")[0] ?? "";
           if ((entity === "thread" || entity === "message") && ev.object_id) this.mailTouched.add(ev.object_id);
-          else if (entity === "custom_field") fieldsChanged = true;
-          else if (entity === "availability") availabilityChanged = true;
-          else if (entity === "pipeline") stagesChanged = true;
+          else if (entity === "custom_field") pending.fields = true;
+          else if (entity === "availability") pending.availability = true;
+          else if (entity === "pipeline") pending.stages = true;
           else if (ev.object_id && [...OFFLINE_ENTITIES, "enquiry", "booking", "task"].includes(entity)) {
             // A record with changes still to send keeps them; a conflict will show if needed.
-            if (!waiting.has(ev.object_id)) touched.set(ev.object_id, entity as EntityName);
+            if (waiting.has(ev.object_id)) continue;
+            // Already read this run, after this change.
+            if (ev.seq <= (fetchedAt.get(ev.object_id) ?? -1)) continue;
+            touched.set(ev.object_id, entity as EntityName);
           }
         }
-        fetched += touched.size;
-        if (fetched > REFETCH_MAX) {
+        if (fetchedAt.size + [...touched.keys()].filter((id) => !fetchedAt.has(id)).length > REFETCH_MAX) {
           await this.downloadAll();
           return;
         }
@@ -453,20 +489,24 @@ export class OfflineSync {
         for (let i = 0; i < ids.length; i += REFETCH_AT_ONCE) {
           await Promise.all(ids.slice(i, i + REFETCH_AT_ONCE).map(([id, entity]) => this.refetch(entity, id)));
         }
-        if (fieldsChanged) {
-          for (const entity of [...OFFLINE_ENTITIES, "enquiry", "booking"] as const) await this.downloadSchema(entity);
-        }
-        if (availabilityChanged) await this.downloadAvailability();
-        if (stagesChanged) await this.downloadStages();
+        for (const id of touched.keys()) fetchedAt.set(id, page.latest);
+        changed ||= touched.size > 0;
         after = page.next_after;
+        if (pending.fields !== flagged.fields || pending.availability !== flagged.availability || pending.stages !== flagged.stages) {
+          await setMeta(pendingKey, pending);
+        }
         await setMeta(`${this.ws}:cursor`, after);
-        changed ||= touched.size > 0 || fieldsChanged || availabilityChanged || stagesChanged;
         if (!page.has_more) break;
       }
-      const availabilityAt = (await getMeta<number>(`${this.ws}:availabilityAt`)) ?? 0;
-      if (Date.now() - availabilityAt > AVAILABILITY_STALE_MS) {
-        await this.downloadAvailability();
-        await this.downloadExtras();
+      if (pending.fields) {
+        for (const entity of [...OFFLINE_ENTITIES, "enquiry", "booking"] as const) await this.downloadSchema(entity);
+      }
+      if (pending.availability || availabilityStale) await this.downloadAvailability();
+      if (pending.stages) await this.downloadStages();
+      if (availabilityStale) await this.downloadExtras();
+      if (pending.fields || pending.availability || pending.stages) {
+        changed = true;
+        await setMeta(pendingKey, undefined);
       }
     } finally {
       if (changed) this.notifyChanged();
@@ -495,6 +535,14 @@ export class OfflineSync {
     return queue;
   }
 
+  /** The id the server gave a record made offline, once its creation has reached the server. */
+  private async realId(id: string): Promise<string | undefined> {
+    if (!isLocalId(id)) return undefined;
+    const real = this.renamed.get(id) ?? (await getMeta<string>(`${this.ws}:renamed:${id}`));
+    if (real) this.renamed.set(id, real);
+    return real;
+  }
+
   /** Queues a change and applies it to the device's copy straight away. Returns the record as it now reads. */
   async queue(
     entity: StoredEntity,
@@ -506,8 +554,14 @@ export class OfflineSync {
     /** It was sent once already and may have arrived, so it must be sent again exactly as it is. */
     sent = false,
   ): Promise<RecordJson | null> {
-    // A page may still be showing a record made offline that has just reached the server.
-    const recordId = id ? (this.renamed.get(id) ?? id) : newLocalId();
+    // A page may still be showing a record made offline that has just reached
+    // the server (sent here, or from another window): the change, and what it
+    // links to, go to its real id.
+    const recordId = id ? ((await this.realId(id)) ?? id) : newLocalId();
+    for (const local of localLinks(body)) {
+      const real = await this.realId(local);
+      if (real) body = replaceId(body, local, real);
+    }
     const current = id ? await getRecord(this.ws, entity, recordId) : undefined;
     const label = String(body.name ?? body.title ?? current?.name ?? current?.title ?? "") || undefined;
     const item: OutboxItem = {
@@ -801,17 +855,33 @@ export class OfflineSync {
     if (item.entity === "reply") {
       // A reply has no copy to go back to: dropping it is all there is.
       if (choice === "theirs") await removeOutbox(seq);
-    } else if (choice === "mine" && item.state === "conflict" && item.server) {
-      await putOutbox({ ...item, state: "pending", version: Number(item.server.version), server: undefined, error: undefined });
-      const mine = applyChange(item.server, item.op, item.body);
-      await putRecords(this.ws, item.entity, [
-        (WORK_ENTITIES as string[]).includes(item.entity)
-          ? await dress(item.entity as WorkEntity, mine, item.server, await this.dressContext())
-          : mine,
-      ]);
+    } else if (choice === "mine") {
+      // Only a conflict has a "mine" to keep; nothing else is ever dropped for it.
+      if (item.state !== "conflict") return;
+      const entity = item.entity;
+      // The server's copy could not be read when the conflict was found: read it now.
+      const server =
+        item.server ??
+        (navigator.onLine
+          ? ((await ok(api.GET(PI(entity), { ...this.req, params: { path: { id: item.id } } })).catch(
+              () => undefined,
+            )) as unknown as RecordJson | undefined)
+          : undefined);
+      if (server) {
+        await putOutbox({ ...item, state: "pending", version: Number(server.version), server: undefined, error: undefined });
+        const mine = applyChange(server, item.op, item.body);
+        await putRecords(this.ws, entity, [
+          (WORK_ENTITIES as string[]).includes(entity) ? await dress(entity as WorkEntity, mine, server, await this.dressContext()) : mine,
+        ]);
+      } else {
+        // Still not to be had: it is sent again, and if it is still refused the conflict comes back, with their copy.
+        await putOutbox({ ...item, state: "pending", error: undefined });
+      }
     } else {
-      // Dropping the creation of a record made here leaves what links to it nothing to link to.
-      await this.saveQueue((queue) => failOrphans(queue.filter((q) => q.seq !== seq)));
+      // Dropping the creation of a record made here leaves what links to it
+      // nothing to link to; if it may be on the server already, they say so.
+      const error = item.error === KEY_EXPIRED ? ORPHANED_MAYBE_THERE : ORPHANED;
+      await this.saveQueue((queue) => failOrphans(queue.filter((q) => q.seq !== seq), error));
       if (item.server) await putRecords(this.ws, item.entity, [item.server]);
       else if (isLocalId(item.id)) await deleteRecord(this.ws, item.entity, item.id);
       else if (navigator.onLine) await this.refetch(item.entity, item.id).catch(() => undefined);

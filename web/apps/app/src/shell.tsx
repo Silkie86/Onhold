@@ -65,10 +65,10 @@ import {
   UserRoundCheck,
   Route as RouteIcon,
 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { ENTITIES, api, currentWorkspace, entityByPath, ok, setWorkspace } from "./api.ts";
-import { OfflineContext, searchEverything, useSyncStatus } from "./data.ts";
+import { OfflineContext, fetchThreads, searchEverything, useSyncStatus } from "./data.ts";
 import { claimFor, forgetWorkspacesExcept } from "./offline/store.ts";
 import { OfflineSync } from "./offline/sync.ts";
 import { IS_APP, KEEPS_OFFLINE_COPY, serverUrl } from "./platform.ts";
@@ -76,7 +76,7 @@ import { useWorkspaceBranding } from "./branding.ts";
 import { GoTo } from "./go-to.tsx";
 import { useInstallOffer } from "./install.ts";
 import { type Setup, useSetup } from "./setup.ts";
-import { type Session, SessionContext, keptWorkspaces, useMe, useSessionActions } from "./session.tsx";
+import { type Session, SessionContext, keptForSession, useMe, useSessionActions } from "./session.tsx";
 
 // Talent see their portal instead of the staff app; it loads only for them.
 const PortalShell = lazy(() => import("./pages/portal.tsx").then((m) => ({ default: m.PortalShell })));
@@ -85,8 +85,10 @@ type NavItem = {
   to: string;
   label: string;
   icon: ReactNode;
-  /** Shown only when the workspace uses this module (or any of these) or extra. */
-  module?: string | string[];
+  /** Shown only when the workspace uses this module or extra. */
+  module?: string;
+  /** Also shown, with the talent portal on, once talent and the workspace have written to each other there. */
+  portalMessages?: true;
   extra?: string;
   /** Named in the workspace's own words: [module, term]. */
   word?: [string, string];
@@ -99,7 +101,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     group: "Bookings",
     items: [
       // Talent's messages from their portal arrive here too, with or without email.
-      { to: "/inbox", label: "Inbox", icon: <Mail />, module: ["messaging", "portal"] },
+      { to: "/inbox", label: "Inbox", icon: <Mail />, module: "messaging", portalMessages: true },
       { to: "/calendar", label: "Calendar", icon: <CalendarDays />, module: "calendar" },
       { to: "/enquiries", label: "Enquiries", icon: <Inbox />, module: "bookings", word: ["bookings", "enquiry"] },
       { to: "/bookings", label: "Bookings", icon: <CalendarCheck />, module: "bookings", word: ["bookings", "booking"] },
@@ -153,14 +155,29 @@ export const NAV: { group: string; items: NavItem[] }[] = [
   },
 ];
 
-/** Whether the menu shows an item, given what the workspace set itself up to use. */
-export function inNav(item: NavItem, setup: Setup): boolean {
-  const modules = item.module === undefined ? [] : [item.module].flat();
-  return (
-    (modules.length === 0 || modules.some((m) => setup.has(m))) &&
-    (!item.extra || setup.hasExtra(item.extra)) &&
-    setup.shows(`nav:${item.to}`)
-  );
+/**
+ * Whether the menu shows an item, given what the workspace set itself up to
+ * use, and whether there are conversations with talent in their portal.
+ */
+export function inNav(item: NavItem, setup: Setup, portalMessages = false): boolean {
+  const used = !item.module || setup.has(item.module) || (!!item.portalMessages && portalMessages && setup.has("portal"));
+  return used && (!item.extra || setup.hasExtra(item.extra)) && setup.shows(`nav:${item.to}`);
+}
+
+/**
+ * True when the talent portal is on without email and the inbox holds a
+ * conversation, which can only be with talent through their portal: it is
+ * then in the menu, so their answers are seen. Asked only in that case.
+ */
+function usePortalMessages(setup: Setup, sync: OfflineSync | null): boolean {
+  const ask = setup.has("portal") && !setup.has("messaging");
+  const threads = useQuery({
+    queryKey: ["threads", "any"],
+    queryFn: async () => (await fetchThreads(sync, { limit: 1 })).data,
+    enabled: ask,
+    staleTime: 5 * 60_000,
+  });
+  return ask && (threads.data?.items.length ?? 0) > 0;
 }
 
 /** OnHold's own team: the full theme, and visiting clients' workspaces. */
@@ -218,7 +235,9 @@ function useOfflineSync(workspaceId: string | undefined, userId: string): Offlin
       setSync(null);
     };
   }, [workspaceId, userId, qc]);
-  return sync;
+  // Just after a switch, until the effect has run, the engine is still the
+  // last workspace's: nothing may read or write its copy for this one.
+  return sync?.ws === workspaceId ? sync : null;
 }
 
 const THEME_KEY = "onhold.theme";
@@ -237,7 +256,7 @@ export function AppShell() {
   const location = useLocation();
   // The copy of a workspace the person has left, became talent in, or whose
   // plan dropped the apps, goes, whichever screen they now see.
-  const keptFor = me.data ? keptWorkspaces(me.data.workspaces).join(",") : null;
+  const keptFor = me.data ? keptForSession(me.data)?.join(",") ?? null : null;
   useEffect(() => {
     if (KEEPS_OFFLINE_COPY && keptFor !== null) {
       void forgetWorkspacesExcept(keptFor ? keptFor.split(",") : []).catch(() => undefined);
@@ -363,9 +382,10 @@ function SignedIn({ me }: { me: Session["me"] }) {
   );
   // The menu holds only what the workspace set itself up to use, in its own words.
   const setup = useSetup(sync);
+  const portalMessages = usePortalMessages(setup, sync);
   const shown = (items: NavItem[]) =>
     items
-      .filter((i) => inNav(i, setup))
+      .filter((i) => inNav(i, setup, portalMessages))
       .map((i) => (i.word ? { ...i, label: setup.word(i.word[0], i.word[1], true) } : i));
   // OnHold's own tools are never hidden; streamlining shows while visiting.
   const operatorNav = { ...OPERATOR_NAV, items: OPERATOR_NAV.items.filter((i) => visiting || i.to !== "/settings/streamline") };

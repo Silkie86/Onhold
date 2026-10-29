@@ -1,10 +1,11 @@
 import { safeRedirect } from "./auth.tsx";
 import { canUndo, decodeFile, isWorkbook, needsResaving, rowLabel, sheetsSummary, stripCardAttachments } from "./imports.tsx";
 import { dialable, phonesOf } from "../phones.ts";
-import { validateListSearch } from "./crm.tsx";
+import { LoadsLater, validateListSearch } from "./crm.tsx";
 import { awaitingOutcome, dayOf, dueLabel, dueWhat, happenedAt, keyFor, mailtoLink, newKey, smsLink, uniqueItems, unfilled, whatsappLink } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
-import { createElement } from "react";
+import { act, createElement, lazy } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NAV, inNav } from "../shell.tsx";
 import { setupOf } from "../setup.ts";
@@ -167,12 +168,20 @@ test("a pitch opens in an email app, a text or WhatsApp ready to send", () => {
 });
 
 test("the inbox is in the menu for talent's portal messages, with or without email", () => {
-  const inbox = NAV.flatMap((g) => g.items).find((i) => i.to === "/inbox");
+  const items = NAV.flatMap((g) => g.items);
+  const inbox = items.find((i) => i.to === "/inbox");
   if (!inbox) throw new Error("no inbox in the menu");
   const using = (...modules: string[]) => setupOf({ enabled_modules: modules, extras: [] });
-  expect(inNav(inbox, using("bookings", "portal"))).toBe(true);
   expect(inNav(inbox, using("messaging"))).toBe(true);
-  expect(inNav(inbox, using("bookings"))).toBe(false);
+  // Talent have written in (or been written to) through their portal.
+  expect(inNav(inbox, using("bookings", "portal"), true)).toBe(true);
+  // A solo artist with the portal ticked but no one writing in has no empty inbox.
+  expect(inNav(inbox, using("bookings", "portal"))).toBe(false);
+  expect(inNav(inbox, using("bookings"), true)).toBe(false);
+  // Only the inbox comes back for portal messages.
+  const emailAccounts = items.find((i) => i.to === "/settings/email");
+  if (!emailAccounts) throw new Error("no email accounts in the menu");
+  expect(inNav(emailAccounts, using("bookings", "portal"), true)).toBe(false);
 });
 
 test("the calendar-connect page shows the logo the branding settings save", () => {
@@ -182,6 +191,20 @@ test("the calendar-connect page shows the logo the branding settings save", () =
   );
   expect(html).toContain(`src="${logo}"`);
   expect(renderToStaticMarkup(createElement(Header, { workspace: "Agency", title: "Connect", branding: null }))).not.toContain("<img");
+});
+
+test("a part of a page that cannot be loaded leaves the rest of the page", async () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  const quiet = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const Missing = lazy(() => Promise.reject(new TypeError("Failed to fetch dynamically imported module")));
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(createElement("main", null, createElement("h1", null, "Venue"), createElement(LoadsLater, null, createElement(Missing))));
+  });
+  expect(host.innerHTML).toBe("<main><h1>Venue</h1></main>");
+  root.unmount();
+  quiet.mockRestore();
 });
 
 test("placeholders left in a pitch are found once each", () => {

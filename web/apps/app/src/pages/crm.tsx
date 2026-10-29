@@ -25,7 +25,7 @@ import {
   viewConfig,
 } from "@onhold/ui";
 import { ArrowLeft, CloudOff, Plus, Trash2, X } from "lucide-react";
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Component, type ReactNode, Suspense, lazy, useEffect, useState } from "react";
 import { ApiFailure, type EntitySchema, ENTITIES, api, entityByPath, ok } from "../api.ts";
 import {
   createRecord,
@@ -54,6 +54,23 @@ import { dialable, phonesOf } from "../phones.ts";
 // Pitching is the app's largest page and not every workspace uses it: it loads when shown.
 const WhoToPitchCard = lazy(() => import("./pitch-list.tsx").then((m) => ({ default: m.WhoToPitchCard })));
 const OrganisationPitching = lazy(() => import("./pitching.tsx").then((m) => ({ default: m.OrganisationPitching })));
+
+/**
+ * A part of a page loaded when shown: while it loads, a spinner; if it
+ * cannot be loaded (offline, or the app was updated meanwhile), the rest of
+ * the page carries on without it.
+ */
+export class LoadsLater extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    return this.state.failed ? null : <Suspense fallback={<Spinner />}>{this.props.children}</Suspense>;
+  }
+}
 
 type Entity = (typeof ENTITIES)[keyof typeof ENTITIES];
 
@@ -580,9 +597,9 @@ export function EntityRecordPage() {
                 {setup.shows("section:talent.calendars") && <TalentCalendarsCard talentId={id} canWrite={schema.data.can_write} />}
                 {setup.shows("section:talent.portal") && <PortalAccessCard talentId={id} canWrite={schema.data.can_write} />}
                 {setup.has("pitching") && (
-                  <Suspense fallback={<Spinner />}>
+                  <LoadsLater>
                     <WhoToPitchCard talentId={id} />
-                  </Suspense>
+                  </LoadsLater>
                 )}
               </>
             ))}
@@ -594,7 +611,7 @@ export function EntityRecordPage() {
                 {record.data.queued ? "Pitching shows once your changes here are sent." : "Pitching shows when you are online."}
               </p>
             ) : (
-              <Suspense fallback={<Spinner />}>
+              <LoadsLater>
                 <OrganisationPitching
                   organisation={r}
                   canWrite={schema.data.can_write}
@@ -604,7 +621,7 @@ export function EntityRecordPage() {
                     void qc.invalidateQueries({ queryKey: ["timeline", entity.entity, id] });
                   }}
                 />
-              </Suspense>
+              </LoadsLater>
             ))}
           {!offline && !isLocalId(id) && conversations && entity.entity === "contact" && <RelatedConversations filter={{ contact_id: id }} />}
           {!offline && !isLocalId(id) && conversations && entity.entity === "organisation" && (

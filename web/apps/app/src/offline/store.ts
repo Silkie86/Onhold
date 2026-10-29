@@ -229,17 +229,33 @@ export async function deleteMailRows(rows: { ws: string; id: string }[]): Promis
 export async function forgetWorkspacesExcept(workspaces: string[]): Promise<void> {
   const d = await db();
   const allowed = new Set(workspaces);
-  const tx = d.transaction(["records", "meta", "mail"], "readwrite");
-  for (const key of await tx.objectStore("records").getAllKeys()) {
-    if (!allowed.has(key[0])) await tx.objectStore("records").delete(key);
+  // Which workspaces the device holds anything for, a step per workspace
+  // rather than per record: this runs each time the app starts.
+  const present = new Set<string>();
+  const look = d.transaction(["records", "meta", "mail"], "readonly");
+  for (const store of ["records", "mail"] as const) {
+    let cursor = await look.objectStore(store).openKeyCursor();
+    while (cursor) {
+      const ws = cursor.key[0];
+      present.add(ws);
+      // Past every key of this workspace: an array sorts after any string.
+      cursor = await cursor.continue([ws, []] as never);
+    }
   }
-  for (const key of await tx.objectStore("mail").getAllKeys()) {
-    if (!allowed.has(key[0])) await tx.objectStore("mail").delete(key);
-  }
-  for (const key of await tx.objectStore("meta").getAllKeys()) {
+  for (const key of await look.objectStore("meta").getAllKeys()) {
     // Every workspace's own keys are `<ws>:…`; the device's owner is not.
     const ws = /^([^:]+):/.exec(key)?.[1];
-    if (ws !== undefined && !allowed.has(ws)) await tx.objectStore("meta").delete(key);
+    if (ws !== undefined) present.add(ws);
+  }
+  await look.done;
+  const gone = [...present].filter((ws) => !allowed.has(ws));
+  if (!gone.length) return;
+  const tx = d.transaction(["records", "meta", "mail"], "readwrite");
+  for (const ws of gone) {
+    const all = IDBKeyRange.bound([ws], [ws, []]);
+    await tx.objectStore("records").delete(all);
+    await tx.objectStore("mail").delete(all);
+    await tx.objectStore("meta").delete(IDBKeyRange.bound(`${ws}:`, `${ws}:￿`));
   }
   await tx.done;
 }
@@ -279,8 +295,10 @@ export async function changeOutbox(ws: string, change: (queue: OutboxItem[]) => 
   const after = change(before);
   const kept = new Set(after.map((q) => q.seq));
   for (const q of before) if (!kept.has(q.seq)) await tx.store.delete(q.seq as number);
+  // Only what `change` changed is written: what it handed back as it was, is.
+  const same = new Set(before);
   const saved: OutboxItem[] = [];
-  for (const q of after) saved.push({ ...q, seq: await tx.store.put(q) });
+  for (const q of after) saved.push(same.has(q) ? q : { ...q, seq: await tx.store.put(q) });
   await tx.done;
   return saved;
 }
@@ -314,7 +332,12 @@ export async function wipeAllButQueue(): Promise<void> {
  */
 export async function claimFor(userId: string): Promise<void> {
   const owner = await getMeta<string>("owner");
-  const unclaimed = owner === undefined && (await (await db()).count("records")) > 0;
+  let unclaimed = false;
+  if (owner === undefined) {
+    const d = await db();
+    // Queued changes too: the next person must not send someone else's.
+    for (const store of ["records", "outbox", "meta", "mail"] as const) unclaimed ||= (await d.count(store)) > 0;
+  }
   if ((owner !== undefined && owner !== userId) || unclaimed) await wipe();
   await setMeta("owner", userId);
 }
@@ -434,6 +457,14 @@ export function waitsForLocal(item: OutboxItem): boolean {
 }
 
 export const ORPHANED = "This links to a record made on this device that was discarded before it was sent, so it cannot be sent.";
+/** The same, when the record's creation was discarded because it may have reached OnHold already. */
+export const ORPHANED_MAYBE_THERE =
+  "This links to a record made on this device whose creation was discarded because it may be on OnHold already. If it is, make this change to it there, then discard this one.";
+
+/** The records made offline, not yet on the server, that fields link to. */
+export function localLinks(value: unknown): string[] {
+  return (JSON.stringify(value).match(new RegExp(LOCAL_LINK.source, "g")) ?? []).map((s) => s.slice(1, -1));
+}
 
 /**
  * Marks as refused every waiting change that links to (or is a step for) a
@@ -441,14 +472,13 @@ export const ORPHANED = "This links to a record made on this device that was dis
  * or deleted, so the change would wait for ever. Returns the queue as it
  * should be.
  */
-export function failOrphans(queue: OutboxItem[]): OutboxItem[] {
+export function failOrphans(queue: OutboxItem[], error = ORPHANED): OutboxItem[] {
   const creating = new Set(queue.filter((q) => q.op === "create" && isLocalId(q.id)).map((q) => q.id));
   const gone = (id: string) => !creating.has(id);
   return queue.map((q) => {
     if (q.state !== "pending") return q;
-    const links = (JSON.stringify(q.body).match(new RegExp(LOCAL_LINK.source, "g")) ?? []).map((s) => s.slice(1, -1));
-    const orphaned = links.some(gone) || (q.op !== "create" && q.op !== "delete" && isLocalId(q.id) && gone(q.id));
-    return orphaned ? { ...q, state: "failed" as const, error: ORPHANED } : q;
+    const orphaned = localLinks(q.body).some(gone) || (q.op !== "create" && q.op !== "delete" && isLocalId(q.id) && gone(q.id));
+    return orphaned ? { ...q, state: "failed" as const, error } : q;
   });
 }
 

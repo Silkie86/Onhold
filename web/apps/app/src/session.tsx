@@ -110,6 +110,14 @@ export function keptWorkspaces(workspaces: Me["workspaces"], isApp = IS_APP): st
   return workspaces.filter((w) => w.role !== "talent" && (!isApp || w.apps_allowed)).map((w) => w.id);
 }
 
+/**
+ * The same for a session, or null while the session cannot say: until the
+ * second sign-in step is done, the server lists no workspaces at all.
+ */
+export function keptForSession(me: Me, isApp = IS_APP): string[] | null {
+  return me.session.mfa_verified ? keptWorkspaces(me.workspaces, isApp) : null;
+}
+
 export interface Session {
   me: Me;
   workspace: Me["workspaces"][number];

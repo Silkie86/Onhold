@@ -3,7 +3,7 @@ import type { RecordJson } from "@onhold/ui";
 import { beforeEach, describe, expect, it } from "vitest";
 import { localList, localTags, matches, sortRecords } from "./query.ts";
 import type { Me } from "../api.ts";
-import { keptWorkspaces } from "../session.tsx";
+import { keptForSession, keptWorkspaces } from "../session.tsx";
 import {
   ORPHANED,
   type OutboxItem,
@@ -212,6 +212,17 @@ describe("the device's copy", () => {
     expect(await getMeta("owner")).toBe("u2");
   });
 
+  it("does not send changes queued by no one known", async () => {
+    await putOutbox(item("update", "a", { name: "x" }));
+    await claimFor("u2");
+    expect(await outbox("w1")).toEqual([]);
+    await setMeta("w1:mail:keep", true);
+    await wipe();
+    await setMeta("w1:mail:keep", true);
+    await claimFor("u2");
+    expect(await getMeta("w1:mail:keep")).toBeUndefined();
+  });
+
   it("forgets the whole copy of a workspace the person may no longer keep, but not their unsent changes", async () => {
     await claimFor("u1");
     for (const ws of ["w1", "w2"]) {
@@ -248,6 +259,14 @@ describe("the people the device may keep a copy for", () => {
     const list = [w("staff", "agent", true), w("portal", "talent", true), w("noapps", "owner", false)];
     expect(keptWorkspaces(list, true)).toEqual(["staff"]);
     expect(keptWorkspaces(list, false)).toEqual(["staff", "noapps"]);
+  });
+
+  it("is not known until the second sign-in step is done, when no workspaces are listed", () => {
+    const me = (verified: boolean, workspaces: Me["workspaces"]) =>
+      ({ session: { mfa_verified: verified }, workspaces }) as unknown as Me;
+    expect(keptForSession(me(false, []))).toBeNull();
+    expect(keptForSession(me(true, []))).toEqual([]);
+    expect(keptForSession(me(true, [w("staff", "agent", true)]), true)).toEqual(["staff"]);
   });
 });
 
