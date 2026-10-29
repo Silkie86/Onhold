@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE memberships SET pitch_send_with = $2\n           WHERE workspace_id = app_workspace_id() AND user_id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7b1323ea76d284dfb9b60dbb777d361bbb3fecf8a7825087a38fdd76f22d6718"
+}

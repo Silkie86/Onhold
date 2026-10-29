@@ -762,3 +762,23 @@ pub async fn contact_for(
     .await?;
     Ok(row.map(|r| (r.id, r.organisation_id)))
 }
+
+/// Of `threads`, those `viewer` can open: in a shared mailbox, their own,
+/// or none (OnHold's sender). With no viewer, all of them.
+pub async fn visible_threads(
+    conn: &mut PgConnection,
+    threads: &[Uuid],
+    viewer: Option<Uuid>,
+) -> Result<Vec<Uuid>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT t.id
+           FROM threads t
+           LEFT JOIN integrations i ON i.workspace_id = t.workspace_id AND i.id = t.integration_id
+           WHERE t.workspace_id = app_workspace_id() AND t.id = ANY($1)
+             AND ($2::uuid IS NULL OR t.integration_id IS NULL OR i.shared OR i.owner_id = $2)"#,
+        threads,
+        viewer
+    )
+    .fetch_all(conn)
+    .await?)
+}

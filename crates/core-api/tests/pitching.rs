@@ -650,6 +650,9 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
     let mut body = s.clone();
     body["outcomes"] = json!([{ "key": "yes", "label": "Yes", "tag": "good" }]);
     body["actions"] = json!([{ "key": "pitched", "label": "Sent it" }]);
+    // Templates left out, the one that follows up (an action no longer
+    // listed) goes too.
+    body.as_object_mut().unwrap().remove("templates");
     app.put("/api/v1/pitching/settings")
         .signed_in(&owner)
         .json(body)
@@ -703,4 +706,256 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
     )
     .await;
     assert_eq!(log.body["total"], 1);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn pitches_are_drafted_and_sent(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let viewer = app.add_member(&owner, "viewer@acme.test", "viewer").await;
+    let club = organisation(
+        &app,
+        &owner,
+        json!({ "name": "Hyde Park Book Club", "addresses": [{ "city": "Leeds", "country": "England" }] }),
+    )
+    .await;
+    let club_id = club["id"].as_str().unwrap().to_owned();
+    let jo = post(
+        &app,
+        &owner,
+        "/api/v1/contacts",
+        json!({ "name": "Jo Booker", "organisation_id": club_id, "emails": ["jo@club.test"],
+                "phones": ["07700 900123"] }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let owls = talent(&app, &owner, "The Midnight Owls").await;
+
+    // OnHold's own templates and default to start with.
+    let s = get(&app, &owner, "/api/v1/pitching/settings").await.body;
+    assert_eq!(s["send_with"], "onhold");
+    assert_eq!(s["templates"][0]["key"], "first_pitch");
+    assert_eq!(s["templates"][1]["action"], "followed_up");
+
+    // Filled in for Jo and the Owls; nothing gives a link.
+    let draft = post(
+        &app,
+        &viewer,
+        &format!("/api/v1/organisations/{club_id}/pitches/draft"),
+        json!({ "template_key": "first_pitch", "contact_id": jo, "item": { "kind": "talent", "id": owls } }),
+    )
+    .await
+    .ok();
+    assert_eq!(
+        draft.body["subject"],
+        "The Midnight Owls for Hyde Park Book Club"
+    );
+    let body = draft.body["body"].as_str().unwrap().to_owned();
+    assert!(
+        body.starts_with("Hi Jo,\n\nI look after The Midnight Owls"),
+        "{body}"
+    );
+    assert!(body.contains("{link}"), "{body}");
+    assert_eq!(draft.body["missing"], json!(["link"]));
+    assert_eq!(draft.body["email"], "jo@club.test");
+    assert!(
+        draft.body["phone"].as_str().unwrap().starts_with("+44"),
+        "{}",
+        draft.body
+    );
+    assert_eq!(draft.body["action"], "pitched");
+
+    // What is pitched fills in only for those who may read it.
+    let key = post(
+        &app,
+        &owner,
+        "/api/v1/api-keys",
+        json!({ "name": "crm", "permissions": ["organisation:read", "contact:read"] }),
+    )
+    .await
+    .ok();
+    let secret = key.body["secret"].as_str().unwrap().to_owned();
+    let blind = app
+        .post(&format!("/api/v1/organisations/{club_id}/pitches/draft"))
+        .bearer(&secret)
+        .workspace(ws)
+        .json(json!({ "template_key": "first_pitch", "contact_id": jo, "item": { "kind": "talent", "id": owls } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(blind.body["missing"], json!(["item", "link", "yourName"]));
+    assert!(!blind.body["body"].as_str().unwrap().contains("Owls"));
+
+    // A name that only stands in for one (their email) is no name.
+    let nameless = post(
+        &app,
+        &owner,
+        "/api/v1/contacts",
+        json!({ "name": "sam@club.test", "organisation_id": club_id, "emails": ["sam@club.test"] }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let draft_sam = post(
+        &app,
+        &owner,
+        &format!("/api/v1/organisations/{club_id}/pitches/draft"),
+        json!({ "template_key": "first_pitch", "contact_id": nameless }),
+    )
+    .await
+    .ok();
+    assert!(
+        draft_sam.body["body"]
+            .as_str()
+            .unwrap()
+            .starts_with("Hi {firstName},"),
+        "{}",
+        draft_sam.body
+    );
+
+    // Not sent while a placeholder is left, nor by a viewer.
+    let send = |body: &str| {
+        json!({ "organisation_id": club_id, "contact_id": jo, "item": { "kind": "talent", "id": owls },
+                "template_key": "first_pitch", "subject": draft.body["subject"], "body": body })
+    };
+    let left = post(&app, &owner, "/api/v1/pitches/send", send(&body)).await;
+    assert_eq!(left.status, StatusCode::BAD_REQUEST, "{}", left.body);
+    assert!(
+        left.body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("{link}")
+    );
+    let filled = body.replace("{link}", "https://owls.test");
+    post(&app, &viewer, "/api/v1/pitches/send", send(&filled))
+        .await
+        .expect(StatusCode::FORBIDDEN, "permission_denied");
+
+    // Sent from OnHold (no mailbox here, so through OnHold's own sender),
+    // logged as pitched by email, with its message in the inbox.
+    let sent = post(&app, &owner, "/api/v1/pitches/send", send(&filled)).await;
+    assert_eq!(sent.status, StatusCode::CREATED, "{}", sent.body);
+    assert_eq!(sent.body["source"], "sent");
+    assert_eq!(sent.body["type_key"], "pitched");
+    assert_eq!(sent.body["channel"], "email");
+    assert_eq!(sent.body["template_key"], "first_pitch");
+    assert_eq!(sent.body["item"]["name"], "The Midnight Owls");
+    assert_eq!(sent.body["message"]["status"], "queued");
+    let thread = sent.id("/message/thread_id");
+    let t = get(&app, &owner, &format!("/api/v1/inbox/threads/{thread}")).await;
+    assert_eq!(t.body["thread"]["contact_id"], json!(jo));
+    let m = &t.body["messages"][0];
+    assert_eq!(m["to"], json!(["jo@club.test"]));
+    assert!(m["text"].as_str().unwrap().contains("https://owls.test"));
+
+    // Sent another way, then logged with one tap.
+    let tapped = post(
+        &app,
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": club_id, "contact_id": jo, "kind": "action", "type_key": "followed_up",
+                "channel": "whatsapp", "template_key": "follow_up" }),
+    )
+    .await;
+    assert_eq!(tapped.status, StatusCode::CREATED, "{}", tapped.body);
+    assert_eq!(tapped.body["source"], "manual");
+    assert_eq!(tapped.body["message"], Value::Null);
+    let bad = post(
+        &app,
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": club_id, "kind": "action", "type_key": "pitched", "template_key": "nope" }),
+    )
+    .await;
+    assert_eq!(fields(&bad), ["template_key"]);
+    let log = get(
+        &app,
+        &owner,
+        &format!("/api/v1/organisations/{club_id}/pitches"),
+    )
+    .await;
+    assert_eq!(log.body["total"], 2);
+    assert_eq!(log.body["items"][1]["message"]["thread_id"], json!(thread));
+    // Without the inbox, the conversation is left out.
+    let log = app
+        .get(&format!("/api/v1/organisations/{club_id}/pitches"))
+        .bearer(&secret)
+        .workspace(ws)
+        .send()
+        .await
+        .ok();
+    assert_eq!(log.body["items"][1]["source"], "sent");
+    assert_eq!(log.body["items"][1]["message"], Value::Null);
+
+    // Without a template, it logs the workspace's first action.
+    let mut body = s.clone();
+    body["actions"] = json!([{ "key": "emailed", "label": "Emailed" }, { "key": "pitched", "label": "Pitched" },
+                             { "key": "followed_up", "label": "Followed up" }]);
+    app.put("/api/v1/pitching/settings")
+        .signed_in(&owner)
+        .json(body)
+        .send()
+        .await
+        .ok();
+    let blank = post(
+        &app,
+        &owner,
+        "/api/v1/pitches/send",
+        json!({ "organisation_id": club_id, "contact_id": jo, "subject": "Hello", "body": "Hi Jo" }),
+    )
+    .await;
+    assert_eq!(blank.status, StatusCode::CREATED, "{}", blank.body);
+    assert_eq!(blank.body["type_key"], "emailed");
+
+    // Templates name one of the actions.
+    let mut body = s.clone();
+    body["templates"][0]["action"] = json!("nope");
+    body["templates"][1]["body"] = json!("  ");
+    let res = app
+        .put("/api/v1/pitching/settings")
+        .signed_in(&owner)
+        .json(body)
+        .send()
+        .await;
+    let mut f = fields(&res);
+    f.sort();
+    assert_eq!(f, ["templates[0].action", "templates[1].body"]);
+
+    // Each member picks how they send, over the workspace's default.
+    let me = get(&app, &viewer, "/api/v1/pitching/me").await.body;
+    assert_eq!(me["send_with"], Value::Null);
+    assert_eq!(me["workspace_send_with"], "onhold");
+    assert_eq!(me["mailbox"], Value::Null);
+    let me = app
+        .put("/api/v1/pitching/me")
+        .signed_in(&viewer)
+        .json(json!({ "send_with": "copy" }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(me.body["send_with"], "copy");
+    let me = get(&app, &owner, "/api/v1/pitching/me").await.body;
+    assert_eq!(me["send_with"], Value::Null);
+
+    // Not to an organisation marked do not contact.
+    patch(
+        &app,
+        &owner,
+        &format!("/api/v1/organisations/{club_id}"),
+        json!({ "do_not_contact": true }),
+    )
+    .await
+    .ok();
+    post(
+        &app,
+        &owner,
+        &format!("/api/v1/organisations/{club_id}/pitches/draft"),
+        json!({ "template_key": "first_pitch" }),
+    )
+    .await
+    .expect(StatusCode::CONFLICT, "do_not_contact");
+    post(&app, &owner, "/api/v1/pitches/send", send(&filled))
+        .await
+        .expect(StatusCode::CONFLICT, "do_not_contact");
 }

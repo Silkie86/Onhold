@@ -843,6 +843,9 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
             "to": ["intruder@alpha.test"], "subject": "x", "body": "x", "contact_id": w.b_crm.contact
         }),
         ("POST", "/api/v1/inbox/threads/{id}/reply") => json!({ "body": "x" }),
+        ("POST", "/api/v1/organisations/{id}/pitches/draft") => {
+            json!({ "template_key": "first_pitch", "contact_id": w.b_crm.contact })
+        }
         ("POST", "/api/v1/inbox/texts") => json!({
             "channel": "sms", "contact_id": w.b_crm.contact, "body": "x"
         }),

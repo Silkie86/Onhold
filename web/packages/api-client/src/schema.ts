@@ -2543,6 +2543,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations/{id}/pitches/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A pitch template filled in for a person at the organisation and what is
+         *     pitched to them, to change before sending. Placeholders with nothing to
+         *     fill them stay in the text and are listed in `missing`.
+         */
+        post: operations["draft_pitch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organisations/{id}/timeline": {
         parameters: {
             query?: never;
@@ -2833,6 +2854,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pitches/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a pitch by email from OnHold, through your own mailbox if you
+         *     connected one, and log it. Its answers arrive in the inbox.
+         */
+        post: operations["send_pitch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pitches/{id}": {
         parameters: {
             query?: never;
@@ -2851,6 +2892,27 @@ export interface paths {
          *     whether it is an action or an answer stay.
          */
         patch: operations["update_pitch"];
+        trace?: never;
+    };
+    "/api/v1/pitching/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How you send a pitch, over the workspace's default, and the mailbox
+         *     sending from OnHold uses.
+         */
+        get: operations["get_me"];
+        /** Pick how you send a pitch; `null` follows the workspace's default. */
+        put: operations["set_me"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/pitching/settings": {
@@ -7436,6 +7498,8 @@ export interface components {
             note?: string | null;
             /** Format: uuid */
             organisation_id: string;
+            /** @description The pitch template it was written from, if any. */
+            template_key?: string | null;
             /** @description A key from the workspace's actions or outcomes, as `kind` says. */
             type_key: string;
         };
@@ -7815,11 +7879,42 @@ export interface components {
          * @enum {string}
          */
         PitchChannel: "email" | "phone" | "text" | "whatsapp" | "social" | "in_person" | "other";
+        /** @description A pitch template filled in, to change before it goes. */
+        PitchDraft: {
+            /** @description What sending it logs. */
+            action: string;
+            body: string;
+            /**
+             * @description Where it can go: the person's first email address, and first phone
+             *     number written internationally where its country is known.
+             */
+            email?: string | null;
+            /** @description Placeholders nothing filled in, left in the text to fill by hand. */
+            missing: string[];
+            phone?: string | null;
+            subject: string;
+            template_key: string;
+        };
+        PitchDraftRequest: {
+            /** Format: uuid */
+            contact_id?: string | null;
+            item?: components["schemas"]["ItemInput"] | null;
+            template_key: string;
+        };
         /**
          * @description Whether an entry is something done or an answer.
          * @enum {string}
          */
         PitchKind: "action" | "outcome";
+        /** @description A pitch sent from OnHold: its thread in the inbox, and whether it went. */
+        PitchMessage: {
+            /** Format: uuid */
+            id: string;
+            /** @description `queued`, `sent` or `failed`. */
+            status: string;
+            /** Format: uuid */
+            thread_id: string;
+        };
         /** @description An answer to a pitch: "Interested", "Not now", "No answer"… */
         PitchOutcome: {
             key: string;
@@ -7839,7 +7934,51 @@ export interface components {
             happened_at?: string | null;
             item?: components["schemas"]["ItemInput"] | null;
             note?: string | null;
+            template_key?: string | null;
             type_key?: string | null;
+        };
+        PitchSend: {
+            /** @description Plain text; the sender's signature goes under it. */
+            body: string;
+            /** Format: uuid */
+            contact_id: string;
+            /**
+             * Format: uuid
+             * @description The mailbox to send from; default the sender's own, if connected.
+             */
+            integration_id?: string | null;
+            item?: components["schemas"]["ItemInput"] | null;
+            /** Format: uuid */
+            organisation_id: string;
+            subject: string;
+            /** @description The pitch template it was written from, if any. */
+            template_key?: string | null;
+            /** @description Default: the person's first email address. */
+            to?: string | null;
+            /**
+             * @description What it logs, a key from the workspace's actions; default the
+             *     template's, or the workspace's first action.
+             */
+            type_key?: string | null;
+        };
+        /**
+         * @description How a pitch is usually sent: from OnHold through the member's mailbox
+         *     (so it and the answers are logged by themselves), by opening it in
+         *     their own email app, or by copying it to paste anywhere.
+         * @enum {string}
+         */
+        PitchSendWith: "onhold" | "mail_app" | "copy";
+        /**
+         * @description Wording to pitch with. `{firstName}`, `{item}`, `{link}`, `{yourName}`
+         *     and the rest of [`super::pitch_sending::PLACEHOLDERS`] are filled in.
+         */
+        PitchTemplate: {
+            /** @description What sending it logs, a key from the workspace's actions. */
+            action: string;
+            body: string;
+            key: string;
+            name: string;
+            subject: string;
         };
         PitchView: {
             channel?: components["schemas"]["PitchChannel"] | null;
@@ -7858,12 +7997,15 @@ export interface components {
             id: string;
             item?: components["schemas"]["ItemRef"] | null;
             kind: components["schemas"]["PitchKind"];
+            message?: components["schemas"]["PitchMessage"] | null;
             note?: string | null;
             /** Format: uuid */
             organisation_id: string;
-            /** @description `manual`: logged by hand. */
+            /** @description `manual`: logged by hand; `sent`: sent from OnHold. */
             source: string;
             tag?: components["schemas"]["OutcomeTag"] | null;
+            /** @description The pitch template it was written from, if any. */
+            template_key?: string | null;
             /** @description A key from the workspace's actions or outcomes. */
             type_key: string;
             /** @description Its label, while the workspace still lists it. */
@@ -7874,6 +8016,20 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        /** @description How the member sends a pitch, and what they would send it from. */
+        PitchingMe: {
+            /**
+             * @description The mailbox Send goes from: their own connected one. Without it,
+             *     OnHold sends in the workspace's name with answers going to them.
+             */
+            mailbox?: string | null;
+            send_with?: components["schemas"]["PitchSendWith"] | null;
+            /** @description The workspace's default, used when they picked nothing. */
+            workspace_send_with: components["schemas"]["PitchSendWith"];
+        };
+        PitchingMePatch: {
+            send_with?: components["schemas"]["PitchSendWith"] | null;
+        };
         PitchingSettings: {
             /** @description The kinds of thing logged as done. */
             actions?: components["schemas"]["PitchAction"][];
@@ -7881,7 +8037,11 @@ export interface components {
             /** @description The answers a pitch can get. */
             outcomes?: components["schemas"]["PitchOutcome"][];
             regions?: components["schemas"]["Region"][];
+            /** @description How members send a pitch unless they pick otherwise. */
+            send_with?: components["schemas"]["PitchSendWith"];
             statuses?: components["schemas"]["Status"][];
+            /** @description The wording members pitch with. */
+            templates?: components["schemas"]["PitchTemplate"][];
         };
         /**
          * @description New settings. A list left out keeps what is stored, so a client from
@@ -7892,11 +8052,15 @@ export interface components {
             items?: components["schemas"]["ItemKind"][] | null;
             outcomes?: components["schemas"]["PitchOutcome"][] | null;
             regions?: components["schemas"]["Region"][] | null;
+            send_with?: components["schemas"]["PitchSendWith"] | null;
             statuses?: components["schemas"]["Status"][] | null;
+            templates?: components["schemas"]["PitchTemplate"][] | null;
         };
         PitchingSettingsView: components["schemas"]["PitchingSettings"] & {
             /** @description Every country, for choosing which region each is in. */
             countries: components["schemas"]["CountryView"][];
+            /** @description What a pitch template can say, filled in for each pitch. */
+            placeholders: components["schemas"]["Placeholder"][];
             /** Format: date-time */
             updated_at?: string | null;
             updated_by?: components["schemas"]["UserId"] | null;
@@ -7905,6 +8069,11 @@ export interface components {
              * @description 0 until the workspace first saves its own.
              */
             version: number;
+        };
+        Placeholder: {
+            means: string;
+            /** @description Written in a template as `{name}`. */
+            name: string;
         };
         /** @description What the answers set up. */
         Plan: {
@@ -17257,6 +17426,65 @@ export interface operations {
             };
         };
     };
+    draft_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PitchDraftRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchDraft"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     organisation_timeline: {
         parameters: {
             query?: {
@@ -18065,6 +18293,56 @@ export interface operations {
             };
         };
     };
+    send_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PitchSend"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     delete_pitch: {
         parameters: {
             query?: never;
@@ -18138,6 +18416,76 @@ export interface operations {
                 };
             };
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_me: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchingMe"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_me: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PitchingMePatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchingMe"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

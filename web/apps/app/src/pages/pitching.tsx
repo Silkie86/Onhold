@@ -21,10 +21,12 @@ import {
   StatusDot,
   Textarea,
 } from "@onhold/ui";
-import { Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { Pencil, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
 import { fetchList, useOffline } from "../data.ts";
+import { dialable, phonesOf } from "../phones.ts";
+import { openInBrowser } from "../platform.ts";
 import { useSession } from "../session.tsx";
 import { useSetup } from "../setup.ts";
 import { RecordSearch } from "./pickers.tsx";
@@ -43,6 +45,8 @@ type OutcomeTag = Schemas["OutcomeTag"];
 type Pitch = Schemas["PitchView"];
 type PitchKind = Schemas["PitchKind"];
 type PitchChannel = Schemas["PitchChannel"];
+type PitchTemplate = Schemas["PitchTemplate"];
+type SendWith = Schemas["PitchSendWith"];
 
 const COLOURS: Colour[] = ["green", "amber", "red", "grey", "blue", "purple"];
 const MEANINGS: { value: Meaning; label: string }[] = [
@@ -57,6 +61,16 @@ const TAGS: { value: OutcomeTag; label: string; colour: Colour }[] = [
   { value: "wait", label: "Try again later", colour: "amber" },
   { value: "no", label: "No for now", colour: "red" },
   { value: "never", label: "Never", colour: "grey" },
+];
+
+export const SEND_WITH: { value: SendWith; label: string; hint: string }[] = [
+  {
+    value: "onhold",
+    label: "Send from OnHold",
+    hint: "Logged by itself. With your own mailbox connected it goes from there and the answers come into OnHold too.",
+  },
+  { value: "mail_app", label: "Open in my email app", hint: "The pitch opens ready to send in your own email app." },
+  { value: "copy", label: "Copy", hint: "Copy the pitch to paste wherever you like." },
 ];
 
 export const CHANNELS: { value: PitchChannel; label: string }[] = [
@@ -142,6 +156,8 @@ function SettingsForm({
   const [items, setItems] = useState<ItemKind[]>(saved.items ?? []);
   const [outcomes, setOutcomes] = useState<Outcome[]>(saved.outcomes ?? []);
   const [actions, setActions] = useState<ActionType[]>(saved.actions ?? []);
+  const [templates, setTemplates] = useState<PitchTemplate[]>(saved.templates ?? []);
+  const [sendWith, setSendWith] = useState<SendWith>(saved.send_with ?? "onhold");
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -194,7 +210,7 @@ function SettingsForm({
       const after = await ok(
         api.PUT("/api/v1/pitching/settings", {
           headers: { "If-Match": `"${saved.version}"` },
-          body: { regions, statuses, items, outcomes, actions },
+          body: { regions, statuses, items, outcomes, actions, templates, send_with: sendWith },
         }),
       );
       onSaved();
@@ -430,6 +446,8 @@ function SettingsForm({
                   variant="ghost"
                   size="icon"
                   aria-label={`Remove ${a.label || "action"}`}
+                  disabled={templates.some((t) => t.action === a.key)}
+                  title={templates.some((t) => t.action === a.key) ? "A pitch template logs this; change the template first." : undefined}
                   onClick={() => {
                     changed();
                     setActions((xs) => xs.filter((_, j) => j !== i));
@@ -452,6 +470,125 @@ function SettingsForm({
               }}
             >
               <Plus /> Add an action
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      <Card className="flex flex-col gap-4 p-5 text-sm">
+        <h2 className="font-semibold">Sending pitches</h2>
+        <p className="text-muted-foreground">How pitches go out unless a member picks their own way. Nothing is sent without someone pressing send.</p>
+        <div className="flex flex-col gap-2">
+          {SEND_WITH.map((w) => (
+            <label key={w.value} className="flex items-start gap-2">
+              <input
+                type="radio"
+                name="send-with"
+                className="mt-1"
+                checked={sendWith === w.value}
+                disabled={!admin}
+                onChange={() => {
+                  changed();
+                  setSendWith(w.value);
+                }}
+              />
+              <span className="flex flex-col">
+                <span className="font-medium">{w.label}</span>
+                <span className="text-muted-foreground">{w.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="flex flex-col gap-4 p-5 text-sm">
+        <h2 className="font-semibold">Pitch templates</h2>
+        <p className="text-muted-foreground">
+          The wording you pitch with. These fill themselves in: {(saved.placeholders ?? []).map((p) => `{${p.name}}`).join(" ")}. You can change the words on
+          each pitch before it goes.
+        </p>
+        <details className="text-muted-foreground">
+          <summary className="cursor-pointer">What each one means</summary>
+          <ul className="mt-1 grid gap-x-4 sm:grid-cols-2">
+            {(saved.placeholders ?? []).map((p) => (
+              <li key={p.name}>
+                <code>{`{${p.name}}`}</code> {p.means}
+              </li>
+            ))}
+          </ul>
+        </details>
+        <ul className="flex flex-col gap-4">
+          {templates.map((t, i) => {
+            const set = (patch: Partial<PitchTemplate>) => {
+              changed();
+              setTemplates((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+            };
+            return (
+              <li key={t.key} className="flex flex-col gap-2 rounded-md border p-3">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex min-w-40 flex-1 flex-col gap-1">
+                    <Label htmlFor={`template-${t.key}-name`}>Name</Label>
+                    <Input id={`template-${t.key}-name`} value={t.name} maxLength={80} disabled={!admin} onChange={(e) => set({ name: e.target.value })} />
+                  </div>
+                  <div className="flex w-48 flex-col gap-1">
+                    <Label htmlFor={`template-${t.key}-action`}>Logs as</Label>
+                    <NativeSelect id={`template-${t.key}-action`} value={t.action} disabled={!admin} onChange={(e) => set({ action: e.target.value })}>
+                      {!actions.some((a) => a.key === t.action) && <option value={t.action}>Choose an action</option>}
+                      {actions.map((a) => (
+                        <option key={a.key} value={a.key}>
+                          {a.label || "Unnamed action"}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </div>
+                  {admin && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove ${t.name || "template"}`}
+                      onClick={() => {
+                        changed();
+                        setTemplates((xs) => xs.filter((_, j) => j !== i));
+                      }}
+                    >
+                      <Trash2 />
+                    </Button>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor={`template-${t.key}-subject`}>Subject</Label>
+                  <Input id={`template-${t.key}-subject`} value={t.subject} maxLength={300} disabled={!admin} onChange={(e) => set({ subject: e.target.value })} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor={`template-${t.key}-body`}>Message</Label>
+                  <Textarea
+                    id={`template-${t.key}-body`}
+                    value={t.body}
+                    maxLength={5000}
+                    rows={7}
+                    disabled={!admin}
+                    onChange={(e) => set({ body: e.target.value })}
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        {templates.length === 0 && <p className="text-muted-foreground">No templates. Pitches start from a blank message.</p>}
+        {admin && templates.length < 30 && (
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                changed();
+                setTemplates((xs) => [
+                  ...xs,
+                  { key: newKey("template", xs.map((x) => x.key)), name: "", action: actions[0]?.key ?? "", subject: "", body: "Hi {firstName},\n\n" },
+                ]);
+              }}
+            >
+              <Plus /> Add a template
             </Button>
           </div>
         )}
@@ -796,6 +933,7 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
     queryFn: async () => (await fetchList(sync, "contact", { organisation_id: organisationId, limit: 100 })).data,
   });
   const [editing, setEditing] = useState<Pitch | PitchKind | null>(null);
+  const [pitching, setPitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refresh = () => void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
   const remove = async (p: Pitch) => {
@@ -818,7 +956,10 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
           <p className="text-muted-foreground">What you have done and what they said.</p>
         </div>
         {canWrite && settings.data && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={!people.data} onClick={() => setPitching(true)}>
+              <Send /> Pitch
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setEditing("action")}>
               <Plus /> Log an action
             </Button>
@@ -855,6 +996,20 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
                   {[new Date(p.happened_at).toLocaleDateString(), channel(p.channel), p.contact_name].filter(Boolean).join(" · ")}
                 </span>
                 {p.note && <span className="break-words whitespace-pre-line">{p.note}</span>}
+                {p.message && (
+                  <span className="text-muted-foreground">
+                    {p.message.status === "failed" ? (
+                      <span className="text-destructive">Not sent.</span>
+                    ) : p.message.status === "sent" ? (
+                      "Sent from OnHold."
+                    ) : (
+                      "Sending…"
+                    )}{" "}
+                    <Link to="/inbox" search={{ thread: p.message.thread_id }} className="underline">
+                      Open the conversation
+                    </Link>
+                  </span>
+                )}
               </div>
               {canWrite && (
                 <span className="flex shrink-0">
@@ -874,6 +1029,19 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
         <Button variant="ghost" size="sm" className="self-start" disabled={log.isFetchingNextPage} onClick={() => void log.fetchNextPage()}>
           {log.isFetchingNextPage && <Spinner className="size-4" />} Show older ({total - entries.length} more)
         </Button>
+      )}
+      {pitching && settings.data && (
+        <PitchDialog
+          organisationId={organisationId}
+          settings={settings.data}
+          people={(people.data?.items ?? []).map(person)}
+          items={items}
+          onClose={() => setPitching(false)}
+          onLogged={() => {
+            setPitching(false);
+            refresh();
+          }}
+        />
       )}
       {editing && settings.data && (
         <LogDialog
@@ -895,6 +1063,352 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
 }
 
 const itemKey = (x: ItemRef | null) => (x ? `${x.kind}:${x.id}` : "");
+
+type Person = { id: string; name: string; email: string | null; phone: string | null };
+
+function person(c: RecordJson): Person {
+  return { id: String(c.id), name: String(c.name), email: ((c.emails as string[] | undefined) ?? [])[0] ?? null, phone: phonesOf(c)[0] ?? null };
+}
+
+/** The placeholders (of those `known`) still in a pitch, to fill in by hand. */
+export function unfilled(text: string, known: string[]): string[] {
+  const names = new Set(known);
+  return [...new Set([...text.matchAll(/\{([A-Za-z]+)\}/g)].map((m) => m[1] ?? "").filter((n) => names.has(n)))];
+}
+
+/** A pitch opened in the sender's own email app. */
+export function mailtoLink(to: string | null, subject: string, body: string): string {
+  const q = new URLSearchParams({ subject, body }).toString().replace(/\+/g, "%20");
+  return `mailto:${to ? encodeURIComponent(to).replace(/%40/g, "@") : ""}?${q}`;
+}
+
+/** A pitch opened in WhatsApp to an international number, or to pick a chat. */
+export function whatsappLink(phone: string | null, text: string): string {
+  const digits = phone?.startsWith("+") ? dialable(phone).replace(/\D/g, "") : "";
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}
+
+/** A pitch opened as a text message (`?&body=` works on iPhones and Android alike). */
+export function smsLink(phone: string | null, text: string): string {
+  return `sms:${phone ? dialable(phone) : ""}?&body=${encodeURIComponent(text)}`;
+}
+
+type Way = "mail_app" | "copy" | "text" | "whatsapp";
+const WAY_CHANNEL: Record<Way, PitchChannel | ""> = { mail_app: "email", copy: "", text: "text", whatsapp: "whatsapp" };
+
+/**
+ * Pitching someone: a template filled in for them and what is pitched,
+ * changed as need be, then sent from OnHold (logged by itself), or opened
+ * in their email app, copied, or opened as a text or WhatsApp, and logged
+ * with one tap once sent.
+ */
+function PitchDialog({
+  organisationId,
+  settings,
+  people,
+  items,
+  onClose,
+  onLogged,
+}: {
+  organisationId: string;
+  settings: View;
+  people: Person[];
+  items: ItemRef[];
+  onClose: () => void;
+  onLogged: () => void;
+}) {
+  const setup = useSetup();
+  const qc = useQueryClient();
+  const templates = settings.templates ?? [];
+  const me = useQuery({ queryKey: ["pitching-me"], queryFn: () => ok(api.GET("/api/v1/pitching/me")) });
+  const [contact, setContact] = useState(() => (people.find((p) => p.email) ?? people[0])?.id ?? "");
+  const [item, setItem] = useState<ItemRef | null>(items[0] ?? null);
+  const [template, setTemplate] = useState(templates[0]?.key ?? "");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // After it was opened elsewhere or copied: how, to log it once sent.
+  const [asked, setAsked] = useState<Way | null>(null);
+  const [askedChannel, setAskedChannel] = useState<PitchChannel | "">("");
+  const who = people.find((p) => p.id === contact) ?? null;
+  const chosen = templates.find((t) => t.key === template) ?? null;
+  // What it logs: the template's action, or the workspace's first.
+  const action = chosen?.action ?? settings.actions?.[0]?.key ?? "";
+  const choices = item && !items.some((x) => itemKey(x) === itemKey(item)) ? [item, ...items] : items;
+
+  const draft = useQuery({
+    queryKey: ["pitch-draft", organisationId, template, contact, itemKey(item)],
+    enabled: template !== "",
+    // Fetched again only when who, what or the template changes, so edits
+    // stay; and dropped once the dialog closes, so the next one is fresh.
+    staleTime: Infinity,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+    queryFn: () =>
+      ok(
+        api.POST("/api/v1/organisations/{id}/pitches/draft", {
+          params: { path: { id: organisationId } },
+          body: { template_key: template, contact_id: contact || null, item: item ? { kind: item.kind, id: item.id } : null },
+        }),
+      ),
+  });
+  // A new draft replaces the words; changing who or what rewrites it.
+  const [drafted, setDrafted] = useState<unknown>(null);
+  if (draft.data && draft.data !== drafted) {
+    setDrafted(draft.data);
+    setSubject(draft.data.subject);
+    setBody(draft.data.body);
+  }
+
+  const usual: SendWith = me.data?.send_with ?? me.data?.workspace_send_with ?? settings.send_with ?? "onhold";
+  const left = unfilled(`${subject}\n${body}`, (settings.placeholders ?? []).map((p) => p.name));
+  const text = subject ? `${subject}\n\n${body}` : body;
+  const ready = body.trim() !== "" && !draft.isFetching;
+
+  const send = async () => {
+    if (!who) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await ok(
+        api.POST("/api/v1/pitches/send", {
+          body: {
+            organisation_id: organisationId,
+            contact_id: who.id,
+            item: item ? { kind: item.kind, id: item.id } : null,
+            template_key: template || null,
+            type_key: action,
+            subject,
+            body,
+          },
+        }),
+      );
+      // It shows among the organisation's and the person's conversations.
+      void qc.invalidateQueries({ queryKey: ["threads"] });
+      onLogged();
+    } catch (e) {
+      setError(failure(e));
+      setBusy(false);
+    }
+  };
+  const elsewhere = async (way: Way) => {
+    setError(null);
+    try {
+      if (way === "copy") {
+        if (!navigator.clipboard) throw new Error("This browser can't copy here. Select the words and copy them instead.");
+        await navigator.clipboard.writeText(text);
+      } else {
+        await openInBrowser(
+          way === "mail_app" ? mailtoLink(who?.email ?? null, subject, body) : way === "text" ? smsLink(who?.phone ?? null, text) : whatsappLink(who?.phone ?? null, text),
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : "That didn't work. Copy the words instead.");
+      return;
+    }
+    setAsked(way);
+    setAskedChannel(WAY_CHANNEL[way]);
+  };
+  const logIt = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await ok(
+        api.POST("/api/v1/pitches", {
+          body: {
+            organisation_id: organisationId,
+            contact_id: contact || null,
+            kind: "action",
+            type_key: action,
+            channel: askedChannel || null,
+            item: item ? { kind: item.kind, id: item.id } : null,
+            template_key: template || null,
+            note: subject.trim().slice(0, 2000) || null,
+          },
+        }),
+      );
+      onLogged();
+    } catch (e) {
+      setError(failure(e));
+      setBusy(false);
+    }
+  };
+  const setUsual = async (v: SendWith | "") => {
+    try {
+      const after = await ok(api.PUT("/api/v1/pitching/me", { body: { send_with: v || null } }));
+      qc.setQueryData(["pitching-me"], after);
+    } catch (e) {
+      setError(failure(e));
+    }
+  };
+
+  const ways: { way: SendWith | Way; label: string; hidden?: boolean }[] = [
+    { way: "onhold", label: "Send from OnHold", hidden: !who?.email },
+    { way: "mail_app", label: "Open in my email app" },
+    { way: "copy", label: "Copy" },
+    { way: "text", label: "Text", hidden: !who?.phone },
+    { way: "whatsapp", label: "WhatsApp", hidden: !who?.phone },
+  ];
+  const go = (way: SendWith | Way) => (way === "onhold" ? void send() : void elsewhere(way));
+  const primary = ways.find((w) => w.way === usual && !w.hidden) ?? ways.find((w) => !w.hidden && w.way !== "onhold") ?? ways[1];
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title="Pitch">
+      <div className="flex flex-col gap-3 text-sm">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="pitch-contact">To</Label>
+            <NativeSelect id="pitch-contact" value={contact} onChange={(e) => setContact(e.target.value)}>
+              {people.length === 0 && <option value="">No one at this organisation yet</option>}
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.email ? ` (${p.email})` : ""}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="pitch-template">Template</Label>
+            <NativeSelect
+              id="pitch-template"
+              value={template}
+              onChange={(e) => {
+                setTemplate(e.target.value);
+                if (e.target.value === "") {
+                  setSubject("");
+                  setBody("");
+                  // Picking a template again fills it in again.
+                  setDrafted(null);
+                }
+              }}
+            >
+              {templates.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.name}
+                </option>
+              ))}
+              <option value="">A blank message</option>
+            </NativeSelect>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="pitch-item">What you pitch</Label>
+          {choices.length > 0 && (
+            <NativeSelect
+              id="pitch-item"
+              value={itemKey(item)}
+              onChange={(e) => setItem(choices.find((x) => itemKey(x) === e.target.value) ?? null)}
+            >
+              <option value="">Nothing in particular</option>
+              {choices.map((x) => (
+                <option key={itemKey(x)} value={itemKey(x)}>
+                  {x.name}
+                </option>
+              ))}
+            </NativeSelect>
+          )}
+          <RecordSearch
+            id={choices.length > 0 ? undefined : "pitch-item"}
+            entity="talent"
+            exclude={choices.filter((x) => x.kind === "talent").map((x) => x.id)}
+            placeholder={`Or find ${setup.word("crm", "talent", true).toLowerCase()}…`}
+            onPick={(p) => setItem({ kind: "talent", id: p.id, name: p.name })}
+          />
+        </div>
+        {draft.isError && <Alert>{draft.error.message}</Alert>}
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="pitch-subject">Subject</Label>
+          <Input id="pitch-subject" value={subject} maxLength={1000} onChange={(e) => setSubject(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="pitch-body">Message</Label>
+          <Textarea id="pitch-body" value={body} rows={10} onChange={(e) => setBody(e.target.value)} />
+          {draft.isFetching && <Spinner className="size-4" />}
+        </div>
+        {left.length > 0 && (
+          <Alert tone="info">
+            Fill in {left.map((n) => `{${n}}`).join(", ")} before it goes: there was nothing to fill {left.length === 1 ? "it" : "them"} with.
+          </Alert>
+        )}
+        {error && <Alert>{error}</Alert>}
+        {asked ? (
+          <div className="flex flex-col gap-2 rounded-md border bg-muted/40 p-3" role="status">
+            <span className="font-medium">Did you send it?</span>
+            {asked === "copy" && (
+              <NativeSelect aria-label="How you sent it" value={askedChannel} onChange={(e) => setAskedChannel(e.target.value as PitchChannel | "")}>
+                <option value="">How you sent it (optional)</option>
+                {CHANNELS.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" disabled={busy} onClick={() => void logIt()}>
+                {busy && <Spinner className="size-4" />} Yes, log it
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setAsked(null)}>
+                Not yet
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              {primary && (
+                <Button
+                  disabled={busy || !ready || (primary.way === "onhold" && left.length > 0)}
+                  onClick={() => go(primary.way)}
+                >
+                  {busy && <Spinner className="size-4" />} {primary.way === "onhold" ? "Send" : primary.label}
+                </Button>
+              )}
+              {ways
+                .filter((w) => !w.hidden && w !== primary)
+                .map((w) => (
+                  <Button
+                    key={w.way}
+                    variant="outline"
+                    disabled={busy || !ready || (w.way === "onhold" && left.length > 0)}
+                    onClick={() => go(w.way)}
+                  >
+                    {w.label}
+                  </Button>
+                ))}
+            </div>
+            {primary?.way === "onhold" && (
+              <p className="text-muted-foreground">
+                {me.data?.mailbox
+                  ? `Sent from ${me.data.mailbox}, then logged here; answers arrive in the inbox.`
+                  : "Sent by OnHold in your workspace's name, then logged here. Answers go to your own email; connect it under Email accounts to see them in OnHold."}
+              </p>
+            )}
+            {!who?.email && people.length > 0 && <p className="text-muted-foreground">They have no email address, so it cannot be sent from OnHold.</p>}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+          <label className="flex items-center gap-2 text-muted-foreground">
+            Usually I
+            <NativeSelect aria-label="How you usually pitch" className="w-60" value={me.data?.send_with ?? ""} onChange={(e) => void setUsual(e.target.value as SendWith | "")}>
+              <option value="">Do as the workspace does</option>
+              {SEND_WITH.map((w) => (
+                <option key={w.value} value={w.value}>
+                  {w.label}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <Button variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
 
 function LogDialog({
   organisationId,

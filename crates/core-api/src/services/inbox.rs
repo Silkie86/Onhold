@@ -1013,6 +1013,36 @@ pub async fn reply(state: &AppState, ctx: &Ctx, id: Uuid, r: Reply) -> ApiResult
 pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<ThreadDetail> {
     ctx.authorize(Permission::InboxWrite)?;
     let mut tx = begin(state, ctx).await?;
+    let (id, _) = compose_in(state, &mut tx, ctx, c).await?;
+    let t = load(&mut tx, ctx, id).await?;
+    let d = detail(state, &mut tx, t).await?;
+    tx.commit().await?;
+    Ok(d)
+}
+
+/// The mailbox a member's mail goes from when they pick none: their own,
+/// if they connected exactly one that works.
+pub(crate) async fn own_mailbox(tx: &mut core_db::Tx, ctx: &Ctx) -> ApiResult<Option<Integration>> {
+    let own: Vec<Integration> = core_db::integrations::list(tx, viewer(ctx))
+        .await?
+        .into_iter()
+        .filter(|i| {
+            Some(i.owner_id) == ctx.user_id()
+                && i.status != "reconnect"
+                && i.purposes.iter().any(|p| p == "mail")
+        })
+        .collect();
+    Ok((own.len() == 1).then(|| own.into_iter().next()).flatten())
+}
+
+/// Starts a thread with a message to send, in the caller's transaction;
+/// returns the thread and the message. The caller checks `InboxWrite`.
+pub(crate) async fn compose_in(
+    state: &AppState,
+    tx: &mut core_db::Tx,
+    ctx: &Ctx,
+    c: Compose,
+) -> ApiResult<(Uuid, MessageView)> {
     let mailbox = match (c.integration_id, c.from_onhold) {
         (Some(_), true) => {
             return Err(ApiError::invalid(
@@ -1020,26 +1050,14 @@ pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<Threa
                 "choose a mailbox or OnHold, not both",
             ));
         }
-        (Some(id), false) => Some(sending_mailbox(&mut tx, ctx, id).await?.ok_or_else(|| {
+        (Some(id), false) => Some(sending_mailbox(tx, ctx, id).await?.ok_or_else(|| {
             ApiError::invalid(
                 "integration_id",
                 "that mailbox is not connected, or needs connecting again",
             )
         })?),
         (None, true) => None,
-        // The sender's own mailbox, if they connected exactly one that works.
-        (None, false) => {
-            let own: Vec<Integration> = core_db::integrations::list(&mut tx, viewer(ctx))
-                .await?
-                .into_iter()
-                .filter(|i| {
-                    Some(i.owner_id) == ctx.user_id()
-                        && i.status != "reconnect"
-                        && i.purposes.iter().any(|p| p == "mail")
-                })
-                .collect();
-            (own.len() == 1).then(|| own.into_iter().next()).flatten()
-        }
+        (None, false) => own_mailbox(tx, ctx).await?,
     };
     let mut check = Check::default();
     let to = clean_addresses("to", &c.to, &mut check);
@@ -1068,19 +1086,19 @@ pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<Threa
         enquiry_id: c.enquiry_id,
         booking_id: c.booking_id,
     };
-    check_links(&mut tx, ctx, &mut check, &patch, &mut links).await?;
+    check_links(tx, ctx, &mut check, &patch, &mut links).await?;
     if links.contact_id.is_none()
-        && let Some((contact, org)) = core_db::inbox::contact_for(&mut tx, &to).await?
+        && let Some((contact, org)) = core_db::inbox::contact_for(tx, &to).await?
     {
         links.contact_id = Some(contact);
         links.organisation_id = org;
     }
     check.finish()?;
     let attachments =
-        check_attachments(&mut tx, ctx, &c.attachments, send_limit(mailbox.as_ref())).await?;
+        check_attachments(tx, ctx, &c.attachments, send_limit(mailbox.as_ref())).await?;
     let mut written = write_body(
         state,
-        &mut tx,
+        tx,
         ctx,
         c.body.as_deref(),
         c.template_key.as_deref(),
@@ -1088,7 +1106,7 @@ pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<Threa
     )
     .await?;
     if c.signature
-        && let Some(sig) = core_db::signatures::for_sender(&mut tx, ctx.user_id()).await?
+        && let Some(sig) = core_db::signatures::for_sender(tx, ctx.user_id()).await?
     {
         super::signatures::append(&mut written.text, &mut written.html, &sig);
     }
@@ -1108,7 +1126,7 @@ pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<Threa
     }
     let id = core_domain::ids::new_id();
     core_db::inbox::insert(
-        &mut tx,
+        tx,
         NewThread {
             id,
             integration_id: mailbox.as_ref().map(|m| m.id),
@@ -1124,11 +1142,11 @@ pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<Threa
         },
     )
     .await?;
-    let thread = core_db::inbox::get(&mut tx, id, None)
+    let thread = core_db::inbox::get(tx, id, None)
         .await?
         .ok_or(ApiError::NotFound)?;
     record(
-        &mut tx,
+        tx,
         ctx,
         Change {
             topic: "thread.created",
@@ -1140,9 +1158,9 @@ pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<Threa
         },
     )
     .await?;
-    queue_outbound(
+    let message = queue_outbound(
         state,
-        &mut tx,
+        tx,
         ctx,
         &thread,
         mailbox.as_ref(),
@@ -1158,10 +1176,7 @@ pub async fn compose(state: &AppState, ctx: &Ctx, c: Compose) -> ApiResult<Threa
         },
     )
     .await?;
-    let t = load(&mut tx, ctx, id).await?;
-    let d = detail(state, &mut tx, t).await?;
-    tx.commit().await?;
-    Ok(d)
+    Ok((id, message))
 }
 
 struct Outbound {

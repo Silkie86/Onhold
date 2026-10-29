@@ -23,6 +23,12 @@ pub struct Entry {
     pub note: Option<String>,
     pub happened_at: DateTime<Utc>,
     pub source: String,
+    pub template_key: Option<String>,
+    /// For a pitch sent from OnHold: the message, its thread and where
+    /// sending it has got to.
+    pub message_id: Option<Uuid>,
+    pub thread_id: Option<Uuid>,
+    pub message_status: Option<String>,
     pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -40,7 +46,8 @@ pub async fn list(
     let rows = sqlx::query!(
         r#"SELECT p.id, p.organisation_id, p.contact_id, c.name AS "contact_name?", p.kind, p.type_key,
                   p.channel, p.talent_id, p.project_id, coalesce(t.name, pr.name) AS item_name, p.note,
-                  p.happened_at, p.source, p.version, p.created_at, p.updated_at,
+                  p.happened_at, p.source, p.template_key, p.message_id, m.thread_id AS "thread_id?",
+                  m.status AS "message_status?", p.version, p.created_at, p.updated_at,
                   p.created_by AS "created_by: UserId", p.updated_by AS "updated_by: UserId",
                   count(*) OVER () AS "total!"
            FROM pitch_log p
@@ -48,6 +55,7 @@ pub async fn list(
            LEFT JOIN talent t ON t.workspace_id = p.workspace_id AND t.id = p.talent_id AND t.deleted_at IS NULL
            LEFT JOIN projects pr ON pr.workspace_id = p.workspace_id AND pr.id = p.project_id
                                 AND pr.deleted_at IS NULL
+           LEFT JOIN thread_messages m ON m.workspace_id = p.workspace_id AND m.id = p.message_id
            WHERE p.workspace_id = app_workspace_id() AND p.organisation_id = $1 AND p.deleted_at IS NULL
            ORDER BY p.happened_at DESC, p.id DESC
            OFFSET $2 LIMIT $3"#,
@@ -74,6 +82,10 @@ pub async fn list(
             note: r.note,
             happened_at: r.happened_at,
             source: r.source,
+            template_key: r.template_key,
+            message_id: r.message_id,
+            thread_id: r.thread_id,
+            message_status: r.message_status,
             version: r.version,
             created_at: r.created_at,
             updated_at: r.updated_at,
@@ -89,13 +101,15 @@ pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<Entry>> {
         Entry,
         r#"SELECT p.id, p.organisation_id, p.contact_id, c.name AS "contact_name?", p.kind, p.type_key,
                   p.channel, p.talent_id, p.project_id, coalesce(t.name, pr.name) AS item_name, p.note,
-                  p.happened_at, p.source, p.version, p.created_at, p.updated_at,
+                  p.happened_at, p.source, p.template_key, p.message_id, m.thread_id AS "thread_id?",
+                  m.status AS "message_status?", p.version, p.created_at, p.updated_at,
                   p.created_by AS "created_by: UserId", p.updated_by AS "updated_by: UserId"
            FROM pitch_log p
            LEFT JOIN contacts c ON c.workspace_id = p.workspace_id AND c.id = p.contact_id AND c.deleted_at IS NULL
            LEFT JOIN talent t ON t.workspace_id = p.workspace_id AND t.id = p.talent_id AND t.deleted_at IS NULL
            LEFT JOIN projects pr ON pr.workspace_id = p.workspace_id AND pr.id = p.project_id
                                 AND pr.deleted_at IS NULL
+           LEFT JOIN thread_messages m ON m.workspace_id = p.workspace_id AND m.id = p.message_id
            WHERE p.workspace_id = app_workspace_id() AND p.id = $1 AND p.deleted_at IS NULL"#,
         id
     )
@@ -125,18 +139,23 @@ pub struct Values<'a> {
     pub project_id: Option<Uuid>,
     pub note: Option<&'a str>,
     pub happened_at: DateTime<Utc>,
+    pub template_key: Option<&'a str>,
 }
 
+/// A new entry; `message` is the message it was sent as, if sent from here.
 pub async fn insert(
     conn: &mut PgConnection,
     id: Uuid,
     v: Values<'_>,
+    message: Option<Uuid>,
     by: Option<UserId>,
 ) -> Result<()> {
     sqlx::query!(
         r#"INSERT INTO pitch_log (id, workspace_id, organisation_id, contact_id, kind, type_key, channel,
-                                  talent_id, project_id, note, happened_at, created_by, updated_by)
-           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)"#,
+                                  talent_id, project_id, note, happened_at, template_key, message_id, source,
+                                  created_by, updated_by)
+           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                   CASE WHEN $12::uuid IS NULL THEN 'manual' ELSE 'sent' END, $13, $13)"#,
         id,
         v.organisation_id,
         v.contact_id,
@@ -147,6 +166,8 @@ pub async fn insert(
         v.project_id,
         v.note,
         v.happened_at,
+        v.template_key,
+        message,
         by.map(|u| u.0)
     )
     .execute(conn)
@@ -154,7 +175,8 @@ pub async fn insert(
     Ok(())
 }
 
-/// Everything but the organisation and the kind, which an entry keeps.
+/// Everything but the organisation, the kind and how it came to be logged,
+/// which an entry keeps.
 pub async fn update(
     conn: &mut PgConnection,
     id: Uuid,
@@ -163,7 +185,7 @@ pub async fn update(
 ) -> Result<()> {
     sqlx::query!(
         r#"UPDATE pitch_log SET contact_id = $2, type_key = $3, channel = $4, talent_id = $5, project_id = $6,
-                  note = $7, happened_at = $8, updated_by = $9
+                  note = $7, happened_at = $8, template_key = $9, updated_by = $10
            WHERE workspace_id = app_workspace_id() AND id = $1"#,
         id,
         v.contact_id,
@@ -173,6 +195,7 @@ pub async fn update(
         v.project_id,
         v.note,
         v.happened_at,
+        v.template_key,
         by.map(|u| u.0)
     )
     .execute(conn)
