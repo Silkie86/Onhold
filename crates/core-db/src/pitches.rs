@@ -1,7 +1,7 @@
 //! The pitch log: what was done to win an organisation over, and the
 //! answers it gave.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use core_domain::UserId;
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -360,4 +360,101 @@ pub async fn not_a_pitch(conn: &mut PgConnection, message: Uuid, by: Option<User
     .execute(conn)
     .await?;
     Ok(())
+}
+
+/// An organisation's actions since its last answer: how many, the latest,
+/// whether an answer to any came in, and who and what the latest were about.
+#[derive(Debug, Clone)]
+pub struct Run {
+    pub organisation_id: Uuid,
+    pub organisation_name: String,
+    pub actions: i64,
+    pub last_at: DateTime<Utc>,
+    pub answered: bool,
+    pub contact_id: Option<Uuid>,
+    pub contact_name: Option<String>,
+    pub talent_id: Option<Uuid>,
+    pub project_id: Option<Uuid>,
+    pub item_name: Option<String>,
+}
+
+/// Each organisation's run of actions since its last logged answer (all
+/// organisations, or one), leaving out those marked do not contact and
+/// runs that ended before `since`.
+pub async fn runs(
+    conn: &mut PgConnection,
+    organisation: Option<Uuid>,
+    since: DateTime<Utc>,
+) -> Result<Vec<Run>> {
+    Ok(sqlx::query_as!(
+        Run,
+        r#"WITH last_answer AS (
+               SELECT organisation_id, max(happened_at) AS at FROM pitch_log
+               WHERE workspace_id = app_workspace_id() AND kind = 'outcome' AND deleted_at IS NULL
+                 AND ($1::uuid IS NULL OR organisation_id = $1)
+               GROUP BY organisation_id
+           ), run AS (
+               SELECT p.organisation_id, count(*) AS actions, max(p.happened_at) AS last_at,
+                      bool_or(p.answered_at IS NOT NULL) AS answered,
+                      (array_agg(p.contact_id ORDER BY p.happened_at DESC, p.id DESC)
+                          FILTER (WHERE p.contact_id IS NOT NULL))[1] AS contact_id,
+                      (array_agg(p.talent_id ORDER BY p.happened_at DESC, p.id DESC)
+                          FILTER (WHERE p.talent_id IS NOT NULL OR p.project_id IS NOT NULL))[1] AS talent_id,
+                      (array_agg(p.project_id ORDER BY p.happened_at DESC, p.id DESC)
+                          FILTER (WHERE p.talent_id IS NOT NULL OR p.project_id IS NOT NULL))[1] AS project_id
+               FROM pitch_log p
+               LEFT JOIN last_answer a ON a.organisation_id = p.organisation_id
+               WHERE p.workspace_id = app_workspace_id() AND p.kind = 'action' AND p.deleted_at IS NULL
+                 AND ($1::uuid IS NULL OR p.organisation_id = $1)
+                 AND (a.at IS NULL OR p.happened_at > a.at)
+               GROUP BY p.organisation_id
+           )
+           SELECT r.organisation_id AS "organisation_id!", o.name AS organisation_name,
+                  r.actions AS "actions!", r.last_at AS "last_at!", r.answered AS "answered!",
+                  r.contact_id, c.name AS "contact_name?", r.talent_id, r.project_id,
+                  coalesce(t.name, pr.name) AS item_name
+           FROM run r
+           JOIN organisations o ON o.workspace_id = app_workspace_id() AND o.id = r.organisation_id
+                               AND o.deleted_at IS NULL AND NOT o.do_not_contact
+           LEFT JOIN contacts c ON c.workspace_id = o.workspace_id AND c.id = r.contact_id AND c.deleted_at IS NULL
+           LEFT JOIN talent t ON t.workspace_id = o.workspace_id AND t.id = r.talent_id AND t.deleted_at IS NULL
+           LEFT JOIN projects pr ON pr.workspace_id = o.workspace_id AND pr.id = r.project_id
+                                AND pr.deleted_at IS NULL
+           WHERE r.last_at >= $2
+           ORDER BY r.last_at, r.organisation_id"#,
+        organisation,
+        since
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
+/// An organisation with a follow-up date set by hand.
+#[derive(Debug, Clone)]
+pub struct Dated {
+    pub organisation_id: Uuid,
+    pub organisation_name: String,
+    pub follow_up_on: NaiveDate,
+}
+
+/// Organisations to follow up on or before `until` (all, or one), by the
+/// date set on them, leaving out those marked do not contact.
+pub async fn dated(
+    conn: &mut PgConnection,
+    organisation: Option<Uuid>,
+    until: NaiveDate,
+) -> Result<Vec<Dated>> {
+    Ok(sqlx::query_as!(
+        Dated,
+        r#"SELECT id AS organisation_id, name AS organisation_name, follow_up_on AS "follow_up_on!"
+           FROM organisations
+           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL AND NOT do_not_contact
+             AND follow_up_on IS NOT NULL AND follow_up_on <= $2
+             AND ($1::uuid IS NULL OR id = $1)
+           ORDER BY follow_up_on, id"#,
+        organisation,
+        until
+    )
+    .fetch_all(conn)
+    .await?)
 }

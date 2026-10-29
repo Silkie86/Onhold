@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 use utoipa::ToSchema;
 
 use super::crm::Check;
+use super::pitches::PitchChannel;
 use super::{Change, begin, check_version, record};
 use crate::AppState;
 use crate::error::ApiResult;
@@ -30,6 +31,8 @@ pub const MAX_ACTIONS: usize = 20;
 pub const MAX_TEMPLATES: usize = 30;
 pub const MAX_TEMPLATE_SUBJECT: usize = 300;
 pub const MAX_TEMPLATE_BODY: usize = 5000;
+pub const MAX_FOLLOW_UPS: usize = 10;
+pub const MAX_FOLLOW_UP_DAYS: i32 = 365;
 
 /// A part of the world, by the countries in it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -144,6 +147,20 @@ pub struct PitchTemplate {
     pub body: String,
 }
 
+/// One follow-up after a pitch nobody has answered: so many days after the
+/// last thing done, done this way. With a template it is a message to send;
+/// without, a reminder (to ring them, say).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct FollowUpStep {
+    /// Days after the last action, 1 to 365.
+    pub after_days: i32,
+    pub channel: PitchChannel,
+    /// What doing it logs, a key from the workspace's actions.
+    pub action: String,
+    /// The pitch template to send, if it is a message.
+    pub template_key: Option<String>,
+}
+
 /// How a pitch is usually sent: from OnHold through the member's mailbox
 /// (so it and the answers are logged by themselves), by opening it in
 /// their own email app, or by copying it to paste anywhere.
@@ -189,6 +206,14 @@ pub struct PitchingSettings {
     /// How members send a pitch unless they pick otherwise.
     #[serde(default = "default_send_with")]
     pub send_with: PitchSendWith,
+    /// The follow-ups after a pitch with no answer, in order. An answer
+    /// stops them.
+    #[serde(default = "default_follow_ups")]
+    pub follow_ups: Vec<FollowUpStep>,
+    /// Days after the last follow-up before asking to log what came of it;
+    /// 0 never asks.
+    #[serde(default = "default_give_up_days")]
+    pub give_up_after_days: i32,
 }
 
 /// New settings. A list left out keeps what is stored, so a client from
@@ -202,6 +227,8 @@ pub struct PitchingSettingsInput {
     pub actions: Option<Vec<PitchAction>>,
     pub templates: Option<Vec<PitchTemplate>>,
     pub send_with: Option<PitchSendWith>,
+    pub follow_ups: Option<Vec<FollowUpStep>>,
+    pub give_up_after_days: Option<i32>,
 }
 
 impl PitchingSettingsInput {
@@ -213,6 +240,12 @@ impl PitchingSettingsInput {
             kept.retain(|t| actions.iter().any(|a| a.key == t.action));
             kept
         });
+        // And stored follow-ups with any action or template no longer there.
+        let follow_ups = self.follow_ups.unwrap_or_else(|| {
+            let mut kept = stored.follow_ups;
+            settle_follow_ups(&mut kept, &actions, &templates);
+            kept
+        });
         PitchingSettings {
             regions: self.regions.unwrap_or(stored.regions),
             statuses: self.statuses.unwrap_or(stored.statuses),
@@ -221,6 +254,8 @@ impl PitchingSettingsInput {
             actions,
             templates,
             send_with: self.send_with.unwrap_or(stored.send_with),
+            follow_ups,
+            give_up_after_days: self.give_up_after_days.unwrap_or(stored.give_up_after_days),
         }
     }
 }
@@ -235,6 +270,8 @@ impl Default for PitchingSettings {
             actions: default_actions(),
             templates: default_templates(),
             send_with: default_send_with(),
+            follow_ups: default_follow_ups(),
+            give_up_after_days: default_give_up_days(),
         }
     }
 }
@@ -344,6 +381,46 @@ fn default_templates() -> Vec<PitchTemplate> {
 
 fn default_send_with() -> PitchSendWith {
     PitchSendWith::Onhold
+}
+
+/// An email a week on, then a call a week after that.
+fn default_follow_ups() -> Vec<FollowUpStep> {
+    vec![
+        FollowUpStep {
+            after_days: 7,
+            channel: PitchChannel::Email,
+            action: "followed_up".into(),
+            template_key: Some("follow_up".into()),
+        },
+        FollowUpStep {
+            after_days: 7,
+            channel: PitchChannel::Phone,
+            action: "called".into(),
+            template_key: None,
+        },
+    ]
+}
+
+fn default_give_up_days() -> i32 {
+    14
+}
+
+/// Drops follow-ups logging an action no longer listed, and lets one whose
+/// template is gone become a reminder.
+fn settle_follow_ups(
+    steps: &mut Vec<FollowUpStep>,
+    actions: &[PitchAction],
+    templates: &[PitchTemplate],
+) {
+    steps.retain(|s| actions.iter().any(|a| a.key == s.action));
+    for s in steps {
+        if s.template_key
+            .as_ref()
+            .is_some_and(|k| !templates.iter().any(|t| &t.key == k))
+        {
+            s.template_key = None;
+        }
+    }
 }
 
 impl PitchingSettings {
@@ -542,6 +619,55 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
             body,
         });
     }
+    if input.follow_ups.len() > MAX_FOLLOW_UPS {
+        check.issue(
+            "follow_ups",
+            format!("give at most {MAX_FOLLOW_UPS} follow-ups"),
+        );
+    }
+    let mut follow_ups: Vec<FollowUpStep> = Vec::new();
+    for (i, f) in input.follow_ups.iter().enumerate() {
+        if !(1..=MAX_FOLLOW_UP_DAYS).contains(&f.after_days) {
+            check.issue(
+                format!("follow_ups[{i}].after_days"),
+                format!("give 1 to {MAX_FOLLOW_UP_DAYS} days"),
+            );
+        }
+        let action = f.action.trim().to_owned();
+        if !actions.iter().any(|a| a.key == action) {
+            check.issue(
+                format!("follow_ups[{i}].action"),
+                "is not one of the workspace's actions",
+            );
+        }
+        let template_key = f
+            .template_key
+            .as_deref()
+            .map(str::trim)
+            .filter(|k| !k.is_empty())
+            .map(str::to_owned);
+        if template_key
+            .as_ref()
+            .is_some_and(|k| !templates.iter().any(|t| &t.key == k))
+        {
+            check.issue(
+                format!("follow_ups[{i}].template_key"),
+                "is not one of the workspace's pitch templates",
+            );
+        }
+        follow_ups.push(FollowUpStep {
+            after_days: f.after_days,
+            channel: f.channel,
+            action,
+            template_key,
+        });
+    }
+    if !(0..=MAX_FOLLOW_UP_DAYS).contains(&input.give_up_after_days) {
+        check.issue(
+            "give_up_after_days",
+            format!("give 0 to {MAX_FOLLOW_UP_DAYS} days"),
+        );
+    }
     check.finish()?;
     Ok(PitchingSettings {
         regions,
@@ -551,6 +677,8 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
         actions,
         templates,
         send_with: input.send_with,
+        follow_ups,
+        give_up_after_days: input.give_up_after_days,
     })
 }
 
@@ -569,6 +697,11 @@ pub(crate) async fn settings_in(tx: &mut Tx) -> ApiResult<(PitchingSettings, i64
             settings
                 .templates
                 .retain(|t| actions.iter().any(|a| a.key == t.action));
+            settle_follow_ups(
+                &mut settings.follow_ups,
+                &settings.actions,
+                &settings.templates,
+            );
             (settings, row.version)
         }
         None => (PitchingSettings::default(), 0),

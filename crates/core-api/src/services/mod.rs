@@ -33,6 +33,7 @@ pub mod organisations;
 pub mod payments;
 pub mod pdf_imports;
 pub mod pipelines;
+pub mod pitch_follow_ups;
 pub mod pitch_sending;
 pub mod pitches;
 pub mod pitching;

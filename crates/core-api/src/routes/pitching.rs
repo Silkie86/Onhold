@@ -15,6 +15,7 @@ use super::{IdempotencyHeader, IfMatchHeader, WorkspaceHeader, with_etag};
 use crate::AppState;
 use crate::error::{ApiResult, ErrorBody};
 use crate::extract::{IfMatch, WsCtx};
+use crate::services::pitch_follow_ups::{self, DueFollowUp, FollowUpFilter};
 use crate::services::pitch_sending::{
     self, PitchDraft, PitchDraftRequest, PitchSend, PitchingMe, PitchingMePatch,
 };
@@ -27,6 +28,7 @@ pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(get_settings, update_settings))
         .routes(routes!(list_pitches))
+        .routes(routes!(follow_ups_due))
         .routes(routes!(log_pitch))
         .routes(routes!(update_pitch, delete_pitch))
         .routes(routes!(draft_pitch))
@@ -62,6 +64,23 @@ async fn update_settings(
 ) -> ApiResult<Response> {
     let v = pitching::update(&state, &ctx, b, if_match).await?;
     Ok(with_etag(v.version, v))
+}
+
+/// Follow-ups due by today (or a few days ahead), soonest first: the
+/// workspace's follow-up steps after pitches with no answer, asking what
+/// came of one once its steps are done, and follow-up dates set by hand.
+/// With `organisation_id`, that organisation's next, however far off.
+#[utoipa::path(get, path = "/pitching/follow-ups", tag = "pitching",
+    params(WorkspaceHeader, FollowUpFilter),
+    responses((status = 200, body = Vec<DueFollowUp>), (status = 400, body = ErrorBody),
+        (status = 403, body = ErrorBody), (status = 404, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn follow_ups_due(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Query(f): Query<FollowUpFilter>,
+) -> ApiResult<Json<Vec<DueFollowUp>>> {
+    Ok(Json(pitch_follow_ups::due(&state, &ctx, &f).await?))
 }
 
 /// An organisation's pitch log, latest first.
