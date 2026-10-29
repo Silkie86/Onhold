@@ -24,7 +24,7 @@ import {
 import { Pencil, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
-import { fetchList, useOffline } from "../data.ts";
+import { fetchList, fetchRecord, updateRecord, useOffline } from "../data.ts";
 import { dialable, phonesOf } from "../phones.ts";
 import { openInBrowser } from "../platform.ts";
 import { useSession } from "../session.tsx";
@@ -220,8 +220,10 @@ function SettingsForm({
       );
       onSaved();
       qc.setQueryData(["pitching-settings"], after);
-      // Region and status choices on organisations come from these.
+      // Region and status choices on organisations come from these, and
+      // what is due from the follow-ups.
       void qc.invalidateQueries({ queryKey: ["schema"] });
+      void qc.invalidateQueries({ queryKey: ["follow-ups"] });
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 412) setError("Someone else changed these while you were editing. Reload to see their changes.");
       else setError(failure(e));
@@ -1053,9 +1055,13 @@ export function uniqueItems(items: ItemRef[]): ItemRef[] {
   });
 }
 
-/** When a follow-up is due, from today. */
-export function dueLabel(dueOn: string, today: string): string {
-  const days = Math.round((Date.parse(`${dueOn}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+/** Who may log what is done: everyone but viewers and finance. */
+export function canPitch(role: string): boolean {
+  return role === "owner" || role === "admin" || role === "agent";
+}
+
+/** When a follow-up is due, from days after the workspace's today. */
+export function dueLabel(days: number): string {
   if (days === 0) return "Due today";
   if (days === -1) return "Due yesterday";
   if (days < 0) return `${-days} days overdue`;
@@ -1076,6 +1082,7 @@ export function dueWhat(d: Due, templates: PitchTemplate[]): string {
 /** Everything due to follow up, soonest first, with what to do about each. */
 export function FollowUpsDuePage() {
   const settings = usePitchingSettings();
+  const canWrite = canPitch(useSession().workspace.role);
   const [ahead, setAhead] = useState(0);
   const due = useQuery({
     queryKey: ["follow-ups", "due", ahead],
@@ -1107,7 +1114,7 @@ export function FollowUpsDuePage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {due.data.map((d) => (
-            <DueRow key={`${d.organisation_id}:${d.kind}`} due={d} settings={settings.data} />
+            <DueRow key={`${d.organisation_id}:${d.kind}`} due={d} settings={settings.data} canWrite={canWrite} />
           ))}
         </ul>
       )}
@@ -1115,7 +1122,7 @@ export function FollowUpsDuePage() {
   );
 }
 
-function DueRow({ due: d, settings }: { due: Due; settings: View | undefined }) {
+function DueRow({ due: d, settings, canWrite }: { due: Due; settings: View | undefined; canWrite: boolean }) {
   const qc = useQueryClient();
   const sync = useOffline();
   const [pitching, setPitching] = useState(false);
@@ -1126,18 +1133,20 @@ function DueRow({ due: d, settings }: { due: Due; settings: View | undefined }) 
     queryFn: async () => (await fetchList(sync, "contact", { organisation_id: d.organisation_id, limit: 100 })).data,
     enabled: pitching,
   });
-  const today = dayOf(new Date().toISOString());
-  const overdue = d.due_on < today;
-  const done = () => {
-    void qc.invalidateQueries({ queryKey: ["follow-ups"] });
-    void qc.invalidateQueries({ queryKey: ["pitches", d.organisation_id] });
-  };
+  // Waits for the list to come back without this row, so a second tap
+  // can't log it twice.
+  const done = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: ["follow-ups"] }),
+      qc.invalidateQueries({ queryKey: ["pitches", d.organisation_id] }),
+    ]);
   const run = async (call: () => Promise<unknown>) => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
       await call();
-      done();
+      await done();
     } catch (e) {
       setError(failure(e));
     } finally {
@@ -1149,6 +1158,7 @@ function DueRow({ due: d, settings }: { due: Due; settings: View | undefined }) 
     run(() =>
       ok(
         api.POST("/api/v1/pitches", {
+          params: { header: { "Idempotency-Key": crypto.randomUUID() } },
           body: {
             organisation_id: d.organisation_id,
             kind: "action",
@@ -1164,6 +1174,7 @@ function DueRow({ due: d, settings }: { due: Due; settings: View | undefined }) 
     run(() =>
       ok(
         api.POST("/api/v1/pitches", {
+          params: { header: { "Idempotency-Key": crypto.randomUUID() } },
           body: {
             organisation_id: d.organisation_id,
             kind: "outcome",
@@ -1177,14 +1188,10 @@ function DueRow({ due: d, settings }: { due: Due; settings: View | undefined }) 
   // A date set by hand, done: cleared.
   const clearDate = () =>
     run(async () => {
-      const org = await ok(api.GET("/api/v1/organisations/{id}", { params: { path: { id: d.organisation_id } } }));
-      await ok(
-        api.PATCH("/api/v1/organisations/{id}", {
-          params: { path: { id: d.organisation_id } },
-          headers: { "If-Match": `"${String((org as RecordJson).version)}"` },
-          body: { follow_up_on: null },
-        }),
-      );
+      const org = await fetchRecord(sync, "organisation", d.organisation_id);
+      const saved = await updateRecord(sync, "organisation", d.organisation_id, { follow_up_on: null }, Number(org.data.version ?? 0));
+      qc.setQueryData(["record", "organisation", d.organisation_id], { data: saved.record, offline: false });
+      void qc.invalidateQueries({ queryKey: ["list", "organisation"] });
     });
 
   return (
@@ -1201,43 +1208,50 @@ function DueRow({ due: d, settings }: { due: Due; settings: View | undefined }) 
               .join(" · ")}
           </span>
         </div>
-        <Badge className={overdue ? "text-destructive" : undefined}>{dueLabel(d.due_on, today)}</Badge>
+        <Badge className={d.due_in_days < 0 ? "text-destructive" : undefined}>{dueLabel(d.due_in_days)}</Badge>
       </div>
       {error && <Alert>{error}</Alert>}
-      <div className="flex flex-wrap items-center gap-2">
-        {d.kind === "step" && d.template_key && (
-          <Button size="sm" disabled={busy || !settings} onClick={() => setPitching(true)}>
-            <Send /> Write it
-          </Button>
-        )}
-        {d.kind === "step" && (
-          <Button size="sm" variant={d.template_key ? "outline" : "default"} disabled={busy} onClick={() => void logStep()}>
-            {d.template_key ? "I've sent it" : `Done: log "${d.action_label ?? "it"}"`}
-          </Button>
-        )}
-        {d.kind === "no_answer" &&
-          (settings?.outcomes ?? []).map((o) => (
-            <Button key={o.key} variant="outline" size="sm" disabled={busy} onClick={() => void logOutcome(o)}>
-              <StatusDot colour={TAG_COLOUR[o.tag]} label={o.label} />
+      {pitching && people.isError && <Alert>{people.error.message}</Alert>}
+      {canWrite && (
+        <div className="flex flex-wrap items-center gap-2">
+          {d.kind === "step" && d.template_key && (
+            <Button
+              size="sm"
+              disabled={busy || !settings || (pitching && people.isFetching)}
+              onClick={() => (pitching ? void people.refetch() : setPitching(true))}
+            >
+              {pitching && people.isFetching ? <Spinner /> : <Send />} Write it
             </Button>
-          ))}
-        {d.kind === "date" && (
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => void clearDate()}>
-            Done: clear the date
-          </Button>
-        )}
-      </div>
+          )}
+          {d.kind === "step" && (
+            <Button size="sm" variant={d.template_key ? "outline" : "default"} disabled={busy} onClick={() => void logStep()}>
+              {d.template_key ? "I've sent it" : `Done: log "${d.action_label ?? "it"}"`}
+            </Button>
+          )}
+          {d.kind === "no_answer" &&
+            (settings?.outcomes ?? []).map((o) => (
+              <Button key={o.key} variant="outline" size="sm" disabled={busy} onClick={() => void logOutcome(o)}>
+                <StatusDot colour={TAG_COLOUR[o.tag]} label={o.label} />
+              </Button>
+            ))}
+          {d.kind === "date" && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void clearDate()}>
+              Done: clear the date
+            </Button>
+          )}
+        </div>
+      )}
       {pitching && settings && people.data && (
         <PitchDialog
           organisationId={d.organisation_id}
           settings={settings}
           people={people.data.items.map(person)}
           items={d.item ? [d.item] : []}
-          initial={{ template: d.template_key ?? null, contact: d.contact_id ?? null, item: d.item ?? null }}
+          initial={{ template: d.template_key ?? null, action: d.action ?? null, contact: d.contact_id ?? null, item: d.item ?? null }}
           onClose={() => setPitching(false)}
           onLogged={() => {
             setPitching(false);
-            done();
+            void done();
           }}
         />
       )}
@@ -1359,7 +1373,7 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
       </div>
       {next.data?.map((d) => (
         <p key={d.kind} className="flex flex-wrap items-center gap-2 rounded-md bg-muted px-3 py-2">
-          <span className="font-medium">{dueLabel(d.due_on, dayOf(new Date().toISOString()))}:</span>
+          <span className="font-medium">{dueLabel(d.due_in_days)}:</span>
           <span>{dueWhat(d, settings.data?.templates ?? [])}</span>
           {canWrite && d.kind === "step" && d.template_key && settings.data && (
             <Button size="sm" variant="outline" disabled={!people.data} onClick={() => setPitching({ initial: d })}>
@@ -1461,6 +1475,7 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
           initial={
             pitching.initial && {
               template: pitching.initial.template_key ?? null,
+              action: pitching.initial.action ?? null,
               contact: pitching.initial.contact_id ?? null,
               item: pitching.initial.item ?? null,
             }
@@ -1638,8 +1653,8 @@ function PitchDialog({
   settings: View;
   people: Person[];
   items: ItemRef[];
-  /** A follow-up's template, person and item, to start from. */
-  initial?: { template: string | null; contact: string | null; item: ItemRef | null };
+  /** A follow-up's template, what it logs, person and item, to start from. */
+  initial?: { template: string | null; action: string | null; contact: string | null; item: ItemRef | null };
   onClose: () => void;
   onLogged: () => void;
 }) {
@@ -1661,8 +1676,9 @@ function PitchDialog({
   const [askedChannel, setAskedChannel] = useState<PitchChannel | "">("");
   const who = people.find((p) => p.id === contact) ?? null;
   const chosen = templates.find((t) => t.key === template) ?? null;
-  // What it logs: the template's action, or the workspace's first.
-  const action = chosen?.action ?? settings.actions?.[0]?.key ?? "";
+  // What it logs: the follow-up's action while its template is the one
+  // picked, else the template's, else the workspace's first.
+  const action = (initial?.action && template === initial.template ? initial.action : null) ?? chosen?.action ?? settings.actions?.[0]?.key ?? "";
   const choices = item && !items.some((x) => itemKey(x) === itemKey(item)) ? [item, ...items] : items;
 
   const draft = useQuery({

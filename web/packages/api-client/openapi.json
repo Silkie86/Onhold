@@ -31475,6 +31475,7 @@
           "organisation_name",
           "kind",
           "due_on",
+          "due_in_days",
           "steps"
         ],
         "properties": {
@@ -31514,6 +31515,11 @@
               "string",
               "null"
             ]
+          },
+          "due_in_days": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Days from the workspace's today: 0 today, less than 0 overdue."
           },
           "due_on": {
             "type": "string",

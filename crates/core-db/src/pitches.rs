@@ -463,19 +463,28 @@ pub async fn runs(
                           FILTER (WHERE p.talent_id IS NOT NULL OR p.project_id IS NOT NULL))[1] AS project_id
                FROM pitch_log p
                LEFT JOIN last_answer a ON a.organisation_id = p.organisation_id
+               LEFT JOIN thread_messages m ON m.workspace_id = p.workspace_id AND m.id = p.message_id
                WHERE p.workspace_id = app_workspace_id() AND p.kind = 'action' AND p.deleted_at IS NULL
                  AND ($1::uuid IS NULL OR p.organisation_id = $1)
                  AND (a.at IS NULL OR p.happened_at > a.at)
+                 -- A pitch OnHold failed to send wasn't done.
+                 AND m.status IS DISTINCT FROM 'failed'
+                 -- Only organisations with something done lately.
+                 AND p.organisation_id IN (SELECT organisation_id FROM pitch_log
+                                           WHERE workspace_id = app_workspace_id() AND kind = 'action'
+                                             AND deleted_at IS NULL AND happened_at >= $2)
                GROUP BY p.organisation_id
            )
            SELECT r.organisation_id AS "organisation_id!", o.name AS organisation_name,
                   r.actions AS "actions!", r.last_at AS "last_at!", r.answered AS "answered!",
-                  r.contact_id, c.name AS "contact_name?", r.talent_id, r.project_id,
+                  c.id AS "contact_id?", c.name AS "contact_name?", r.talent_id, r.project_id,
                   coalesce(t.name, pr.name) AS item_name
            FROM run r
            JOIN organisations o ON o.workspace_id = app_workspace_id() AND o.id = r.organisation_id
                                AND o.deleted_at IS NULL AND NOT o.do_not_contact
+           -- The person, while they are still there.
            LEFT JOIN contacts c ON c.workspace_id = o.workspace_id AND c.id = r.contact_id AND c.deleted_at IS NULL
+                               AND c.organisation_id = o.id
            LEFT JOIN talent t ON t.workspace_id = o.workspace_id AND t.id = r.talent_id AND t.deleted_at IS NULL
            LEFT JOIN projects pr ON pr.workspace_id = o.workspace_id AND pr.id = r.project_id
                                 AND pr.deleted_at IS NULL

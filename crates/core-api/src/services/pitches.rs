@@ -144,19 +144,7 @@ fn view(settings: &PitchingSettings, e: Entry) -> PitchView {
             None => (None, None),
         },
     };
-    let item = match (e.talent_id, e.project_id, e.item_name) {
-        (Some(id), _, Some(name)) => Some(ItemRef {
-            kind: ItemKind::Talent,
-            id,
-            name,
-        }),
-        (None, Some(id), Some(name)) => Some(ItemRef {
-            kind: ItemKind::Project,
-            id,
-            name,
-        }),
-        _ => None,
-    };
+    let item = ItemRef::from_parts(e.talent_id, e.project_id, e.item_name);
     PitchView {
         id: e.id,
         organisation_id: e.organisation_id,

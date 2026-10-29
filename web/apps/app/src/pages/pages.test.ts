@@ -131,12 +131,13 @@ test("an answered pitch asks what they said until an answer is logged", () => {
 });
 
 test("follow-ups say when they are due and what they are", () => {
-  expect(dueLabel("2026-10-29", "2026-10-29")).toBe("Due today");
-  expect(dueLabel("2026-10-26", "2026-10-29")).toBe("3 days overdue");
-  expect(dueLabel("2026-10-30", "2026-10-29")).toBe("Due tomorrow");
-  expect(dueLabel("2026-11-05", "2026-10-29")).toBe("Due in 7 days");
+  expect(dueLabel(0)).toBe("Due today");
+  expect(dueLabel(-1)).toBe("Due yesterday");
+  expect(dueLabel(-3)).toBe("3 days overdue");
+  expect(dueLabel(1)).toBe("Due tomorrow");
+  expect(dueLabel(7)).toBe("Due in 7 days");
   const templates = [{ key: "follow_up", name: "Follow-up", action: "followed_up", subject: "S", body: "B" }];
-  const base = { organisation_id: "o", organisation_name: "Club", due_on: "2026-10-29", steps: 2 };
+  const base = { organisation_id: "o", organisation_name: "Club", due_on: "2026-10-29", due_in_days: 0, steps: 2 };
   expect(dueWhat({ ...base, kind: "step", step: 1, channel: "email", template_key: "follow_up" }, templates)).toBe(
     'Follow-up 1 of 2: Email, "Follow-up"',
   );

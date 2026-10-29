@@ -1080,6 +1080,47 @@ async fn follow_ups_come_due_until_an_answer(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn follow_ups_forget_people_who_moved_on(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let bar = organisation(&app, &owner, json!({ "name": "Belgrave" })).await;
+    let bar = bar["id"].as_str().unwrap().to_owned();
+    let ann = post(
+        &app,
+        &owner,
+        "/api/v1/contacts",
+        json!({ "name": "Ann", "organisation_id": bar }),
+    )
+    .await
+    .ok();
+    let ann_id = ann.id("/id");
+    let ago = (chrono::Utc::now() - chrono::Duration::days(8)).to_rfc3339();
+    post(
+        &app,
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": bar, "contact_id": ann_id, "kind": "action", "type_key": "pitched",
+                "happened_at": ago }),
+    )
+    .await
+    .ok();
+    let due = get(&app, &owner, "/api/v1/pitching/follow-ups").await.body;
+    assert_eq!(due[0]["contact_id"], ann_id.to_string(), "{due}");
+    assert_eq!(due[0]["due_in_days"], -1);
+
+    // Ann moves on: the follow-up is no longer for her.
+    app.patch(&format!("/api/v1/contacts/{ann_id}"))
+        .signed_in(&owner)
+        .header("If-Match", &format!("\"{}\"", ann.body["version"]))
+        .json(json!({ "organisation_id": null }))
+        .send()
+        .await
+        .ok();
+    let due = get(&app, &owner, "/api/v1/pitching/follow-ups").await.body;
+    assert_eq!(due[0]["contact_id"], Value::Null, "{due}");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn the_list_ranks_who_to_pitch_first_with_reasons(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let (_, owner) = app.workspace_with_owner("acme").await;
