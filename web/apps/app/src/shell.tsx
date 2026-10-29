@@ -32,6 +32,7 @@ import {
   ChevronsUpDown,
   Inbox,
   ListChecks,
+  ListOrdered,
   Mail,
   MessageSquare,
   AtSign,
@@ -89,6 +90,8 @@ type NavItem = {
   extra?: string;
   /** Named in the workspace's own words: [module, term]. */
   word?: [string, string];
+  /** Lit only on this page itself, not the pages under it. */
+  exact?: boolean;
 };
 
 export const NAV: { group: string; items: NavItem[] }[] = [
@@ -117,6 +120,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
       { to: "/crm/contacts", label: "Contacts", icon: <Contact /> },
       { to: "/crm/organisations", label: "Organisations", icon: <Building2 /> },
       { to: "/crm/talent", label: "Talent", icon: <Mic2 />, word: ["crm", "talent"] },
+      { to: "/pitching", label: "Pitching list", icon: <ListOrdered />, module: "pitching", exact: true },
       { to: "/pitching/follow-ups", label: "Follow-ups due", icon: <CalendarClock />, module: "pitching" },
     ],
   },
@@ -382,6 +386,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
               onClick={() => setNavOpen(false)}
               className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent [&_svg]:size-4"
               activeProps={{ className: "bg-accent font-medium text-accent-foreground" }}
+              activeOptions={{ exact: i.exact ?? false, includeSearch: false }}
             >
               {i.icon}
               {i.label}

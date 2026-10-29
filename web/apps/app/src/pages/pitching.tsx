@@ -50,6 +50,9 @@ type SendWith = Schemas["PitchSendWith"];
 type Unlogged = Schemas["UnloggedMail"];
 type FollowUpStep = Schemas["FollowUpStep"];
 type Due = Schemas["DueFollowUp"];
+type RankWeight = Schemas["RankWeight"];
+type RankReason = Schemas["RankReason"];
+type OwnReason = Schemas["OwnReason"];
 
 const COLOURS: Colour[] = ["green", "amber", "red", "grey", "blue", "purple"];
 const MEANINGS: { value: Meaning; label: string }[] = [
@@ -65,6 +68,22 @@ const TAGS: { value: OutcomeTag; label: string; colour: Colour }[] = [
   { value: "no", label: "No for now", colour: "red" },
   { value: "never", label: "Never", colour: "grey" },
 ];
+
+/** How long each kind of answer rests them, unless the answer says. */
+const REST_DAYS: Record<Exclude<OutcomeTag, "never">, number> = { good: 0, wait: 90, no: 180 };
+
+const RANK_REASONS: Record<RankReason, string> = {
+  asked_about: "They asked about it",
+  potential_match: "It could suit them",
+  booked_before: "They booked it before",
+  client: "They're a client",
+  same_taste: "They're into the same (tags)",
+  nearby: "It plays near them soon",
+  said_yes: "Their last answer was good",
+  no_answer: "The last pitch got no answer",
+  said_no: "Their last answer was no",
+  no_way_to_reach: "No email or phone for anyone there",
+};
 
 export const SEND_WITH: { value: SendWith; label: string; hint: string }[] = [
   {
@@ -163,6 +182,8 @@ function SettingsForm({
   const [sendWith, setSendWith] = useState<SendWith>(saved.send_with ?? "onhold");
   const [followUps, setFollowUps] = useState<FollowUpStep[]>(saved.follow_ups ?? []);
   const [giveUp, setGiveUp] = useState(saved.give_up_after_days ?? 14);
+  const [ranking, setRanking] = useState<RankWeight[]>(saved.ranking ?? []);
+  const [ownReasons, setOwnReasons] = useState<OwnReason[]>(saved.own_reasons ?? []);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -215,15 +236,28 @@ function SettingsForm({
       const after = await ok(
         api.PUT("/api/v1/pitching/settings", {
           headers: { "If-Match": `"${saved.version}"` },
-          body: { regions, statuses, items, outcomes, actions, templates, send_with: sendWith, follow_ups: followUps, give_up_after_days: giveUp },
+          body: {
+            regions,
+            statuses,
+            items,
+            outcomes,
+            actions,
+            templates,
+            send_with: sendWith,
+            follow_ups: followUps,
+            give_up_after_days: giveUp,
+            ranking,
+            own_reasons: ownReasons,
+          },
         }),
       );
       onSaved();
       qc.setQueryData(["pitching-settings"], after);
       // Region and status choices on organisations come from these, and
-      // what is due from the follow-ups.
+      // what is due from the follow-ups, and the ranking from the weights.
       void qc.invalidateQueries({ queryKey: ["schema"] });
       void qc.invalidateQueries({ queryKey: ["follow-ups"] });
+      void qc.invalidateQueries({ queryKey: ["pitch-list"] });
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 412) setError("Someone else changed these while you were editing. Reload to see their changes.");
       else setError(failure(e));
@@ -399,6 +433,31 @@ function SettingsForm({
                     </option>
                   ))}
                 </NativeSelect>
+              </div>
+              <div className="flex w-32 flex-col gap-1">
+                <Label htmlFor={`rest-${o.key}`}>Then wait</Label>
+                {o.tag === "never" ? (
+                  <span className="flex h-9 items-center text-muted-foreground">Never again</span>
+                ) : (
+                  <span className="flex items-center gap-1.5">
+                    <Input
+                      id={`rest-${o.key}`}
+                      type="number"
+                      className="w-20"
+                      min={0}
+                      max={3650}
+                      placeholder={String(REST_DAYS[o.tag])}
+                      value={o.rest_days ?? ""}
+                      disabled={!admin}
+                      onChange={(e) => {
+                        changed();
+                        const days = e.target.value === "" ? null : Number(e.target.value);
+                        setOutcomes((xs) => xs.map((x, j) => (j === i ? { ...x, rest_days: days } : x)));
+                      }}
+                    />
+                    days
+                  </span>
+                )}
               </div>
               {admin && outcomes.length > 1 && (
                 <Button
@@ -736,6 +795,95 @@ function SettingsForm({
           />
           days (0 never asks).
         </label>
+      </Card>
+
+      <Card className="flex flex-col gap-4 p-5 text-sm">
+        <h2 className="font-semibold">Best to pitch first</h2>
+        <p className="text-muted-foreground">
+          The pitching list ranks organisations by these points and shows every reason. Set one to 0 to leave it out; less than 0 counts
+          against them, and the worst shows as a "but…". Those resting after an answer, or waiting for one, always come last.
+        </p>
+        <ul className="grid gap-2 sm:grid-cols-2 sm:gap-x-10">
+          {ranking.map((w, i) => (
+            <li key={w.reason} className="flex items-center justify-between gap-2">
+              <Label htmlFor={`rank-${w.reason}`}>{RANK_REASONS[w.reason]}</Label>
+              <Input
+                id={`rank-${w.reason}`}
+                type="number"
+                className="w-20"
+                min={-100}
+                max={100}
+                value={w.points}
+                disabled={!admin}
+                onChange={(e) => {
+                  changed();
+                  setRanking((xs) => xs.map((x, j) => (j === i ? { ...x, points: Number(e.target.value) } : x)));
+                }}
+              />
+            </li>
+          ))}
+        </ul>
+        <h3 className="font-medium">Your own reasons</h3>
+        <p className="text-muted-foreground">Points for organisations with a tag: festivals, say, or a scene you're building.</p>
+        {ownReasons.length > 0 && (
+          <ul className="flex flex-col gap-2">
+            {ownReasons.map((r, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <Input
+                  aria-label="Tag"
+                  placeholder="Tag"
+                  value={r.tag}
+                  maxLength={60}
+                  disabled={!admin}
+                  onChange={(e) => {
+                    changed();
+                    setOwnReasons((xs) => xs.map((x, j) => (j === i ? { ...x, tag: e.target.value } : x)));
+                  }}
+                />
+                <Input
+                  aria-label={`Points for ${r.tag || "the tag"}`}
+                  type="number"
+                  className="w-20"
+                  min={-100}
+                  max={100}
+                  value={r.points}
+                  disabled={!admin}
+                  onChange={(e) => {
+                    changed();
+                    setOwnReasons((xs) => xs.map((x, j) => (j === i ? { ...x, points: Number(e.target.value) } : x)));
+                  }}
+                />
+                {admin && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Remove ${r.tag || "reason"}`}
+                    onClick={() => {
+                      changed();
+                      setOwnReasons((xs) => xs.filter((_, j) => j !== i));
+                    }}
+                  >
+                    <Trash2 />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {admin && ownReasons.length < 30 && (
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                changed();
+                setOwnReasons((xs) => [...xs, { tag: "", points: 10 }]);
+              }}
+            >
+              <Plus /> Add a reason
+            </Button>
+          </div>
+        )}
       </Card>
 
       <Card className="flex flex-col gap-4 p-5 text-sm">
@@ -1139,6 +1287,7 @@ function DueRow({ due: d, settings, canWrite }: { due: Due; settings: View | und
     Promise.all([
       qc.invalidateQueries({ queryKey: ["follow-ups"] }),
       qc.invalidateQueries({ queryKey: ["pitches", d.organisation_id] }),
+      qc.invalidateQueries({ queryKey: ["pitch-list"] }),
     ]);
   const run = async (call: () => Promise<unknown>) => {
     if (busy) return;
@@ -1301,6 +1450,7 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
     void qc.invalidateQueries({ queryKey: ["follow-ups"] });
+    void qc.invalidateQueries({ queryKey: ["pitch-list"] });
     // Sent mail logged or removed elsewhere comes and goes from "In your
     // Sent mail"; not asked again for those who can't read the inbox.
     if (qc.getQueryState(["unlogged", organisationId])?.status !== "error")

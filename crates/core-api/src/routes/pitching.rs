@@ -16,6 +16,7 @@ use crate::AppState;
 use crate::error::{ApiResult, ErrorBody};
 use crate::extract::{IfMatch, WsCtx};
 use crate::services::pitch_follow_ups::{self, DueFollowUp, FollowUpFilter};
+use crate::services::pitch_list::{self, PitchList, PitchListFilter};
 use crate::services::pitch_sending::{
     self, PitchDraft, PitchDraftRequest, PitchSend, PitchingMe, PitchingMePatch,
 };
@@ -29,6 +30,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_settings, update_settings))
         .routes(routes!(list_pitches))
         .routes(routes!(follow_ups_due))
+        .routes(routes!(pitch_list))
         .routes(routes!(log_pitch))
         .routes(routes!(update_pitch, delete_pitch))
         .routes(routes!(draft_pitch))
@@ -81,6 +83,23 @@ async fn follow_ups_due(
     Query(f): Query<FollowUpFilter>,
 ) -> ApiResult<Json<Vec<DueFollowUp>>> {
     Ok(Json(pitch_follow_ups::due(&state, &ctx, &f).await?))
+}
+
+/// The pitching list: organisations to pitch something to (or anything,
+/// with no item), where each stands with it, and the "best to pitch first"
+/// ranking with its reasons. Those marked do not contact are never listed;
+/// those resting after an answer, or waiting for one, come last, greyed.
+#[utoipa::path(get, path = "/pitching/list", tag = "pitching",
+    params(WorkspaceHeader, PitchListFilter),
+    responses((status = 200, body = PitchList), (status = 400, body = ErrorBody),
+        (status = 403, body = ErrorBody), (status = 404, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn pitch_list(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Query(f): Query<PitchListFilter>,
+) -> ApiResult<Json<PitchList>> {
+    Ok(Json(pitch_list::list(&state, &ctx, &f).await?))
 }
 
 /// An organisation's pitch log, latest first.

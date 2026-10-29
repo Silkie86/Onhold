@@ -1,0 +1,238 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH item_bookings AS (\n               SELECT b.organisation_id, b.venue_id, b.starts_at, b.status\n               FROM bookings b\n               WHERE b.workspace_id = app_workspace_id() AND b.deleted_at IS NULL\n                 AND (($1::uuid IS NOT NULL AND EXISTS (\n                          SELECT 1 FROM booking_talent bt\n                          WHERE bt.workspace_id = b.workspace_id AND bt.booking_id = b.id AND bt.talent_id = $1))\n                      OR ($2::uuid IS NOT NULL AND EXISTS (\n                          SELECT 1 FROM project_bookings pb\n                          WHERE pb.workspace_id = b.workspace_id AND pb.booking_id = b.id AND pb.project_id = $2)))\n           ), worked AS (\n               SELECT o_id, count(*) AS n, max(starts_at) FILTER (WHERE starts_at <= now()) AS last\n               FROM (SELECT organisation_id AS o_id, starts_at FROM item_bookings\n                     WHERE status IN ('confirmed', 'completed') AND organisation_id IS NOT NULL\n                     UNION ALL\n                     SELECT venue_id, starts_at FROM item_bookings\n                     WHERE status IN ('confirmed', 'completed') AND venue_id IS NOT NULL\n                       AND venue_id IS DISTINCT FROM organisation_id) x\n               GROUP BY o_id\n           ), upcoming AS (\n               SELECT lower(btrim(v.city)) AS city, min(ib.starts_at) AS at\n               FROM item_bookings ib\n               JOIN organisations v ON v.workspace_id = app_workspace_id()\n                                   AND v.id = coalesce(ib.venue_id, ib.organisation_id)\n               WHERE ib.status IN ('hold', 'pending', 'confirmed') AND v.city IS NOT NULL\n                 AND ib.starts_at > now() AND ib.starts_at <= $10\n               GROUP BY lower(btrim(v.city))\n           ), about AS (\n               SELECT p.organisation_id, p.kind, p.type_key, p.happened_at, p.id, p.answered_at\n               FROM pitch_log p\n               LEFT JOIN thread_messages m ON m.workspace_id = p.workspace_id AND m.id = p.message_id\n               WHERE p.workspace_id = app_workspace_id() AND p.deleted_at IS NULL\n                 -- A pitch OnHold failed to send wasn't done.\n                 AND m.status IS DISTINCT FROM 'failed'\n                 AND (($1::uuid IS NULL AND $2::uuid IS NULL)\n                      OR (p.talent_id IS NULL AND p.project_id IS NULL)\n                      OR p.talent_id = $1 OR p.project_id = $2)\n           ), answers AS (\n               SELECT DISTINCT ON (organisation_id) organisation_id, type_key, happened_at\n               FROM about WHERE kind = 'outcome'\n               ORDER BY organisation_id, happened_at DESC, id DESC\n           ), actions AS (\n               SELECT a.organisation_id, max(a.happened_at) AS last,\n                      count(*) FILTER (WHERE o.happened_at IS NULL OR a.happened_at > o.happened_at) AS since,\n                      coalesce(bool_or(a.answered_at IS NOT NULL)\n                          FILTER (WHERE o.happened_at IS NULL OR a.happened_at > o.happened_at), false) AS answered\n               FROM about a LEFT JOIN answers o ON o.organisation_id = a.organisation_id\n               WHERE a.kind = 'action'\n               GROUP BY a.organisation_id\n           )\n           SELECT o.id, o.name, o.city, o.country_code::text AS country_code, o.region_key, o.relationship,\n                  o.status_key, o.follow_up_on, o.tags, o.buys_from_others,\n                  EXISTS (SELECT 1 FROM contacts c\n                          WHERE c.workspace_id = o.workspace_id AND c.organisation_id = o.id\n                            AND c.deleted_at IS NULL\n                            AND (cardinality(c.emails) > 0 OR cardinality(c.phones) > 0)) AS \"reachable!\",\n                  EXISTS (SELECT 1 FROM organisation_items i\n                          WHERE i.workspace_id = o.workspace_id AND i.organisation_id = o.id\n                            AND i.list = 'interested' AND (i.talent_id = $1 OR i.project_id = $2)) AS \"interested!\",\n                  EXISTS (SELECT 1 FROM organisation_items i\n                          WHERE i.workspace_id = o.workspace_id AND i.organisation_id = o.id\n                            AND i.list = 'match' AND (i.talent_id = $1 OR i.project_id = $2)) AS \"matched!\",\n                  coalesce(w.n, 0) AS \"booked!\", w.last AS \"booked_last?\",\n                  u.at AS \"nearby_at?\",\n                  ans.type_key AS \"outcome_key?\", ans.happened_at AS \"outcome_at?\",\n                  act.last AS \"action_at?\", coalesce(act.since, 0) AS \"actions_since!\",\n                  coalesce(act.answered, false) AS \"answered_since!\",\n                  count(*) OVER () AS \"total!\"\n           FROM organisations o\n           LEFT JOIN worked w ON w.o_id = o.id\n           LEFT JOIN upcoming u ON u.city = lower(btrim(o.city))\n                               AND NOT EXISTS (SELECT 1 FROM item_bookings ib\n                                               WHERE (ib.organisation_id = o.id OR ib.venue_id = o.id)\n                                                 AND ib.starts_at = u.at)\n           LEFT JOIN answers ans ON ans.organisation_id = o.id\n           LEFT JOIN actions act ON act.organisation_id = o.id\n           WHERE o.workspace_id = app_workspace_id() AND o.deleted_at IS NULL AND NOT o.do_not_contact\n             AND ($3::text IS NULL OR o.search_text LIKE $4 OR $3 <% o.search_text)\n             AND ($5::text IS NULL OR $5 = ANY (o.tags))\n             AND ($6::text IS NULL OR o.country_code = $6)\n             AND ($7::text IS NULL OR lower(btrim(o.city)) = lower(btrim($7)))\n             AND ($8::text IS NULL OR o.status_key = $8)\n             AND ($9::text IS NULL OR o.relationship = $9)\n             AND ($12::text IS NULL OR o.region_key = $12\n                  OR ((o.region_key IS NULL OR NOT o.region_key = ANY ($14))\n                      AND o.country_code::text = ANY ($13)))\n           ORDER BY lower(o.name), o.id\n           LIMIT $11",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "city",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "city"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "country_code",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "region_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "region_key"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "relationship",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "relationship"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "status_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "status_key"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "follow_up_on",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "follow_up_on"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "tags",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "tags"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "buys_from_others",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "buys_from_others"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "reachable!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 11,
+        "name": "interested!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 12,
+        "name": "matched!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 13,
+        "name": "booked!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 14,
+        "name": "booked_last?",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 15,
+        "name": "nearby_at?",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 16,
+        "name": "outcome_key?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "type_key"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "outcome_at?",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "happened_at"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "action_at?",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 19,
+        "name": "actions_since!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 20,
+        "name": "answered_since!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 21,
+        "name": "total!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Int8",
+        "Text",
+        "TextArray",
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      null,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      false,
+      false,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "32cb7c7d787b09a44d0ce224265e8dba724c1a90ed458b6c35d55657495d8c8c"
+}

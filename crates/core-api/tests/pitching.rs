@@ -542,7 +542,7 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
     );
     assert_eq!(
         s["outcomes"][0],
-        json!({ "key": "interested", "label": "Interested or yes", "tag": "good" })
+        json!({ "key": "interested", "label": "Interested or yes", "tag": "good", "rest_days": 0 })
     );
 
     // Pitched by email last week, then the answer today.
@@ -1118,4 +1118,200 @@ async fn follow_ups_forget_people_who_moved_on(pool: PgPool) {
         .ok();
     let due = get(&app, &owner, "/api/v1/pitching/follow-ups").await.body;
     assert_eq!(due[0]["contact_id"], Value::Null, "{due}");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn the_list_ranks_who_to_pitch_first_with_reasons(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let owls = post(
+        &app,
+        &owner,
+        "/api/v1/talent",
+        json!({ "name": "The Midnight Owls", "tags": ["Techno"] }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let id = |o: &Value| o["id"].as_str().unwrap().to_owned();
+    let leeds = json!([{ "city": "Leeds", "country": "GB" }]);
+    // Asked about the Owls, in a city they play soon.
+    let asks = organisation(
+        &app,
+        &owner,
+        json!({ "name": "Brudenell", "addresses": leeds, "interested_in": [{ "kind": "talent", "id": owls }] }),
+    )
+    .await;
+    post(
+        &app,
+        &owner,
+        "/api/v1/contacts",
+        json!({ "name": "Nat", "organisation_id": id(&asks), "emails": ["nat@brudenell.test"] }),
+    )
+    .await
+    .ok();
+    let venue = organisation(
+        &app,
+        &owner,
+        json!({ "name": "Belgrave", "addresses": leeds }),
+    )
+    .await;
+    let soon = chrono::Utc::now() + chrono::Duration::days(20);
+    post(
+        &app,
+        &owner,
+        "/api/v1/bookings",
+        json!({ "title": "Leeds", "talent_ids": [owls], "venue_id": id(&venue),
+                "starts_at": soon.to_rfc3339(), "ends_at": (soon + chrono::Duration::hours(2)).to_rfc3339() }),
+    )
+    .await
+    .ok();
+    // Into techno, but nobody to reach there.
+    organisation(
+        &app,
+        &owner,
+        json!({ "name": "Wire", "tags": ["techno", "festival"], "addresses": [{ "city": "Berlin", "country": "DE" }] }),
+    )
+    .await;
+    // Said "not now" today: resting.
+    let resting = organisation(&app, &owner, json!({ "name": "Albert Hall" })).await;
+    post(
+        &app,
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": id(&resting), "kind": "outcome", "type_key": "not_now",
+                "item": { "kind": "talent", "id": owls } }),
+    )
+    .await
+    .ok();
+    // Never listed.
+    organisation(
+        &app,
+        &owner,
+        json!({ "name": "Quiet Bar", "do_not_contact": true }),
+    )
+    .await;
+
+    let list = |q: String| {
+        let app = &app;
+        let owner = &owner;
+        async move {
+            get(
+                app,
+                owner,
+                &format!("/api/v1/pitching/list?item_kind=talent&item_id={owls}{q}"),
+            )
+            .await
+            .body
+        }
+    };
+    let l = list(String::new()).await;
+    let names: Vec<&str> = l["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        ["Brudenell", "Wire", "Belgrave", "Albert Hall"],
+        "{l}"
+    );
+    assert_eq!(l["total"], 4);
+    assert_eq!(l["item"]["name"], "The Midnight Owls");
+    let top = &l["items"][0];
+    assert_eq!(top["pitch_status"], "interested");
+    assert_eq!(top["reasons"][0]["label"], "Asked about The Midnight Owls");
+    assert!(
+        top["reasons"][1]["label"]
+            .as_str()
+            .unwrap()
+            .starts_with("The Midnight Owls is in Leeds on "),
+        "{top}"
+    );
+    assert_eq!(top["but"], Value::Null);
+    assert_eq!(top["region"], "europe");
+    let wire = &l["items"][1];
+    assert_eq!(wire["reasons"][0]["label"], "Into techno");
+    assert_eq!(wire["but"]["reason"], "no_way_to_reach");
+    assert_eq!(wire["score"], 15 - 30);
+    let last = &l["items"][3];
+    assert_eq!(last["resting"], true);
+    assert_eq!(last["pitch_status"], "tried");
+    assert!(
+        last["rest_reason"]
+            .as_str()
+            .unwrap()
+            .starts_with("Said “Not now” on"),
+        "{last}"
+    );
+
+    // A to Z; without the resting; by what stands; by region; by words.
+    let az = list("&sort=name".into()).await;
+    assert_eq!(az["items"][0]["name"], "Albert Hall");
+    assert_eq!(list("&hide_resting=true".into()).await["total"], 3);
+    let tried = list("&pitch_status=tried".into()).await;
+    assert_eq!(tried["items"][0]["name"], "Albert Hall");
+    assert_eq!(tried["total"], 1);
+    assert_eq!(list("&region=europe".into()).await["total"], 3);
+    assert_eq!(list("&q=wire".into()).await["items"][0]["name"], "Wire");
+    let page = list("&limit=1&offset=1".into()).await;
+    assert_eq!(page["items"][0]["name"], "Wire");
+    assert_eq!(page["total"], 4);
+
+    // The workspace's own weights and reasons.
+    let mut s = get(&app, &owner, "/api/v1/pitching/settings").await.body;
+    for w in s["ranking"].as_array_mut().unwrap() {
+        if w["reason"] == "no_way_to_reach" {
+            w["points"] = json!(0);
+        }
+    }
+    s["own_reasons"] = json!([{ "tag": "Festival", "points": 50 }]);
+    app.put("/api/v1/pitching/settings")
+        .signed_in(&owner)
+        .header("If-Match", &format!("\"{}\"", s["version"]))
+        .json(s.clone())
+        .send()
+        .await
+        .ok();
+    let l = list(String::new()).await;
+    assert_eq!(l["items"][0]["name"], "Wire", "{l}");
+    assert_eq!(l["items"][0]["score"], 65);
+    assert_eq!(l["items"][0]["reasons"][0]["label"], "Tagged Festival");
+    assert_eq!(l["items"][0]["but"], Value::Null);
+
+    // Weights and rests are checked.
+    s["own_reasons"] = json!([{ "tag": "x", "points": 101 }]);
+    s["outcomes"][0]["rest_days"] = json!(-1);
+    let bad = app
+        .put("/api/v1/pitching/settings")
+        .signed_in(&owner)
+        .json(s.clone())
+        .send()
+        .await;
+    bad.expect(StatusCode::BAD_REQUEST, "invalid_input");
+    assert_eq!(
+        fields(&bad),
+        ["outcomes[0].rest_days", "own_reasons[0].points"]
+    );
+
+    // What is pitched comes as a pair, and must exist.
+    app.get("/api/v1/pitching/list?item_kind=talent")
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+    app.get(&format!(
+        "/api/v1/pitching/list?item_kind=talent&item_id={}",
+        Uuid::now_v7()
+    ))
+    .signed_in(&owner)
+    .send()
+    .await
+    .expect(StatusCode::NOT_FOUND, "not_found");
+    // With nothing picked, the whole list.
+    assert_eq!(
+        get(&app, &owner, "/api/v1/pitching/list").await.body["total"],
+        4
+    );
 }

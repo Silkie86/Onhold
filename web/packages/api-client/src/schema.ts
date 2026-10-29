@@ -2954,6 +2954,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pitching/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The pitching list: organisations to pitch something to (or anything,
+         *     with no item), where each stands with it, and the "best to pitch first"
+         *     ranking with its reasons. Those marked do not contact are never listed;
+         *     those resting after an answer, or waiting for one, come last, greyed.
+         */
+        get: operations["pitch_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pitching/me": {
         parameters: {
             query?: never;
@@ -7847,6 +7869,18 @@ export interface components {
             reference?: string | null;
             status: string;
         };
+        /**
+         * @description A reason of the workspace's own: organisations with this tag are worth
+         *     so many points more (or fewer).
+         */
+        OwnReason: {
+            /**
+             * Format: int32
+             * @description -100 to 100.
+             */
+            points: number;
+            tag: string;
+        };
         PasswordChangeRequest: {
             /** @description Required when the account already has a password. */
             current_password?: string | null;
@@ -8046,6 +8080,49 @@ export interface components {
          * @enum {string}
          */
         PitchKind: "action" | "outcome";
+        PitchList: {
+            /**
+             * @description More organisations matched than OnHold looks at in one go; narrow
+             *     the list with a filter to see them all.
+             */
+            capped: boolean;
+            item?: components["schemas"]["ItemRef"] | null;
+            items: components["schemas"]["PitchListRow"][];
+            /**
+             * Format: int64
+             * @description How many match in all.
+             */
+            total: number;
+        };
+        PitchListRow: {
+            but?: components["schemas"]["RankLine"] | null;
+            city?: string | null;
+            country_code?: string | null;
+            /** Format: date */
+            follow_up_on?: string | null;
+            name: string;
+            /** Format: uuid */
+            organisation_id: string;
+            pitch_status: components["schemas"]["PitchStatus"];
+            /** @description What counts for and against it, best first, but for the `but`. */
+            reasons: components["schemas"]["RankLine"][];
+            /** @description The region it is in, picked or from its country. */
+            region?: string | null;
+            relationship?: string | null;
+            rest_reason?: string | null;
+            /** @description Resting after an answer or waiting for one: shown greyed and last. */
+            resting: boolean;
+            /**
+             * Format: date
+             * @description Until when (none: not again, after an answer tagged never; or until
+             *     an answer that came back is logged).
+             */
+            resting_until?: string | null;
+            /** Format: int32 */
+            score: number;
+            /** @description Its status, a key from the pitching settings. */
+            status?: string | null;
+        };
         /** @description A pitch sent from OnHold: its thread in the inbox, and whether it went. */
         PitchMessage: {
             /** Format: uuid */
@@ -8059,6 +8136,13 @@ export interface components {
         PitchOutcome: {
             key: string;
             label: string;
+            /**
+             * Format: int32
+             * @description Days to leave them be after this answer before pitching the same
+             *     thing again, 0 for no wait; left out, the tag's usual wait. An answer
+             *     tagged never is never followed by another pitch of the same thing.
+             */
+            rest_days?: number | null;
             tag: components["schemas"]["OutcomeTag"];
         };
         PitchPage: {
@@ -8108,6 +8192,11 @@ export interface components {
          * @enum {string}
          */
         PitchSendWith: "onhold" | "mail_app" | "copy";
+        /**
+         * @description Where an organisation stands with what is pitched.
+         * @enum {string}
+         */
+        PitchStatus: "booked" | "awaiting" | "interested" | "tried" | "pitched" | "match" | "not_pitched";
         /**
          * @description Wording to pitch with. `{firstName}`, `{item}`, `{link}`, `{yourName}`
          *     and the rest of [`super::pitch_sending::PLACEHOLDERS`] are filled in.
@@ -8197,6 +8286,10 @@ export interface components {
             items?: components["schemas"]["ItemKind"][];
             /** @description The answers a pitch can get. */
             outcomes?: components["schemas"]["PitchOutcome"][];
+            /** @description The workspace's own reasons, from tags. */
+            own_reasons?: components["schemas"]["OwnReason"][];
+            /** @description What each reason in the "best to pitch first" ranking is worth. */
+            ranking?: components["schemas"]["RankWeight"][];
             regions?: components["schemas"]["Region"][];
             /** @description How members send a pitch unless they pick otherwise. */
             send_with?: components["schemas"]["PitchSendWith"];
@@ -8215,6 +8308,8 @@ export interface components {
             give_up_after_days?: number | null;
             items?: components["schemas"]["ItemKind"][] | null;
             outcomes?: components["schemas"]["PitchOutcome"][] | null;
+            own_reasons?: components["schemas"]["OwnReason"][] | null;
+            ranking?: components["schemas"]["RankWeight"][] | null;
             regions?: components["schemas"]["Region"][] | null;
             send_with?: components["schemas"]["PitchSendWith"] | null;
             statuses?: components["schemas"]["Status"][] | null;
@@ -8856,6 +8951,28 @@ export interface components {
             version: number;
             /** Format: date-time */
             viewed_at?: string | null;
+        };
+        /** @description One reason in the ranking, and what it is worth. */
+        RankLine: {
+            label: string;
+            /** Format: int32 */
+            points: number;
+            reason?: components["schemas"]["RankReason"] | null;
+        };
+        /**
+         * @description A reason one organisation is better to pitch than another, worth so
+         *     many points (less than 0 counts against).
+         * @enum {string}
+         */
+        RankReason: "asked_about" | "potential_match" | "booked_before" | "client" | "same_taste" | "nearby" | "said_yes" | "no_answer" | "said_no" | "no_way_to_reach";
+        /** @description What a reason is worth; 0 switches it off. */
+        RankWeight: {
+            /**
+             * Format: int32
+             * @description -100 to 100.
+             */
+            points: number;
+            reason: components["schemas"]["RankReason"];
         };
         /**
          * @description A positive exchange rate with up to ten decimal places, kept exactly.
@@ -18707,6 +18824,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DueFollowUp"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pitch_list: {
+        parameters: {
+            query?: {
+                /** @description What is pitched: `talent` or `project`, with `item_id`. */
+                item_kind?: components["schemas"]["ItemKind"] | null;
+                item_id?: string | null;
+                /** @description Words in the name, type or tags. */
+                q?: string | null;
+                tag?: string | null;
+                /** @description A region key from the pitching settings. */
+                region?: string | null;
+                /** @description An ISO country code. */
+                country?: string | null;
+                city?: string | null;
+                /** @description A status key from the pitching settings. */
+                status?: string | null;
+                /** @description `client` or `prospect`. */
+                relationship?: string | null;
+                /** @description Only those standing this way with what is pitched. */
+                pitch_status?: components["schemas"]["PitchStatus"] | null;
+                /** @description Leave out organisations resting after an answer, or waiting for one. */
+                hide_resting?: boolean | null;
+                sort?: ("rank" | "name") | null;
+                offset?: number | null;
+                /** @description 1 to 200; default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchList"];
                 };
             };
             400: {
