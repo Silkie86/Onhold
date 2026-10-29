@@ -1,0 +1,102 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT m.id AS message_id, m.thread_id, t.contact_id, c.name AS \"contact_name?\", m.subject,\n                  m.to_addresses AS \"to\", m.sent_at\n           FROM thread_messages m\n           JOIN threads t ON t.workspace_id = m.workspace_id AND t.id = m.thread_id\n           LEFT JOIN contacts c ON c.workspace_id = t.workspace_id AND c.id = t.contact_id AND c.deleted_at IS NULL\n           WHERE m.workspace_id = app_workspace_id() AND t.organisation_id = $1 AND t.channel = 'email'\n             AND m.direction = 'outbound' AND m.author_id IS NULL AND NOT m.automatic\n             AND m.sent_at >= $2\n             AND NOT EXISTS (SELECT 1 FROM pitch_log p WHERE p.workspace_id = m.workspace_id\n                             AND p.message_id = m.id AND p.deleted_at IS NULL)\n             AND NOT EXISTS (SELECT 1 FROM pitch_not_pitches n WHERE n.workspace_id = m.workspace_id\n                             AND n.message_id = m.id)\n             AND NOT EXISTS (SELECT 1 FROM pitch_log p WHERE p.workspace_id = m.workspace_id\n                             AND p.organisation_id = $1 AND p.kind = 'action' AND p.deleted_at IS NULL\n                             AND (p.channel IS NULL OR p.channel = 'email')\n                             AND p.happened_at BETWEEN m.sent_at - interval '1 day' AND m.sent_at + interval '1 day')\n           ORDER BY m.sent_at DESC, m.id DESC\n           LIMIT $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "message_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "thread_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "thread_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "contact_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "contact_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "contact_name?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "subject",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "subject"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "to",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "to_addresses"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "sent_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "sent_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "b653e2d3880f7e36d7335ec3f6a95a31b70798623de9c57907b86711e2314475"
+}

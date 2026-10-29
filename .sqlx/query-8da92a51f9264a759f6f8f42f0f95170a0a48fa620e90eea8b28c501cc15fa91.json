@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (SELECT 1 FROM pitch_log WHERE workspace_id = app_workspace_id()\n                          AND message_id = $1 AND deleted_at IS NULL) AS \"logged!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "logged!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "8da92a51f9264a759f6f8f42f0f95170a0a48fa620e90eea8b28c501cc15fa91"
+}

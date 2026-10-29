@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT p.id, p.organisation_id, p.contact_id, c.name AS \"contact_name?\", p.kind, p.type_key,\n                  p.channel, p.talent_id, p.project_id, coalesce(t.name, pr.name) AS item_name, p.note,\n                  p.happened_at, p.source, p.template_key, p.message_id, m.thread_id AS \"thread_id?\",\n                  m.status AS \"message_status?\", p.version, p.created_at, p.updated_at,\n                  p.created_by AS \"created_by: UserId\", p.updated_by AS \"updated_by: UserId\",\n                  count(*) OVER () AS \"total!\"\n           FROM pitch_log p\n           LEFT JOIN contacts c ON c.workspace_id = p.workspace_id AND c.id = p.contact_id AND c.deleted_at IS NULL\n           LEFT JOIN talent t ON t.workspace_id = p.workspace_id AND t.id = p.talent_id AND t.deleted_at IS NULL\n           LEFT JOIN projects pr ON pr.workspace_id = p.workspace_id AND pr.id = p.project_id\n                                AND pr.deleted_at IS NULL\n           LEFT JOIN thread_messages m ON m.workspace_id = p.workspace_id AND m.id = p.message_id\n           WHERE p.workspace_id = app_workspace_id() AND p.organisation_id = $1 AND p.deleted_at IS NULL\n           ORDER BY p.happened_at DESC, p.id DESC\n           OFFSET $2 LIMIT $3",
+  "query": "SELECT p.id, p.organisation_id, p.contact_id, c.name AS \"contact_name?\", p.kind, p.type_key,\n                  p.channel, p.talent_id, p.project_id, coalesce(t.name, pr.name) AS item_name, p.note,\n                  p.happened_at, p.source, p.template_key, p.message_id, m.thread_id AS \"thread_id?\",\n                  m.status AS \"message_status?\", p.answered_at, p.answer_message_id,\n                  am.thread_id AS \"answer_thread_id?\", p.version, p.created_at, p.updated_at,\n                  p.created_by AS \"created_by: UserId\", p.updated_by AS \"updated_by: UserId\"\n           FROM pitch_log p\n           LEFT JOIN contacts c ON c.workspace_id = p.workspace_id AND c.id = p.contact_id AND c.deleted_at IS NULL\n           LEFT JOIN talent t ON t.workspace_id = p.workspace_id AND t.id = p.talent_id AND t.deleted_at IS NULL\n           LEFT JOIN projects pr ON pr.workspace_id = p.workspace_id AND pr.id = p.project_id\n                                AND pr.deleted_at IS NULL\n           LEFT JOIN thread_messages m ON m.workspace_id = p.workspace_id AND m.id = p.message_id\n           LEFT JOIN thread_messages am ON am.workspace_id = p.workspace_id AND am.id = p.answer_message_id\n           WHERE p.workspace_id = app_workspace_id() AND p.id = $1 AND p.deleted_at IS NULL",
   "describe": {
     "columns": [
       {
@@ -187,6 +187,39 @@
       },
       {
         "ordinal": 17,
+        "name": "answered_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "answered_at"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "answer_message_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "answer_message_id"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "answer_thread_id?",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "thread_id"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
         "name": "version",
         "type_info": "Int8",
         "origin": {
@@ -197,7 +230,7 @@
         }
       },
       {
-        "ordinal": 18,
+        "ordinal": 21,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -208,7 +241,7 @@
         }
       },
       {
-        "ordinal": 19,
+        "ordinal": 22,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -219,7 +252,7 @@
         }
       },
       {
-        "ordinal": 20,
+        "ordinal": 23,
         "name": "created_by: UserId",
         "type_info": "Uuid",
         "origin": {
@@ -230,7 +263,7 @@
         }
       },
       {
-        "ordinal": 21,
+        "ordinal": 24,
         "name": "updated_by: UserId",
         "type_info": "Uuid",
         "origin": {
@@ -239,26 +272,18 @@
             "name": "updated_by"
           }
         }
-      },
-      {
-        "ordinal": 22,
-        "name": "total!",
-        "type_info": "Int8",
-        "origin": "Expression"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Int8",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
       false,
       false,
       true,
-      false,
+      true,
       false,
       false,
       true,
@@ -270,15 +295,17 @@
       false,
       true,
       true,
-      false,
-      false,
+      true,
+      true,
+      true,
+      true,
+      true,
       false,
       false,
       false,
       true,
-      true,
-      null
+      true
     ]
   },
-  "hash": "feae94f2070d39ae4cb078bcd2e18d99cbac4a7218d0e0bd7e44ba4387e6e2d0"
+  "hash": "a82aa55f883c44bd6574bed3a7b8af584ad5d5e9cc854c1455703f4567367a60"
 }
