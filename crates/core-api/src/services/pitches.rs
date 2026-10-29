@@ -272,7 +272,7 @@ pub(super) struct Parts {
 }
 
 /// Which parts of an entry are new, and so checked against what the
-/// workspace lists now.
+/// workspace lists and holds now.
 #[derive(Clone, Copy)]
 pub(super) struct Changed {
     pub type_key: bool,
@@ -290,10 +290,15 @@ impl Changed {
     };
 }
 
-/// Checks an entry against the workspace's lists and records: the type and
-/// template are ones it lists (unless unchanged, so an entry whose type was
-/// since removed can still be edited), the person is at the organisation,
-/// what was pitched exists, and it did not happen tomorrow or later.
+/// How far ahead of the server's clock an entry may be dated, for clocks
+/// that are a little out.
+const CLOCK_SKEW: Duration = Duration::minutes(10);
+
+/// Checks an entry against the workspace's lists and records, adding to
+/// what `check` already found: the type and template are ones it lists
+/// (unless unchanged, so an entry whose type was since removed can still be
+/// edited), the person is at the organisation, what was pitched exists,
+/// and it has already happened.
 pub(super) async fn check(
     tx: &mut Tx,
     settings: &PitchingSettings,
@@ -301,8 +306,8 @@ pub(super) async fn check(
     kind: PitchKind,
     parts: &Parts,
     changed: Changed,
+    mut check: Check,
 ) -> ApiResult<()> {
-    let mut check = Check::default();
     if changed.type_key {
         let listed = match kind {
             PitchKind::Action => settings.action(&parts.type_key).is_some(),
@@ -347,7 +352,7 @@ pub(super) async fn check(
             check.issue("item", format!("there is no such {}", item.kind.as_str()));
         }
     }
-    if parts.happened_at > Utc::now() + Duration::hours(24) {
+    if parts.happened_at > Utc::now() + CLOCK_SKEW {
         check.issue("happened_at", "cannot be in the future");
     }
     check.finish()
@@ -418,9 +423,8 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewPitch) -> ApiResult<Pit
         ));
     }
     let (settings, _) = settings_in(&mut tx).await?;
-    let mut note_check = Check::default();
-    let note = note_check.long("note", new.note.as_deref(), MAX_NOTE);
-    note_check.finish()?;
+    let mut found = Check::default();
+    let note = found.long("note", new.note.as_deref(), MAX_NOTE);
     let parts = Parts {
         contact_id: new.contact_id,
         type_key: new.type_key.trim().to_owned(),
@@ -440,6 +444,7 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewPitch) -> ApiResult<Pit
         new.kind,
         &parts,
         Changed::ALL,
+        found,
     )
     .await?;
     let view = insert(
@@ -470,19 +475,16 @@ pub async fn update(
         .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     let (settings, _) = settings_in(&mut tx).await?;
-    let before = load(&mut tx, &settings, id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
-    let mut note_check = Check::default();
-    let note = match &p.note {
-        Some(n) => note_check.long("note", n.as_deref(), MAX_NOTE),
-        None => before.note.clone(),
-    };
-    note_check.finish()?;
-    // An item that has since gone is kept unless replaced.
     let stored = core_db::pitches::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
+    let before = view(&settings, stored.clone());
+    let mut found = Check::default();
+    let note = match &p.note {
+        Some(n) => found.long("note", n.as_deref(), MAX_NOTE),
+        None => before.note.clone(),
+    };
+    // An item that has since gone is kept unless replaced.
     let current_item = match (stored.talent_id, stored.project_id) {
         (Some(id), _) => Some(ItemInput {
             kind: ItemKind::Talent,
@@ -521,6 +523,7 @@ pub async fn update(
             item: parts.item != current_item,
             template: parts.template_key != before.template_key,
         },
+        found,
     )
     .await?;
     core_db::pitches::update(
@@ -553,11 +556,16 @@ pub async fn update(
 pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::OrganisationWrite)?;
     let mut tx = begin(state, ctx).await?;
+    core_db::pitches::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let (settings, _) = settings_in(&mut tx).await?;
     let before = load(&mut tx, &settings, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    core_db::pitches::soft_delete(&mut tx, id, ctx.user_id()).await?;
+    if !core_db::pitches::soft_delete(&mut tx, id, ctx.user_id()).await? {
+        return Err(ApiError::NotFound);
+    }
     record(
         &mut tx,
         ctx,

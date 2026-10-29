@@ -191,6 +191,33 @@ pub struct PitchingSettings {
     pub send_with: PitchSendWith,
 }
 
+/// New settings. A list left out keeps what is stored, so a client from
+/// before a list existed does not reset it.
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+pub struct PitchingSettingsInput {
+    pub regions: Option<Vec<Region>>,
+    pub statuses: Option<Vec<Status>>,
+    pub items: Option<Vec<ItemKind>>,
+    pub outcomes: Option<Vec<PitchOutcome>>,
+    pub actions: Option<Vec<PitchAction>>,
+    pub templates: Option<Vec<PitchTemplate>>,
+    pub send_with: Option<PitchSendWith>,
+}
+
+impl PitchingSettingsInput {
+    fn over(self, stored: PitchingSettings) -> PitchingSettings {
+        PitchingSettings {
+            regions: self.regions.unwrap_or(stored.regions),
+            statuses: self.statuses.unwrap_or(stored.statuses),
+            items: self.items.unwrap_or(stored.items),
+            outcomes: self.outcomes.unwrap_or(stored.outcomes),
+            actions: self.actions.unwrap_or(stored.actions),
+            templates: self.templates.unwrap_or(stored.templates),
+            send_with: self.send_with.unwrap_or(stored.send_with),
+        }
+    }
+}
+
 impl Default for PitchingSettings {
     fn default() -> Self {
         Self {
@@ -381,15 +408,9 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
     let mut regions: Vec<Region> = Vec::new();
     let mut seen_countries: Vec<String> = Vec::new();
     for (i, r) in input.regions.iter().enumerate() {
-        let key = r.key.trim().to_owned();
-        if !is_key(&key) {
-            check.issue(
-                format!("regions[{i}].key"),
-                "use 1 to 40 lower case letters, digits or underscores",
-            );
-        } else if regions.iter().any(|x| x.key == key) {
-            check.issue(format!("regions[{i}].key"), "is used twice");
-        }
+        let key = checked_key(&mut check, &format!("regions[{i}].key"), &r.key, |k| {
+            regions.iter().any(|x| x.key == k)
+        });
         let name = check.required(&format!("regions[{i}].name"), &r.name, 60);
         let mut codes = Vec::new();
         for c in &r.countries {
@@ -423,15 +444,9 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
     }
     let mut statuses: Vec<Status> = Vec::new();
     for (i, s) in input.statuses.iter().enumerate() {
-        let key = s.key.trim().to_owned();
-        if !is_key(&key) {
-            check.issue(
-                format!("statuses[{i}].key"),
-                "use 1 to 40 lower case letters, digits or underscores",
-            );
-        } else if statuses.iter().any(|x| x.key == key) {
-            check.issue(format!("statuses[{i}].key"), "is used twice");
-        }
+        let key = checked_key(&mut check, &format!("statuses[{i}].key"), &s.key, |k| {
+            statuses.iter().any(|x| x.key == k)
+        });
         let label = check.required(&format!("statuses[{i}].label"), &s.label, 60);
         statuses.push(Status {
             key,
@@ -600,15 +615,15 @@ pub async fn get(state: &AppState, ctx: &Ctx) -> ApiResult<PitchingSettingsView>
 pub async fn update(
     state: &AppState,
     ctx: &Ctx,
-    input: PitchingSettings,
+    input: PitchingSettingsInput,
     if_match: Option<i64>,
 ) -> ApiResult<PitchingSettingsView> {
     ctx.authorize(Permission::ConfigWrite)?;
-    let checked = check_settings(input)?;
     let mut tx = begin(state, ctx).await?;
     core_db::pitching::lock(&mut tx).await?;
     let (before, version) = settings_in(&mut tx).await?;
     check_version(version, if_match)?;
+    let checked = check_settings(input.over(before.clone()))?;
     let value = serde_json::to_value(&checked).map_err(crate::error::ApiError::internal)?;
     core_db::pitching::save(&mut tx, &value, ctx.user_id()).await?;
     record(

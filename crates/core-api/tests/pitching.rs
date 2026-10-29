@@ -570,20 +570,29 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
     .ok();
     assert_eq!(answer.body["tag"], "wait");
 
-    // What they cannot be.
+    // What they cannot be, all said at once.
     let bad = post(
         &app,
         &owner,
         "/api/v1/pitches",
         json!({ "organisation_id": club_id, "contact_id": elsewhere, "kind": "outcome",
                 "type_key": "pitched", "item": { "kind": "talent", "id": Uuid::now_v7() },
-                "happened_at": "2099-01-01T00:00:00Z" }),
+                "happened_at": "2099-01-01T00:00:00Z", "note": "x".repeat(2001) }),
     )
     .await;
     assert_eq!(bad.status, StatusCode::BAD_REQUEST, "{}", bad.body);
     let mut f = fields(&bad);
     f.sort();
-    assert_eq!(f, ["contact_id", "happened_at", "item", "type_key"]);
+    assert_eq!(f, ["contact_id", "happened_at", "item", "note", "type_key"]);
+    let tomorrow = (chrono::Utc::now() + chrono::Duration::hours(20)).to_rfc3339();
+    let res = post(
+        &app,
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": club_id, "kind": "action", "type_key": "called", "happened_at": tomorrow }),
+    )
+    .await;
+    assert_eq!(fields(&res), ["happened_at"]);
     post(
         &app,
         &viewer,
@@ -640,12 +649,24 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
     // A removed answer type still shows, unlabelled, and can be edited.
     let mut body = s.clone();
     body["outcomes"] = json!([{ "key": "yes", "label": "Yes", "tag": "good" }]);
+    body["actions"] = json!([{ "key": "pitched", "label": "Sent it" }]);
     app.put("/api/v1/pitching/settings")
         .signed_in(&owner)
         .json(body)
         .send()
         .await
         .ok();
+    // Lists left out, by a client from before they existed, stay.
+    let older = json!({ "regions": s["regions"], "statuses": s["statuses"], "items": s["items"] });
+    let saved = app
+        .put("/api/v1/pitching/settings")
+        .signed_in(&owner)
+        .json(older)
+        .send()
+        .await
+        .ok();
+    assert_eq!(saved.body["outcomes"][0]["key"], "yes");
+    assert_eq!(saved.body["actions"][0]["label"], "Sent it");
     let log = get(
         &app,
         &owner,
@@ -670,6 +691,11 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
         .send()
         .await;
     assert_eq!(gone.status, StatusCode::NO_CONTENT, "{}", gone.body);
+    app.delete(&format!("/api/v1/pitches/{id}"))
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
     let log = get(
         &app,
         &owner,

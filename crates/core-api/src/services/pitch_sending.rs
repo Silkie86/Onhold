@@ -342,6 +342,7 @@ pub async fn send(state: &AppState, ctx: &Ctx, s: PitchSend) -> ApiResult<PitchV
         PitchKind::Action,
         &parts,
         Changed::ALL,
+        Default::default(),
     )
     .await?;
     let (_, message) = inbox::compose_in(

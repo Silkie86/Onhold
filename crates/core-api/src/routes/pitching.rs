@@ -19,7 +19,7 @@ use crate::services::pitch_sending::{
     self, PitchDraft, PitchDraftRequest, PitchSend, PitchingMe, PitchingMePatch,
 };
 use crate::services::pitches::{self, NewPitch, PitchFilter, PitchPage, PitchPatch, PitchView};
-use crate::services::pitching::{self, PitchingSettings, PitchingSettingsView};
+use crate::services::pitching::{self, PitchingSettingsInput, PitchingSettingsView};
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -43,9 +43,10 @@ async fn get_settings(State(state): State<AppState>, WsCtx(ctx): WsCtx) -> ApiRe
     Ok(with_etag(v.version, v))
 }
 
-/// Replace the settings. Each country may be in one region at most.
+/// Replace the settings; a list left out stays as it is. Each country may
+/// be in one region at most.
 #[utoipa::path(put, path = "/pitching/settings", tag = "pitching", params(WorkspaceHeader, IfMatchHeader),
-    request_body = PitchingSettings,
+    request_body = PitchingSettingsInput,
     responses((status = 200, body = PitchingSettingsView), (status = 400, body = ErrorBody),
         (status = 403, body = ErrorBody), (status = 412, body = ErrorBody)),
     security(("session" = []), ("api_key" = [])))]
@@ -53,7 +54,7 @@ async fn update_settings(
     State(state): State<AppState>,
     WsCtx(ctx): WsCtx,
     IfMatch(if_match): IfMatch,
-    Json(b): Json<PitchingSettings>,
+    Json(b): Json<PitchingSettingsInput>,
 ) -> ApiResult<Response> {
     let v = pitching::update(&state, &ctx, b, if_match).await?;
     Ok(with_etag(v.version, v))

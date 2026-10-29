@@ -16141,7 +16141,7 @@
         "tags": [
           "pitching"
         ],
-        "summary": "Replace the settings. Each country may be in one region at most.",
+        "summary": "Replace the settings; a list left out stays as it is. Each country may\nbe in one region at most.",
         "operationId": "update_settings",
         "parameters": [
           {
@@ -16172,7 +16172,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PitchingSettings"
+                "$ref": "#/components/schemas/PitchingSettingsInput"
               }
             }
           },
@@ -37586,6 +37586,76 @@
               "$ref": "#/components/schemas/PitchTemplate"
             },
             "description": "The wording members pitch with."
+          }
+        }
+      },
+      "PitchingSettingsInput": {
+        "type": "object",
+        "description": "New settings. A list left out keeps what is stored, so a client from\nbefore a list existed does not reset it.",
+        "properties": {
+          "actions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PitchAction"
+            }
+          },
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ItemKind"
+            }
+          },
+          "outcomes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PitchOutcome"
+            }
+          },
+          "regions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Region"
+            }
+          },
+          "send_with": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PitchSendWith"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "statuses": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Status"
+            }
+          },
+          "templates": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PitchTemplate"
+            }
           }
         }
       },
