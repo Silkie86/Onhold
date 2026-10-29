@@ -243,23 +243,42 @@ struct Parts {
     happened_at: DateTime<Utc>,
 }
 
-/// Checks an entry against the workspace's lists and records: the type is
-/// one it lists (unless unchanged, so an entry whose type was since removed
-/// can still be edited), the person is at the organisation, what was pitched
-/// exists, and it did not happen tomorrow or later.
-#[allow(clippy::too_many_arguments)]
+/// Which parts of an entry are new, and so checked against what the
+/// workspace lists and holds now.
+#[derive(Clone, Copy)]
+struct Changed {
+    type_key: bool,
+    contact: bool,
+    item: bool,
+}
+
+impl Changed {
+    const ALL: Changed = Changed {
+        type_key: true,
+        contact: true,
+        item: true,
+    };
+}
+
+/// How far ahead of the server's clock an entry may be dated, for clocks
+/// that are a little out.
+const CLOCK_SKEW: Duration = Duration::minutes(10);
+
+/// Checks an entry against the workspace's lists and records, adding to
+/// what `check` already found: the type is one it lists (unless unchanged,
+/// so an entry whose type was since removed can still be edited), the
+/// person is at the organisation, what was pitched exists, and it has
+/// already happened.
 async fn check(
     tx: &mut Tx,
     settings: &PitchingSettings,
     organisation: Uuid,
     kind: PitchKind,
     parts: &Parts,
-    type_changed: bool,
-    contact_changed: bool,
-    item_changed: bool,
+    changed: Changed,
+    mut check: Check,
 ) -> ApiResult<()> {
-    let mut check = Check::default();
-    if type_changed {
+    if changed.type_key {
         let listed = match kind {
             PitchKind::Action => settings.action(&parts.type_key).is_some(),
             PitchKind::Outcome => settings.outcome(&parts.type_key).is_some(),
@@ -274,14 +293,18 @@ async fn check(
             );
         }
     }
-    if contact_changed && let Some(id) = parts.contact_id {
+    if changed.contact
+        && let Some(id) = parts.contact_id
+    {
         match core_db::contacts::get(tx, id).await? {
             Some(c) if c.organisation_id == Some(organisation) => {}
             Some(_) => check.issue("contact_id", "is not at this organisation"),
             None => check.issue("contact_id", "there is no such contact"),
         }
     }
-    if item_changed && let Some(item) = parts.item {
+    if changed.item
+        && let Some(item) = parts.item
+    {
         let exists = match item.kind {
             ItemKind::Talent => core_db::talent::get(tx, item.id).await?.is_some(),
             ItemKind::Project => core_db::projects::get(tx, item.id).await?.is_some(),
@@ -290,7 +313,7 @@ async fn check(
             check.issue("item", format!("there is no such {}", item.kind.as_str()));
         }
     }
-    if parts.happened_at > Utc::now() + Duration::hours(24) {
+    if parts.happened_at > Utc::now() + CLOCK_SKEW {
         check.issue("happened_at", "cannot be in the future");
     }
     check.finish()
@@ -323,9 +346,8 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewPitch) -> ApiResult<Pit
         ));
     }
     let (settings, _) = settings_in(&mut tx).await?;
-    let mut note_check = Check::default();
-    let note = note_check.long("note", new.note.as_deref(), MAX_NOTE);
-    note_check.finish()?;
+    let mut found = Check::default();
+    let note = found.long("note", new.note.as_deref(), MAX_NOTE);
     let parts = Parts {
         contact_id: new.contact_id,
         type_key: new.type_key.trim().to_owned(),
@@ -340,9 +362,8 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewPitch) -> ApiResult<Pit
         new.organisation_id,
         new.kind,
         &parts,
-        true,
-        true,
-        true,
+        Changed::ALL,
+        found,
     )
     .await?;
     let id = core_domain::ids::new_id();
@@ -387,19 +408,16 @@ pub async fn update(
         .ok_or(ApiError::NotFound)?;
     check_version(version, if_match)?;
     let (settings, _) = settings_in(&mut tx).await?;
-    let before = load(&mut tx, &settings, id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
-    let mut note_check = Check::default();
-    let note = match &p.note {
-        Some(n) => note_check.long("note", n.as_deref(), MAX_NOTE),
-        None => before.note.clone(),
-    };
-    note_check.finish()?;
-    // An item that has since gone is kept unless replaced.
     let stored = core_db::pitches::get(&mut tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
+    let before = view(&settings, stored.clone());
+    let mut found = Check::default();
+    let note = match &p.note {
+        Some(n) => found.long("note", n.as_deref(), MAX_NOTE),
+        None => before.note.clone(),
+    };
+    // An item that has since gone is kept unless replaced.
     let current_item = match (stored.talent_id, stored.project_id) {
         (Some(id), _) => Some(ItemInput {
             kind: ItemKind::Talent,
@@ -428,9 +446,12 @@ pub async fn update(
         before.organisation_id,
         before.kind,
         &parts,
-        parts.type_key != before.type_key,
-        parts.contact_id != stored.contact_id,
-        parts.item != current_item,
+        Changed {
+            type_key: parts.type_key != before.type_key,
+            contact: parts.contact_id != stored.contact_id,
+            item: parts.item != current_item,
+        },
+        found,
     )
     .await?;
     core_db::pitches::update(
@@ -463,11 +484,16 @@ pub async fn update(
 pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::OrganisationWrite)?;
     let mut tx = begin(state, ctx).await?;
+    core_db::pitches::lock(&mut tx, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     let (settings, _) = settings_in(&mut tx).await?;
     let before = load(&mut tx, &settings, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    core_db::pitches::soft_delete(&mut tx, id, ctx.user_id()).await?;
+    if !core_db::pitches::soft_delete(&mut tx, id, ctx.user_id()).await? {
+        return Err(ApiError::NotFound);
+    }
     record(
         &mut tx,
         ctx,

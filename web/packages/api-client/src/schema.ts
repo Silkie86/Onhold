@@ -2866,7 +2866,10 @@ export interface paths {
          *     region.
          */
         get: operations["get_settings"];
-        /** Replace the settings. Each country may be in one region at most. */
+        /**
+         * Replace the settings; a list left out stays as it is. Each country may
+         *     be in one region at most.
+         */
         put: operations["update_settings"];
         post?: never;
         delete?: never;
@@ -7879,6 +7882,17 @@ export interface components {
             outcomes?: components["schemas"]["PitchOutcome"][];
             regions?: components["schemas"]["Region"][];
             statuses?: components["schemas"]["Status"][];
+        };
+        /**
+         * @description New settings. A list left out keeps what is stored, so a client from
+         *     before a list existed does not reset it.
+         */
+        PitchingSettingsInput: {
+            actions?: components["schemas"]["PitchAction"][] | null;
+            items?: components["schemas"]["ItemKind"][] | null;
+            outcomes?: components["schemas"]["PitchOutcome"][] | null;
+            regions?: components["schemas"]["Region"][] | null;
+            statuses?: components["schemas"]["Status"][] | null;
         };
         PitchingSettingsView: components["schemas"]["PitchingSettings"] & {
             /** @description Every country, for choosing which region each is in. */
@@ -18174,7 +18188,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PitchingSettings"];
+                "application/json": components["schemas"]["PitchingSettingsInput"];
             };
         };
         responses: {

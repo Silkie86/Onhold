@@ -407,7 +407,8 @@ pub async fn lock_record(
 /// Whether a record is in use elsewhere, so undoing an import keeps it:
 /// on an enquiry, booking, invoice, payment, conversation, task or
 /// document; for talent also a calendar, availability, a portal or a
-/// pitching list. People at an organisation are asked separately.
+/// pitching list; anything in the pitch log. People at an organisation are
+/// asked separately.
 pub async fn record_in_use(conn: &mut PgConnection, entity: &str, id: Uuid) -> Result<bool> {
     let used = match entity {
         "talent" => sqlx::query_scalar!(

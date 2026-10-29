@@ -4,7 +4,7 @@
 // interested in and might be a match for, and its pitch log.
 
 import type { Schemas } from "@onhold/api-client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Alert,
@@ -621,7 +621,7 @@ export function OrganisationPitching({
         canWrite={canWrite && !busy}
         onChange={(next) => void save("potential_matches", next)}
       />
-      <PitchLog organisationId={String(organisation.id)} items={[...interested, ...matches]} canWrite={canWrite} />
+      <PitchLog organisationId={String(organisation.id)} items={uniqueItems([...interested, ...matches])} canWrite={canWrite} />
     </section>
   );
 }
@@ -760,27 +760,44 @@ export function happenedAt(day: string, now = new Date()): string {
   return new Date(`${day}T12:00:00`).toISOString();
 }
 
-const TAG_COLOUR: Record<OutcomeTag, Colour> = { good: "green", wait: "amber", no: "red", never: "grey" };
+const TAG_COLOUR = Object.fromEntries(TAGS.map((t) => [t.value, t.colour])) as Record<OutcomeTag, Colour>;
+const LOG_PAGE = 50;
+
+/** Each item once, in the order first seen. */
+export function uniqueItems(items: ItemRef[]): ItemRef[] {
+  const seen = new Set<string>();
+  return items.filter((x) => {
+    const key = `${x.kind}:${x.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 /** An organisation's pitch log: what was done and the answers given, latest first. */
 function PitchLog({ organisationId, items, canWrite }: { organisationId: string; items: ItemRef[]; canWrite: boolean }) {
   const settings = usePitchingSettings();
   const qc = useQueryClient();
   const sync = useOffline();
-  const log = useQuery({
+  const log = useInfiniteQuery({
     queryKey: ["pitches", organisationId],
-    queryFn: () => ok(api.GET("/api/v1/organisations/{id}/pitches", { params: { path: { id: organisationId }, query: { limit: 100 } } })),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      ok(api.GET("/api/v1/organisations/{id}/pitches", { params: { path: { id: organisationId }, query: { offset: pageParam, limit: LOG_PAGE } } })),
+    getNextPageParam: (last, pages) => {
+      const shown = pages.reduce((n, p) => n + p.items.length, 0);
+      return shown < last.total && last.items.length > 0 ? shown : undefined;
+    },
   });
+  const entries = log.data?.pages.flatMap((p) => p.items) ?? [];
+  const total = log.data?.pages.at(-1)?.total ?? 0;
   const people = useQuery({
     queryKey: ["list", "contact", "org", organisationId],
     queryFn: async () => (await fetchList(sync, "contact", { organisation_id: organisationId, limit: 100 })).data,
   });
   const [editing, setEditing] = useState<Pitch | PitchKind | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const refresh = () => {
-    void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
-    void qc.invalidateQueries({ queryKey: ["timeline", "organisation", organisationId] });
-  };
+  const refresh = () => void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
   const remove = async (p: Pitch) => {
     if (!window.confirm(`Remove "${p.type_label ?? "this entry"}" from the log?`)) return;
     setError(null);
@@ -816,11 +833,11 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
         <Spinner />
       ) : log.isError ? (
         <Alert>{log.error.message}</Alert>
-      ) : log.data.items.length === 0 ? (
+      ) : entries.length === 0 ? (
         <p className="text-muted-foreground">Nothing logged yet.</p>
       ) : (
         <ul className="divide-y rounded-md border">
-          {log.data.items.map((p) => (
+          {entries.map((p) => (
             <li key={p.id} className="flex items-start justify-between gap-2 px-3 py-2">
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex flex-wrap items-center gap-2">
@@ -853,6 +870,11 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
           ))}
         </ul>
       )}
+      {log.hasNextPage && (
+        <Button variant="ghost" size="sm" className="self-start" disabled={log.isFetchingNextPage} onClick={() => void log.fetchNextPage()}>
+          {log.isFetchingNextPage && <Spinner className="size-4" />} Show older ({total - entries.length} more)
+        </Button>
+      )}
       {editing && settings.data && (
         <LogDialog
           organisationId={organisationId}
@@ -871,6 +893,8 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
     </Card>
   );
 }
+
+const itemKey = (x: ItemRef | null) => (x ? `${x.kind}:${x.id}` : "");
 
 function LogDialog({
   organisationId,
@@ -893,12 +917,21 @@ function LogDialog({
 }) {
   const setup = useSetup();
   const types = kind === "action" ? (settings.actions ?? []) : (settings.outcomes ?? []);
-  const [type, setType] = useState(entry?.type_key ?? types[0]?.key ?? "");
-  const [channel, setChannel] = useState<PitchChannel | "">(entry?.channel ?? (kind === "action" ? "email" : ""));
-  const [contact, setContact] = useState(entry?.contact_id ?? (people.length === 1 ? (people[0]?.id ?? "") : ""));
-  const [item, setItem] = useState<ItemRef | null>(entry?.item ?? null);
-  const [day, setDay] = useState(dayOf(entry?.happened_at ?? new Date().toISOString()));
-  const [note, setNote] = useState(entry?.note ?? "");
+  // An entry starts as it is; a new one with likely choices.
+  const [start] = useState(() => ({
+    type: entry ? entry.type_key : (types[0]?.key ?? ""),
+    channel: (entry ? (entry.channel ?? "") : kind === "action" ? "email" : "") as PitchChannel | "",
+    contact: entry ? (entry.contact_id ?? "") : people.length === 1 ? (people[0]?.id ?? "") : "",
+    item: entry ? (entry.item ?? null) : null,
+    day: dayOf(entry?.happened_at ?? new Date().toISOString()),
+    note: entry?.note ?? "",
+  }));
+  const [type, setType] = useState(start.type);
+  const [channel, setChannel] = useState<PitchChannel | "">(start.channel);
+  const [contact, setContact] = useState(start.contact);
+  const [item, setItem] = useState<ItemRef | null>(start.item);
+  const [day, setDay] = useState(start.day);
+  const [note, setNote] = useState(start.note);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const choices = item && !items.some((x) => x.kind === item.kind && x.id === item.id) ? [item, ...items] : items;
@@ -908,22 +941,30 @@ function LogDialog({
   const save = async () => {
     setBusy(true);
     setError(null);
-    const when = entry && day === dayOf(entry.happened_at) ? entry.happened_at : happenedAt(day);
     const body = {
       contact_id: contact || null,
       type_key: type,
       channel: channel || null,
       item: item ? { kind: item.kind, id: item.id } : null,
       note: note.trim() || null,
-      happened_at: when,
+      happened_at: happenedAt(day),
     };
     try {
       if (entry) {
+        // Only what was changed, so what the form cannot show (such as an
+        // act since deleted) stays as it is.
         await ok(
           api.PATCH("/api/v1/pitches/{id}", {
             params: { path: { id: entry.id } },
             headers: { "If-Match": `"${entry.version}"` },
-            body,
+            body: {
+              ...(contact !== start.contact && { contact_id: body.contact_id }),
+              ...(type !== start.type && { type_key: body.type_key }),
+              ...(channel !== start.channel && { channel: body.channel }),
+              ...(itemKey(item) !== itemKey(start.item) && { item: body.item }),
+              ...(note !== start.note && { note: body.note }),
+              ...(day !== start.day && { happened_at: body.happened_at }),
+            },
           }),
         );
       } else {
