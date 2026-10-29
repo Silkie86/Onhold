@@ -8104,7 +8104,7 @@ export interface components {
             /** Format: uuid */
             organisation_id: string;
             pitch_status: components["schemas"]["PitchStatus"];
-            /** @description What counts for it, best first. */
+            /** @description What counts for and against it, best first, but for the `but`. */
             reasons: components["schemas"]["RankLine"][];
             /** @description The region it is in, picked or from its country. */
             region?: string | null;
@@ -8114,7 +8114,8 @@ export interface components {
             resting: boolean;
             /**
              * Format: date
-             * @description Until when (none: not again, after an answer tagged never).
+             * @description Until when (none: not again, after an answer tagged never; or until
+             *     an answer that came back is logged).
              */
             resting_until?: string | null;
             /** Format: int32 */

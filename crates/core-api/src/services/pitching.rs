@@ -136,12 +136,17 @@ pub struct PitchOutcome {
     pub rest_days: Option<i32>,
 }
 
+/// The answer logged when nothing came back.
+pub const NO_ANSWER: &str = "no_answer";
+
 impl PitchOutcome {
     /// Days to rest after this answer; `None` for never again.
     pub fn rest(&self) -> Option<i32> {
         match self.tag {
             OutcomeTag::Never => None,
             OutcomeTag::Good => Some(self.rest_days.unwrap_or(0)),
+            // Saved before rests existed, "No answer" waits as it does now.
+            OutcomeTag::Wait if self.key == NO_ANSWER => Some(self.rest_days.unwrap_or(60)),
             OutcomeTag::Wait => Some(self.rest_days.unwrap_or(90)),
             OutcomeTag::No => Some(self.rest_days.unwrap_or(180)),
         }
@@ -444,7 +449,7 @@ fn default_outcomes() -> Vec<PitchOutcome> {
         o("not_now", "Not now", OutcomeTag::Wait, Some(90)),
         o("no", "No", OutcomeTag::No, Some(180)),
         o("not_a_fit", "Not a fit", OutcomeTag::Never, None),
-        o("no_answer", "No answer", OutcomeTag::Wait, Some(60)),
+        o(NO_ANSWER, "No answer", OutcomeTag::Wait, Some(60)),
     ]
 }
 

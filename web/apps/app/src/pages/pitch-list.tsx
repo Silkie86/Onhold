@@ -4,7 +4,7 @@
 // last and greyed, with why. Worked out on the server when asked.
 
 import type { Schemas } from "@onhold/api-client";
-import { Alert, Badge, Button, Card, Checkbox, Input, Label, NativeSelect, Spinner, StatusDot } from "@onhold/ui";
+import { Alert, Badge, Button, Card, Checkbox, Input, Label, NativeSelect, Spinner, StatusDot, useDebounced } from "@onhold/ui";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
@@ -31,6 +31,14 @@ export const PITCH_STATUSES: { value: PitchStatus; label: string }[] = [
   { value: "not_pitched", label: "Not pitched" },
 ];
 const statusLabel = (s: PitchStatus) => PITCH_STATUSES.find((x) => x.value === s)?.label ?? s;
+
+/** A row's status and region, by their keys in the pitching settings. */
+function lookups(settings: View | undefined) {
+  return {
+    statusOf: (key: string | null | undefined) => settings?.statuses?.find((s) => s.key === key),
+    regionName: (key: string | null | undefined) => settings?.regions?.find((r) => r.key === key)?.name,
+  };
+}
 
 /** What can be pitched: the workspace's talent and, if it pitches them, its projects. */
 function usePitchables(settings: View | undefined) {
@@ -67,11 +75,12 @@ export function PitchListPage() {
   const [hideResting, setHideResting] = useState(false);
   const [byName, setByName] = useState(false);
   const [offset, setOffset] = useState(0);
+  const searched = useDebounced(q.trim(), 300);
   const item = search.kind && search.id ? `${search.kind}:${search.id}` : "";
   const query = {
     item_kind: search.kind,
     item_id: search.id,
-    q: q.trim() || undefined,
+    q: searched || undefined,
     region: region || undefined,
     country: country || undefined,
     status: status || undefined,
@@ -95,9 +104,15 @@ export function PitchListPage() {
       f(v);
     };
   const talentWord = setup.word("crm", "talent", true);
-  const statusOf = (key: string | null | undefined) => settings.data?.statuses?.find((s) => s.key === key);
-  const regionName = (key: string | null | undefined) => settings.data?.regions?.find((r) => r.key === key)?.name;
+  const { statusOf, regionName } = lookups(settings.data);
   const total = list.data?.total ?? 0;
+  // One beyond the first few hundred, picked from its own page, still shows.
+  const picked = list.data?.item;
+  const withPicked = (items: { id: string; name: string }[], kind: ItemKind) =>
+    picked && picked.kind === kind && !items.some((i) => i.id === picked.id) ? [...items, { id: picked.id, name: picked.name }] : items;
+  const talentOptions = withPicked(talent, "talent");
+  const projectOptions = withPicked(projects, "project");
+  const regionCountries = (key: string) => settings.data?.regions?.find((r) => r.key === key)?.countries;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4 sm:p-6">
@@ -126,18 +141,18 @@ export function PitchListPage() {
             }}
           >
             <option value="">Nothing in particular</option>
-            {talent.length > 0 && (
+            {talentOptions.length > 0 && (
               <optgroup label={talentWord}>
-                {talent.map((t) => (
+                {talentOptions.map((t) => (
                   <option key={t.id} value={`talent:${t.id}`}>
                     {t.name}
                   </option>
                 ))}
               </optgroup>
             )}
-            {projects.length > 0 && (
+            {projectOptions.length > 0 && (
               <optgroup label="Projects">
-                {projects.map((p) => (
+                {projectOptions.map((p) => (
                   <option key={p.id} value={`project:${p.id}`}>
                     {p.name}
                   </option>
@@ -148,7 +163,16 @@ export function PitchListPage() {
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
           <Input aria-label="Search" placeholder="Search names and tags…" value={q} onChange={(e) => set(setQ)(e.target.value)} />
-          <NativeSelect aria-label="Region" value={region} onChange={(e) => set(setRegion)(e.target.value)}>
+          <NativeSelect
+            aria-label="Region"
+            value={region}
+            onChange={(e) => {
+              const next = e.target.value;
+              // A country outside the new region would hide everyone, unseen.
+              if (next && country && !regionCountries(next)?.includes(country)) setCountry("");
+              set(setRegion)(next);
+            }}
+          >
             <option value="">Every region</option>
             {settings.data?.regions?.map((r) => (
               <option key={r.key} value={r.key}>
@@ -159,7 +183,7 @@ export function PitchListPage() {
           <NativeSelect aria-label="Country" value={country} onChange={(e) => set(setCountry)(e.target.value)}>
             <option value="">Every country</option>
             {settings.data?.countries
-              .filter((c) => !region || settings.data?.regions?.find((r) => r.key === region)?.countries.includes(c.code))
+              .filter((c) => !region || regionCountries(region)?.includes(c.code))
               .map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.name}
@@ -242,24 +266,16 @@ function points(l: Line) {
 
 function PitchRow({ row: r, status, regionName }: { row: Row; status: Schemas["Status"] | undefined; regionName: string | undefined }) {
   const where = [r.city, r.country_code, regionName].filter(Boolean).join(" · ");
+  const name = (
+    <Link to="/crm/$entity/$id" params={{ entity: "organisation", id: r.organisation_id }} className="font-medium hover:underline">
+      {r.name}
+    </Link>
+  );
   return (
     <li className={`flex flex-col gap-1.5 px-3 py-2.5 ${r.resting ? "opacity-60" : ""}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex min-w-0 flex-wrap items-center gap-2">
-          {status ? (
-            <StatusDot
-              colour={status.colour}
-              label={
-                <Link to="/crm/$entity/$id" params={{ entity: "organisation", id: r.organisation_id }} className="font-medium hover:underline">
-                  {r.name}
-                </Link>
-              }
-            />
-          ) : (
-            <Link to="/crm/$entity/$id" params={{ entity: "organisation", id: r.organisation_id }} className="font-medium hover:underline">
-              {r.name}
-            </Link>
-          )}
+          {status ? <StatusDot colour={status.colour} label={name} /> : name}
           <Badge>{statusLabel(r.pitch_status)}</Badge>
           {r.relationship === "client" && <Badge>Client</Badge>}
         </span>
@@ -299,6 +315,7 @@ export function WhoToPitchCard({ talentId }: { talentId: string }) {
       ),
   });
   const settings = usePitchingSettings();
+  const { statusOf, regionName } = lookups(settings.data);
   if (list.isError) return null;
   return (
     <section className="flex flex-col gap-3" aria-label="Who to pitch">
@@ -316,12 +333,7 @@ export function WhoToPitchCard({ talentId }: { talentId: string }) {
       ) : (
         <ul className="flex flex-col divide-y rounded-md border bg-card text-sm">
           {list.data.items.map((r) => (
-            <PitchRow
-              key={r.organisation_id}
-              row={r}
-              status={settings.data?.statuses?.find((s) => s.key === r.status)}
-              regionName={settings.data?.regions?.find((x) => x.key === r.region)?.name}
-            />
+            <PitchRow key={r.organisation_id} row={r} status={statusOf(r.status)} regionName={regionName(r.region)} />
           ))}
         </ul>
       )}

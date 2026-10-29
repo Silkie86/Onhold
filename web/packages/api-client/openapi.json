@@ -37917,7 +37917,7 @@
             "items": {
               "$ref": "#/components/schemas/RankLine"
             },
-            "description": "What counts for it, best first."
+            "description": "What counts for and against it, best first, but for the `but`."
           },
           "region": {
             "type": [
@@ -37948,7 +37948,7 @@
               "null"
             ],
             "format": "date",
-            "description": "Until when (none: not again, after an answer tagged never)."
+            "description": "Until when (none: not again, after an answer tagged never; or until\nan answer that came back is logged)."
           },
           "score": {
             "type": "integer",

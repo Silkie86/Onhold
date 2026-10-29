@@ -77,7 +77,7 @@ export function defaultColumns(schema: EntitySchema): string[] {
   return schema.fields.filter((f) => f.in_list).map((f) => f.key);
 }
 
-function useDebounced<T>(value: T, ms: number): T {
+export function useDebounced<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(value), ms);

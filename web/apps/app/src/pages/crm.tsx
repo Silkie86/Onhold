@@ -551,8 +551,12 @@ export function EntityRecordPage() {
                 setSaved(result.queued ? "queued" : "sent");
                 setFormKey(null);
                 void qc.invalidateQueries({ queryKey: ["timeline", entity.entity, id] });
-                // A follow-up date, or do not contact, changes what is due.
-                if (entity.entity === "organisation") void qc.invalidateQueries({ queryKey: ["follow-ups"] });
+                // A follow-up date, or do not contact, changes what is due
+                // and who to pitch.
+                if (entity.entity === "organisation") {
+                  void qc.invalidateQueries({ queryKey: ["follow-ups"] });
+                  void qc.invalidateQueries({ queryKey: ["pitch-list"] });
+                }
                 void qc.invalidateQueries({ queryKey: ["list", entity.entity] });
               } catch (e) {
                 if (e instanceof ApiFailure && e.status === 412) {

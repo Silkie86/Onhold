@@ -19,6 +19,12 @@ pub struct Filter<'a> {
     pub city: Option<&'a str>,
     pub status_key: Option<&'a str>,
     pub relationship: Option<&'a str>,
+    /// A region: organisations it was picked for, and those with none
+    /// picked in one of its countries.
+    pub region: Option<(&'a str, &'a [String])>,
+    /// Every region's key, so one picked that no longer exists counts as
+    /// none.
+    pub region_keys: &'a [String],
     /// Bookings of the item from now until then count as nearby.
     pub nearby_until: DateTime<Utc>,
     pub limit: i64,
@@ -42,7 +48,7 @@ pub struct Candidate {
     pub interested: bool,
     pub matched: bool,
     /// Confirmed or done bookings of the item with it (as buyer or venue),
-    /// and the latest one's date.
+    /// and the date of the latest one that has happened.
     pub booked: i64,
     pub booked_last: Option<DateTime<Utc>>,
     /// The item's next date in the same city, if there is one soon.
@@ -75,7 +81,7 @@ pub async fn candidates(conn: &mut PgConnection, f: &Filter<'_>) -> Result<Vec<C
                           SELECT 1 FROM project_bookings pb
                           WHERE pb.workspace_id = b.workspace_id AND pb.booking_id = b.id AND pb.project_id = $2)))
            ), worked AS (
-               SELECT o_id, count(*) AS n, max(starts_at) AS last
+               SELECT o_id, count(*) AS n, max(starts_at) FILTER (WHERE starts_at <= now()) AS last
                FROM (SELECT organisation_id AS o_id, starts_at FROM item_bookings
                      WHERE status IN ('confirmed', 'completed') AND organisation_id IS NOT NULL
                      UNION ALL
@@ -94,7 +100,10 @@ pub async fn candidates(conn: &mut PgConnection, f: &Filter<'_>) -> Result<Vec<C
            ), about AS (
                SELECT p.organisation_id, p.kind, p.type_key, p.happened_at, p.id, p.answered_at
                FROM pitch_log p
+               LEFT JOIN thread_messages m ON m.workspace_id = p.workspace_id AND m.id = p.message_id
                WHERE p.workspace_id = app_workspace_id() AND p.deleted_at IS NULL
+                 -- A pitch OnHold failed to send wasn't done.
+                 AND m.status IS DISTINCT FROM 'failed'
                  AND (($1::uuid IS NULL AND $2::uuid IS NULL)
                       OR (p.talent_id IS NULL AND p.project_id IS NULL)
                       OR p.talent_id = $1 OR p.project_id = $2)
@@ -144,6 +153,9 @@ pub async fn candidates(conn: &mut PgConnection, f: &Filter<'_>) -> Result<Vec<C
              AND ($7::text IS NULL OR lower(btrim(o.city)) = lower(btrim($7)))
              AND ($8::text IS NULL OR o.status_key = $8)
              AND ($9::text IS NULL OR o.relationship = $9)
+             AND ($12::text IS NULL OR o.region_key = $12
+                  OR ((o.region_key IS NULL OR NOT o.region_key = ANY ($14))
+                      AND o.country_code::text = ANY ($13)))
            ORDER BY lower(o.name), o.id
            LIMIT $11"#,
         f.talent,
@@ -156,7 +168,10 @@ pub async fn candidates(conn: &mut PgConnection, f: &Filter<'_>) -> Result<Vec<C
         f.status_key,
         f.relationship,
         f.nearby_until,
-        f.limit
+        f.limit,
+        f.region.map(|(key, _)| key),
+        f.region.map_or(&[][..], |(_, countries)| countries),
+        f.region_keys
     )
     .fetch_all(conn)
     .await?)

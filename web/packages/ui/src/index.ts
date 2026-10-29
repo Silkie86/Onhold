@@ -10,6 +10,7 @@ export {
   defaultColumns,
   defaultTableState,
   stateFromView,
+  useDebounced,
   viewConfig,
 } from "./components/data-table.tsx";
 export { Dialog } from "./components/dialog.tsx";

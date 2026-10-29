@@ -254,9 +254,10 @@ function SettingsForm({
       onSaved();
       qc.setQueryData(["pitching-settings"], after);
       // Region and status choices on organisations come from these, and
-      // what is due from the follow-ups.
+      // what is due from the follow-ups, and the ranking from the weights.
       void qc.invalidateQueries({ queryKey: ["schema"] });
       void qc.invalidateQueries({ queryKey: ["follow-ups"] });
+      void qc.invalidateQueries({ queryKey: ["pitch-list"] });
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 412) setError("Someone else changed these while you were editing. Reload to see their changes.");
       else setError(failure(e));
@@ -1286,6 +1287,7 @@ function DueRow({ due: d, settings, canWrite }: { due: Due; settings: View | und
     Promise.all([
       qc.invalidateQueries({ queryKey: ["follow-ups"] }),
       qc.invalidateQueries({ queryKey: ["pitches", d.organisation_id] }),
+      qc.invalidateQueries({ queryKey: ["pitch-list"] }),
     ]);
   const run = async (call: () => Promise<unknown>) => {
     if (busy) return;
@@ -1448,6 +1450,7 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
     void qc.invalidateQueries({ queryKey: ["follow-ups"] });
+    void qc.invalidateQueries({ queryKey: ["pitch-list"] });
     // Sent mail logged or removed elsewhere comes and goes from "In your
     // Sent mail"; not asked again for those who can't read the inbox.
     if (qc.getQueryState(["unlogged", organisationId])?.status !== "error")

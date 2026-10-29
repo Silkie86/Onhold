@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use super::begin;
 use super::organisations::ItemRef;
-use super::pitching::{ItemKind, OutcomeTag, PitchingSettings, RankReason, settings_in};
+use super::pitching::{ItemKind, NO_ANSWER, OutcomeTag, PitchingSettings, RankReason, settings_in};
 use crate::AppState;
 use crate::error::{ApiError, ApiResult};
 
@@ -104,13 +104,14 @@ pub struct PitchListRow {
     pub follow_up_on: Option<NaiveDate>,
     pub pitch_status: PitchStatus,
     pub score: i32,
-    /// What counts for it, best first.
+    /// What counts for and against it, best first, but for the `but`.
     pub reasons: Vec<RankLine>,
     /// The strongest reason against, if any.
     pub but: Option<RankLine>,
     /// Resting after an answer or waiting for one: shown greyed and last.
     pub resting: bool,
-    /// Until when (none: not again, after an answer tagged never).
+    /// Until when (none: not again, after an answer tagged never; or until
+    /// an answer that came back is logged).
     pub resting_until: Option<NaiveDate>,
     pub rest_reason: Option<String>,
 }
@@ -141,13 +142,16 @@ impl Scene<'_> {
         at.with_timezone(&self.tz).date_naive()
     }
 
-    /// Days an unanswered pitch waits for its answer: the follow-ups, then
-    /// the wait before asking what came of it.
-    fn waiting_days(&self) -> i64 {
+    /// Days from the last of `actions` unanswered ones (the pitch and
+    /// the follow-ups done since) that it waits for an answer: the
+    /// follow-ups still to do, then the wait before asking what came of it.
+    fn waiting_days(&self, actions: i64) -> i64 {
+        let done = usize::try_from(actions - 1).unwrap_or(0);
         let steps: i64 = self
             .settings
             .follow_ups
             .iter()
+            .skip(done)
             .map(|s| i64::from(s.after_days))
             .sum();
         steps + i64::from(self.settings.give_up_after_days.max(7))
@@ -191,7 +195,7 @@ fn rank(scene: &Scene<'_>, c: &core_db::pitch_list::Candidate) -> PitchListRow {
     let waiting_until = c
         .action_at
         .filter(|_| open && !c.answered_since)
-        .map(|at| scene.day(at) + Duration::days(scene.waiting_days()));
+        .map(|at| scene.day(at) + Duration::days(scene.waiting_days(c.actions_since)));
     if let Some((o, at)) = outcome {
         match o.rest() {
             None => {
@@ -216,7 +220,11 @@ fn rank(scene: &Scene<'_>, c: &core_db::pitch_list::Candidate) -> PitchListRow {
             Some(_) => {}
         }
     }
-    if !resting
+    if !resting && open && c.answered_since {
+        // They answered; what they said is still to be logged.
+        resting = true;
+        rest_reason = Some("They answered: log what they said".into());
+    } else if !resting
         && let (Some(until), Some(at)) = (waiting_until, c.action_at)
         && until > scene.today
     {
@@ -235,14 +243,13 @@ fn rank(scene: &Scene<'_>, c: &core_db::pitch_list::Candidate) -> PitchListRow {
     if c.matched {
         add(RankReason::PotentialMatch, format!("Could suit {item}"));
     }
-    if c.booked > 0 {
-        let when = c
-            .booked_last
-            .map(|at| format!(" ({})", short(scene.day(at))))
-            .unwrap_or_default();
+    if let Some(at) = c.booked_last {
         add(
             RankReason::BookedBefore,
-            format!("Booked {item} before{when}: worth going back"),
+            format!(
+                "Booked {item} before ({}): worth going back",
+                short(scene.day(at))
+            ),
         );
     }
     if c.relationship.as_deref() == Some("client") {
@@ -277,6 +284,15 @@ fn rank(scene: &Scene<'_>, c: &core_db::pitch_list::Candidate) -> PitchListRow {
             RankReason::NoAnswer,
             format!("No answer to the pitch on {}", short(scene.day(at))),
         );
+    } else if !open
+        && let Some((o, at)) = outcome
+        && o.key == NO_ANSWER
+    {
+        // Logging that nothing came back counts the same as not logging it.
+        add(
+            RankReason::NoAnswer,
+            format!("No answer to the pitch (logged {})", short(scene.day(at))),
+        );
     }
     if !c.reachable {
         add(
@@ -295,14 +311,18 @@ fn rank(scene: &Scene<'_>, c: &core_db::pitch_list::Candidate) -> PitchListRow {
     }
 
     let score = lines.iter().map(|l| l.points).sum();
-    let (mut reasons, against): (Vec<RankLine>, Vec<RankLine>) =
-        lines.into_iter().partition(|l| l.points > 0);
+    // Best first; the strongest against is the "but", any other with it.
+    let mut reasons = lines;
     reasons.sort_by_key(|l| std::cmp::Reverse(l.points));
-    let but = against.into_iter().min_by_key(|l| l.points);
+    let but = reasons
+        .last()
+        .is_some_and(|l| l.points < 0)
+        .then(|| reasons.pop())
+        .flatten();
 
     let pitch_status = if c.booked > 0 {
         PitchStatus::Booked
-    } else if open && !c.answered_since && waiting_until.is_some_and(|u| u > scene.today) {
+    } else if open && (c.answered_since || waiting_until.is_some_and(|u| u > scene.today)) {
         PitchStatus::Awaiting
     } else if let Some((o, _)) = outcome.filter(|_| !open) {
         match o.tag {
@@ -350,12 +370,15 @@ pub async fn list(state: &AppState, ctx: &Ctx, f: &PitchListFilter) -> ApiResult
     }
     let offset = f.offset.unwrap_or(0).max(0);
     let (talent, project) = match (f.item_kind, f.item_id) {
+        // The item's bookings count: where it plays, and who booked it.
         (Some(ItemKind::Talent), Some(id)) => {
             ctx.authorize(Permission::TalentRead)?;
+            ctx.authorize(Permission::BookingRead)?;
             (Some(id), None)
         }
         (Some(ItemKind::Project), Some(id)) => {
             ctx.authorize(Permission::ProjectRead)?;
+            ctx.authorize(Permission::BookingRead)?;
             (None, Some(id))
         }
         (None, None) => (None, None),
@@ -392,6 +415,15 @@ pub async fn list(state: &AppState, ctx: &Ctx, f: &PitchListFilter) -> ApiResult
         .await?
         .and_then(|w| w.default_timezone.parse().ok())
         .unwrap_or(chrono_tz::UTC);
+    let region_keys: Vec<String> = settings.regions.iter().map(|r| r.key.clone()).collect();
+    let picked_region = region.as_deref().map(|key| {
+        (
+            key,
+            settings
+                .region(key)
+                .map_or(&[][..], |r| r.countries.as_slice()),
+        )
+    });
     let candidates = core_db::pitch_list::candidates(
         &mut tx,
         &core_db::pitch_list::Filter {
@@ -403,6 +435,8 @@ pub async fn list(state: &AppState, ctx: &Ctx, f: &PitchListFilter) -> ApiResult
             city: city.as_deref(),
             status_key: status_key.as_deref(),
             relationship: relationship.as_deref(),
+            region: picked_region,
+            region_keys: &region_keys,
             nearby_until: Utc::now() + Duration::days(NEARBY_DAYS),
             limit: MAX_CANDIDATES,
         },
@@ -600,5 +634,77 @@ mod tests {
         assert!(!row.resting);
         assert_eq!(row.pitch_status, PitchStatus::Pitched);
         assert_eq!(row.but.map(|b| b.reason), Some(Some(RankReason::NoAnswer)));
+    }
+
+    #[test]
+    fn follow_ups_done_shorten_the_wait_and_answers_wait_to_be_logged() {
+        let s = PitchingSettings::default();
+        let tags = vec![];
+        let steps: i64 = s.follow_ups.iter().map(|f| i64::from(f.after_days)).sum();
+        let give_up = i64::from(s.give_up_after_days.max(7));
+        let sc = scene(&s, &tags);
+        assert_eq!(sc.waiting_days(1), steps + give_up);
+        let last = i64::try_from(s.follow_ups.len()).expect("a few");
+        assert_eq!(sc.waiting_days(last + 1), give_up);
+        assert_eq!(sc.waiting_days(last + 5), give_up);
+
+        // An answer came back: waiting for it to be logged, not pitched again.
+        let row = rank(
+            &sc,
+            &Candidate {
+                action_at: Some(at("2026-08-20T10:00:00Z")),
+                actions_since: 1,
+                answered_since: true,
+                ..club()
+            },
+        );
+        assert!(row.resting);
+        assert_eq!(row.pitch_status, PitchStatus::Awaiting);
+        assert!(
+            row.reasons
+                .iter()
+                .all(|r| r.reason != Some(RankReason::NoAnswer))
+        );
+    }
+
+    #[test]
+    fn every_reason_against_is_shown_and_a_logged_no_answer_still_counts() {
+        let s = PitchingSettings::default();
+        let tags = vec![];
+        let row = rank(
+            &scene(&s, &tags),
+            &Candidate {
+                interested: true,
+                reachable: false,
+                outcome_key: Some(NO_ANSWER.into()),
+                outcome_at: Some(at("2026-01-10T10:00:00Z")),
+                action_at: Some(at("2025-12-01T10:00:00Z")),
+                ..club()
+            },
+        );
+        assert!(!row.resting);
+        let shown: i32 = row.reasons.iter().chain(&row.but).map(|l| l.points).sum();
+        assert_eq!(shown, row.score);
+        assert_eq!(
+            row.but.map(|b| b.reason),
+            Some(Some(RankReason::NoWayToReach))
+        );
+        assert!(
+            row.reasons
+                .iter()
+                .any(|r| r.reason == Some(RankReason::NoAnswer))
+        );
+
+        // Booked for a date still to come: booked, but not "before".
+        let row = rank(
+            &scene(&s, &tags),
+            &Candidate {
+                booked: 1,
+                booked_last: None,
+                ..club()
+            },
+        );
+        assert_eq!(row.pitch_status, PitchStatus::Booked);
+        assert!(row.reasons.is_empty());
     }
 }
