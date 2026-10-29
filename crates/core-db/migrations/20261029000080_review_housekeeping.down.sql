@@ -1,0 +1,11 @@
+DROP FUNCTION sign_ins_forget_before(timestamptz);
+DROP FUNCTION stripe_events_forget_before(timestamptz);
+REVOKE SELECT (outcome, created_at), DELETE ON rule_runs FROM onhold_worker;
+REVOKE SELECT (created_at), DELETE ON webhook_deliveries FROM onhold_worker;
+DROP POLICY rule_runs_worker_delete ON rule_runs;
+DROP POLICY rule_runs_worker ON rule_runs;
+DROP POLICY webhook_deliveries_worker_delete ON webhook_deliveries;
+DROP POLICY webhook_deliveries_worker ON webhook_deliveries;
+DROP INDEX jobs_ready_workspace;
+DROP INDEX thread_messages_inbound_reply_to;
+DROP INDEX thread_messages_inbound_from;

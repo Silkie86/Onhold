@@ -488,12 +488,15 @@ async fn save_connection(
             match core_db::integrations::last_disconnected_for(&mut tx, provider, mailbox, owner)
                 .await?
             {
-                // Connected again by the member who disconnected it: the same
-                // connection carries on, so what it read is recognised and its
-                // conversations continue.
+                // Connected again by the member who disconnected it, or a
+                // shared mailbox by anyone: the same connection carries on, so
+                // what it read is recognised and its conversations continue.
                 Some(old) => {
                     let secret = seal(state, old.id, grant)?;
                     core_db::integrations::reconnect(&mut tx, old.id).await?;
+                    if old.owner_id != owner {
+                        core_db::integrations::set_owner(&mut tx, old.id, owner, account).await?;
+                    }
                     core_db::integrations::set_secret(&mut tx, old.id, &secret, scopes).await?;
                     core_db::integrations::revive(&mut tx, old.id, now).await?;
                     if provider == "imap" {
@@ -507,7 +510,8 @@ async fn save_connection(
                             resource: ENTITY,
                             object_id: Some(old.id),
                             before: Some(audit_json(&old)),
-                            after: None,
+                            after: (old.owner_id != owner)
+                                .then(|| json!({ "owner_id": owner, "account": account })),
                             event_extra: None,
                         },
                     )

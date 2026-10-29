@@ -729,13 +729,8 @@ fn add(a: i64, b: i64) -> ApiResult<i64> {
 }
 
 async fn bookings_of(tx: &mut Tx, project_id: Uuid) -> ApiResult<Vec<BookingView>> {
-    let mut out = Vec::new();
-    for id in core_db::projects::booking_ids(tx, project_id).await? {
-        if let Some(b) = super::bookings::load(tx, id).await? {
-            out.push(b);
-        }
-    }
-    Ok(out)
+    let ids = core_db::projects::booking_ids(tx, project_id).await?;
+    super::bookings::load_many(tx, &ids).await
 }
 
 /// Whether a date still stands: cancelled bookings and lapsed holds stay
@@ -762,8 +757,11 @@ pub async fn overview(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Projec
     let mut tx = begin(state, ctx).await?;
     let project = load(&mut tx, id).await?;
     let currency = project.currency.clone();
-    let today = super::finance::today(&mut tx, ctx).await?;
     let bookings = bookings_of(&mut tx, id).await?;
+    let ids: Vec<Uuid> = bookings.iter().map(|b| b.id).collect();
+    let inputs = super::travel::CheckInputs::load(&mut tx, ctx, &ids).await?;
+    let today = inputs.today;
+    let mut rates = super::travel::Rates::default();
     let mut unconverted: Vec<String> = Vec::new();
     let (mut income, mut commission, mut costs) = (0i64, 0i64, 0i64);
     let mut actual: BTreeMap<String, i64> = BTreeMap::new();
@@ -771,11 +769,11 @@ pub async fn overview(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Projec
     let mut losing = 0usize;
 
     for b in &bookings {
-        let m: MoneyCheck = super::travel::check_booking(&mut tx, ctx, b).await?;
+        let m: MoneyCheck = super::travel::check_with(&mut tx, &inputs, &mut rates, b).await?;
         let counts = stands(b);
         let on = local_date(b.starts_at, &b.timezone).min(today);
         let mut convert = async |x: &Money| -> ApiResult<Option<i64>> {
-            super::travel::convert(&mut tx, x, &currency, on).await
+            super::travel::convert(&mut tx, &mut rates, x, &currency, on).await
         };
         let parts = (
             convert(&m.total_income).await?,
@@ -802,11 +800,7 @@ pub async fn overview(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Projec
                 None
             }
         };
-        let trips = if counts {
-            super::travel::travel_of(&mut tx, b.id).await?
-        } else {
-            Vec::new()
-        };
+        let trips: Vec<&TravelView> = inputs.travel_of(b.id).collect();
         for c in m.costs.iter().filter(|_| counts) {
             let category = match (c.category.as_str(), c.source_id) {
                 // Travel entered as travel counts under its kind.
@@ -820,7 +814,9 @@ pub async fn overview(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Projec
                     .find(|k| *k == other)
                     .unwrap_or("other"),
             };
-            if let Some(minor) = super::travel::convert(&mut tx, &c.amount, &currency, on).await? {
+            if let Some(minor) =
+                super::travel::convert(&mut tx, &mut rates, &c.amount, &currency, on).await?
+            {
                 let slot = actual.entry(category.to_owned()).or_insert(0);
                 *slot = add(*slot, minor)?;
             }
@@ -860,7 +856,7 @@ pub async fn overview(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Projec
     for t in &travel {
         let Some(cost) = t.our_cost() else { continue };
         let on = local_date(t.starts_at, &t.start_tz).min(today);
-        match super::travel::convert(&mut tx, cost, &currency, on).await? {
+        match super::travel::convert(&mut tx, &mut rates, cost, &currency, on).await? {
             Some(minor) => {
                 costs = add(costs, minor)?;
                 let slot = actual
@@ -876,7 +872,7 @@ pub async fn overview(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Projec
     }
     for l in &lines {
         let on = l.spent_on.unwrap_or(today).min(today);
-        match super::travel::convert(&mut tx, &l.amount, &currency, on).await? {
+        match super::travel::convert(&mut tx, &mut rates, &l.amount, &currency, on).await? {
             Some(minor) if l.direction == "income" => income = add(income, minor)?,
             Some(minor) => {
                 costs = add(costs, minor)?;

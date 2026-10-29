@@ -458,6 +458,16 @@ pub async fn update_workspace(
             }
         }
     }
+    // One replaced or removed goes, unless something else holds it.
+    if let Some(old) = before
+        .branding
+        .get("logo_file_id")
+        .and_then(Value::as_str)
+        .and_then(|s| s.parse::<Uuid>().ok())
+        && branding.get("logo_file_id") != before.branding.get("logo_file_id")
+    {
+        core_db::files::detach_unused(&mut tx, old).await?;
+    }
 
     let hold_days = patch.hold_days.unwrap_or(before.hold_days);
     if !(0..=365).contains(&hold_days) {

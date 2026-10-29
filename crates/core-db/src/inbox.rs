@@ -637,6 +637,20 @@ pub async fn files(conn: &mut PgConnection, thread_id: Uuid) -> Result<Vec<Messa
     .await?)
 }
 
+/// One message's files.
+pub async fn message_files(conn: &mut PgConnection, message_id: Uuid) -> Result<Vec<MessageFile>> {
+    Ok(sqlx::query_as!(
+        MessageFile,
+        r#"SELECT id, message_id, file_id, part, filename, content_type, size_bytes
+           FROM thread_message_files
+           WHERE workspace_id = app_workspace_id() AND message_id = $1
+           ORDER BY part NULLS FIRST, filename"#,
+        message_id
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
 /// One file of a thread, with where its message came from.
 #[derive(Debug, Clone)]
 pub struct ThreadFile {

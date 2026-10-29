@@ -125,8 +125,9 @@ pub async fn live_for(
     .await?)
 }
 
-/// The member's own last connection to a mailbox that was disconnected,
-/// so connecting it again carries on where it stopped.
+/// The last connection to a mailbox that was disconnected, the member's
+/// own or one shared with the team, so connecting it again carries on
+/// where it stopped.
 pub async fn last_disconnected_for(
     conn: &mut PgConnection,
     provider: &str,
@@ -134,7 +135,7 @@ pub async fn last_disconnected_for(
     owner: UserId,
 ) -> Result<Option<Integration>> {
     Ok(select_integration!(
-        "provider = $1 AND coalesce(shared_mailbox, account) = $2 AND owner_id = $3
+        "provider = $1 AND coalesce(shared_mailbox, account) = $2 AND (owner_id = $3 OR shared)
          AND disconnected_at IS NOT NULL ORDER BY disconnected_at DESC LIMIT 1 FOR UPDATE",
         provider,
         mailbox,
@@ -227,6 +228,26 @@ pub async fn revive(conn: &mut PgConnection, id: Uuid, next_poll_at: DateTime<Ut
            WHERE workspace_id = app_workspace_id() AND id = $1"#,
         id,
         next_poll_at
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// A shared mailbox connected again by another member: theirs now, through
+/// their own account.
+pub async fn set_owner(
+    conn: &mut PgConnection,
+    id: Uuid,
+    owner: UserId,
+    account: &str,
+) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE integrations SET owner_id = $2, account = $3
+           WHERE workspace_id = app_workspace_id() AND id = $1"#,
+        id,
+        owner.0,
+        account
     )
     .execute(conn)
     .await?;
