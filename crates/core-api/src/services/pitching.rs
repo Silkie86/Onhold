@@ -12,7 +12,7 @@ use core_db::Tx;
 use core_domain::{Ctx, Permission, UserId};
 use core_engines::countries;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use utoipa::ToSchema;
 
 use super::crm::Check;
@@ -27,6 +27,9 @@ pub const MAX_REGIONS: usize = 30;
 pub const MAX_STATUSES: usize = 12;
 pub const MAX_OUTCOMES: usize = 20;
 pub const MAX_ACTIONS: usize = 20;
+pub const MAX_TEMPLATES: usize = 30;
+pub const MAX_TEMPLATE_SUBJECT: usize = 300;
+pub const MAX_TEMPLATE_BODY: usize = 5000;
 
 /// A part of the world, by the countries in it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -129,6 +132,43 @@ pub struct PitchAction {
     pub label: String,
 }
 
+/// Wording to pitch with. `{firstName}`, `{item}`, `{link}`, `{yourName}`
+/// and the rest of [`super::pitch_sending::PLACEHOLDERS`] are filled in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct PitchTemplate {
+    pub key: String,
+    pub name: String,
+    /// What sending it logs, a key from the workspace's actions.
+    pub action: String,
+    pub subject: String,
+    pub body: String,
+}
+
+/// How a pitch is usually sent: from OnHold through the member's mailbox
+/// (so it and the answers are logged by themselves), by opening it in
+/// their own email app, or by copying it to paste anywhere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PitchSendWith {
+    Onhold,
+    MailApp,
+    Copy,
+}
+
+impl PitchSendWith {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PitchSendWith::Onhold => "onhold",
+            PitchSendWith::MailApp => "mail_app",
+            PitchSendWith::Copy => "copy",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        serde_json::from_value(Value::String(s.to_owned())).ok()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct PitchingSettings {
     #[serde(default = "default_regions")]
@@ -143,6 +183,12 @@ pub struct PitchingSettings {
     /// The kinds of thing logged as done.
     #[serde(default = "default_actions")]
     pub actions: Vec<PitchAction>,
+    /// The wording members pitch with.
+    #[serde(default = "default_templates")]
+    pub templates: Vec<PitchTemplate>,
+    /// How members send a pitch unless they pick otherwise.
+    #[serde(default = "default_send_with")]
+    pub send_with: PitchSendWith,
 }
 
 impl Default for PitchingSettings {
@@ -153,6 +199,8 @@ impl Default for PitchingSettings {
             items: default_items(),
             outcomes: default_outcomes(),
             actions: default_actions(),
+            templates: default_templates(),
+            send_with: default_send_with(),
         }
     }
 }
@@ -236,6 +284,34 @@ fn default_actions() -> Vec<PitchAction> {
     ]
 }
 
+fn default_templates() -> Vec<PitchTemplate> {
+    vec![
+        PitchTemplate {
+            key: "first_pitch".into(),
+            name: "First pitch".into(),
+            action: "pitched".into(),
+            subject: "{item} for {organisation}".into(),
+            body: "Hi {firstName},\n\nI look after {item} and think they would be a great fit for \
+                   {organisation}. You can see more here: {link}\n\nWould you be open to talking \
+                   about dates?\n\nBest wishes,\n{yourName}"
+                .into(),
+        },
+        PitchTemplate {
+            key: "follow_up".into(),
+            name: "Follow-up".into(),
+            action: "followed_up".into(),
+            subject: "Following up: {item} for {organisation}".into(),
+            body: "Hi {firstName},\n\nJust following up on my note about {item}. Is there a good \
+                   time to talk?\n\nBest wishes,\n{yourName}"
+                .into(),
+        },
+    ]
+}
+
+fn default_send_with() -> PitchSendWith {
+    PitchSendWith::Onhold
+}
+
 impl PitchingSettings {
     /// The region an organisation is in: the one picked for it if it still
     /// exists, otherwise its country's.
@@ -268,6 +344,10 @@ impl PitchingSettings {
 
     pub fn action(&self, key: &str) -> Option<&PitchAction> {
         self.actions.iter().find(|a| a.key == key)
+    }
+
+    pub fn template(&self, key: &str) -> Option<&PitchTemplate> {
+        self.templates.iter().find(|t| t.key == key)
     }
 }
 
@@ -398,6 +478,48 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
         let label = check.required(&format!("actions[{i}].label"), &a.label, 60);
         actions.push(PitchAction { key, label });
     }
+    if input.templates.len() > MAX_TEMPLATES {
+        check.issue(
+            "templates",
+            format!("give at most {MAX_TEMPLATES} templates"),
+        );
+    }
+    let mut templates: Vec<PitchTemplate> = Vec::new();
+    for (i, t) in input.templates.iter().enumerate() {
+        let key = checked_key(&mut check, &format!("templates[{i}].key"), &t.key, |k| {
+            templates.iter().any(|x| x.key == k)
+        });
+        let name = check.required(&format!("templates[{i}].name"), &t.name, 80);
+        let action = t.action.trim().to_owned();
+        if !actions.iter().any(|a| a.key == action) {
+            check.issue(
+                format!("templates[{i}].action"),
+                "is not one of the workspace's actions",
+            );
+        }
+        let subject = check.required(
+            &format!("templates[{i}].subject"),
+            &t.subject,
+            MAX_TEMPLATE_SUBJECT,
+        );
+        let body = check
+            .long(
+                &format!("templates[{i}].body"),
+                Some(&t.body),
+                MAX_TEMPLATE_BODY,
+            )
+            .unwrap_or_default();
+        if body.is_empty() {
+            check.issue(format!("templates[{i}].body"), "write what it says");
+        }
+        templates.push(PitchTemplate {
+            key,
+            name,
+            action,
+            subject,
+            body,
+        });
+    }
     check.finish()?;
     Ok(PitchingSettings {
         regions,
@@ -405,6 +527,8 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
         items,
         outcomes,
         actions,
+        templates,
+        send_with: input.send_with,
     })
 }
 

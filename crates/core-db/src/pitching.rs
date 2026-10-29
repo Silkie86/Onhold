@@ -49,3 +49,32 @@ pub async fn save(conn: &mut PgConnection, settings: &Value, by: Option<UserId>)
     .await?;
     Ok(())
 }
+
+/// How a member usually sends a pitch, if they picked.
+pub async fn send_with(conn: &mut PgConnection, user: UserId) -> Result<Option<String>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT pitch_send_with FROM memberships
+           WHERE workspace_id = app_workspace_id() AND user_id = $1 AND deleted_at IS NULL"#,
+        user.0
+    )
+    .fetch_optional(conn)
+    .await?
+    .flatten())
+}
+
+/// Sets it; false when they are not a member here.
+pub async fn set_send_with(
+    conn: &mut PgConnection,
+    user: UserId,
+    send_with: Option<&str>,
+) -> Result<bool> {
+    let done = sqlx::query!(
+        r#"UPDATE memberships SET pitch_send_with = $2
+           WHERE workspace_id = app_workspace_id() AND user_id = $1 AND deleted_at IS NULL"#,
+        user.0,
+        send_with
+    )
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected() == 1)
+}

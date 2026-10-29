@@ -91,13 +91,26 @@ pub struct PitchView {
     pub item: Option<ItemRef>,
     pub note: Option<String>,
     pub happened_at: DateTime<Utc>,
-    /// `manual`: logged by hand.
+    /// `manual`: logged by hand; `sent`: sent from OnHold.
     pub source: String,
+    /// The pitch template it was written from, if any.
+    pub template_key: Option<String>,
+    /// For a pitch sent from OnHold: its message.
+    pub message: Option<PitchMessage>,
     pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub created_by: Option<UserId>,
     pub updated_by: Option<UserId>,
+}
+
+/// A pitch sent from OnHold: its thread in the inbox, and whether it went.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PitchMessage {
+    pub id: Uuid,
+    pub thread_id: Uuid,
+    /// `queued`, `sent` or `failed`.
+    pub status: String,
 }
 
 fn view(settings: &PitchingSettings, e: Entry) -> PitchView {
@@ -140,6 +153,15 @@ fn view(settings: &PitchingSettings, e: Entry) -> PitchView {
         note: e.note,
         happened_at: e.happened_at,
         source: e.source,
+        template_key: e.template_key,
+        message: match (e.message_id, e.thread_id, e.message_status) {
+            (Some(id), Some(thread_id), Some(status)) => Some(PitchMessage {
+                id,
+                thread_id,
+                status,
+            }),
+            _ => None,
+        },
         version: e.version,
         created_at: e.created_at,
         updated_at: e.updated_at,
@@ -213,6 +235,8 @@ pub struct NewPitch {
     pub note: Option<String>,
     /// When it happened; default now. Can be in the past.
     pub happened_at: Option<DateTime<Utc>>,
+    /// The pitch template it was written from, if any.
+    pub template_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
@@ -231,35 +255,55 @@ pub struct PitchPatch {
     #[schema(value_type = Option<String>)]
     pub note: Option<Option<String>>,
     pub happened_at: Option<DateTime<Utc>>,
+    #[serde(default, deserialize_with = "nullable")]
+    #[schema(value_type = Option<String>)]
+    pub template_key: Option<Option<String>>,
 }
 
 /// The parts of an entry, checked.
-struct Parts {
-    contact_id: Option<Uuid>,
-    type_key: String,
-    channel: Option<PitchChannel>,
-    item: Option<ItemInput>,
-    note: Option<String>,
-    happened_at: DateTime<Utc>,
+pub(super) struct Parts {
+    pub contact_id: Option<Uuid>,
+    pub type_key: String,
+    pub channel: Option<PitchChannel>,
+    pub item: Option<ItemInput>,
+    pub note: Option<String>,
+    pub happened_at: DateTime<Utc>,
+    pub template_key: Option<String>,
 }
 
-/// Checks an entry against the workspace's lists and records: the type is
-/// one it lists (unless unchanged, so an entry whose type was since removed
-/// can still be edited), the person is at the organisation, what was pitched
-/// exists, and it did not happen tomorrow or later.
-#[allow(clippy::too_many_arguments)]
-async fn check(
+/// Which parts of an entry are new, and so checked against what the
+/// workspace lists now.
+#[derive(Clone, Copy)]
+pub(super) struct Changed {
+    pub type_key: bool,
+    pub contact: bool,
+    pub item: bool,
+    pub template: bool,
+}
+
+impl Changed {
+    pub const ALL: Changed = Changed {
+        type_key: true,
+        contact: true,
+        item: true,
+        template: true,
+    };
+}
+
+/// Checks an entry against the workspace's lists and records: the type and
+/// template are ones it lists (unless unchanged, so an entry whose type was
+/// since removed can still be edited), the person is at the organisation,
+/// what was pitched exists, and it did not happen tomorrow or later.
+pub(super) async fn check(
     tx: &mut Tx,
     settings: &PitchingSettings,
     organisation: Uuid,
     kind: PitchKind,
     parts: &Parts,
-    type_changed: bool,
-    contact_changed: bool,
-    item_changed: bool,
+    changed: Changed,
 ) -> ApiResult<()> {
     let mut check = Check::default();
-    if type_changed {
+    if changed.type_key {
         let listed = match kind {
             PitchKind::Action => settings.action(&parts.type_key).is_some(),
             PitchKind::Outcome => settings.outcome(&parts.type_key).is_some(),
@@ -274,14 +318,27 @@ async fn check(
             );
         }
     }
-    if contact_changed && let Some(id) = parts.contact_id {
+    if changed.template
+        && let Some(key) = &parts.template_key
+        && settings.template(key).is_none()
+    {
+        check.issue(
+            "template_key",
+            "is not one of the workspace's pitch templates",
+        );
+    }
+    if changed.contact
+        && let Some(id) = parts.contact_id
+    {
         match core_db::contacts::get(tx, id).await? {
             Some(c) if c.organisation_id == Some(organisation) => {}
             Some(_) => check.issue("contact_id", "is not at this organisation"),
             None => check.issue("contact_id", "there is no such contact"),
         }
     }
-    if item_changed && let Some(item) = parts.item {
+    if changed.item
+        && let Some(item) = parts.item
+    {
         let exists = match item.kind {
             ItemKind::Talent => core_db::talent::get(tx, item.id).await?.is_some(),
             ItemKind::Project => core_db::projects::get(tx, item.id).await?.is_some(),
@@ -307,7 +364,45 @@ fn values(organisation: Uuid, kind: PitchKind, p: &Parts) -> core_db::pitches::V
         project_id: p.item.filter(|i| i.kind == ItemKind::Project).map(|i| i.id),
         note: p.note.as_deref(),
         happened_at: p.happened_at,
+        template_key: p.template_key.as_deref(),
     }
+}
+
+/// Logs an entry checked with [`check`]; `message` is the message it was
+/// sent as, if sent from OnHold.
+pub(super) async fn insert(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    settings: &PitchingSettings,
+    organisation: Uuid,
+    kind: PitchKind,
+    parts: &Parts,
+    message: Option<Uuid>,
+) -> ApiResult<PitchView> {
+    let id = core_domain::ids::new_id();
+    core_db::pitches::insert(
+        tx,
+        id,
+        values(organisation, kind, parts),
+        message,
+        ctx.user_id(),
+    )
+    .await?;
+    let view = load(tx, settings, id).await?.ok_or(ApiError::NotFound)?;
+    record(
+        tx,
+        ctx,
+        Change {
+            topic: "pitch.logged",
+            resource: ENTITY,
+            object_id: Some(id),
+            before: None,
+            after: Some(to_json(&view)),
+            event_extra: None,
+        },
+    )
+    .await?;
+    Ok(view)
 }
 
 pub async fn create(state: &AppState, ctx: &Ctx, new: NewPitch) -> ApiResult<PitchView> {
@@ -333,6 +428,10 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewPitch) -> ApiResult<Pit
         item: new.item,
         note,
         happened_at: new.happened_at.unwrap_or_else(Utc::now),
+        template_key: new
+            .template_key
+            .map(|t| t.trim().to_owned())
+            .filter(|t| !t.is_empty()),
     };
     check(
         &mut tx,
@@ -340,33 +439,17 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewPitch) -> ApiResult<Pit
         new.organisation_id,
         new.kind,
         &parts,
-        true,
-        true,
-        true,
+        Changed::ALL,
     )
     .await?;
-    let id = core_domain::ids::new_id();
-    core_db::pitches::insert(
-        &mut tx,
-        id,
-        values(new.organisation_id, new.kind, &parts),
-        ctx.user_id(),
-    )
-    .await?;
-    let view = load(&mut tx, &settings, id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
-    record(
+    let view = insert(
         &mut tx,
         ctx,
-        Change {
-            topic: "pitch.logged",
-            resource: ENTITY,
-            object_id: Some(id),
-            before: None,
-            after: Some(to_json(&view)),
-            event_extra: None,
-        },
+        &settings,
+        new.organisation_id,
+        new.kind,
+        &parts,
+        None,
     )
     .await?;
     tx.commit().await?;
@@ -421,6 +504,10 @@ pub async fn update(
         item: p.item.unwrap_or(current_item),
         note,
         happened_at: p.happened_at.unwrap_or(before.happened_at),
+        template_key: match p.template_key {
+            Some(t) => t.map(|t| t.trim().to_owned()).filter(|t| !t.is_empty()),
+            None => before.template_key.clone(),
+        },
     };
     check(
         &mut tx,
@@ -428,9 +515,12 @@ pub async fn update(
         before.organisation_id,
         before.kind,
         &parts,
-        parts.type_key != before.type_key,
-        parts.contact_id != stored.contact_id,
-        parts.item != current_item,
+        Changed {
+            type_key: parts.type_key != before.type_key,
+            contact: parts.contact_id != stored.contact_id,
+            item: parts.item != current_item,
+            template: parts.template_key != before.template_key,
+        },
     )
     .await?;
     core_db::pitches::update(
