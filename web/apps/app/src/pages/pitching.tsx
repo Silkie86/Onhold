@@ -1041,7 +1041,9 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
                 {p.note && <span className="break-words whitespace-pre-line">{p.note}</span>}
                 {p.message && (
                   <span className="text-muted-foreground">
-                    {p.message.status === "failed" ? (
+                    {p.source === "spotted" ? (
+                      "From your Sent mail."
+                    ) : p.message.status === "failed" ? (
                       <span className="text-destructive">Not sent.</span>
                     ) : p.message.status === "queued" ? (
                       "Sending…"
