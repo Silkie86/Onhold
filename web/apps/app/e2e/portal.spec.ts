@@ -103,7 +103,8 @@ test("a talent confirms a pending date and the agent is told", async ({ page, br
   await expect(page.getByRole("heading", { name: "Portal messages with Nova Reyes" })).toBeVisible();
   await page.getByLabel("Reply").fill("Yes, you're both on the list.");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByText("Yes, you're both on the list.").first()).toBeVisible();
+  // In the conversation: the list's preview of it is hidden on a phone.
+  await expect(page.getByRole("region", { name: "Conversation" }).getByText("Yes, you're both on the list.").first()).toBeVisible();
   await phone.reload();
   await expect(phone.getByRole("list", { name: "Conversation" }).getByText("Yes, you're both on the list.")).toBeVisible();
   await phone.screenshot({ path: info.outputPath("messages.png"), fullPage: true });
