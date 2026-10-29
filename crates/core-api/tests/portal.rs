@@ -550,6 +550,32 @@ async fn a_talent_opens_only_the_documents_meant_for_them(pool: PgPool) {
         .await;
     assert_eq!(file.status, StatusCode::OK);
 
+    // Every act on the date hers (her duo is her too): no one else's fee,
+    // so its confirmation shows.
+    sqlx::query(
+        "UPDATE talent SET portal_user_id = (SELECT portal_user_id FROM talent WHERE id = $1)
+         WHERE id = $2",
+    )
+    .bind(ada)
+    .bind(grace)
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    let d = get(&app, &me, &format!("/api/v1/portal/dates/{festival}"))
+        .await
+        .ok();
+    let mut kinds = kinds_on_date(&d.body);
+    kinds.sort();
+    assert_eq!(kinds, ["advance_sheet", "confirmation", "contract"]);
+    let file = app
+        .get(&format!(
+            "/api/v1/portal/documents/{shared_confirmation}/download"
+        ))
+        .signed_in(&me)
+        .send()
+        .await;
+    assert_eq!(file.status, StatusCode::OK);
+
     // Switched off, documents go.
     app.put("/api/v1/workspace/portal")
         .signed_in(&owner)

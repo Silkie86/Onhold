@@ -190,7 +190,7 @@ pub const DATE_KINDS_WITHOUT_FEES: &[&str] = &["advance_sheet", "rider", "tech_s
 
 /// The date kinds that state the booking's fee. On a booking with several
 /// acts the fee is theirs together, not any one act's to see, so these show
-/// only when the act is alone on it, or was asked to sign the document.
+/// only when every act on it is the user's, or they were asked to sign it.
 pub const FEE_KINDS: &[&str] = &["contract", "confirmation"];
 
 /// The kinds of a date's documents a talent may see.
@@ -230,8 +230,10 @@ pub async fn documents(
                                WHERE bt.booking_id = d.related_id AND t.portal_user_id = app_user_id()
                                  AND t.deleted_at IS NULL)
                    AND (d.kind <> ALL($4)
-                        OR (SELECT count(*) FROM booking_talent x
-                            WHERE x.workspace_id = d.workspace_id AND x.booking_id = d.related_id) = 1
+                        OR NOT EXISTS (SELECT 1 FROM booking_talent x
+                                       LEFT JOIN talent ox ON ox.workspace_id = x.workspace_id AND ox.id = x.talent_id
+                                       WHERE x.workspace_id = d.workspace_id AND x.booking_id = d.related_id
+                                         AND ox.portal_user_id IS DISTINCT FROM app_user_id())
                         OR EXISTS (SELECT 1 FROM signature_requests sr JOIN users u ON u.id = app_user_id()
                                    WHERE sr.workspace_id = d.workspace_id AND sr.document_id = d.id
                                      AND sr.status <> 'cancelled' AND lower(sr.signer_email) = lower(u.email))))
@@ -271,8 +273,10 @@ pub async fn may_open_document(
                                  WHERE bt.booking_id = d.related_id AND t.portal_user_id = app_user_id()
                                    AND t.deleted_at IS NULL AND b.status = ANY($6))
                      AND (d.kind <> ALL($7)
-                          OR (SELECT count(*) FROM booking_talent x
-                              WHERE x.workspace_id = d.workspace_id AND x.booking_id = d.related_id) = 1
+                          OR NOT EXISTS (SELECT 1 FROM booking_talent x
+                                         LEFT JOIN talent ox ON ox.workspace_id = x.workspace_id AND ox.id = x.talent_id
+                                         WHERE x.workspace_id = d.workspace_id AND x.booking_id = d.related_id
+                                           AND ox.portal_user_id IS DISTINCT FROM app_user_id())
                           OR EXISTS (SELECT 1 FROM signature_requests sr JOIN users u ON u.id = app_user_id()
                                      WHERE sr.workspace_id = d.workspace_id AND sr.document_id = d.id
                                        AND sr.status <> 'cancelled' AND lower(sr.signer_email) = lower(u.email))))

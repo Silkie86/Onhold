@@ -1372,6 +1372,13 @@ async fn impersonation_is_time_boxed_and_audited(pool: PgPool) {
         .send()
         .await
         .expect(StatusCode::FORBIDDEN, "not_a_member");
+    // Nor a calendar link, which shows what its maker may see.
+    app.post("/api/v1/calendar/feeds")
+        .signed_in(&in_customer)
+        .json(json!({ "name": "Support's view" }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
     // A visitor has no signature of their own to set.
     let sigs = app
         .get("/api/v1/signatures")

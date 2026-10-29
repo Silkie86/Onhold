@@ -86,6 +86,14 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewFeed) -> ApiResult<Crea
             "calendar links belong to a person, not a key",
         )
     })?;
+    // A feed shows what its maker may see; a superadmin visiting is no
+    // member, so their feed would never open.
+    if ctx.impersonator().is_some() {
+        return Err(ApiError::forbidden(
+            "not_a_member",
+            "a calendar link shows what the member who makes it may see; a member of the workspace has to make it, not a superadmin visiting it",
+        ));
+    }
     let mut check = Check::default();
     let name = check.required("name", &new.name, 100);
     let mut tx = begin(state, ctx).await?;

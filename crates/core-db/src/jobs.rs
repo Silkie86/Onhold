@@ -108,12 +108,39 @@ pub struct Claimed {
 /// Workspaces take turns: within a priority, each workspace's next job
 /// comes before anyone's second, counting the jobs it already has running,
 /// so a big import or a first mailbox read in one workspace cannot hold up
-/// timed work in the others.
+/// timed work in the others. Only each workspace's next `limit` jobs are
+/// ranked, so a claim costs the same however long the backlog.
 pub async fn claim(conn: &mut PgConnection, limit: i64, lease: Duration) -> Result<Vec<Claimed>> {
     let lease_secs = lease.as_secs_f64();
     Ok(sqlx::query_as!(
         Claimed,
-        r#"WITH running AS (
+        r#"WITH RECURSIVE
+           -- Each workspace with queued jobs, found by skipping through
+           -- jobs_ready_workspace rather than reading every queued job.
+           spaces AS (
+               (SELECT workspace_id AS ws FROM jobs
+                WHERE status = 'queued' AND workspace_id IS NOT NULL
+                ORDER BY workspace_id LIMIT 1)
+               UNION ALL
+               SELECT (SELECT j.workspace_id FROM jobs j
+                       WHERE j.status = 'queued' AND j.workspace_id > s.ws
+                       ORDER BY j.workspace_id LIMIT 1)
+               FROM spaces s WHERE s.ws IS NOT NULL
+           ),
+           -- At most `limit` of each workspace's next jobs: no more of
+           -- any one can be taken.
+           candidates AS (
+               SELECT c.* FROM spaces s CROSS JOIN LATERAL (
+                   SELECT q.id, q.workspace_id, q.priority, q.run_at FROM jobs q
+                   WHERE q.workspace_id = s.ws AND q.status = 'queued' AND q.run_at <= now()
+                   ORDER BY q.priority DESC, q.run_at, q.id LIMIT $1) c
+               WHERE s.ws IS NOT NULL
+               UNION ALL
+               (SELECT q.id, q.workspace_id, q.priority, q.run_at FROM jobs q
+                WHERE q.workspace_id IS NULL AND q.status = 'queued' AND q.run_at <= now()
+                ORDER BY q.priority DESC, q.run_at, q.id LIMIT $1)
+           ),
+           running AS (
                SELECT coalesce(workspace_id, '00000000-0000-0000-0000-000000000000') AS ws, count(*) AS n
                FROM jobs WHERE status = 'running' GROUP BY 1
            ),
@@ -121,9 +148,8 @@ pub async fn claim(conn: &mut PgConnection, limit: i64, lease: Duration) -> Resu
                SELECT q.id, q.priority, q.run_at,
                       row_number() OVER (PARTITION BY q.workspace_id ORDER BY q.priority DESC, q.run_at, q.id)
                           + coalesce(r.n, 0) AS turn
-               FROM jobs q
+               FROM candidates q
                LEFT JOIN running r ON r.ws = coalesce(q.workspace_id, '00000000-0000-0000-0000-000000000000')
-               WHERE q.status = 'queued' AND q.run_at <= now()
            )
            UPDATE jobs SET status = 'running', attempts = attempts + 1,
                            locked_until = now() + make_interval(secs => $2)

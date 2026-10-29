@@ -450,8 +450,11 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
             let ws = job
                 .workspace_id
                 .ok_or_else(|| permanent("portal message without a workspace"))?;
-            let to = secret
-                .get("to")
+            // Events made before the address and words were sealed carry
+            // them in the event itself; those are still sent.
+            let field = |k: &str| secret.get(k).or_else(|| event.get(k)).cloned();
+            let to = field("to")
+                .as_ref()
                 .and_then(Value::as_str)
                 .ok_or_else(|| permanent("portal message without an address"))?
                 .to_owned();
@@ -465,7 +468,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 SYSTEM_PORTAL_MESSAGE,
                 (PORTAL_MESSAGE_SUBJECT, PORTAL_MESSAGE_BODY),
                 json!({
-                    "message": secret.get("message"),
+                    "message": field("message"),
                     "link": { "url": LINK_PLACEHOLDER },
                 }),
                 url,

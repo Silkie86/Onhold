@@ -473,30 +473,57 @@ impl Worker {
     pub async fn cleanup_once(&self) -> Result<(), DbError> {
         let now = Utc::now();
         let logs_before = now - self.settings.event_retention;
-        let mut tx = self.queue.begin().await?;
-        let events = core_db::outbox::prune_published_before(&mut tx, logs_before).await?;
-        let jobs =
-            core_db::jobs::delete_succeeded_before(&mut tx, now - self.settings.job_retention)
-                .await?;
+        // Each in its own transaction: one that fails (a lock or statement
+        // timeout) is tried again next time and holds up none of the others.
+        macro_rules! prune {
+            ($what:literal, |$c:ident| $body:expr) => {{
+                let done: Result<_, DbError> = async {
+                    let mut tx = self.queue.begin().await?;
+                    let $c: &mut sqlx::PgConnection = &mut tx;
+                    let n = $body.await?;
+                    tx.commit().await?;
+                    Ok(n)
+                }
+                .await;
+                done.unwrap_or_else(|err| {
+                    tracing::warn!(error = %err, what = $what, "clearing out old data failed");
+                    Default::default()
+                })
+            }};
+        }
+        let events = prune!("events", |c| core_db::outbox::prune_published_before(
+            c,
+            logs_before
+        ));
+        let jobs = prune!("jobs", |c| core_db::jobs::delete_succeeded_before(
+            c,
+            now - self.settings.job_retention
+        ));
         // Dead jobs can be retried while their event is still kept.
-        let dead_jobs = core_db::jobs::delete_finished_before(&mut tx, logs_before).await?;
-        let deliveries =
-            core_db::housekeeping::delete_webhook_deliveries_before(&mut tx, logs_before).await?;
-        let rule_runs =
-            core_db::housekeeping::delete_skipped_rule_runs_before(&mut tx, logs_before).await?;
-        let stripe_payloads = core_db::housekeeping::forget_stripe_payloads_before(
-            &mut tx,
-            now - STRIPE_PAYLOAD_RETENTION,
-        )
-        .await?;
-        let sign_ins =
-            core_db::housekeeping::forget_sign_ins_before(&mut tx, now - SIGN_IN_RETENTION).await?;
-        let keys =
-            core_db::idempotency::delete_before(&mut tx, now - chrono::Duration::hours(24)).await?;
-        let uploads =
-            core_db::imports::delete_stale_uploads(&mut tx, now - self.settings.upload_retention)
-                .await?;
-        tx.commit().await?;
+        let dead_jobs = prune!("dead jobs", |c| core_db::jobs::delete_finished_before(
+            c,
+            logs_before
+        ));
+        let deliveries = prune!("webhook deliveries", |c| {
+            core_db::housekeeping::delete_webhook_deliveries_before(c, logs_before)
+        });
+        let rule_runs = prune!("rule runs", |c| {
+            core_db::housekeeping::delete_skipped_rule_runs_before(c, logs_before)
+        });
+        let stripe_payloads = prune!("Stripe payloads", |c| {
+            core_db::housekeeping::forget_stripe_payloads_before(c, now - STRIPE_PAYLOAD_RETENTION)
+        });
+        let sign_ins = prune!("sign-ins", |c| {
+            core_db::housekeeping::forget_sign_ins_before(c, now - SIGN_IN_RETENTION)
+        });
+        let keys = prune!("idempotency keys", |c| core_db::idempotency::delete_before(
+            c,
+            now - chrono::Duration::hours(24)
+        ));
+        let uploads = prune!("uploads", |c| core_db::imports::delete_stale_uploads(
+            c,
+            now - self.settings.upload_retention
+        ));
         // Files uploaded but never attached to anything.
         let mut conn = self.queue.acquire().await?;
         let files = match core_api::services::files::sweep_unattached(&self.app, &mut conn).await {

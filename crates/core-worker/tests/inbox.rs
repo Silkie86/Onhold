@@ -1166,6 +1166,58 @@ async fn mail_waiting_to_go_is_not_sent_once_the_workspace_closes(pool: PgPool) 
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn mail_waiting_in_a_suspended_workspace_goes_once_it_is_back(pool: PgPool) {
+    let h = harness(pool).await;
+    let (ws, owner) = h.app.workspace_with_owner("owls").await;
+    let made = h
+        .post(
+            &owner,
+            "/api/v1/inbox/threads",
+            json!({ "to": ["bea@grand.test"], "subject": "Dates for June", "body": "Hi Bea" }),
+        )
+        .await;
+    assert_eq!(made.status, StatusCode::CREATED, "{}", made.body);
+    let thread_id: uuid::Uuid = made.body["thread"]["id"].as_str().unwrap().parse().unwrap();
+    let set_status = |status: &'static str| {
+        let pool = h.app.owner.clone();
+        async move {
+            sqlx::query("UPDATE workspaces SET status = $2::text::workspace_status WHERE id = $1")
+                .bind(ws.0)
+                .bind(status)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+    };
+    set_status("suspended").await;
+    h.drain().await;
+    assert!(h.sent_to("bea@grand.test").is_empty());
+    let message_status = || {
+        let pool = h.app.owner.clone();
+        async move {
+            sqlx::query_scalar::<_, String>(
+                "SELECT status FROM thread_messages WHERE thread_id = $1",
+            )
+            .bind(thread_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+        }
+    };
+    assert_eq!(message_status().await, "queued");
+
+    // Back in business: the message goes when it is next tried.
+    set_status("active").await;
+    sqlx::query("UPDATE jobs SET run_at = now() WHERE kind = 'inbox.send' AND status = 'queued'")
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    h.drain().await;
+    assert_eq!(h.sent_to("bea@grand.test").len(), 1);
+    assert_eq!(message_status().await, "sent");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn messages_too_long_to_store_are_refused_not_failed(pool: PgPool) {
     let h = harness(pool).await;
     let (_ws, owner) = h.app.workspace_with_owner("owls").await;

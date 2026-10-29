@@ -801,14 +801,19 @@ async fn payments_on_a_replaced_account_still_count(pool: PgPool) {
     let (invoice, total, token) = sent_invoice(&h, &owner).await;
     pay(&h, &token).await.ok();
     let old_session = "cs_test_a1Owls1".to_owned();
+    let (second, second_total, second_token) = sent_invoice(&h, &owner).await;
+    pay(&h, &second_token).await.ok();
+    let second_session = "cs_test_a1Owls2".to_owned();
 
     // The client switches to another Stripe account: the old one is
-    // disconnected and its open payment link closed.
+    // disconnected and its open payment links closed.
     let switched = connect(&h, &owner, "ac_test_other").await.ok().body;
     assert_eq!(switched["account_id"], OTHER_ACCOUNT, "{switched}");
     {
         let calls = h.calls.lock().unwrap();
-        assert_eq!(calls.expired, vec![old_session.clone()]);
+        let mut expired = calls.expired.clone();
+        expired.sort();
+        assert_eq!(expired, vec![old_session.clone(), second_session.clone()]);
         assert_eq!(calls.deauthorized, vec![ACCOUNT.to_owned()]);
     }
     // A payer who got through on the old link before it closed is still
@@ -841,10 +846,9 @@ async fn payments_on_a_replaced_account_still_count(pool: PgPool) {
     let mut refunded = now(fixture("event_charge_refunded"));
     refunded["id"] = json!("evt_3QOwlsRefundedAfterMove");
     assert_eq!(h.webhook(&refunded).await.status, StatusCode::NO_CONTENT);
-    // A session made here, which names this workspace:
-    let (second, second_total, _) = sent_invoice(&h, &owner).await;
+    // A session made here, which names this workspace, paid before it closed:
     let mut paid = completed(
-        "cs_test_a1OwlsSecond",
+        &second_session,
         &second,
         second_total,
         "evt_1QOwlsSecondPaid",
@@ -875,6 +879,61 @@ async fn payments_on_a_replaced_account_still_count(pool: PgPool) {
         Some("not an invoice of this workspace")
     );
     let theirs = h.get(&other, "/api/v1/payments").await;
+    assert_eq!(theirs["items"], json!([]), "{theirs}");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_session_onhold_did_not_make_records_nothing(pool: PgPool) {
+    let h = harness(pool).await;
+    let (owls, owner) = h.app.workspace_with_owner("owls").await;
+    connect(&h, &owner, "ac_test_owls").await.ok();
+    let (invoice, total, token) = sent_invoice(&h, &owner).await;
+    // A link the payer was given while the account was here: its session
+    // carried the invoice's id.
+    pay(&h, &token).await.ok();
+    connect(&h, &owner, "ac_test_other").await.ok();
+    let (_, hall) = h.app.workspace_with_owner("hall").await;
+    connect(&h, &hall, "ac_test_owls").await.ok();
+
+    // Whoever holds the account now makes a session of their own on it,
+    // naming the former workspace and its invoice.
+    let mut forged = completed(
+        "cs_test_a1NotOnHolds",
+        &invoice,
+        total,
+        "evt_1QForgedSession",
+        ACCOUNT,
+    );
+    forged["data"]["object"]["payment_intent"] = json!("pi_3QForgedIntent");
+    forged["data"]["object"]["metadata"]["workspace_id"] = json!(owls.0.to_string());
+    assert_eq!(h.webhook(&forged).await.status, StatusCode::NO_CONTENT);
+    // Even sent to the former workspace's own queue, it is no payment.
+    let mut direct = forged.clone();
+    direct["id"] = json!("evt_1QForgedDirect");
+    let mut tx = core_db::begin(&h.app.state.db, Some(owls), None)
+        .await
+        .unwrap();
+    core_db::stripe::insert_event(
+        &mut tx,
+        "evt_1QForgedDirect",
+        "checkout.session.completed",
+        &direct,
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    let outcome =
+        core_api::services::stripe::process_event(&h.app.state, owls, "evt_1QForgedDirect")
+            .await
+            .unwrap();
+    assert_eq!(outcome, "not a session OnHold made for this invoice");
+    h.drain().await;
+
+    let inv = h.get(&owner, &format!("/api/v1/invoices/{invoice}")).await;
+    assert_eq!(inv["outstanding"]["minor"], total, "{inv}");
+    let ours = h.get(&owner, "/api/v1/payments").await;
+    assert_eq!(ours["items"], json!([]), "{ours}");
+    let theirs = h.get(&hall, "/api/v1/payments").await;
     assert_eq!(theirs["items"], json!([]), "{theirs}");
 }
 

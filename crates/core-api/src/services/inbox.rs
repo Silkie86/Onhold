@@ -34,6 +34,9 @@ use crate::error::{ApiError, ApiResult};
 pub const ENTITY: &str = "thread";
 /// Sends one message written in OnHold (`message_id`).
 pub const JOB_SEND: &str = "inbox.send";
+/// How long a message queued in a suspended workspace waits before it is
+/// tried again.
+const SUSPENDED_RETRY_MINS: i64 = 60;
 /// Wakes a snoozed thread (`thread_id`, `at`).
 pub const JOB_WAKE: &str = "inbox.wake";
 
@@ -1311,9 +1314,13 @@ async fn queue_outbound(
 /// What sending did, for the job's log.
 #[derive(Debug)]
 pub enum SendOutcome {
-    Sent { via: String },
+    Sent {
+        via: String,
+    },
     AlreadyDone,
     Failed(String),
+    /// Still queued, for a later job.
+    Waiting(String),
 }
 
 impl std::fmt::Display for SendOutcome {
@@ -1322,6 +1329,7 @@ impl std::fmt::Display for SendOutcome {
             Self::Sent { via } => write!(f, "sent through {via}"),
             Self::AlreadyDone => f.write_str("already sent or given up on"),
             Self::Failed(why) => write!(f, "not sent: {why}"),
+            Self::Waiting(why) => write!(f, "not sent yet: {why}"),
         }
     }
 }
@@ -1362,13 +1370,32 @@ pub async fn send(
     if m.status != "queued" {
         return Ok(SendOutcome::AlreadyDone);
     }
-    // A workspace closed (or suspended) while this waited sends nothing more.
-    let open = core_db::workspaces::get(&mut tx, ws)
+    // A workspace closed while this waited sends nothing more; a suspended
+    // one sends nothing for now, and the message waits until it is back.
+    match core_db::workspaces::get(&mut tx, ws)
         .await?
-        .is_some_and(|w| matches!(w.status, WorkspaceStatus::Trial | WorkspaceStatus::Active));
-    if !open {
-        tx.commit().await?;
-        return finish(state, &ctx, &m, Err("the workspace was closed".into())).await;
+        .map(|w| w.status)
+    {
+        Some(WorkspaceStatus::Trial | WorkspaceStatus::Active) => {}
+        Some(WorkspaceStatus::Suspended) => {
+            let payload = json!({ "message_id": m.id });
+            core_db::jobs::enqueue(
+                &mut tx,
+                core_db::jobs::NewJob {
+                    run_at: Some(Utc::now() + Duration::minutes(SUSPENDED_RETRY_MINS)),
+                    ..core_db::jobs::NewJob::new(Some(ws), JOB_SEND, &payload)
+                },
+            )
+            .await?;
+            tx.commit().await?;
+            return Ok(SendOutcome::Waiting(
+                "the workspace is suspended; it is tried again later".into(),
+            ));
+        }
+        Some(WorkspaceStatus::Closed) | None => {
+            tx.commit().await?;
+            return finish(state, &ctx, &m, Err("the workspace was closed".into())).await;
+        }
     }
     let thread = core_db::inbox::get(&mut tx, m.thread_id, None)
         .await?
