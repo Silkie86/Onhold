@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO pitch_not_pitches (workspace_id, message_id, created_by)\n           VALUES (app_workspace_id(), $1, $2) ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "58ddff2f0ea7a344545e2e7ad9d58d99dbd3917a67998aa6438da3ab2e66b84d"
+}

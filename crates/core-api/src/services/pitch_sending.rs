@@ -394,7 +394,7 @@ pub async fn send(state: &AppState, ctx: &Ctx, s: PitchSend) -> ApiResult<PitchV
         org.id,
         PitchKind::Action,
         &parts,
-        Some(message.id),
+        core_db::pitches::Source::Sent(message.id),
     )
     .await?;
     tx.commit().await?;

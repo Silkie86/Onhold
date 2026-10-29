@@ -47,6 +47,7 @@ type PitchKind = Schemas["PitchKind"];
 type PitchChannel = Schemas["PitchChannel"];
 type PitchTemplate = Schemas["PitchTemplate"];
 type SendWith = Schemas["PitchSendWith"];
+type Unlogged = Schemas["UnloggedMail"];
 
 const COLOURS: Colour[] = ["green", "amber", "red", "grey", "blue", "purple"];
 const MEANINGS: { value: Meaning; label: string }[] = [
@@ -911,6 +912,16 @@ export function uniqueItems(items: ItemRef[]): ItemRef[] {
   });
 }
 
+/**
+ * Whether an answered action still waits for what they said: no answer has
+ * been logged since theirs came in.
+ */
+export function awaitingOutcome(entry: Pitch, entries: Pitch[]): boolean {
+  if (entry.kind !== "action" || !entry.answered_at) return false;
+  const at = new Date(entry.answered_at).getTime();
+  return !entries.some((e) => e.kind === "outcome" && new Date(e.happened_at).getTime() >= at);
+}
+
 /** An organisation's pitch log: what was done and the answers given, latest first. */
 function PitchLog({ organisationId, items, canWrite }: { organisationId: string; items: ItemRef[]; canWrite: boolean }) {
   const settings = usePitchingSettings();
@@ -935,7 +946,13 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
   const [editing, setEditing] = useState<Pitch | PitchKind | null>(null);
   const [pitching, setPitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const refresh = () => void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
+    // Sent mail logged or removed elsewhere comes and goes from "In your
+    // Sent mail"; not asked again for those who can't read the inbox.
+    if (qc.getQueryState(["unlogged", organisationId])?.status !== "error")
+      void qc.invalidateQueries({ queryKey: ["unlogged", organisationId] });
+  };
   const remove = async (p: Pitch) => {
     if (!window.confirm(`Remove "${p.type_label ?? "this entry"}" from the log?`)) return;
     setError(null);
@@ -944,6 +961,38 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
       refresh();
     } catch (e) {
       setError(failure(e));
+    }
+  };
+  // What they said in their answer, logged at the time it came in (never
+  // later than now, should a clock run ahead), by the person who answered
+  // when they still work here.
+  const [saying, setSaying] = useState<string | null>(null);
+  const said = async (p: Pitch, outcome: Outcome) => {
+    if (saying || !p.answered_at) return;
+    setSaying(p.id);
+    setError(null);
+    const at = new Date(Math.min(new Date(p.answered_at).getTime(), Date.now())).toISOString();
+    const contact = p.contact_id && people.data?.items.some((c) => String(c.id) === p.contact_id) ? p.contact_id : null;
+    try {
+      await ok(
+        api.POST("/api/v1/pitches", {
+          params: { header: { "Idempotency-Key": crypto.randomUUID() } },
+          body: {
+            organisation_id: organisationId,
+            kind: "outcome",
+            type_key: outcome.key,
+            happened_at: at,
+            channel: p.answer?.channel ?? p.channel ?? null,
+            contact_id: contact,
+            item: p.item ? { kind: p.item.kind, id: p.item.id } : null,
+          },
+        }),
+      );
+      refresh();
+    } catch (e) {
+      setError(failure(e));
+    } finally {
+      setSaying(null);
     }
   };
   const channel = (c: PitchChannel | null | undefined) => CHANNELS.find((x) => x.value === c)?.label;
@@ -970,6 +1019,7 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
         )}
       </div>
       {error && <Alert>{error}</Alert>}
+      {canWrite && settings.data && <InSent organisationId={organisationId} settings={settings.data} onChanged={refresh} />}
       {log.isPending ? (
         <Spinner />
       ) : log.isError ? (
@@ -998,7 +1048,9 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
                 {p.note && <span className="break-words whitespace-pre-line">{p.note}</span>}
                 {p.message && (
                   <span className="text-muted-foreground">
-                    {p.message.status === "failed" ? (
+                    {p.source === "spotted" ? (
+                      "From your Sent mail."
+                    ) : p.message.status === "failed" ? (
                       <span className="text-destructive">Not sent.</span>
                     ) : p.message.status === "sent" ? (
                       "Sent from OnHold."
@@ -1008,6 +1060,26 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
                     <Link to="/inbox" search={{ thread: p.message.thread_id }} className="underline">
                       Open the conversation
                     </Link>
+                  </span>
+                )}
+                {p.answered_at && (
+                  <span className="text-muted-foreground">
+                    They answered on {new Date(p.answered_at).toLocaleDateString()}.{" "}
+                    {p.answer && (
+                      <Link to="/inbox" search={{ thread: p.answer.thread_id }} className="underline">
+                        Read their answer
+                      </Link>
+                    )}
+                  </span>
+                )}
+                {canWrite && settings.data && awaitingOutcome(p, entries) && (settings.data.outcomes ?? []).length > 0 && (
+                  <span className="flex flex-wrap items-center gap-1.5 pt-1" role="group" aria-label="What did they say?">
+                    <span className="text-muted-foreground">What did they say?</span>
+                    {(settings.data.outcomes ?? []).map((o) => (
+                      <Button key={o.key} variant="outline" size="sm" disabled={saying !== null} onClick={() => void said(p, o)}>
+                        <StatusDot colour={TAG_COLOUR[o.tag]} label={o.label} />
+                      </Button>
+                    ))}
                   </span>
                 )}
               </div>
@@ -1059,6 +1131,100 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
         />
       )}
     </Card>
+  );
+}
+
+/**
+ * Email to the organisation that went from someone's own mailbox, outside
+ * OnHold, and isn't in the log: log each as a pitch or set it aside. Shown
+ * only to those who can read the inbox.
+ */
+function InSent({ organisationId, settings, onChanged }: { organisationId: string; settings: View; onChanged: () => void }) {
+  const mail = useQuery({
+    queryKey: ["unlogged", organisationId],
+    queryFn: () => ok(api.GET("/api/v1/organisations/{id}/pitches/unlogged", { params: { path: { id: organisationId } } })),
+    retry: false,
+  });
+  const actions = settings.actions ?? [];
+  const [chosen, setChosen] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (!mail.data || mail.data.length === 0 || actions.length === 0) return null;
+
+  const act = async (m: Unlogged, call: () => Promise<unknown>) => {
+    setBusy(m.message_id);
+    setError(null);
+    try {
+      await call();
+      void mail.refetch();
+      onChanged();
+    } catch (e) {
+      setError(failure(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const log = (m: Unlogged) =>
+    act(m, () =>
+      ok(
+        api.POST("/api/v1/pitches", {
+          body: {
+            organisation_id: organisationId,
+            kind: "action",
+            type_key: chosen[m.message_id] ?? actions[0]?.key ?? "",
+            message_id: m.message_id,
+            happened_at: new Date(Math.min(new Date(m.sent_at).getTime(), Date.now())).toISOString(),
+            channel: "email",
+            contact_id: m.contact_id ?? null,
+          },
+        }),
+      ),
+    );
+  const setAside = (m: Unlogged) =>
+    act(m, () => ok(api.POST("/api/v1/pitches/not-a-pitch", { body: { message_id: m.message_id } })));
+
+  return (
+    <section aria-label="In your Sent mail" className="flex flex-col gap-2 rounded-md border border-dashed p-3">
+      <div>
+        <h4 className="font-medium">In your Sent mail</h4>
+        <p className="text-muted-foreground">Email to them that isn't in the log yet. Log it, or set it aside.</p>
+      </div>
+      {error && <Alert>{error}</Alert>}
+      <ul className="flex flex-col gap-2">
+        {mail.data.map((m) => (
+          <li key={m.message_id} className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex min-w-0 flex-col">
+              <Link to="/inbox" search={{ thread: m.thread_id }} className="truncate font-medium underline">
+                {m.subject || "(no subject)"}
+              </Link>
+              <span className="text-muted-foreground">
+                {[new Date(m.sent_at).toLocaleDateString(), m.contact_name ?? m.to.join(", ")].filter(Boolean).join(" · ")}
+              </span>
+            </span>
+            <span className="flex flex-wrap items-center gap-2">
+              <NativeSelect
+                aria-label="Log it as"
+                className="w-40"
+                value={chosen[m.message_id] ?? actions[0]?.key ?? ""}
+                onChange={(e) => setChosen({ ...chosen, [m.message_id]: e.target.value })}
+              >
+                {actions.map((a) => (
+                  <option key={a.key} value={a.key}>
+                    {a.label}
+                  </option>
+                ))}
+              </NativeSelect>
+              <Button size="sm" disabled={busy !== null} onClick={() => void log(m)}>
+                Log
+              </Button>
+              <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void setAside(m)}>
+                Not a pitch
+              </Button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

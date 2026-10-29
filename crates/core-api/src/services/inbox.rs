@@ -1869,6 +1869,11 @@ pub(crate) async fn ingest(
             },
         )
         .await?;
+        // An answer to a pitch: from someone saved as a person at an
+        // organisation, wherever they are now.
+        if person && let Some((from, Some(org))) = contact {
+            super::pitches::answered(&mut tx, &ctx, org, Some(from), message_id, sent_at).await?;
+        }
     }
     tx.commit().await?;
     Ok(Ingested {

@@ -1285,6 +1285,14 @@ async fn receive(state: &AppState, ws: WorkspaceId, c: &Channel, r: Received) ->
             },
         )
         .await?;
+        // An answer to a pitch, from the person the conversation is with, at
+        // the organisation they are at now.
+        if let Some(from) = thread.contact_id
+            && let Some(c) = core_db::contacts::get(&mut tx, from).await?
+            && let Some(org) = c.organisation_id
+        {
+            super::pitches::answered(&mut tx, &ctx, org, Some(from), message_id, sent_at).await?;
+        }
         tx.commit().await?;
     }
     Ok(())

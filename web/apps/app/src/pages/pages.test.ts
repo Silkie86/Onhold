@@ -2,7 +2,7 @@ import { safeRedirect } from "./auth.tsx";
 import { canUndo, decodeFile, isWorkbook, needsResaving, rowLabel, sheetsSummary, stripCardAttachments } from "./imports.tsx";
 import { dialable, phonesOf } from "../phones.ts";
 import { validateListSearch } from "./crm.tsx";
-import { dayOf, happenedAt, keyFor, mailtoLink, newKey, smsLink, uniqueItems, unfilled, whatsappLink } from "./pitching.tsx";
+import { awaitingOutcome, dayOf, happenedAt, keyFor, mailtoLink, newKey, smsLink, uniqueItems, unfilled, whatsappLink } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
 
 test("after signing in, only paths on this site are followed", () => {
@@ -118,6 +118,16 @@ test("an act on both of an organisation's lists is offered once", () => {
   const owls = { kind: "talent" as const, id: "1", name: "Owls" };
   const tour = { kind: "project" as const, id: "1", name: "Tour" };
   expect(uniqueItems([owls, tour, { ...owls }])).toEqual([owls, tour]);
+});
+
+test("an answered pitch asks what they said until an answer is logged", () => {
+  const base = { organisation_id: "o", created_at: "2026-10-01T09:00:00Z", updated_at: "2026-10-01T09:00:00Z", version: 1, source: "sent", type_key: "pitched" };
+  const pitch = { ...base, id: "a", kind: "action" as const, happened_at: "2026-10-01T09:00:00Z", answered_at: "2026-10-03T10:00:00Z" };
+  const before = { ...base, id: "b", kind: "outcome" as const, type_key: "no", happened_at: "2026-10-02T10:00:00Z" };
+  const after = { ...before, id: "c", happened_at: "2026-10-03T10:00:00Z" };
+  expect(awaitingOutcome(pitch, [pitch, before])).toBe(true);
+  expect(awaitingOutcome(pitch, [after, pitch])).toBe(false);
+  expect(awaitingOutcome({ ...pitch, answered_at: null }, [pitch])).toBe(false);
 });
 
 test("numbers changed offline are dialled as written, not as the server last wrote them", () => {
