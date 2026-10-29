@@ -281,7 +281,10 @@ fn is_key(k: &str) -> bool {
 fn checked_key(check: &mut Check, field: &str, key: &str, taken: impl Fn(&str) -> bool) -> String {
     let key = key.trim().to_owned();
     if !is_key(&key) {
-        check.issue(field, "use 1 to 40 lower case letters, digits or underscores");
+        check.issue(
+            field,
+            "use 1 to 40 lower case letters, digits or underscores",
+        );
     } else if taken(&key) {
         check.issue(field, "is used twice");
     }
@@ -382,7 +385,10 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
         });
     }
     if input.actions.is_empty() || input.actions.len() > MAX_ACTIONS {
-        check.issue("actions", format!("give 1 to {MAX_ACTIONS} kinds of action"));
+        check.issue(
+            "actions",
+            format!("give 1 to {MAX_ACTIONS} kinds of action"),
+        );
     }
     let mut actions: Vec<PitchAction> = Vec::new();
     for (i, a) in input.actions.iter().enumerate() {
@@ -536,6 +542,8 @@ mod tests {
         });
         s.statuses.push(s.statuses[0].clone());
         s.items.clear();
+        s.outcomes.push(s.outcomes[0].clone());
+        s.actions = vec![];
         let Err(crate::error::ApiError::Invalid(issues)) = check_settings(s) else {
             panic!("expected problems");
         };
@@ -547,6 +555,8 @@ mod tests {
             "regions[6].countries",
             "statuses[3].key",
             "items",
+            "outcomes[5].key",
+            "actions",
         ] {
             assert!(fields.contains(&want), "{want} missing from {fields:?}");
         }

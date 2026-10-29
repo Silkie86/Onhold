@@ -303,14 +303,8 @@ fn values(organisation: Uuid, kind: PitchKind, p: &Parts) -> core_db::pitches::V
         kind: kind.as_str(),
         type_key: &p.type_key,
         channel: p.channel.map(PitchChannel::as_str),
-        talent_id: p
-            .item
-            .filter(|i| i.kind == ItemKind::Talent)
-            .map(|i| i.id),
-        project_id: p
-            .item
-            .filter(|i| i.kind == ItemKind::Project)
-            .map(|i| i.id),
+        talent_id: p.item.filter(|i| i.kind == ItemKind::Talent).map(|i| i.id),
+        project_id: p.item.filter(|i| i.kind == ItemKind::Project).map(|i| i.id),
         note: p.note.as_deref(),
         happened_at: p.happened_at,
     }

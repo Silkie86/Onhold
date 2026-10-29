@@ -536,7 +536,10 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
 
     // The workspace's own actions and answers, OnHold's to start with.
     let s = get(&app, &owner, "/api/v1/pitching/settings").await.body;
-    assert_eq!(s["actions"][0], json!({ "key": "pitched", "label": "Pitched" }));
+    assert_eq!(
+        s["actions"][0],
+        json!({ "key": "pitched", "label": "Pitched" })
+    );
     assert_eq!(
         s["outcomes"][0],
         json!({ "key": "interested", "label": "Interested or yes", "tag": "good" })
@@ -591,11 +594,24 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
     .expect(StatusCode::FORBIDDEN, "permission_denied");
 
     // Latest first; viewers can read it.
-    let log = get(&app, &viewer, &format!("/api/v1/organisations/{club_id}/pitches")).await;
+    let log = get(
+        &app,
+        &viewer,
+        &format!("/api/v1/organisations/{club_id}/pitches"),
+    )
+    .await;
     assert_eq!(log.body["total"], 2);
     assert_eq!(log.body["items"][0]["type_key"], "not_now");
     assert_eq!(log.body["items"][1]["type_key"], "pitched");
-    let none = get(&app, &owner, &format!("/api/v1/organisations/{}/pitches", other["id"].as_str().unwrap())).await;
+    let none = get(
+        &app,
+        &owner,
+        &format!(
+            "/api/v1/organisations/{}/pitches",
+            other["id"].as_str().unwrap()
+        ),
+    )
+    .await;
     assert_eq!(none.body["total"], 0);
 
     // Edited: the answer was really "interested", and with Jo.
@@ -630,7 +646,12 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
         .send()
         .await
         .ok();
-    let log = get(&app, &owner, &format!("/api/v1/organisations/{club_id}/pitches")).await;
+    let log = get(
+        &app,
+        &owner,
+        &format!("/api/v1/organisations/{club_id}/pitches"),
+    )
+    .await;
     assert_eq!(log.body["items"][0]["type_label"], Value::Null);
     assert_eq!(log.body["items"][0]["tag"], Value::Null);
     patch(
@@ -649,6 +670,11 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
         .send()
         .await;
     assert_eq!(gone.status, StatusCode::NO_CONTENT, "{}", gone.body);
-    let log = get(&app, &owner, &format!("/api/v1/organisations/{club_id}/pitches")).await;
+    let log = get(
+        &app,
+        &owner,
+        &format!("/api/v1/organisations/{club_id}/pitches"),
+    )
+    .await;
     assert_eq!(log.body["total"], 1);
 }
