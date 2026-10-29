@@ -650,6 +650,8 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
     let mut body = s.clone();
     body["outcomes"] = json!([{ "key": "yes", "label": "Yes", "tag": "good" }]);
     body["actions"] = json!([{ "key": "pitched", "label": "Sent it" }]);
+    // A template follows up, an action no longer listed: it goes too.
+    body["templates"] = json!([s["templates"][0]]);
     app.put("/api/v1/pitching/settings")
         .signed_in(&owner)
         .json(body)
