@@ -700,7 +700,9 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
             outcomes.iter().any(|x| x.key == k)
         });
         let label = check.required(&format!("outcomes[{i}].label"), &o.label, 60);
-        if o.rest_days.is_some_and(|d| !(0..=MAX_REST_DAYS).contains(&d)) {
+        if o.rest_days
+            .is_some_and(|d| !(0..=MAX_REST_DAYS).contains(&d))
+        {
             check.issue(
                 format!("outcomes[{i}].rest_days"),
                 format!("give 0 to {MAX_REST_DAYS} days"),

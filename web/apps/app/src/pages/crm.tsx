@@ -50,6 +50,7 @@ import { RelatedConversations } from "./inbox.tsx";
 import { TalentCalendarsCard } from "./talent-calendars.tsx";
 import { PortalAccessCard } from "./portal-settings.tsx";
 import { dialable, phonesOf } from "../phones.ts";
+import { WhoToPitchCard } from "./pitch-list.tsx";
 import { OrganisationPitching } from "./pitching.tsx";
 
 type Entity = (typeof ENTITIES)[keyof typeof ENTITIES];
@@ -572,6 +573,7 @@ export function EntityRecordPage() {
                 {setup.shows("section:talent.availability") && <AvailabilityEditor talentId={id} canWrite={schema.data.can_write} />}
                 {setup.shows("section:talent.calendars") && <TalentCalendarsCard talentId={id} canWrite={schema.data.can_write} />}
                 {setup.shows("section:talent.portal") && <PortalAccessCard talentId={id} canWrite={schema.data.can_write} />}
+                {setup.has("pitching") && <WhoToPitchCard talentId={id} />}
               </>
             ))}
           {entity.entity === "organisation" && <OrganisationContacts organisation={r} />}

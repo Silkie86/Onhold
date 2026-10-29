@@ -196,7 +196,10 @@ fn rank(scene: &Scene<'_>, c: &core_db::pitch_list::Candidate) -> PitchListRow {
         match o.rest() {
             None => {
                 resting = true;
-                rest_reason = Some(format!("{}: not pitched {item} again", outcome_label(o, at)));
+                rest_reason = Some(format!(
+                    "{}: not pitched {item} again",
+                    outcome_label(o, at)
+                ));
             }
             Some(days) if days > 0 => {
                 let until = scene.day(at) + Duration::days(i64::from(days));
@@ -213,15 +216,16 @@ fn rank(scene: &Scene<'_>, c: &core_db::pitch_list::Candidate) -> PitchListRow {
             Some(_) => {}
         }
     }
-    if !resting && let (Some(until), Some(at)) = (waiting_until, c.action_at) {
-        if until > scene.today {
-            resting = true;
-            resting_until = Some(until);
-            rest_reason = Some(format!(
-                "Pitched on {}: waiting for an answer",
-                short(scene.day(at))
-            ));
-        }
+    if !resting
+        && let (Some(until), Some(at)) = (waiting_until, c.action_at)
+        && until > scene.today
+    {
+        resting = true;
+        resting_until = Some(until);
+        rest_reason = Some(format!(
+            "Pitched on {}: waiting for an answer",
+            short(scene.day(at))
+        ));
     }
 
     // What counts for them.
@@ -293,7 +297,7 @@ fn rank(scene: &Scene<'_>, c: &core_db::pitch_list::Candidate) -> PitchListRow {
     let score = lines.iter().map(|l| l.points).sum();
     let (mut reasons, against): (Vec<RankLine>, Vec<RankLine>) =
         lines.into_iter().partition(|l| l.points > 0);
-    reasons.sort_by(|a, b| b.points.cmp(&a.points));
+    reasons.sort_by_key(|l| std::cmp::Reverse(l.points));
     let but = against.into_iter().min_by_key(|l| l.points);
 
     let pitch_status = if c.booked > 0 {
@@ -362,7 +366,12 @@ pub async fn list(state: &AppState, ctx: &Ctx, f: &PitchListFilter) -> ApiResult
             ));
         }
     };
-    let blank = |s: &Option<String>| s.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
+    let blank = |s: &Option<String>| {
+        s.as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+    };
     let country = blank(&f.country).map(|c| c.to_uppercase());
     let (q, tag, city, status_key, relationship, region) = (
         blank(&f.q),
@@ -410,7 +419,9 @@ pub async fn list(state: &AppState, ctx: &Ctx, f: &PitchListFilter) -> ApiResult
         settings: &settings,
         today: Utc::now().with_timezone(&tz).date_naive(),
         tz,
-        item: found.as_ref().map(|(name, _)| (name.as_str(), item_tags.as_slice())),
+        item: found
+            .as_ref()
+            .map(|(name, _)| (name.as_str(), item_tags.as_slice())),
     };
     let mut rows: Vec<PitchListRow> = candidates
         .iter()

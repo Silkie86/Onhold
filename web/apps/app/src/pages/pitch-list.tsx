@@ -301,22 +301,20 @@ export function WhoToPitchCard({ talentId }: { talentId: string }) {
   const settings = usePitchingSettings();
   if (list.isError) return null;
   return (
-    <Card className="flex flex-col gap-3 p-4 text-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="font-medium">Who to pitch</h3>
-          <p className="text-muted-foreground">The best bets first, and why.</p>
-        </div>
-        <Link to="/pitching" search={{ kind: "talent", id: talentId }} className="underline">
+    <section className="flex flex-col gap-3" aria-label="Who to pitch">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-semibold">Who to pitch</h2>
+        <Link to="/pitching" search={{ kind: "talent", id: talentId }} className="text-sm underline">
           See the whole list
         </Link>
       </div>
+      <p className="text-sm text-muted-foreground">The best bets first, and why, leaving out those resting after an answer.</p>
       {list.isPending ? (
         <Spinner />
       ) : list.data.items.length === 0 ? (
-        <p className="text-muted-foreground">Nobody to pitch to right now.</p>
+        <p className="text-sm text-muted-foreground">Nobody to pitch to right now.</p>
       ) : (
-        <ul className="flex flex-col divide-y rounded-md border">
+        <ul className="flex flex-col divide-y rounded-md border bg-card text-sm">
           {list.data.items.map((r) => (
             <PitchRow
               key={r.organisation_id}
@@ -327,6 +325,6 @@ export function WhoToPitchCard({ talentId }: { talentId: string }) {
           ))}
         </ul>
       )}
-    </Card>
+    </section>
   );
 }

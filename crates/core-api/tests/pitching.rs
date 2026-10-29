@@ -542,7 +542,7 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
     );
     assert_eq!(
         s["outcomes"][0],
-        json!({ "key": "interested", "label": "Interested or yes", "tag": "good" })
+        json!({ "key": "interested", "label": "Interested or yes", "tag": "good", "rest_days": 0 })
     );
 
     // Pitched by email last week, then the answer today.
@@ -1150,7 +1150,12 @@ async fn the_list_ranks_who_to_pitch_first_with_reasons(pool: PgPool) {
     )
     .await
     .ok();
-    let venue = organisation(&app, &owner, json!({ "name": "Belgrave", "addresses": leeds })).await;
+    let venue = organisation(
+        &app,
+        &owner,
+        json!({ "name": "Belgrave", "addresses": leeds }),
+    )
+    .await;
     let soon = chrono::Utc::now() + chrono::Duration::days(20);
     post(
         &app,
@@ -1162,7 +1167,7 @@ async fn the_list_ranks_who_to_pitch_first_with_reasons(pool: PgPool) {
     .await
     .ok();
     // Into techno, but nobody to reach there.
-    let techno = organisation(
+    organisation(
         &app,
         &owner,
         json!({ "name": "Wire", "tags": ["techno", "festival"], "addresses": [{ "city": "Berlin", "country": "DE" }] }),
@@ -1207,7 +1212,11 @@ async fn the_list_ranks_who_to_pitch_first_with_reasons(pool: PgPool) {
         .iter()
         .map(|r| r["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["Brudenell", "Wire", "Belgrave", "Albert Hall"], "{l}");
+    assert_eq!(
+        names,
+        ["Brudenell", "Wire", "Belgrave", "Albert Hall"],
+        "{l}"
+    );
     assert_eq!(l["total"], 4);
     assert_eq!(l["item"]["name"], "The Midnight Owls");
     let top = &l["items"][0];
@@ -1281,7 +1290,10 @@ async fn the_list_ranks_who_to_pitch_first_with_reasons(pool: PgPool) {
         .send()
         .await;
     bad.expect(StatusCode::BAD_REQUEST, "invalid_input");
-    assert_eq!(fields(&bad), ["outcomes[0].rest_days", "own_reasons[0].points"]);
+    assert_eq!(
+        fields(&bad),
+        ["outcomes[0].rest_days", "own_reasons[0].points"]
+    );
 
     // What is pitched comes as a pair, and must exist.
     app.get("/api/v1/pitching/list?item_kind=talent")
