@@ -1285,6 +1285,10 @@ async fn receive(state: &AppState, ws: WorkspaceId, c: &Channel, r: Received) ->
             },
         )
         .await?;
+        if let Some(org) = thread.organisation_id {
+            super::pitches::answered(&mut tx, &ctx, org, thread.contact_id, message_id, sent_at)
+                .await?;
+        }
         tx.commit().await?;
     }
     Ok(())

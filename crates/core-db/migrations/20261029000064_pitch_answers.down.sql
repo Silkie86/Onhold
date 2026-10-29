@@ -1,0 +1,12 @@
+DROP TABLE pitch_not_pitches;
+DROP INDEX pitch_log_unanswered;
+ALTER TABLE pitch_log DROP CONSTRAINT pitch_log_answer_kind;
+ALTER TABLE pitch_log DROP CONSTRAINT pitch_log_answer;
+ALTER TABLE pitch_log DROP COLUMN answer_message_id, DROP COLUMN answered_at;
+CREATE INDEX pitch_log_message ON pitch_log (workspace_id, message_id) WHERE message_id IS NOT NULL;
+DROP INDEX pitch_log_one_per_message;
+ALTER TABLE pitch_log DROP CONSTRAINT pitch_log_sent_message;
+ALTER TABLE pitch_log DROP CONSTRAINT pitch_log_source_check;
+UPDATE pitch_log SET source = 'sent' WHERE source = 'spotted';
+ALTER TABLE pitch_log ADD CONSTRAINT pitch_log_source_check CHECK (source IN ('manual', 'sent'));
+ALTER TABLE pitch_log ADD CONSTRAINT pitch_log_sent_message CHECK ((source = 'sent') = (message_id IS NOT NULL));

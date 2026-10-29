@@ -7,7 +7,7 @@
 
 use chrono::{DateTime, Duration, Utc};
 use core_db::Tx;
-use core_db::pitches::Entry;
+use core_db::pitches::{Entry, Source};
 use core_domain::{Ctx, Permission, UserId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -92,12 +92,17 @@ pub struct PitchView {
     pub item: Option<ItemRef>,
     pub note: Option<String>,
     pub happened_at: DateTime<Utc>,
-    /// `manual`: logged by hand; `sent`: sent from OnHold.
+    /// `manual`: logged by hand; `sent`: sent from OnHold; `spotted`:
+    /// logged from the member's own Sent mail.
     pub source: String,
     /// The pitch template it was written from, if any.
     pub template_key: Option<String>,
-    /// For a pitch sent from OnHold: its message.
+    /// For a pitch sent from OnHold or spotted in Sent: its message.
     pub message: Option<PitchMessage>,
+    /// For an action: when the organisation answered it, as an answer from
+    /// them arrived in the inbox.
+    pub answered_at: Option<DateTime<Utc>>,
+    pub answer: Option<PitchAnswer>,
     pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -112,6 +117,13 @@ pub struct PitchMessage {
     pub thread_id: Uuid,
     /// `queued`, `sent` or `failed`.
     pub status: String,
+}
+
+/// An answer that arrived in the inbox: the message and its conversation.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PitchAnswer {
+    pub message_id: Uuid,
+    pub thread_id: Uuid,
 }
 
 fn view(settings: &PitchingSettings, e: Entry) -> PitchView {
@@ -160,6 +172,14 @@ fn view(settings: &PitchingSettings, e: Entry) -> PitchView {
                 id,
                 thread_id,
                 status,
+            }),
+            _ => None,
+        },
+        answered_at: e.answered_at,
+        answer: match (e.answer_message_id, e.answer_thread_id) {
+            (Some(message_id), Some(thread_id)) => Some(PitchAnswer {
+                message_id,
+                thread_id,
             }),
             _ => None,
         },
@@ -238,6 +258,9 @@ pub struct NewPitch {
     pub happened_at: Option<DateTime<Utc>>,
     /// The pitch template it was written from, if any.
     pub template_key: Option<String>,
+    /// For an action: the email in Sent it went as, from the organisation's
+    /// unlogged mail.
+    pub message_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
@@ -374,8 +397,7 @@ fn values(organisation: Uuid, kind: PitchKind, p: &Parts) -> core_db::pitches::V
     }
 }
 
-/// Logs an entry checked with [`check`]; `message` is the message it was
-/// sent as, if sent from OnHold.
+/// Logs an entry checked with [`check`].
 pub(super) async fn insert(
     tx: &mut Tx,
     ctx: &Ctx,
@@ -383,14 +405,14 @@ pub(super) async fn insert(
     organisation: Uuid,
     kind: PitchKind,
     parts: &Parts,
-    message: Option<Uuid>,
+    source: Source,
 ) -> ApiResult<PitchView> {
     let id = core_domain::ids::new_id();
     core_db::pitches::insert(
         tx,
         id,
         values(organisation, kind, parts),
-        message,
+        source,
         ctx.user_id(),
     )
     .await?;
@@ -426,6 +448,21 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewPitch) -> ApiResult<Pit
     let (settings, _) = settings_in(&mut tx).await?;
     let mut found = Check::default();
     let note = found.long("note", new.note.as_deref(), MAX_NOTE);
+    let source = match new.message_id {
+        None => Source::Manual,
+        Some(m) => {
+            let at_org = core_db::pitches::unlogged_organisation(&mut tx, m).await?;
+            if at_org != Some(new.organisation_id) || new.kind != PitchKind::Action {
+                found.issue(
+                    "message_id",
+                    "is not an email sent to this organisation from a mailbox",
+                );
+            } else if core_db::pitches::logged(&mut tx, m).await? {
+                found.issue("message_id", "is in the log already");
+            }
+            Source::Spotted(m)
+        }
+    };
     let parts = Parts {
         contact_id: new.contact_id,
         type_key: new.type_key.trim().to_owned(),
@@ -455,7 +492,7 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewPitch) -> ApiResult<Pit
         new.organisation_id,
         new.kind,
         &parts,
-        None,
+        source,
     )
     .await?;
     tx.commit().await?;
@@ -580,6 +617,115 @@ pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
         },
     )
     .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Notes a message that came in as the answer to the organisation's
+/// unanswered actions before it, from its sender or no one in particular.
+/// Called as mail, texts and WhatsApp messages from people arrive.
+pub(crate) async fn answered(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    organisation: Uuid,
+    contact: Option<Uuid>,
+    message: Uuid,
+    at: DateTime<Utc>,
+) -> ApiResult<()> {
+    let ids = core_db::pitches::note_answer(tx, organisation, contact, message, at).await?;
+    for id in ids {
+        record(
+            tx,
+            ctx,
+            Change {
+                topic: "pitch.answered",
+                resource: ENTITY,
+                object_id: Some(id),
+                before: None,
+                after: Some(serde_json::json!({
+                    "organisation_id": organisation,
+                    "contact_id": contact,
+                    "message_id": message,
+                    "answered_at": at,
+                })),
+                event_extra: None,
+            },
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// An email the member sent the organisation from their own mailbox,
+/// outside OnHold, that might be a pitch to log.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct UnloggedMail {
+    pub message_id: Uuid,
+    pub thread_id: Uuid,
+    pub contact_id: Option<Uuid>,
+    pub contact_name: Option<String>,
+    pub subject: Option<String>,
+    pub to: Vec<String>,
+    pub sent_at: DateTime<Utc>,
+}
+
+/// How far back mail in Sent is offered for logging.
+const UNLOGGED_DAYS: i64 = 60;
+
+/// Recent mail to the organisation from members' mailboxes that is not in
+/// the log, newest first, to log as pitches or set aside.
+pub async fn unlogged(
+    state: &AppState,
+    ctx: &Ctx,
+    organisation: Uuid,
+) -> ApiResult<Vec<UnloggedMail>> {
+    ctx.authorize(Permission::OrganisationRead)?;
+    ctx.authorize(Permission::InboxRead)?;
+    let mut tx = begin(state, ctx).await?;
+    if core_db::organisations::get(&mut tx, organisation)
+        .await?
+        .is_none()
+    {
+        return Err(ApiError::NotFound);
+    }
+    let rows = core_db::pitches::unlogged(
+        &mut tx,
+        organisation,
+        Utc::now() - Duration::days(UNLOGGED_DAYS),
+        5,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| UnloggedMail {
+            message_id: r.message_id,
+            thread_id: r.thread_id,
+            contact_id: r.contact_id,
+            contact_name: r.contact_name,
+            subject: r.subject,
+            to: r.to,
+            sent_at: r.sent_at,
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct NotAPitch {
+    pub message_id: Uuid,
+}
+
+/// Sets an email in Sent aside as not a pitch, so it is not offered again.
+pub async fn not_a_pitch(state: &AppState, ctx: &Ctx, n: NotAPitch) -> ApiResult<()> {
+    ctx.authorize(Permission::OrganisationWrite)?;
+    let mut tx = begin(state, ctx).await?;
+    if core_db::pitches::unlogged_organisation(&mut tx, n.message_id)
+        .await?
+        .is_none()
+    {
+        return Err(ApiError::NotFound);
+    }
+    core_db::pitches::not_a_pitch(&mut tx, n.message_id, ctx.user_id()).await?;
     tx.commit().await?;
     Ok(())
 }

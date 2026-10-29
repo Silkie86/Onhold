@@ -18,7 +18,9 @@ use crate::extract::{IfMatch, WsCtx};
 use crate::services::pitch_sending::{
     self, PitchDraft, PitchDraftRequest, PitchSend, PitchingMe, PitchingMePatch,
 };
-use crate::services::pitches::{self, NewPitch, PitchFilter, PitchPage, PitchPatch, PitchView};
+use crate::services::pitches::{
+    self, NewPitch, NotAPitch, PitchFilter, PitchPage, PitchPatch, PitchView, UnloggedMail,
+};
 use crate::services::pitching::{self, PitchingSettingsInput, PitchingSettingsView};
 
 pub fn router() -> OpenApiRouter<AppState> {
@@ -30,6 +32,8 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(draft_pitch))
         .routes(routes!(send_pitch))
         .routes(routes!(get_me, set_me))
+        .routes(routes!(unlogged_mail))
+        .routes(routes!(not_a_pitch))
 }
 
 /// The workspace's regions, statuses and what it pitches (OnHold's
@@ -178,4 +182,33 @@ async fn set_me(
     Json(b): Json<PitchingMePatch>,
 ) -> ApiResult<Json<PitchingMe>> {
     Ok(Json(pitch_sending::set_me(&state, &ctx, b).await?))
+}
+
+/// Recent email to the organisation sent from members' own mailboxes
+/// outside OnHold and not in the log, newest first (at most five), to log
+/// as pitches (`POST /pitches` with its `message_id`) or set aside.
+#[utoipa::path(get, path = "/organisations/{id}/pitches/unlogged", tag = "pitching",
+    params(WorkspaceHeader, ("id" = Uuid, Path)),
+    responses((status = 200, body = Vec<UnloggedMail>), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn unlogged_mail(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<Vec<UnloggedMail>>> {
+    Ok(Json(pitches::unlogged(&state, &ctx, id).await?))
+}
+
+/// Set an email in Sent aside as not a pitch, so it is not offered again.
+#[utoipa::path(post, path = "/pitches/not-a-pitch", tag = "pitching", params(WorkspaceHeader, IdempotencyHeader),
+    request_body = NotAPitch,
+    responses((status = 204), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn not_a_pitch(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Json(b): Json<NotAPitch>,
+) -> ApiResult<StatusCode> {
+    pitches::not_a_pitch(&state, &ctx, b).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

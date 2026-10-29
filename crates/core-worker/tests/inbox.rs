@@ -1429,3 +1429,136 @@ async fn an_answer_copied_to_two_private_mailboxes_stays_in_each(pool: PgPool) {
         .await
         .expect(StatusCode::NOT_FOUND, "not_found");
 }
+
+/// Mail sent from the mailbox outside OnHold, dated `days_ago`.
+fn sent_mail(id: &str, subject: &str, days_ago: i64) -> String {
+    let date = (chrono::Utc::now() - chrono::Duration::days(days_ago)).to_rfc2822();
+    format!(
+        "From: Ana Owl <ana@owls.test>\r\nTo: Bea Grand <bea@grand.test>\r\nSubject: {subject}\r\n\
+         Message-ID: <{id}@owls.test>\r\nDate: {date}\r\nMIME-Version: 1.0\r\n\
+         Content-Type: text/plain; charset=utf-8\r\n\r\nHi Bea, have a listen.\r\n"
+    )
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn answers_to_pitches_and_pitches_in_sent_are_picked_up(pool: PgPool) {
+    let h = harness(pool).await;
+    let (_ws, owner) = h.app.workspace_with_owner("owls").await;
+    let hall = h
+        .post(
+            &owner,
+            "/api/v1/organisations",
+            json!({ "name": "The Grand Hall" }),
+        )
+        .await
+        .ok()
+        .id("/id");
+    let bea = h
+        .post(
+            &owner,
+            "/api/v1/contacts",
+            json!({ "name": "Bea Grand", "emails": ["bea@grand.test"], "organisation_id": hall }),
+        )
+        .await
+        .ok()
+        .id("/id");
+    // Pitched by phone before Bea wrote; and a call after, not answered yet.
+    let pitched = h
+        .post(
+            &owner,
+            "/api/v1/pitches",
+            json!({ "organisation_id": hall, "contact_id": bea, "kind": "action", "type_key": "pitched",
+                    "channel": "phone", "happened_at": "2026-10-18T10:00:00Z" }),
+        )
+        .await
+        .ok()
+        .id("/id");
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.add_gmail("g-bea", "t-bea", &["INBOX"], &fixture("enquiry.eml"));
+        f.add_gmail(
+            "g-out1",
+            "t-out1",
+            &["SENT"],
+            &sent_mail("out1", "The Owls for June", 3),
+        );
+        f.add_gmail(
+            "g-out2",
+            "t-out2",
+            &["SENT"],
+            &sent_mail("out2", "Invoice copy", 2),
+        );
+    }
+    h.connect(&owner, "google", "good-code").await.ok();
+    h.drain().await;
+
+    // Bea's mail answered the pitch.
+    let log = h
+        .get(&owner, &format!("/api/v1/organisations/{hall}/pitches"))
+        .await
+        .ok()
+        .body;
+    let entry = &log["items"][0];
+    assert_eq!(entry["id"], pitched.to_string(), "{log}");
+    assert!(
+        entry["answered_at"]
+            .as_str()
+            .unwrap()
+            .starts_with("2026-10-20"),
+        "{entry}"
+    );
+    let threads = h.threads(&owner).await;
+    let answer_thread = find(&threads, "Booking enquiry for 12 June")["id"].clone();
+    assert_eq!(entry["answer"]["thread_id"], answer_thread);
+
+    // Mail to them from Sent is offered, newest first, to log or set aside.
+    let unlogged = h
+        .get(
+            &owner,
+            &format!("/api/v1/organisations/{hall}/pitches/unlogged"),
+        )
+        .await
+        .ok()
+        .body;
+    assert_eq!(unlogged.as_array().unwrap().len(), 2, "{unlogged}");
+    assert_eq!(unlogged[0]["subject"], "Invoice copy");
+    assert_eq!(unlogged[1]["contact_name"], "Bea Grand");
+    let spotted = h
+        .post(
+            &owner,
+            "/api/v1/pitches",
+            json!({ "organisation_id": hall, "contact_id": bea, "kind": "action", "type_key": "pitched",
+                    "channel": "email", "message_id": unlogged[1]["message_id"],
+                    "happened_at": unlogged[1]["sent_at"] }),
+        )
+        .await;
+    assert_eq!(spotted.status, StatusCode::CREATED, "{}", spotted.body);
+    assert_eq!(spotted.body["source"], "spotted");
+    assert_eq!(spotted.body["message"]["status"], "sent");
+    // Only once.
+    h.post(
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": hall, "kind": "action", "type_key": "pitched",
+                "message_id": unlogged[1]["message_id"] }),
+    )
+    .await
+    .expect(StatusCode::BAD_REQUEST, "invalid_input");
+    let res = h
+        .post(
+            &owner,
+            "/api/v1/pitches/not-a-pitch",
+            json!({ "message_id": unlogged[0]["message_id"] }),
+        )
+        .await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.body);
+    let unlogged = h
+        .get(
+            &owner,
+            &format!("/api/v1/organisations/{hall}/pitches/unlogged"),
+        )
+        .await
+        .ok()
+        .body;
+    assert_eq!(unlogged, json!([]));
+}
