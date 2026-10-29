@@ -2932,6 +2932,28 @@ export interface paths {
         patch: operations["update_pitch"];
         trace?: never;
     };
+    "/api/v1/pitching/follow-ups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Follow-ups due by today (or a few days ahead), soonest first: the
+         *     workspace's follow-up steps after pitches with no answer, asking what
+         *     came of one once its steps are done, and follow-up dates set by hand.
+         *     With `organisation_id`, that organisation's next, however far off.
+         */
+        get: operations["follow_ups_due"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pitching/me": {
         parameters: {
             query?: never;
@@ -6078,6 +6100,45 @@ export interface components {
             to_check_total: number;
             update: number;
         };
+        DueFollowUp: {
+            action?: string | null;
+            action_label?: string | null;
+            channel?: components["schemas"]["PitchChannel"] | null;
+            /**
+             * Format: uuid
+             * @description Who and what the last action was about.
+             */
+            contact_id?: string | null;
+            contact_name?: string | null;
+            /**
+             * Format: int64
+             * @description Days from the workspace's today: 0 today, less than 0 overdue.
+             */
+            due_in_days: number;
+            /**
+             * Format: date
+             * @description The day it is due, in the workspace's timezone.
+             */
+            due_on: string;
+            item?: components["schemas"]["ItemRef"] | null;
+            kind: components["schemas"]["FollowUpKind"];
+            /**
+             * Format: date-time
+             * @description When the last action was, for a step or no answer.
+             */
+            last_action_at?: string | null;
+            /** Format: uuid */
+            organisation_id: string;
+            organisation_name: string;
+            /**
+             * Format: int32
+             * @description For a step: which, from 1, and how many there are.
+             */
+            step?: number | null;
+            /** Format: int32 */
+            steps: number;
+            template_key?: string | null;
+        };
         /** @description A record that may be the one being entered. */
         Duplicate: {
             /** Format: uuid */
@@ -6413,6 +6474,28 @@ export interface components {
             on: boolean;
             /** @description The rules installed for it, to edit them like any other rule. */
             rule_ids: string[];
+        };
+        /**
+         * @description Why a follow-up is due.
+         * @enum {string}
+         */
+        FollowUpKind: "step" | "no_answer" | "date";
+        /**
+         * @description One follow-up after a pitch nobody has answered: so many days after the
+         *     last thing done, done this way. With a template it is a message to send;
+         *     without, a reminder (to ring them, say).
+         */
+        FollowUpStep: {
+            /** @description What doing it logs, a key from the workspace's actions. */
+            action: string;
+            /**
+             * Format: int32
+             * @description Days after the last action, 1 to 365.
+             */
+            after_days: number;
+            channel: components["schemas"]["PitchChannel"];
+            /** @description The pitch template to send, if it is a message. */
+            template_key?: string | null;
         };
         FunnelReport: {
             /** Format: int64 */
@@ -8100,6 +8183,17 @@ export interface components {
         PitchingSettings: {
             /** @description The kinds of thing logged as done. */
             actions?: components["schemas"]["PitchAction"][];
+            /**
+             * @description The follow-ups after a pitch with no answer, in order. An answer
+             *     stops them.
+             */
+            follow_ups?: components["schemas"]["FollowUpStep"][];
+            /**
+             * Format: int32
+             * @description Days after the last follow-up before asking to log what came of it;
+             *     0 never asks.
+             */
+            give_up_after_days?: number;
             items?: components["schemas"]["ItemKind"][];
             /** @description The answers a pitch can get. */
             outcomes?: components["schemas"]["PitchOutcome"][];
@@ -8116,6 +8210,9 @@ export interface components {
          */
         PitchingSettingsInput: {
             actions?: components["schemas"]["PitchAction"][] | null;
+            follow_ups?: components["schemas"]["FollowUpStep"][] | null;
+            /** Format: int32 */
+            give_up_after_days?: number | null;
             items?: components["schemas"]["ItemKind"][] | null;
             outcomes?: components["schemas"]["PitchOutcome"][] | null;
             regions?: components["schemas"]["Region"][] | null;
@@ -18579,6 +18676,56 @@ export interface operations {
                 };
             };
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    follow_ups_due: {
+        parameters: {
+            query?: {
+                /** @description Also those due in the next so many days, 0 to 60; default 0. */
+                days_ahead?: number | null;
+                /** @description Only this organisation's, and its next one however far off. */
+                organisation_id?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DueFollowUp"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

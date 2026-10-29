@@ -16113,6 +16113,104 @@
         ]
       }
     },
+    "/api/v1/pitching/follow-ups": {
+      "get": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "Follow-ups due by today (or a few days ahead), soonest first: the\nworkspace's follow-up steps after pitches with no answer, asking what\ncame of one once its steps are done, and follow-up dates set by hand.\nWith `organisation_id`, that organisation's next, however far off.",
+        "operationId": "follow_ups_due",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "days_ahead",
+            "in": "query",
+            "description": "Also those due in the next so many days, 0 to 60; default 0.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "description": "Only this organisation's, and its next one however far off.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DueFollowUp"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/pitching/me": {
       "get": {
         "tags": [
@@ -31118,6 +31216,112 @@
           }
         }
       },
+      "DueFollowUp": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "organisation_name",
+          "kind",
+          "due_on",
+          "due_in_days",
+          "steps"
+        ],
+        "properties": {
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "channel": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PitchChannel",
+                "description": "For a step: how, what doing it logs, and the template to send."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Who and what the last action was about."
+          },
+          "contact_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "due_in_days": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Days from the workspace's today: 0 today, less than 0 overdue."
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "description": "The day it is due, in the workspace's timezone."
+          },
+          "item": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FollowUpKind"
+          },
+          "last_action_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the last action was, for a step or no answer."
+          },
+          "organisation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organisation_name": {
+            "type": "string"
+          },
+          "step": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "For a step: which, from 1, and how many there are."
+          },
+          "steps": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "template_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "Duplicate": {
         "type": "object",
         "description": "A record that may be the one being entered.",
@@ -32308,6 +32512,45 @@
               "format": "uuid"
             },
             "description": "The rules installed for it, to edit them like any other rule."
+          }
+        }
+      },
+      "FollowUpKind": {
+        "type": "string",
+        "description": "Why a follow-up is due.",
+        "enum": [
+          "step",
+          "no_answer",
+          "date"
+        ]
+      },
+      "FollowUpStep": {
+        "type": "object",
+        "description": "One follow-up after a pitch nobody has answered: so many days after the\nlast thing done, done this way. With a template it is a message to send;\nwithout, a reminder (to ring them, say).",
+        "required": [
+          "after_days",
+          "channel",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "What doing it logs, a key from the workspace's actions."
+          },
+          "after_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Days after the last action, 1 to 365."
+          },
+          "channel": {
+            "$ref": "#/components/schemas/PitchChannel"
+          },
+          "template_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The pitch template to send, if it is a message."
           }
         }
       },
@@ -37757,6 +38000,18 @@
             },
             "description": "The kinds of thing logged as done."
           },
+          "follow_ups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FollowUpStep"
+            },
+            "description": "The follow-ups after a pitch with no answer, in order. An answer\nstops them."
+          },
+          "give_up_after_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Days after the last follow-up before asking to log what came of it;\n0 never asks."
+          },
           "items": {
             "type": "array",
             "items": {
@@ -37807,6 +38062,22 @@
             "items": {
               "$ref": "#/components/schemas/PitchAction"
             }
+          },
+          "follow_ups": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/FollowUpStep"
+            }
+          },
+          "give_up_after_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           },
           "items": {
             "type": [

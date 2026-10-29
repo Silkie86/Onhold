@@ -650,9 +650,10 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
     let mut body = s.clone();
     body["outcomes"] = json!([{ "key": "yes", "label": "Yes", "tag": "good" }]);
     body["actions"] = json!([{ "key": "pitched", "label": "Sent it" }]);
-    // Templates left out, the one that follows up (an action no longer
-    // listed) goes too.
+    // Templates and follow-ups left out, those using an action no longer
+    // listed go too.
     body.as_object_mut().unwrap().remove("templates");
+    body.as_object_mut().unwrap().remove("follow_ups");
     app.put("/api/v1/pitching/settings")
         .signed_in(&owner)
         .json(body)
@@ -892,6 +893,7 @@ async fn pitches_are_drafted_and_sent(pool: PgPool) {
     let mut body = s.clone();
     body["actions"] = json!([{ "key": "emailed", "label": "Emailed" }, { "key": "pitched", "label": "Pitched" },
                              { "key": "followed_up", "label": "Followed up" }]);
+    body.as_object_mut().unwrap().remove("follow_ups");
     app.put("/api/v1/pitching/settings")
         .signed_in(&owner)
         .json(body)
@@ -958,4 +960,162 @@ async fn pitches_are_drafted_and_sent(pool: PgPool) {
     post(&app, &owner, "/api/v1/pitches/send", send(&filled))
         .await
         .expect(StatusCode::CONFLICT, "do_not_contact");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn follow_ups_come_due_until_an_answer(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let club = organisation(&app, &owner, json!({ "name": "Hyde Park Book Club" })).await;
+    let club_id = club["id"].as_str().unwrap().to_owned();
+    let quiet = organisation(
+        &app,
+        &owner,
+        json!({ "name": "Quiet Bar", "do_not_contact": true }),
+    )
+    .await;
+    let owls = talent(&app, &owner, "The Midnight Owls").await;
+    let due = |q: &str| {
+        let path = format!("/api/v1/pitching/follow-ups{q}");
+        let app = &app;
+        let owner = &owner;
+        async move { get(app, owner, &path).await.ok().body }
+    };
+    assert_eq!(due("").await, json!([]));
+
+    // Pitched eight days ago: the email follow-up was due yesterday.
+    let ago = |days: i64| (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
+    for org in [&club_id, quiet["id"].as_str().unwrap()] {
+        post(
+            &app,
+            &owner,
+            "/api/v1/pitches",
+            json!({ "organisation_id": org, "kind": "action", "type_key": "pitched", "channel": "email",
+                    "item": { "kind": "talent", "id": owls }, "happened_at": ago(8) }),
+        )
+        .await
+        .ok();
+    }
+    let d = due("").await;
+    assert_eq!(d.as_array().unwrap().len(), 1, "{d}");
+    assert_eq!(d[0]["organisation_name"], "Hyde Park Book Club");
+    assert_eq!(d[0]["kind"], "step");
+    assert_eq!(d[0]["step"], 1);
+    assert_eq!(d[0]["steps"], 2);
+    assert_eq!(d[0]["channel"], "email");
+    assert_eq!(d[0]["template_key"], "follow_up");
+    assert_eq!(d[0]["action"], "followed_up");
+    assert_eq!(d[0]["item"]["name"], "The Midnight Owls");
+
+    // Followed up today: the call is a week off.
+    post(
+        &app,
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": club_id, "kind": "action", "type_key": "followed_up", "channel": "email" }),
+    )
+    .await
+    .ok();
+    assert_eq!(due("").await, json!([]));
+    let week = due("?days_ahead=7").await;
+    assert_eq!(week[0]["step"], 2, "{week}");
+    assert_eq!(week[0]["channel"], "phone");
+    assert_eq!(week[0]["template_key"], Value::Null);
+    assert_eq!(week[0]["action_label"], "Called");
+    // On the organisation, its next however far off.
+    let next = due(&format!("?organisation_id={club_id}")).await;
+    assert_eq!(next[0]["step"], 2);
+
+    // An answer ends them.
+    post(
+        &app,
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": club_id, "kind": "outcome", "type_key": "not_now" }),
+    )
+    .await
+    .ok();
+    assert_eq!(due(&format!("?organisation_id={club_id}")).await, json!([]));
+
+    // A date set by hand comes due too.
+    let today = chrono::Utc::now().date_naive().to_string();
+    patch(
+        &app,
+        &owner,
+        &format!("/api/v1/organisations/{club_id}"),
+        json!({ "follow_up_on": today }),
+    )
+    .await
+    .ok();
+    let d = due("?days_ahead=1").await;
+    assert_eq!(d[0]["kind"], "date", "{d}");
+
+    app.get("/api/v1/pitching/follow-ups?days_ahead=61")
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+
+    // Follow-ups name one of the actions, and a template if any.
+    let mut s = get(&app, &owner, "/api/v1/pitching/settings").await.body;
+    s["follow_ups"][0]["action"] = json!("nope");
+    s["follow_ups"][1]["template_key"] = json!("nope");
+    s["follow_ups"][1]["after_days"] = json!(0);
+    let res = app
+        .put("/api/v1/pitching/settings")
+        .signed_in(&owner)
+        .json(s)
+        .send()
+        .await;
+    let mut f = fields(&res);
+    f.sort();
+    assert_eq!(
+        f,
+        [
+            "follow_ups[0].action",
+            "follow_ups[1].after_days",
+            "follow_ups[1].template_key"
+        ]
+    );
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn follow_ups_forget_people_who_moved_on(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let bar = organisation(&app, &owner, json!({ "name": "Belgrave" })).await;
+    let bar = bar["id"].as_str().unwrap().to_owned();
+    let ann = post(
+        &app,
+        &owner,
+        "/api/v1/contacts",
+        json!({ "name": "Ann", "organisation_id": bar }),
+    )
+    .await
+    .ok();
+    let ann_id = ann.id("/id");
+    let ago = (chrono::Utc::now() - chrono::Duration::days(8)).to_rfc3339();
+    post(
+        &app,
+        &owner,
+        "/api/v1/pitches",
+        json!({ "organisation_id": bar, "contact_id": ann_id, "kind": "action", "type_key": "pitched",
+                "happened_at": ago }),
+    )
+    .await
+    .ok();
+    let due = get(&app, &owner, "/api/v1/pitching/follow-ups").await.body;
+    assert_eq!(due[0]["contact_id"], ann_id.to_string(), "{due}");
+    assert_eq!(due[0]["due_in_days"], -1);
+
+    // Ann moves on: the follow-up is no longer for her.
+    app.patch(&format!("/api/v1/contacts/{ann_id}"))
+        .signed_in(&owner)
+        .header("If-Match", &format!("\"{}\"", ann.body["version"]))
+        .json(json!({ "organisation_id": null }))
+        .send()
+        .await
+        .ok();
+    let due = get(&app, &owner, "/api/v1/pitching/follow-ups").await.body;
+    assert_eq!(due[0]["contact_id"], Value::Null, "{due}");
 }
