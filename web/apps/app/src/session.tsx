@@ -5,7 +5,7 @@ import { createContext, useContext } from "react";
 import { ApiFailure, type Me, api, currentWorkspace, ok, setCsrfToken, setWorkspace } from "./api.ts";
 import { forgetBranding } from "./branding.ts";
 import { outbox, wipe, wipeAllButQueue } from "./offline/store.ts";
-import { isNetworkError } from "./offline/sync.ts";
+import { isNetworkError, stopEverySync } from "./offline/sync.ts";
 import { IS_APP, KEEPS_OFFLINE_COPY, appToken, saveAppToken } from "./platform.ts";
 
 // The apps and the installed website remember who was signed in, so they can open offline.
@@ -102,6 +102,22 @@ export function useMe() {
   return useQuery(meQuery);
 }
 
+/**
+ * The workspaces whose copy the device may keep: those the person works in
+ * as staff, and in the apps only those whose plan includes them.
+ */
+export function keptWorkspaces(workspaces: Me["workspaces"], isApp = IS_APP): string[] {
+  return workspaces.filter((w) => w.role !== "talent" && (!isApp || w.apps_allowed)).map((w) => w.id);
+}
+
+/**
+ * The same for a session, or null while the session cannot say: until the
+ * second sign-in step is done, the server lists no workspaces at all.
+ */
+export function keptForSession(me: Me, isApp = IS_APP): string[] | null {
+  return me.session.mfa_verified ? keptWorkspaces(me.workspaces, isApp) : null;
+}
+
 export interface Session {
   me: Me;
   workspace: Me["workspaces"][number];
@@ -135,6 +151,8 @@ export function useSessionActions(me: Me) {
         const waiting = queues.flat().length;
         const unsent = `${waiting} ${waiting === 1 ? "change has" : "changes have"} not been sent yet and will be lost.`;
         if (waiting > 0 && !window.confirm(`${unsent} Sign out anyway?`)) return;
+        // Nothing still running may write to the device once its copy is deleted.
+        stopEverySync();
       }
       await api.POST("/api/v1/auth/logout").catch(() => undefined);
       setCsrfToken(undefined);
@@ -143,7 +161,11 @@ export function useSessionActions(me: Me) {
       if (KEEPS_OFFLINE_COPY) {
         remember(null);
         // Nothing of the workspace stays on the device.
-        await wipe().catch(() => undefined);
+        await wipe(true).catch(() =>
+          window.alert(
+            "You are signed out, but OnHold could not yet remove its copy from this device, as another OnHold window has it open. Close every OnHold window to finish.",
+          ),
+        );
       } else forgetInstalledCopy();
       qc.clear();
       window.location.assign("/sign-in");
