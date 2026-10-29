@@ -1,14 +1,30 @@
 // Pitching: the workspace's own world regions, the statuses it gives
-// organisations (each with a colour and what it means), and what it pitches;
-// and on an organisation, what it is interested in and might be a match for.
+// organisations (each with a colour and what it means), what it pitches, and
+// the actions and answers it logs; and on an organisation, what it is
+// interested in and might be a match for, and its pitch log.
 
 import type { Schemas } from "@onhold/api-client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Alert, Button, Card, Checkbox, Input, Label, NativeSelect, type RecordJson, Spinner, StatusDot } from "@onhold/ui";
-import { Plus, RotateCcw, Trash2, X } from "lucide-react";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  Dialog,
+  Input,
+  Label,
+  NativeSelect,
+  type RecordJson,
+  Spinner,
+  StatusDot,
+  Textarea,
+} from "@onhold/ui";
+import { Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
+import { fetchList, useOffline } from "../data.ts";
 import { useSession } from "../session.tsx";
 import { useSetup } from "../setup.ts";
 import { RecordSearch } from "./pickers.tsx";
@@ -21,6 +37,12 @@ type ItemKind = Schemas["ItemKind"];
 type ItemRef = Schemas["ItemRef"];
 type Colour = Status["colour"];
 type Meaning = Status["meaning"];
+type Outcome = Schemas["PitchOutcome"];
+type ActionType = Schemas["PitchAction"];
+type OutcomeTag = Schemas["OutcomeTag"];
+type Pitch = Schemas["PitchView"];
+type PitchKind = Schemas["PitchKind"];
+type PitchChannel = Schemas["PitchChannel"];
 
 const COLOURS: Colour[] = ["green", "amber", "red", "grey", "blue", "purple"];
 const MEANINGS: { value: Meaning; label: string }[] = [
@@ -28,6 +50,23 @@ const MEANINGS: { value: Meaning; label: string }[] = [
   { value: "talking", label: "Talking or interested" },
   { value: "inactive", label: "Not active" },
   { value: "other", label: "Something else" },
+];
+
+const TAGS: { value: OutcomeTag; label: string; colour: Colour }[] = [
+  { value: "good", label: "Good news", colour: "green" },
+  { value: "wait", label: "Try again later", colour: "amber" },
+  { value: "no", label: "No for now", colour: "red" },
+  { value: "never", label: "Never", colour: "grey" },
+];
+
+export const CHANNELS: { value: PitchChannel; label: string }[] = [
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+  { value: "text", label: "Text" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "social", label: "Social media" },
+  { value: "in_person", label: "In person" },
+  { value: "other", label: "Other" },
 ];
 
 function failure(e: unknown): string {
@@ -101,6 +140,8 @@ function SettingsForm({
   const [regions, setRegions] = useState<Region[]>(saved.regions ?? []);
   const [statuses, setStatuses] = useState<Status[]>(saved.statuses ?? []);
   const [items, setItems] = useState<ItemKind[]>(saved.items ?? []);
+  const [outcomes, setOutcomes] = useState<Outcome[]>(saved.outcomes ?? []);
+  const [actions, setActions] = useState<ActionType[]>(saved.actions ?? []);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -153,7 +194,7 @@ function SettingsForm({
       const after = await ok(
         api.PUT("/api/v1/pitching/settings", {
           headers: { "If-Match": `"${saved.version}"` },
-          body: { regions, statuses, items },
+          body: { regions, statuses, items, outcomes, actions },
         }),
       );
       onSaved();
@@ -292,6 +333,125 @@ function SettingsForm({
               }}
             >
               <Plus /> Add a status
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      <Card className="flex flex-col gap-4 p-5 text-sm">
+        <h2 className="font-semibold">Answers</h2>
+        <p className="text-muted-foreground">
+          What people say back when you pitch. What each one means decides when to try them again.
+        </p>
+        <ul className="flex flex-col gap-3">
+          {outcomes.map((o, i) => (
+            <li key={o.key} className="flex flex-wrap items-end gap-2">
+              <div className="flex min-w-40 flex-1 flex-col gap-1">
+                <Label htmlFor={`outcome-${o.key}`}>Answer</Label>
+                <Input
+                  id={`outcome-${o.key}`}
+                  value={o.label}
+                  maxLength={60}
+                  disabled={!admin}
+                  onChange={(e) => {
+                    changed();
+                    setOutcomes((xs) => xs.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)));
+                  }}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor={`tag-${o.key}`}>Means</Label>
+                <NativeSelect
+                  id={`tag-${o.key}`}
+                  value={o.tag}
+                  disabled={!admin}
+                  onChange={(e) => {
+                    changed();
+                    setOutcomes((xs) => xs.map((x, j) => (j === i ? { ...x, tag: e.target.value as OutcomeTag } : x)));
+                  }}
+                >
+                  {TAGS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              {admin && outcomes.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Remove ${o.label || "answer"}`}
+                  onClick={() => {
+                    changed();
+                    setOutcomes((xs) => xs.filter((_, j) => j !== i));
+                  }}
+                >
+                  <Trash2 />
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+        {admin && outcomes.length < 20 && (
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                changed();
+                setOutcomes((xs) => [...xs, { key: newKey("answer", xs.map((x) => x.key)), label: "", tag: "wait" }]);
+              }}
+            >
+              <Plus /> Add an answer
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      <Card className="flex flex-col gap-4 p-5 text-sm">
+        <h2 className="font-semibold">Actions</h2>
+        <p className="text-muted-foreground">The things you do to win people over, to log on each organisation.</p>
+        <ul className="flex flex-col gap-2">
+          {actions.map((a, i) => (
+            <li key={a.key} className="flex items-center gap-2">
+              <Input
+                aria-label="Action"
+                value={a.label}
+                maxLength={60}
+                disabled={!admin}
+                onChange={(e) => {
+                  changed();
+                  setActions((xs) => xs.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)));
+                }}
+              />
+              {admin && actions.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Remove ${a.label || "action"}`}
+                  onClick={() => {
+                    changed();
+                    setActions((xs) => xs.filter((_, j) => j !== i));
+                  }}
+                >
+                  <Trash2 />
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+        {admin && actions.length < 20 && (
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                changed();
+                setActions((xs) => [...xs, { key: newKey("action", xs.map((x) => x.key)), label: "" }]);
+              }}
+            >
+              <Plus /> Add an action
             </Button>
           </div>
         )}
@@ -461,6 +621,7 @@ export function OrganisationPitching({
         canWrite={canWrite && !busy}
         onChange={(next) => void save("potential_matches", next)}
       />
+      <PitchLog organisationId={String(organisation.id)} items={uniqueItems([...interested, ...matches])} canWrite={canWrite} />
     </section>
   );
 }
@@ -580,5 +741,332 @@ function ProjectSearch({ exclude, onPick }: { exclude: string[]; onPick: (p: { i
         </ul>
       )}
     </div>
+  );
+}
+
+/** A date picker's value ("2026-10-28") for a moment, in local time. */
+export function dayOf(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * When a logged entry happened, from the day picked: now for today, so the
+ * log keeps its order, and midday for another day.
+ */
+export function happenedAt(day: string, now = new Date()): string {
+  if (day === dayOf(now.toISOString())) return now.toISOString();
+  return new Date(`${day}T12:00:00`).toISOString();
+}
+
+const TAG_COLOUR = Object.fromEntries(TAGS.map((t) => [t.value, t.colour])) as Record<OutcomeTag, Colour>;
+const LOG_PAGE = 50;
+
+/** Each item once, in the order first seen. */
+export function uniqueItems(items: ItemRef[]): ItemRef[] {
+  const seen = new Set<string>();
+  return items.filter((x) => {
+    const key = `${x.kind}:${x.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** An organisation's pitch log: what was done and the answers given, latest first. */
+function PitchLog({ organisationId, items, canWrite }: { organisationId: string; items: ItemRef[]; canWrite: boolean }) {
+  const settings = usePitchingSettings();
+  const qc = useQueryClient();
+  const sync = useOffline();
+  const log = useInfiniteQuery({
+    queryKey: ["pitches", organisationId],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      ok(api.GET("/api/v1/organisations/{id}/pitches", { params: { path: { id: organisationId }, query: { offset: pageParam, limit: LOG_PAGE } } })),
+    getNextPageParam: (last, pages) => {
+      const shown = pages.reduce((n, p) => n + p.items.length, 0);
+      return shown < last.total && last.items.length > 0 ? shown : undefined;
+    },
+  });
+  const entries = log.data?.pages.flatMap((p) => p.items) ?? [];
+  const total = log.data?.pages.at(-1)?.total ?? 0;
+  const people = useQuery({
+    queryKey: ["list", "contact", "org", organisationId],
+    queryFn: async () => (await fetchList(sync, "contact", { organisation_id: organisationId, limit: 100 })).data,
+  });
+  const [editing, setEditing] = useState<Pitch | PitchKind | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = () => void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
+  const remove = async (p: Pitch) => {
+    if (!window.confirm(`Remove "${p.type_label ?? "this entry"}" from the log?`)) return;
+    setError(null);
+    try {
+      await ok(api.DELETE("/api/v1/pitches/{id}", { params: { path: { id: p.id } } }));
+      refresh();
+    } catch (e) {
+      setError(failure(e));
+    }
+  };
+  const channel = (c: PitchChannel | null | undefined) => CHANNELS.find((x) => x.value === c)?.label;
+
+  return (
+    <Card className="flex flex-col gap-3 p-4 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="font-medium">Pitch log</h3>
+          <p className="text-muted-foreground">What you have done and what they said.</p>
+        </div>
+        {canWrite && settings.data && (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEditing("action")}>
+              <Plus /> Log an action
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setEditing("outcome")}>
+              <Plus /> Log an answer
+            </Button>
+          </div>
+        )}
+      </div>
+      {error && <Alert>{error}</Alert>}
+      {log.isPending ? (
+        <Spinner />
+      ) : log.isError ? (
+        <Alert>{log.error.message}</Alert>
+      ) : entries.length === 0 ? (
+        <p className="text-muted-foreground">Nothing logged yet.</p>
+      ) : (
+        <ul className="divide-y rounded-md border">
+          {entries.map((p) => (
+            <li key={p.id} className="flex items-start justify-between gap-2 px-3 py-2">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex flex-wrap items-center gap-2">
+                  {p.kind === "outcome" ? (
+                    <StatusDot
+                      colour={p.tag ? TAG_COLOUR[p.tag] : "grey"}
+                      label={<span className="font-medium">{p.type_label ?? "An answer no longer listed"}</span>}
+                    />
+                  ) : (
+                    <span className="font-medium">{p.type_label ?? "An action no longer listed"}</span>
+                  )}
+                  {p.item && <Badge>{p.item.name}</Badge>}
+                </span>
+                <span className="text-muted-foreground">
+                  {[new Date(p.happened_at).toLocaleDateString(), channel(p.channel), p.contact_name].filter(Boolean).join(" · ")}
+                </span>
+                {p.note && <span className="break-words whitespace-pre-line">{p.note}</span>}
+              </div>
+              {canWrite && (
+                <span className="flex shrink-0">
+                  <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setEditing(p)}>
+                    <Pencil />
+                  </Button>
+                  <Button variant="ghost" size="icon" aria-label="Remove" onClick={() => void remove(p)}>
+                    <Trash2 />
+                  </Button>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {log.hasNextPage && (
+        <Button variant="ghost" size="sm" className="self-start" disabled={log.isFetchingNextPage} onClick={() => void log.fetchNextPage()}>
+          {log.isFetchingNextPage && <Spinner className="size-4" />} Show older ({total - entries.length} more)
+        </Button>
+      )}
+      {editing && settings.data && (
+        <LogDialog
+          organisationId={organisationId}
+          entry={typeof editing === "string" ? null : editing}
+          kind={typeof editing === "string" ? editing : editing.kind}
+          settings={settings.data}
+          people={(people.data?.items ?? []).map((c) => ({ id: String(c.id), name: String(c.name) }))}
+          items={items}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            refresh();
+          }}
+        />
+      )}
+    </Card>
+  );
+}
+
+const itemKey = (x: ItemRef | null) => (x ? `${x.kind}:${x.id}` : "");
+
+function LogDialog({
+  organisationId,
+  entry,
+  kind,
+  settings,
+  people,
+  items,
+  onClose,
+  onSaved,
+}: {
+  organisationId: string;
+  entry: Pitch | null;
+  kind: PitchKind;
+  settings: View;
+  people: { id: string; name: string }[];
+  items: ItemRef[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const setup = useSetup();
+  const types = kind === "action" ? (settings.actions ?? []) : (settings.outcomes ?? []);
+  // An entry starts as it is; a new one with likely choices.
+  const [start] = useState(() => ({
+    type: entry ? entry.type_key : (types[0]?.key ?? ""),
+    channel: (entry ? (entry.channel ?? "") : kind === "action" ? "email" : "") as PitchChannel | "",
+    contact: entry ? (entry.contact_id ?? "") : people.length === 1 ? (people[0]?.id ?? "") : "",
+    item: entry ? (entry.item ?? null) : null,
+    day: dayOf(entry?.happened_at ?? new Date().toISOString()),
+    note: entry?.note ?? "",
+  }));
+  const [type, setType] = useState(start.type);
+  const [channel, setChannel] = useState<PitchChannel | "">(start.channel);
+  const [contact, setContact] = useState(start.contact);
+  const [item, setItem] = useState<ItemRef | null>(start.item);
+  const [day, setDay] = useState(start.day);
+  const [note, setNote] = useState(start.note);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const choices = item && !items.some((x) => x.kind === item.kind && x.id === item.id) ? [item, ...items] : items;
+  // A type since removed from the settings stays on the entry until changed.
+  const typeChoices = entry && !types.some((t) => t.key === entry.type_key) ? [{ key: entry.type_key, label: "No longer listed" }, ...types] : types;
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    const body = {
+      contact_id: contact || null,
+      type_key: type,
+      channel: channel || null,
+      item: item ? { kind: item.kind, id: item.id } : null,
+      note: note.trim() || null,
+      happened_at: happenedAt(day),
+    };
+    try {
+      if (entry) {
+        // Only what was changed, so what the form cannot show (such as an
+        // act since deleted) stays as it is.
+        await ok(
+          api.PATCH("/api/v1/pitches/{id}", {
+            params: { path: { id: entry.id } },
+            headers: { "If-Match": `"${entry.version}"` },
+            body: {
+              ...(contact !== start.contact && { contact_id: body.contact_id }),
+              ...(type !== start.type && { type_key: body.type_key }),
+              ...(channel !== start.channel && { channel: body.channel }),
+              ...(itemKey(item) !== itemKey(start.item) && { item: body.item }),
+              ...(note !== start.note && { note: body.note }),
+              ...(day !== start.day && { happened_at: body.happened_at }),
+            },
+          }),
+        );
+      } else {
+        await ok(api.POST("/api/v1/pitches", { body: { ...body, organisation_id: organisationId, kind } }));
+      }
+      onSaved();
+    } catch (e) {
+      if (e instanceof ApiFailure && e.status === 412) setError("Someone else changed this entry. Close and open it again to see their changes.");
+      else setError(failure(e));
+      setBusy(false);
+    }
+  };
+
+  const title = entry ? "Edit the entry" : kind === "action" ? "Log an action" : "Log an answer";
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={title}>
+      <form
+        className="flex flex-col gap-3 text-sm"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="log-type">{kind === "action" ? "What you did" : "What they said"}</Label>
+          <NativeSelect id="log-type" value={type} onChange={(e) => setType(e.target.value)}>
+            {typeChoices.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="log-day">When</Label>
+            <Input id="log-day" type="date" value={day} max={dayOf(new Date().toISOString())} required onChange={(e) => setDay(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="log-channel">How</Label>
+            <NativeSelect id="log-channel" value={channel} onChange={(e) => setChannel(e.target.value as PitchChannel | "")}>
+              <option value="">Not saying</option>
+              {CHANNELS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="log-contact">With</Label>
+          <NativeSelect id="log-contact" value={contact} onChange={(e) => setContact(e.target.value)}>
+            <option value="">The organisation</option>
+            {entry?.contact_id && !people.some((p) => p.id === entry.contact_id) && (
+              <option value={entry.contact_id}>{entry.contact_name ?? "Someone no longer here"}</option>
+            )}
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="log-item">{kind === "action" ? "What you pitched" : "About"}</Label>
+          {choices.length > 0 && (
+            <NativeSelect
+              id="log-item"
+              value={item ? `${item.kind}:${item.id}` : ""}
+              onChange={(e) => setItem(choices.find((x) => `${x.kind}:${x.id}` === e.target.value) ?? null)}
+            >
+              <option value="">Nothing in particular</option>
+              {choices.map((x) => (
+                <option key={`${x.kind}:${x.id}`} value={`${x.kind}:${x.id}`}>
+                  {x.name}
+                </option>
+              ))}
+            </NativeSelect>
+          )}
+          <RecordSearch
+            id={choices.length > 0 ? undefined : "log-item"}
+            entity="talent"
+            exclude={choices.filter((x) => x.kind === "talent").map((x) => x.id)}
+            placeholder={`Or find ${setup.word("crm", "talent", true).toLowerCase()}…`}
+            onPick={(p) => setItem({ kind: "talent", id: p.id, name: p.name })}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="log-note">Note</Label>
+          <Textarea id="log-note" value={note} maxLength={2000} rows={3} onChange={(e) => setNote(e.target.value)} />
+        </div>
+        {error && <Alert>{error}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy || !type}>
+            {busy && <Spinner className="size-4" />} {entry ? "Save" : "Log it"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

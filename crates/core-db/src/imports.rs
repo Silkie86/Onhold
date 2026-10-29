@@ -407,7 +407,8 @@ pub async fn lock_record(
 /// Whether a record is in use elsewhere, so undoing an import keeps it:
 /// on an enquiry, booking, invoice, payment, conversation, task or
 /// document; for talent also a calendar, availability, a portal or a
-/// pitching list. People at an organisation are asked separately.
+/// pitching list; anything in the pitch log. People at an organisation are
+/// asked separately.
 pub async fn record_in_use(conn: &mut PgConnection, entity: &str, id: Uuid) -> Result<bool> {
     let used = match entity {
         "talent" => sqlx::query_scalar!(
@@ -436,6 +437,8 @@ pub async fn record_in_use(conn: &mut PgConnection, entity: &str, id: Uuid) -> R
                    OR EXISTS (SELECT 1 FROM talent WHERE workspace_id = app_workspace_id() AND id = $1
                               AND portal_user_id IS NOT NULL)
                    OR EXISTS (SELECT 1 FROM organisation_items WHERE workspace_id = app_workspace_id() AND talent_id = $1)
+                   OR EXISTS (SELECT 1 FROM pitch_log WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND talent_id = $1)
                    OR EXISTS (SELECT 1 FROM tasks WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
                               AND related_id = $1)
                    OR EXISTS (SELECT 1 FROM documents WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
@@ -458,6 +461,8 @@ pub async fn record_in_use(conn: &mut PgConnection, entity: &str, id: Uuid) -> R
                               AND payer_organisation_id = $1)
                    OR EXISTS (SELECT 1 FROM payments WHERE workspace_id = app_workspace_id() AND organisation_id = $1)
                    OR EXISTS (SELECT 1 FROM threads WHERE workspace_id = app_workspace_id() AND organisation_id = $1)
+                   OR EXISTS (SELECT 1 FROM pitch_log WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND organisation_id = $1)
                    OR EXISTS (SELECT 1 FROM tasks WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
                               AND related_id = $1)
                    OR EXISTS (SELECT 1 FROM documents WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
@@ -475,6 +480,8 @@ pub async fn record_in_use(conn: &mut PgConnection, entity: &str, id: Uuid) -> R
                    OR EXISTS (SELECT 1 FROM invoices WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
                               AND payer_contact_id = $1)
                    OR EXISTS (SELECT 1 FROM threads WHERE workspace_id = app_workspace_id() AND contact_id = $1)
+                   OR EXISTS (SELECT 1 FROM pitch_log WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
+                              AND contact_id = $1)
                    OR EXISTS (SELECT 1 FROM tasks WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL
                               AND related_id = $1)
                    OR EXISTS (SELECT 1 FROM documents WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL

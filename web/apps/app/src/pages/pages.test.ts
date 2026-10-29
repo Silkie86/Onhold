@@ -1,7 +1,7 @@
 import { safeRedirect } from "./auth.tsx";
 import { canUndo, decodeFile, isWorkbook, needsResaving, rowLabel, sheetsSummary, stripCardAttachments } from "./imports.tsx";
 import { dialable, validateListSearch } from "./crm.tsx";
-import { keyFor, newKey } from "./pitching.tsx";
+import { dayOf, happenedAt, keyFor, newKey, uniqueItems } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
 
 test("after signing in, only paths on this site are followed", () => {
@@ -104,4 +104,17 @@ test("only finished imports with records left to undo can be undone", () => {
 test("rows are named where they can be found", () => {
   expect(rowLabel({ row: 7 })).toBe("Row 7");
   expect(rowLabel({ row: 7, at: "Europe, row 2" })).toBe("Europe, row 2");
+});
+
+test("a logged entry happens now today, or at midday on another day", () => {
+  const now = new Date(2026, 9, 28, 15, 30);
+  expect(dayOf(now.toISOString())).toBe("2026-10-28");
+  expect(happenedAt("2026-10-28", now)).toBe(now.toISOString());
+  expect(happenedAt("2026-10-21", now)).toBe(new Date(2026, 9, 21, 12, 0).toISOString());
+});
+
+test("an act on both of an organisation's lists is offered once", () => {
+  const owls = { kind: "talent" as const, id: "1", name: "Owls" };
+  const tour = { kind: "project" as const, id: "1", name: "Tour" };
+  expect(uniqueItems([owls, tour, { ...owls }])).toEqual([owls, tour]);
 });

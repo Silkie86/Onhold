@@ -2526,6 +2526,23 @@ export interface paths {
         patch: operations["update_organisation"];
         trace?: never;
     };
+    "/api/v1/organisations/{id}/pitches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An organisation's pitch log, latest first. */
+        get: operations["list_pitches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organisations/{id}/timeline": {
         parameters: {
             query?: never;
@@ -2796,6 +2813,46 @@ export interface paths {
         patch: operations["update_pipeline"];
         trace?: never;
     };
+    "/api/v1/pitches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log something done to win an organisation over, or an answer it gave.
+         *     It can be backdated.
+         */
+        post: operations["log_pitch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pitches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_pitch"];
+        options?: never;
+        head?: never;
+        /**
+         * Change an entry: who, what, how, when, or the note. Its organisation and
+         *     whether it is an action or an answer stay.
+         */
+        patch: operations["update_pitch"];
+        trace?: never;
+    };
     "/api/v1/pitching/settings": {
         parameters: {
             query?: never;
@@ -2809,7 +2866,10 @@ export interface paths {
          *     region.
          */
         get: operations["get_settings"];
-        /** Replace the settings. Each country may be in one region at most. */
+        /**
+         * Replace the settings; a list left out stays as it is. Each country may
+         *     be in one region at most.
+         */
         put: operations["update_settings"];
         post?: never;
         delete?: never;
@@ -7362,6 +7422,23 @@ export interface components {
             /** @description Uploaded PDFs (`POST /files`), up to 200 at a time. */
             file_ids: string[];
         };
+        NewPitch: {
+            channel?: components["schemas"]["PitchChannel"] | null;
+            /** Format: uuid */
+            contact_id?: string | null;
+            /**
+             * Format: date-time
+             * @description When it happened; default now. Can be in the past.
+             */
+            happened_at?: string | null;
+            item?: components["schemas"]["ItemInput"] | null;
+            kind: components["schemas"]["PitchKind"];
+            note?: string | null;
+            /** Format: uuid */
+            organisation_id: string;
+            /** @description A key from the workspace's actions or outcomes, as `kind` says. */
+            type_key: string;
+        };
         NewProject: {
             /** @description Bookings that are its dates from the start. */
             booking_ids?: string[];
@@ -7552,6 +7629,12 @@ export interface components {
         };
         /** @enum {string} */
         Outcome: "open" | "won" | "lost";
+        /**
+         * @description What an answer means for pitching them again: good news, wait a while,
+         *     no for now, or never.
+         * @enum {string}
+         */
+        OutcomeTag: "good" | "wait" | "no" | "never";
         OutstandingRow: {
             base_outstanding?: components["schemas"]["Money"] | null;
             /** Format: uuid */
@@ -7722,10 +7805,94 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        /** @description Something done to win them over: pitched, followed up, called… */
+        PitchAction: {
+            key: string;
+            label: string;
+        };
+        /**
+         * @description How it was done or how the answer came.
+         * @enum {string}
+         */
+        PitchChannel: "email" | "phone" | "text" | "whatsapp" | "social" | "in_person" | "other";
+        /**
+         * @description Whether an entry is something done or an answer.
+         * @enum {string}
+         */
+        PitchKind: "action" | "outcome";
+        /** @description An answer to a pitch: "Interested", "Not now", "No answer"… */
+        PitchOutcome: {
+            key: string;
+            label: string;
+            tag: components["schemas"]["OutcomeTag"];
+        };
+        PitchPage: {
+            items: components["schemas"]["PitchView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        PitchPatch: {
+            channel?: components["schemas"]["PitchChannel"] | null;
+            /** Format: uuid */
+            contact_id?: string | null;
+            /** Format: date-time */
+            happened_at?: string | null;
+            item?: components["schemas"]["ItemInput"] | null;
+            note?: string | null;
+            type_key?: string | null;
+        };
+        PitchView: {
+            channel?: components["schemas"]["PitchChannel"] | null;
+            /**
+             * Format: uuid
+             * @description The person there it was with, if anyone in particular.
+             */
+            contact_id?: string | null;
+            contact_name?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** Format: date-time */
+            happened_at: string;
+            /** Format: uuid */
+            id: string;
+            item?: components["schemas"]["ItemRef"] | null;
+            kind: components["schemas"]["PitchKind"];
+            note?: string | null;
+            /** Format: uuid */
+            organisation_id: string;
+            /** @description `manual`: logged by hand. */
+            source: string;
+            tag?: components["schemas"]["OutcomeTag"] | null;
+            /** @description A key from the workspace's actions or outcomes. */
+            type_key: string;
+            /** @description Its label, while the workspace still lists it. */
+            type_label?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+        };
         PitchingSettings: {
+            /** @description The kinds of thing logged as done. */
+            actions?: components["schemas"]["PitchAction"][];
             items?: components["schemas"]["ItemKind"][];
+            /** @description The answers a pitch can get. */
+            outcomes?: components["schemas"]["PitchOutcome"][];
             regions?: components["schemas"]["Region"][];
             statuses?: components["schemas"]["Status"][];
+        };
+        /**
+         * @description New settings. A list left out keeps what is stored, so a client from
+         *     before a list existed does not reset it.
+         */
+        PitchingSettingsInput: {
+            actions?: components["schemas"]["PitchAction"][] | null;
+            items?: components["schemas"]["ItemKind"][] | null;
+            outcomes?: components["schemas"]["PitchOutcome"][] | null;
+            regions?: components["schemas"]["Region"][] | null;
+            statuses?: components["schemas"]["Status"][] | null;
         };
         PitchingSettingsView: components["schemas"]["PitchingSettings"] & {
             /** @description Every country, for choosing which region each is in. */
@@ -17047,6 +17214,49 @@ export interface operations {
             };
         };
     };
+    list_pitches: {
+        parameters: {
+            query?: {
+                offset?: number | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchPage"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     organisation_timeline: {
         parameters: {
             query?: {
@@ -17813,6 +18023,130 @@ export interface operations {
             };
         };
     };
+    log_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPitch"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PitchPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_settings: {
         parameters: {
             query?: never;
@@ -17854,7 +18188,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PitchingSettings"];
+                "application/json": components["schemas"]["PitchingSettingsInput"];
             };
         };
         responses: {
