@@ -1287,6 +1287,10 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
     void qc.invalidateQueries({ queryKey: ["follow-ups"] });
+    // Sent mail logged or removed elsewhere comes and goes from "In your
+    // Sent mail"; not asked again for those who can't read the inbox.
+    if (qc.getQueryState(["unlogged", organisationId])?.status !== "error")
+      void qc.invalidateQueries({ queryKey: ["unlogged", organisationId] });
   };
   const remove = async (p: Pitch) => {
     if (!window.confirm(`Remove "${p.type_label ?? "this entry"}" from the log?`)) return;
@@ -1298,19 +1302,27 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
       setError(failure(e));
     }
   };
-  // What they said in their answer, logged at the time it came in.
+  // What they said in their answer, logged at the time it came in (never
+  // later than now, should a clock run ahead), by the person who answered
+  // when they still work here.
+  const [saying, setSaying] = useState<string | null>(null);
   const said = async (p: Pitch, outcome: Outcome) => {
+    if (saying || !p.answered_at) return;
+    setSaying(p.id);
     setError(null);
+    const at = new Date(Math.min(new Date(p.answered_at).getTime(), Date.now())).toISOString();
+    const contact = p.contact_id && people.data?.items.some((c) => String(c.id) === p.contact_id) ? p.contact_id : null;
     try {
       await ok(
         api.POST("/api/v1/pitches", {
+          params: { header: { "Idempotency-Key": crypto.randomUUID() } },
           body: {
             organisation_id: organisationId,
             kind: "outcome",
             type_key: outcome.key,
-            happened_at: p.answered_at,
-            channel: p.channel ?? null,
-            contact_id: p.contact_id ?? null,
+            happened_at: at,
+            channel: p.answer?.channel ?? p.channel ?? null,
+            contact_id: contact,
             item: p.item ? { kind: p.item.kind, id: p.item.id } : null,
           },
         }),
@@ -1318,6 +1330,8 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
       refresh();
     } catch (e) {
       setError(failure(e));
+    } finally {
+      setSaying(null);
     }
   };
   const channel = (c: PitchChannel | null | undefined) => CHANNELS.find((x) => x.value === c)?.label;
@@ -1412,7 +1426,7 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
                   <span className="flex flex-wrap items-center gap-1.5 pt-1" role="group" aria-label="What did they say?">
                     <span className="text-muted-foreground">What did they say?</span>
                     {(settings.data.outcomes ?? []).map((o) => (
-                      <Button key={o.key} variant="outline" size="sm" onClick={() => void said(p, o)}>
+                      <Button key={o.key} variant="outline" size="sm" disabled={saying !== null} onClick={() => void said(p, o)}>
                         <StatusDot colour={TAG_COLOUR[o.tag]} label={o.label} />
                       </Button>
                     ))}
@@ -1484,7 +1498,7 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
  */
 function InSent({ organisationId, settings, onChanged }: { organisationId: string; settings: View; onChanged: () => void }) {
   const mail = useQuery({
-    queryKey: ["pitches", organisationId, "unlogged"],
+    queryKey: ["unlogged", organisationId],
     queryFn: () => ok(api.GET("/api/v1/organisations/{id}/pitches/unlogged", { params: { path: { id: organisationId } } })),
     retry: false,
   });
@@ -1499,6 +1513,7 @@ function InSent({ organisationId, settings, onChanged }: { organisationId: strin
     setError(null);
     try {
       await call();
+      void mail.refetch();
       onChanged();
     } catch (e) {
       setError(failure(e));
@@ -1515,7 +1530,7 @@ function InSent({ organisationId, settings, onChanged }: { organisationId: strin
             kind: "action",
             type_key: chosen[m.message_id] ?? actions[0]?.key ?? "",
             message_id: m.message_id,
-            happened_at: m.sent_at,
+            happened_at: new Date(Math.min(new Date(m.sent_at).getTime(), Date.now())).toISOString(),
             channel: "email",
             contact_id: m.contact_id ?? null,
           },

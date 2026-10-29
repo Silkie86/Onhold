@@ -8002,6 +8002,8 @@ export interface components {
         };
         /** @description An answer that arrived in the inbox: the message and its conversation. */
         PitchAnswer: {
+            /** @description How it came: email, text or WhatsApp. */
+            channel: components["schemas"]["PitchChannel"];
             /** Format: uuid */
             message_id: string;
             /** Format: uuid */

@@ -1523,6 +1523,53 @@ async fn answers_to_pitches_and_pitches_in_sent_are_picked_up(pool: PgPool) {
     assert_eq!(unlogged.as_array().unwrap().len(), 2, "{unlogged}");
     assert_eq!(unlogged[0]["subject"], "Invoice copy");
     assert_eq!(unlogged[1]["contact_name"], "Bea Grand");
+    // Another member can't see mail in the owner's own mailbox, nor log it.
+    let cy = h.app.add_member(&owner, "cy@owls.test", "agent").await;
+    let theirs = h
+        .get(
+            &cy,
+            &format!("/api/v1/organisations/{hall}/pitches/unlogged"),
+        )
+        .await
+        .ok()
+        .body;
+    assert_eq!(theirs, json!([]));
+    let res = h
+        .post(
+            &cy,
+            "/api/v1/pitches",
+            json!({ "organisation_id": hall, "kind": "action", "type_key": "pitched",
+                    "channel": "email", "message_id": unlogged[0]["message_id"] }),
+        )
+        .await;
+    assert!(res.status.is_client_error(), "{}", res.body);
+    let res = h
+        .post(
+            &cy,
+            "/api/v1/pitches/not-a-pitch",
+            json!({ "message_id": unlogged[0]["message_id"] }),
+        )
+        .await;
+    assert!(res.status.is_client_error(), "{}", res.body);
+    // An action logged late, from before Bea wrote, finds her answer.
+    let late = h
+        .post(
+            &owner,
+            "/api/v1/pitches",
+            json!({ "organisation_id": hall, "contact_id": bea, "kind": "action", "type_key": "pitched",
+                    "channel": "email", "happened_at": "2026-10-19T10:00:00Z" }),
+        )
+        .await
+        .ok()
+        .body;
+    assert!(
+        late["answered_at"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("2026-10-20"),
+        "{late}"
+    );
+    assert_eq!(late["answer"]["channel"], "email", "{late}");
     let spotted = h
         .post(
             &owner,

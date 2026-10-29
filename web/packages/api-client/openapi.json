@@ -37436,9 +37436,14 @@
         "description": "An answer that arrived in the inbox: the message and its conversation.",
         "required": [
           "message_id",
-          "thread_id"
+          "thread_id",
+          "channel"
         ],
         "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/PitchChannel",
+            "description": "How it came: email, text or WhatsApp."
+          },
           "message_id": {
             "type": "string",
             "format": "uuid"
