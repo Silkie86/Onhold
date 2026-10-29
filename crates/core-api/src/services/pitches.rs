@@ -5,6 +5,8 @@
 //! later in pitching (follow-ups, rest periods, the ranking)
 //! reads it, so a hand-logged entry counts the same as any other.
 
+use std::collections::HashSet;
+
 use chrono::{DateTime, Duration, Utc};
 use core_db::Tx;
 use core_db::pitches::{Entry, Source};
@@ -15,6 +17,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::crm::Check;
+use super::integrations::viewer;
 use super::organisations::{ItemInput, ItemRef};
 use super::pitching::{ItemKind, OutcomeTag, PitchingSettings, settings_in};
 use super::{Change, begin, check_version, record};
@@ -195,6 +198,46 @@ fn to_json(v: &PitchView) -> Value {
     serde_json::to_value(v).unwrap_or(Value::Null)
 }
 
+/// Leaves out the conversations (of a pitch, or of the answer to it) the
+/// viewer cannot open in the inbox: one in someone else's own mailbox, or
+/// any without inbox access.
+async fn hide_unseen(tx: &mut Tx, ctx: &Ctx, views: &mut [PitchView]) -> ApiResult<()> {
+    let threads: Vec<Uuid> = views
+        .iter()
+        .flat_map(|v| {
+            let sent = v.message.as_ref().map(|m| m.thread_id);
+            [sent, v.answer.as_ref().map(|a| a.thread_id)]
+        })
+        .flatten()
+        .collect();
+    if threads.is_empty() {
+        return Ok(());
+    }
+    let seen: HashSet<Uuid> = if ctx.authorize(Permission::InboxRead).is_ok() {
+        core_db::inbox::visible_threads(tx, &threads, viewer(ctx).map(|v| v.0))
+            .await?
+            .into_iter()
+            .collect()
+    } else {
+        HashSet::new()
+    };
+    for v in views {
+        if v.message
+            .as_ref()
+            .is_some_and(|m| !seen.contains(&m.thread_id))
+        {
+            v.message = None;
+        }
+        if v.answer
+            .as_ref()
+            .is_some_and(|a| !seen.contains(&a.thread_id))
+        {
+            v.answer = None;
+        }
+    }
+    Ok(())
+}
+
 async fn load(tx: &mut Tx, settings: &PitchingSettings, id: Uuid) -> ApiResult<Option<PitchView>> {
     Ok(core_db::pitches::get(tx, id)
         .await?
@@ -237,11 +280,10 @@ pub async fn list(
         f.limit.unwrap_or(50).clamp(1, 200),
     )
     .await?;
+    let mut items: Vec<PitchView> = rows.into_iter().map(|e| view(&settings, e)).collect();
+    hide_unseen(&mut tx, ctx, &mut items).await?;
     tx.commit().await?;
-    Ok(PitchPage {
-        items: rows.into_iter().map(|e| view(&settings, e)).collect(),
-        total,
-    })
+    Ok(PitchPage { items, total })
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -587,7 +629,10 @@ pub async fn update(
         },
     )
     .await?;
+    let mut after = [after];
+    hide_unseen(&mut tx, ctx, &mut after).await?;
     tx.commit().await?;
+    let [after] = after;
     Ok(after)
 }
 

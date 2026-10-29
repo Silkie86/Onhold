@@ -1166,7 +1166,7 @@ fn split_links(cells: Option<&Vec<&str>>) -> Vec<String> {
 
 /// Whether a contact's name only stands in for one: an email address or a
 /// number, as a person with no name is called.
-fn is_stand_in(name: &str) -> bool {
+pub(crate) fn is_stand_in(name: &str) -> bool {
     name.contains('@') || !name.chars().any(char::is_alphabetic)
 }
 

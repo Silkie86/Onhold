@@ -31,7 +31,7 @@ pub const PLACEHOLDERS: &[(&str, &str)] = &[
     ("item", "What is pitched: the talent or project's name"),
     (
         "link",
-        "The first web address among the talent's own fields",
+        "The first web address among the talent's own fields, in their order",
     ),
     ("yourName", "Your name"),
     ("workspace", "The workspace's name"),
@@ -91,21 +91,24 @@ fn unfilled(text: &str) -> BTreeSet<String> {
     missing
 }
 
-/// The first web address among a talent's own fields.
-fn first_link(custom: &serde_json::Value) -> Option<String> {
-    let mut found = None;
-    if let Some(map) = custom.as_object() {
-        for v in map.values() {
-            if let Some(s) = v.as_str().map(str::trim)
-                && (s.starts_with("https://") || s.starts_with("http://"))
-                && !s.contains(char::is_whitespace)
-            {
-                found = Some(s.to_owned());
-                break;
-            }
-        }
-    }
-    found
+/// The first web address among a talent's own fields, in the order the
+/// workspace lists them (`keys`); fields it no longer lists are skipped.
+fn first_link(custom: &serde_json::Value, keys: &[String]) -> Option<String> {
+    keys.iter().find_map(|k| {
+        let s = custom.get(k)?.as_str()?.trim();
+        ((s.starts_with("https://") || s.starts_with("http://"))
+            && !s.contains(char::is_whitespace))
+        .then(|| s.to_owned())
+    })
+}
+
+/// The workspace's talent fields, in form order.
+async fn talent_field_keys(tx: &mut Tx) -> ApiResult<Vec<String>> {
+    Ok(core_db::fields::list(tx, Some("talent"), false)
+        .await?
+        .into_iter()
+        .map(|f| f.key)
+        .collect())
 }
 
 /// The organisation, checked: there, and not marked do not contact.
@@ -146,27 +149,38 @@ async fn values(
     contact: Option<&core_db::contacts::Contact>,
     item: Option<ItemInput>,
 ) -> ApiResult<Values> {
-    let full = contact.map(|c| c.name.trim().to_owned());
+    // A name that only stands in for one (their email or number) is no name.
+    let full = contact
+        .map(|c| c.name.trim().to_owned())
+        .filter(|n| !super::imports::is_stand_in(n));
     let (first, last) = match full.as_deref().and_then(|n| n.split_once(' ')) {
         Some((f, l)) => (Some(f.to_owned()), Some(l.trim().to_owned())),
         None => (full.clone(), None),
     };
+    // What is pitched fills in only for those who may read it.
     let (item_name, link) = match item {
         Some(ItemInput {
             kind: ItemKind::Talent,
             id,
-        }) => match core_db::talent::get(tx, id).await? {
-            Some(t) => (Some(t.name), first_link(&t.custom)),
-            None => return Err(ApiError::invalid("item", "there is no such talent")),
-        },
+        }) if ctx.authorize(Permission::TalentRead).is_ok() => {
+            match core_db::talent::get(tx, id).await? {
+                Some(t) => (
+                    Some(t.name),
+                    first_link(&t.custom, &talent_field_keys(tx).await?),
+                ),
+                None => return Err(ApiError::invalid("item", "there is no such talent")),
+            }
+        }
         Some(ItemInput {
             kind: ItemKind::Project,
             id,
-        }) => match core_db::projects::get(tx, id).await? {
-            Some(p) => (Some(p.name), None),
-            None => return Err(ApiError::invalid("item", "there is no such project")),
-        },
-        None => (None, None),
+        }) if ctx.authorize(Permission::ProjectRead).is_ok() => {
+            match core_db::projects::get(tx, id).await? {
+                Some(p) => (Some(p.name), None),
+                None => return Err(ApiError::invalid("item", "there is no such project")),
+            }
+        }
+        _ => (None, None),
     };
     let your_name = match ctx.user_id() {
         Some(u) => core_db::users::get(tx, u).await?.map(|u| u.name),
@@ -276,7 +290,7 @@ pub struct PitchSend {
     /// The pitch template it was written from, if any.
     pub template_key: Option<String>,
     /// What it logs, a key from the workspace's actions; default the
-    /// template's, or `pitched`.
+    /// template's, or the workspace's first action.
     pub type_key: Option<String>,
     /// Default: the person's first email address.
     pub to: Option<String>,
@@ -308,13 +322,19 @@ pub async fn send(state: &AppState, ctx: &Ctx, s: PitchSend) -> ApiResult<PitchV
         .template_key
         .map(|t| t.trim().to_owned())
         .filter(|t| !t.is_empty());
-    let type_key = match (s.type_key, &template_key) {
-        (Some(t), _) => t.trim().to_owned(),
-        (None, Some(k)) => settings
-            .template(k)
-            .map_or_else(|| "pitched".to_owned(), |t| t.action.clone()),
-        (None, None) => "pitched".to_owned(),
-    };
+    // What it logs: as asked, else its template's, else the workspace's
+    // first action.
+    let type_key = s
+        .type_key
+        .map(|t| t.trim().to_owned())
+        .or_else(|| {
+            template_key
+                .as_deref()
+                .and_then(|k| settings.template(k))
+                .map(|t| t.action.clone())
+        })
+        .or_else(|| settings.actions.first().map(|a| a.key.clone()))
+        .unwrap_or_default();
     let to = match s.to.map(|t| t.trim().to_owned()).filter(|t| !t.is_empty()) {
         Some(t) => t,
         None => contact.emails.first().cloned().ok_or_else(|| {
@@ -492,12 +512,23 @@ mod tests {
     }
 
     #[test]
-    fn a_link_is_the_first_web_address() {
-        let custom = serde_json::json!({ "genre": "jazz", "epk": "https://example.com/epk" });
+    fn a_link_is_the_first_web_address_in_field_order() {
+        let custom = serde_json::json!({
+            "agreement": "https://docs.example.com/contract",
+            "genre": "jazz",
+            "epk": "https://example.com/epk",
+            "old": "https://old.example.com",
+        });
+        let keys = |k: &[&str]| k.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(
-            first_link(&custom).as_deref(),
+            first_link(&custom, &keys(&["genre", "epk", "agreement"])).as_deref(),
             Some("https://example.com/epk")
         );
-        assert_eq!(first_link(&serde_json::json!({ "x": "not a link" })), None);
+        // A field the workspace no longer lists is not used.
+        assert_eq!(first_link(&custom, &keys(&["genre"])), None);
+        assert_eq!(
+            first_link(&serde_json::json!({ "x": "not a link" }), &keys(&["x"])),
+            None
+        );
     }
 }

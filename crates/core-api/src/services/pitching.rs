@@ -206,13 +206,20 @@ pub struct PitchingSettingsInput {
 
 impl PitchingSettingsInput {
     fn over(self, stored: PitchingSettings) -> PitchingSettings {
+        let actions = self.actions.unwrap_or(stored.actions);
+        // Stored templates kept go with any action no longer listed.
+        let templates = self.templates.unwrap_or_else(|| {
+            let mut kept = stored.templates;
+            kept.retain(|t| actions.iter().any(|a| a.key == t.action));
+            kept
+        });
         PitchingSettings {
             regions: self.regions.unwrap_or(stored.regions),
             statuses: self.statuses.unwrap_or(stored.statuses),
             items: self.items.unwrap_or(stored.items),
             outcomes: self.outcomes.unwrap_or(stored.outcomes),
-            actions: self.actions.unwrap_or(stored.actions),
-            templates: self.templates.unwrap_or(stored.templates),
+            actions,
+            templates,
             send_with: self.send_with.unwrap_or(stored.send_with),
         }
     }
@@ -552,10 +559,18 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
 /// back to the defaults rather than failing every page that needs it.
 pub(crate) async fn settings_in(tx: &mut Tx) -> ApiResult<(PitchingSettings, i64)> {
     Ok(match core_db::pitching::settings(tx).await? {
-        Some(row) => (
-            serde_json::from_value(row.settings).unwrap_or_default(),
-            row.version,
-        ),
+        Some(row) => {
+            let mut settings: PitchingSettings =
+                serde_json::from_value(row.settings).unwrap_or_default();
+            // Settings saved before templates existed get OnHold's, which
+            // log actions the workspace may have removed; keep only those
+            // that log one it lists.
+            let actions = &settings.actions;
+            settings
+                .templates
+                .retain(|t| actions.iter().any(|a| a.key == t.action));
+            (settings, row.version)
+        }
         None => (PitchingSettings::default(), 0),
     })
 }
@@ -578,6 +593,15 @@ pub struct PitchingSettingsView {
     pub updated_by: Option<UserId>,
     /// Every country, for choosing which region each is in.
     pub countries: Vec<CountryView>,
+    /// What a pitch template can say, filled in for each pitch.
+    pub placeholders: Vec<Placeholder>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct Placeholder {
+    /// Written in a template as `{name}`.
+    pub name: String,
+    pub means: String,
 }
 
 fn view(
@@ -596,6 +620,13 @@ fn view(
                 code: c.code.into(),
                 name: c.name.into(),
                 default_region: c.region.into(),
+            })
+            .collect(),
+        placeholders: super::pitch_sending::PLACEHOLDERS
+            .iter()
+            .map(|(name, means)| Placeholder {
+                name: (*name).into(),
+                means: (*means).into(),
             })
             .collect(),
     }

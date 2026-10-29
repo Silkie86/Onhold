@@ -25,7 +25,8 @@ import { Pencil, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ApiFailure, api, ok } from "../api.ts";
 import { fetchList, useOffline } from "../data.ts";
-import { dialable } from "../phones.ts";
+import { dialable, phonesOf } from "../phones.ts";
+import { openInBrowser } from "../platform.ts";
 import { useSession } from "../session.tsx";
 import { useSetup } from "../setup.ts";
 import { RecordSearch } from "./pickers.tsx";
@@ -64,23 +65,13 @@ const TAGS: { value: OutcomeTag; label: string; colour: Colour }[] = [
 ];
 
 export const SEND_WITH: { value: SendWith; label: string; hint: string }[] = [
-  { value: "onhold", label: "Send from OnHold", hint: "From your own connected mailbox, so the pitch and the answers are logged by themselves." },
+  {
+    value: "onhold",
+    label: "Send from OnHold",
+    hint: "Logged by itself. With your own mailbox connected it goes from there and the answers come into OnHold too.",
+  },
   { value: "mail_app", label: "Open in my email app", hint: "The pitch opens ready to send in your own email app." },
   { value: "copy", label: "Copy", hint: "Copy the pitch to paste wherever you like." },
-];
-
-/** What a pitch template can say, filled in for each pitch. */
-export const PLACEHOLDERS: { name: string; means: string }[] = [
-  { name: "firstName", means: "their first name" },
-  { name: "lastName", means: "their last name" },
-  { name: "fullName", means: "their full name" },
-  { name: "organisation", means: "the organisation" },
-  { name: "city", means: "its city" },
-  { name: "country", means: "its country" },
-  { name: "item", means: "what you pitch" },
-  { name: "link", means: "the first web address in its fields" },
-  { name: "yourName", means: "your name" },
-  { name: "workspace", means: "your workspace's name" },
 ];
 
 export const CHANNELS: { value: PitchChannel; label: string }[] = [
@@ -514,13 +505,13 @@ function SettingsForm({
       <Card className="flex flex-col gap-4 p-5 text-sm">
         <h2 className="font-semibold">Pitch templates</h2>
         <p className="text-muted-foreground">
-          The wording you pitch with. These fill themselves in: {PLACEHOLDERS.map((p) => `{${p.name}}`).join(" ")}. You can change the words on
+          The wording you pitch with. These fill themselves in: {(saved.placeholders ?? []).map((p) => `{${p.name}}`).join(" ")}. You can change the words on
           each pitch before it goes.
         </p>
         <details className="text-muted-foreground">
           <summary className="cursor-pointer">What each one means</summary>
           <ul className="mt-1 grid gap-x-4 sm:grid-cols-2">
-            {PLACEHOLDERS.map((p) => (
+            {(saved.placeholders ?? []).map((p) => (
               <li key={p.name}>
                 <code>{`{${p.name}}`}</code> {p.means}
               </li>
@@ -1045,10 +1036,10 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
                       "From your Sent mail."
                     ) : p.message.status === "failed" ? (
                       <span className="text-destructive">Not sent.</span>
-                    ) : p.message.status === "queued" ? (
-                      "Sending…"
-                    ) : (
+                    ) : p.message.status === "sent" ? (
                       "Sent from OnHold."
+                    ) : (
+                      "Sending…"
                     )}{" "}
                     <Link to="/inbox" search={{ thread: p.message.thread_id }} className="underline">
                       Open the conversation
@@ -1225,13 +1216,12 @@ const itemKey = (x: ItemRef | null) => (x ? `${x.kind}:${x.id}` : "");
 type Person = { id: string; name: string; email: string | null; phone: string | null };
 
 function person(c: RecordJson): Person {
-  const phones = (c.phones_international as string[] | undefined) ?? (c.phones as string[] | undefined) ?? [];
-  return { id: String(c.id), name: String(c.name), email: ((c.emails as string[] | undefined) ?? [])[0] ?? null, phone: phones[0] ?? null };
+  return { id: String(c.id), name: String(c.name), email: ((c.emails as string[] | undefined) ?? [])[0] ?? null, phone: phonesOf(c)[0] ?? null };
 }
 
-/** The placeholders still in a pitch, to fill in by hand. */
-export function unfilled(text: string): string[] {
-  const names = new Set(PLACEHOLDERS.map((p) => p.name));
+/** The placeholders (of those `known`) still in a pitch, to fill in by hand. */
+export function unfilled(text: string, known: string[]): string[] {
+  const names = new Set(known);
   return [...new Set([...text.matchAll(/\{([A-Za-z]+)\}/g)].map((m) => m[1] ?? "").filter((n) => names.has(n)))];
 }
 
@@ -1247,9 +1237,9 @@ export function whatsappLink(phone: string | null, text: string): string {
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
 }
 
-/** A pitch opened as a text message. */
+/** A pitch opened as a text message (`?&body=` works on iPhones and Android alike). */
 export function smsLink(phone: string | null, text: string): string {
-  return `sms:${phone ? dialable(phone) : ""}?body=${encodeURIComponent(text)}`;
+  return `sms:${phone ? dialable(phone) : ""}?&body=${encodeURIComponent(text)}`;
 }
 
 type Way = "mail_app" | "copy" | "text" | "whatsapp";
@@ -1292,14 +1282,17 @@ function PitchDialog({
   const [askedChannel, setAskedChannel] = useState<PitchChannel | "">("");
   const who = people.find((p) => p.id === contact) ?? null;
   const chosen = templates.find((t) => t.key === template) ?? null;
-  const action = chosen?.action ?? "pitched";
+  // What it logs: the template's action, or the workspace's first.
+  const action = chosen?.action ?? settings.actions?.[0]?.key ?? "";
   const choices = item && !items.some((x) => itemKey(x) === itemKey(item)) ? [item, ...items] : items;
 
   const draft = useQuery({
     queryKey: ["pitch-draft", organisationId, template, contact, itemKey(item)],
     enabled: template !== "",
-    // Fetched again only when who, what or the template changes, so edits stay.
+    // Fetched again only when who, what or the template changes, so edits
+    // stay; and dropped once the dialog closes, so the next one is fresh.
     staleTime: Infinity,
+    gcTime: 0,
     refetchOnWindowFocus: false,
     queryFn: () =>
       ok(
@@ -1318,7 +1311,7 @@ function PitchDialog({
   }
 
   const usual: SendWith = me.data?.send_with ?? me.data?.workspace_send_with ?? settings.send_with ?? "onhold";
-  const left = unfilled(`${subject}\n${body}`);
+  const left = unfilled(`${subject}\n${body}`, (settings.placeholders ?? []).map((p) => p.name));
   const text = subject ? `${subject}\n\n${body}` : body;
   const ready = body.trim() !== "" && !draft.isFetching;
 
@@ -1348,10 +1341,21 @@ function PitchDialog({
       setBusy(false);
     }
   };
-  const elsewhere = (way: Way) => {
+  const elsewhere = async (way: Way) => {
     setError(null);
-    if (way === "copy") void navigator.clipboard?.writeText(text);
-    else window.open(way === "mail_app" ? mailtoLink(who?.email ?? null, subject, body) : way === "text" ? smsLink(who?.phone ?? null, text) : whatsappLink(who?.phone ?? null, text), "_blank");
+    try {
+      if (way === "copy") {
+        if (!navigator.clipboard) throw new Error("This browser can't copy here. Select the words and copy them instead.");
+        await navigator.clipboard.writeText(text);
+      } else {
+        await openInBrowser(
+          way === "mail_app" ? mailtoLink(who?.email ?? null, subject, body) : way === "text" ? smsLink(who?.phone ?? null, text) : whatsappLink(who?.phone ?? null, text),
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : "That didn't work. Copy the words instead.");
+      return;
+    }
     setAsked(way);
     setAskedChannel(WAY_CHANNEL[way]);
   };
@@ -1395,7 +1399,7 @@ function PitchDialog({
     { way: "text", label: "Text", hidden: !who?.phone },
     { way: "whatsapp", label: "WhatsApp", hidden: !who?.phone },
   ];
-  const go = (way: SendWith | Way) => (way === "onhold" ? void send() : elsewhere(way));
+  const go = (way: SendWith | Way) => (way === "onhold" ? void send() : void elsewhere(way));
   const primary = ways.find((w) => w.way === usual && !w.hidden) ?? ways.find((w) => !w.hidden && w.way !== "onhold") ?? ways[1];
 
   return (
@@ -1424,6 +1428,8 @@ function PitchDialog({
                 if (e.target.value === "") {
                   setSubject("");
                   setBody("");
+                  // Picking a template again fills it in again.
+                  setDrafted(null);
                 }
               }}
             >
@@ -1524,8 +1530,9 @@ function PitchDialog({
             </div>
             {primary?.way === "onhold" && (
               <p className="text-muted-foreground">
-                {me.data?.mailbox ? `Sent from ${me.data.mailbox}` : "Sent by OnHold in your workspace's name, with answers coming to you"}, then
-                logged here; answers arrive in the inbox.
+                {me.data?.mailbox
+                  ? `Sent from ${me.data.mailbox}, then logged here; answers arrive in the inbox.`
+                  : "Sent by OnHold in your workspace's name, then logged here. Answers go to your own email; connect it under Email accounts to see them in OnHold."}
               </p>
             )}
             {!who?.email && people.length > 0 && <p className="text-muted-foreground">They have no email address, so it cannot be sent from OnHold.</p>}

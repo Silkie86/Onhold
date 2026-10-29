@@ -8012,7 +8012,7 @@ export interface components {
             to?: string | null;
             /**
              * @description What it logs, a key from the workspace's actions; default the
-             *     template's, or `pitched`.
+             *     template's, or the workspace's first action.
              */
             type_key?: string | null;
         };
@@ -8124,6 +8124,8 @@ export interface components {
         PitchingSettingsView: components["schemas"]["PitchingSettings"] & {
             /** @description Every country, for choosing which region each is in. */
             countries: components["schemas"]["CountryView"][];
+            /** @description What a pitch template can say, filled in for each pitch. */
+            placeholders: components["schemas"]["Placeholder"][];
             /** Format: date-time */
             updated_at?: string | null;
             updated_by?: components["schemas"]["UserId"] | null;
@@ -8132,6 +8134,11 @@ export interface components {
              * @description 0 until the workspace first saves its own.
              */
             version: number;
+        };
+        Placeholder: {
+            means: string;
+            /** @description Written in a template as `{name}`. */
+            name: string;
         };
         /** @description What the answers set up. */
         Plan: {

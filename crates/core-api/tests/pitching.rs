@@ -650,8 +650,9 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
     let mut body = s.clone();
     body["outcomes"] = json!([{ "key": "yes", "label": "Yes", "tag": "good" }]);
     body["actions"] = json!([{ "key": "pitched", "label": "Sent it" }]);
-    // A template follows up, an action no longer listed: it goes too.
-    body["templates"] = json!([s["templates"][0]]);
+    // Templates left out, the one that follows up (an action no longer
+    // listed) goes too.
+    body.as_object_mut().unwrap().remove("templates");
     app.put("/api/v1/pitching/settings")
         .signed_in(&owner)
         .json(body)
@@ -710,7 +711,7 @@ async fn pitches_and_answers_are_logged_by_hand(pool: PgPool) {
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn pitches_are_drafted_and_sent(pool: PgPool) {
     let app = TestApp::new(pool).await;
-    let (_, owner) = app.workspace_with_owner("acme").await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
     let viewer = app.add_member(&owner, "viewer@acme.test", "viewer").await;
     let club = organisation(
         &app,
@@ -764,6 +765,54 @@ async fn pitches_are_drafted_and_sent(pool: PgPool) {
         draft.body
     );
     assert_eq!(draft.body["action"], "pitched");
+
+    // What is pitched fills in only for those who may read it.
+    let key = post(
+        &app,
+        &owner,
+        "/api/v1/api-keys",
+        json!({ "name": "crm", "permissions": ["organisation:read", "contact:read"] }),
+    )
+    .await
+    .ok();
+    let secret = key.body["secret"].as_str().unwrap().to_owned();
+    let blind = app
+        .post(&format!("/api/v1/organisations/{club_id}/pitches/draft"))
+        .bearer(&secret)
+        .workspace(ws)
+        .json(json!({ "template_key": "first_pitch", "contact_id": jo, "item": { "kind": "talent", "id": owls } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(blind.body["missing"], json!(["item", "link", "yourName"]));
+    assert!(!blind.body["body"].as_str().unwrap().contains("Owls"));
+
+    // A name that only stands in for one (their email) is no name.
+    let nameless = post(
+        &app,
+        &owner,
+        "/api/v1/contacts",
+        json!({ "name": "sam@club.test", "organisation_id": club_id, "emails": ["sam@club.test"] }),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let draft_sam = post(
+        &app,
+        &owner,
+        &format!("/api/v1/organisations/{club_id}/pitches/draft"),
+        json!({ "template_key": "first_pitch", "contact_id": nameless }),
+    )
+    .await
+    .ok();
+    assert!(
+        draft_sam.body["body"]
+            .as_str()
+            .unwrap()
+            .starts_with("Hi {firstName},"),
+        "{}",
+        draft_sam.body
+    );
 
     // Not sent while a placeholder is left, nor by a viewer.
     let send = |body: &str| {
@@ -827,6 +876,37 @@ async fn pitches_are_drafted_and_sent(pool: PgPool) {
     )
     .await;
     assert_eq!(log.body["total"], 2);
+    assert_eq!(log.body["items"][1]["message"]["thread_id"], json!(thread));
+    // Without the inbox, the conversation is left out.
+    let log = app
+        .get(&format!("/api/v1/organisations/{club_id}/pitches"))
+        .bearer(&secret)
+        .workspace(ws)
+        .send()
+        .await
+        .ok();
+    assert_eq!(log.body["items"][1]["source"], "sent");
+    assert_eq!(log.body["items"][1]["message"], Value::Null);
+
+    // Without a template, it logs the workspace's first action.
+    let mut body = s.clone();
+    body["actions"] = json!([{ "key": "emailed", "label": "Emailed" }, { "key": "pitched", "label": "Pitched" },
+                             { "key": "followed_up", "label": "Followed up" }]);
+    app.put("/api/v1/pitching/settings")
+        .signed_in(&owner)
+        .json(body)
+        .send()
+        .await
+        .ok();
+    let blank = post(
+        &app,
+        &owner,
+        "/api/v1/pitches/send",
+        json!({ "organisation_id": club_id, "contact_id": jo, "subject": "Hello", "body": "Hi Jo" }),
+    )
+    .await;
+    assert_eq!(blank.status, StatusCode::CREATED, "{}", blank.body);
+    assert_eq!(blank.body["type_key"], "emailed");
 
     // Templates name one of the actions.
     let mut body = s.clone();
