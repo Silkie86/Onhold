@@ -207,7 +207,7 @@ mod tests {
             organisation_id: Uuid::nil(),
             organisation_name: "Club".into(),
             actions,
-            last_at: last_at.parse().unwrap(),
+            last_at: last_at.parse().expect("a time"),
             answered,
             contact_id: None,
             contact_name: None,
@@ -221,21 +221,26 @@ mod tests {
     fn steps_follow_the_last_action_until_an_answer() {
         let s = PitchingSettings::default();
         let tz = chrono_tz::Europe::London;
-        let day = |d: &str| d.parse::<NaiveDate>().unwrap();
+        let day = |d: &str| d.parse::<NaiveDate>().expect("a day");
         // Pitched on the 1st: the email follow-up a week on.
-        let (kind, due, step, n) = next(&s, &run(1, "2026-10-01T23:30:00Z", false), tz).unwrap();
+        let (kind, due, step, n) =
+            next(&s, &run(1, "2026-10-01T23:30:00Z", false), tz).expect("due");
         assert_eq!(kind, FollowUpKind::Step);
         // Half past midnight in London is the 2nd.
         assert_eq!(due, day("2026-10-09"));
-        assert_eq!(step.unwrap().template_key.as_deref(), Some("follow_up"));
+        assert_eq!(
+            step.expect("a step").template_key.as_deref(),
+            Some("follow_up")
+        );
         assert_eq!(n, 1);
         // Followed up: then the call.
-        let (_, due, step, n) = next(&s, &run(2, "2026-10-09T10:00:00Z", false), tz).unwrap();
+        let (_, due, step, n) = next(&s, &run(2, "2026-10-09T10:00:00Z", false), tz).expect("due");
         assert_eq!(due, day("2026-10-16"));
-        assert_eq!(step.unwrap().action, "called");
+        assert_eq!(step.expect("a step").action, "called");
         assert_eq!(n, 2);
         // Both done: two weeks on, ask what came of it.
-        let (kind, due, step, _) = next(&s, &run(3, "2026-10-16T10:00:00Z", false), tz).unwrap();
+        let (kind, due, step, _) =
+            next(&s, &run(3, "2026-10-16T10:00:00Z", false), tz).expect("due");
         assert_eq!(kind, FollowUpKind::NoAnswer);
         assert_eq!(due, day("2026-10-30"));
         assert!(step.is_none());
