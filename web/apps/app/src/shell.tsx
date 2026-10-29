@@ -69,14 +69,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { ENTITIES, api, currentWorkspace, entityByPath, ok, setWorkspace } from "./api.ts";
 import { OfflineContext, searchEverything, useSyncStatus } from "./data.ts";
-import { claimFor, forgetMailExcept } from "./offline/store.ts";
+import { claimFor, forgetWorkspacesExcept } from "./offline/store.ts";
 import { OfflineSync } from "./offline/sync.ts";
 import { IS_APP, KEEPS_OFFLINE_COPY, serverUrl } from "./platform.ts";
 import { useWorkspaceBranding } from "./branding.ts";
 import { GoTo } from "./go-to.tsx";
 import { useInstallOffer } from "./install.ts";
-import { useSetup } from "./setup.ts";
-import { type Session, SessionContext, useMe, useSessionActions } from "./session.tsx";
+import { type Setup, useSetup } from "./setup.ts";
+import { type Session, SessionContext, keptWorkspaces, useMe, useSessionActions } from "./session.tsx";
 
 // Talent see their portal instead of the staff app; it loads only for them.
 const PortalShell = lazy(() => import("./pages/portal.tsx").then((m) => ({ default: m.PortalShell })));
@@ -85,8 +85,8 @@ type NavItem = {
   to: string;
   label: string;
   icon: ReactNode;
-  /** Shown only when the workspace uses this module or extra. */
-  module?: string;
+  /** Shown only when the workspace uses this module (or any of these) or extra. */
+  module?: string | string[];
   extra?: string;
   /** Named in the workspace's own words: [module, term]. */
   word?: [string, string];
@@ -98,7 +98,8 @@ export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Bookings",
     items: [
-      { to: "/inbox", label: "Inbox", icon: <Mail />, module: "messaging" },
+      // Talent's messages from their portal arrive here too, with or without email.
+      { to: "/inbox", label: "Inbox", icon: <Mail />, module: ["messaging", "portal"] },
       { to: "/calendar", label: "Calendar", icon: <CalendarDays />, module: "calendar" },
       { to: "/enquiries", label: "Enquiries", icon: <Inbox />, module: "bookings", word: ["bookings", "enquiry"] },
       { to: "/bookings", label: "Bookings", icon: <CalendarCheck />, module: "bookings", word: ["bookings", "booking"] },
@@ -151,6 +152,16 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     ],
   },
 ];
+
+/** Whether the menu shows an item, given what the workspace set itself up to use. */
+export function inNav(item: NavItem, setup: Setup): boolean {
+  const modules = item.module === undefined ? [] : [item.module].flat();
+  return (
+    (modules.length === 0 || modules.some((m) => setup.has(m))) &&
+    (!item.extra || setup.hasExtra(item.extra)) &&
+    setup.shows(`nav:${item.to}`)
+  );
+}
 
 /** OnHold's own team: the full theme, and visiting clients' workspaces. */
 const OPERATOR_NAV: { group: string; items: NavItem[] } = {
@@ -224,6 +235,14 @@ export function storedTheme(): Theme {
 export function AppShell() {
   const me = useMe();
   const location = useLocation();
+  // The copy of a workspace the person has left, became talent in, or whose
+  // plan dropped the apps, goes, whichever screen they now see.
+  const keptFor = me.data ? keptWorkspaces(me.data.workspaces).join(",") : null;
+  useEffect(() => {
+    if (KEEPS_OFFLINE_COPY && keptFor !== null) {
+      void forgetWorkspacesExcept(keptFor ? keptFor.split(",") : []).catch(() => undefined);
+    }
+  }, [keptFor]);
   if (me.isPending) {
     return (
       <div className="flex h-dvh items-center justify-center">
@@ -305,11 +324,6 @@ function SignedIn({ me }: { me: Session["me"] }) {
     if (wasVisiting.current) endVisit();
   }, [visiting]);
   const sync = useOfflineSync(current && !visiting && (!IS_APP || current.apps_allowed) ? current.id : undefined, me.user.id);
-  // Email kept for a workspace the person has left, or whose plan dropped the apps, goes.
-  const keptFor = me.workspaces.filter((w) => !IS_APP || w.apps_allowed).map((w) => w.id).join(",");
-  useEffect(() => {
-    if (KEEPS_OFFLINE_COPY) void forgetMailExcept(keptFor.split(",")).catch(() => undefined);
-  }, [keptFor]);
   const logo = useWorkspaceBranding(current?.id ?? "", sync, !visiting);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
@@ -351,7 +365,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
   const setup = useSetup(sync);
   const shown = (items: NavItem[]) =>
     items
-      .filter((i) => (!i.module || setup.has(i.module)) && (!i.extra || setup.hasExtra(i.extra)) && setup.shows(`nav:${i.to}`))
+      .filter((i) => inNav(i, setup))
       .map((i) => (i.word ? { ...i, label: setup.word(i.word[0], i.word[1], true) } : i));
   // OnHold's own tools are never hidden; streamlining shows while visiting.
   const operatorNav = { ...OPERATOR_NAV, items: OPERATOR_NAV.items.filter((i) => visiting || i.to !== "/settings/streamline") };

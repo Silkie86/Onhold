@@ -16,7 +16,7 @@ import {
 } from "./mail.ts";
 import {
   allMail,
-  forgetMailExcept,
+  forgetWorkspacesExcept,
   getMeta,
   keepMailKey,
   outbox,
@@ -384,7 +384,7 @@ describe("keeping recent email", () => {
     const engine = new OfflineSync("w1");
     await engine.mail.setEnabled(true);
     await engine.syncNow();
-    await forgetMailExcept(["w2"]);
+    await forgetWorkspacesExcept(["w2"]);
     expect(await allMail("w1")).toEqual([]);
     expect(await getMeta(keepMailKey("w1"))).toBeUndefined();
   });

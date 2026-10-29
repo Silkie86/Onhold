@@ -5,7 +5,7 @@
 
 import type { RecordJson } from "@onhold/ui";
 import { createContext, useContext, useEffect, useState } from "react";
-import { ApiFailure, type EntitySchema, ENTITIES, RECORD_PATHS, api, ok } from "./api.ts";
+import { ApiFailure, type EntitySchema, ENTITIES, RECORD_PATHS, api, currentWorkspace, ok } from "./api.ts";
 import type { Schemas } from "@onhold/api-client";
 import { type ListParams, type Page, localList, localTags, matches, sortRecords } from "./offline/query.ts";
 import {
@@ -94,11 +94,14 @@ async function serverOrDevice<T>(
   device: () => Promise<T | undefined>,
   remember?: (data: T) => Promise<void>,
 ): Promise<Fetched<T>> {
-  if (!sync) return { data: await server(), offline: false };
+  // Just after a switch the app asks for the new workspace while the engine
+  // is still the old one's: the answer is not that workspace's, so it is
+  // neither kept in its copy nor answered from it.
+  if (!sync || sync.ws !== currentWorkspace()) return { data: await server(), offline: false };
   if (navigator.onLine) {
     try {
       const data = await withTimeout(server());
-      if (remember) await remember(data).catch(() => undefined);
+      if (remember && sync.ws === currentWorkspace()) await remember(data).catch(() => undefined);
       return { data, offline: false };
     } catch (e) {
       if (!isNetworkError(e)) throw e;
@@ -107,6 +110,17 @@ async function serverOrDevice<T>(
   const data = await device();
   if (data === undefined) throw new NotOnDevice();
   return { data, offline: true };
+}
+
+/**
+ * Keeps what the server just showed, the freshest copy there is, except
+ * records with changes still waiting to be sent: those keep the device's
+ * copy, with the changes on it, as a full download does.
+ */
+async function keepServerCopy(sync: OfflineSync | null, entity: StoredEntity, records: RecordJson[]): Promise<void> {
+  if (!sync) return;
+  const queued = new Set((await sync.queued()).map((q) => q.id));
+  await putRecords(sync.ws, entity, records.filter((r) => !queued.has(r.id)));
 }
 
 const P = (entity: StoredEntity) => `/api/v1/${RECORD_PATHS[entity]}` as "/api/v1/contacts";
@@ -140,10 +154,7 @@ export function fetchList(sync: OfflineSync | null, entity: EntityName, params: 
         }),
       )) as unknown as Page,
     async () => (sync?.current.ready ? localList(await allRecords(sync.ws, entity), params) : undefined),
-    // What the server just showed is the freshest copy there is.
-    async (page) => {
-      if (sync) await putRecords(sync.ws, entity, page.items);
-    },
+    (page) => keepServerCopy(sync, entity, page.items),
   );
 }
 
@@ -157,9 +168,7 @@ export async function fetchRecord(sync: OfflineSync | null, entity: StoredEntity
     sync,
     async () => (await ok(api.GET(PI(entity), { params: { path: { id } } }))) as unknown as RecordJson,
     () => (sync ? getRecord(sync.ws, entity, id) : Promise.resolve(undefined)),
-    async (r) => {
-      if (sync) await putRecords(sync.ws, entity, [r]);
-    },
+    (r) => keepServerCopy(sync, entity, [r]),
   );
 }
 
@@ -388,9 +397,8 @@ async function readWork<T>(
   }
   return serverOrDevice(sync, server, device, remember);
 }
-const remember = (sync: OfflineSync | null, entity: StoredEntity) => async (page: { items: unknown[] }) => {
-  if (sync) await putRecords(sync.ws, entity, page.items as RecordJson[]);
-};
+const remember = (sync: OfflineSync | null, entity: StoredEntity) => (page: { items: unknown[] }) =>
+  keepServerCopy(sync, entity, page.items as RecordJson[]);
 
 export function fetchEnquiries(sync: OfflineSync | null, p: EnquiryParams): Promise<Fetched<EnquiryPage>> {
   return serverOrDevice(
@@ -466,9 +474,7 @@ export function fetchCalendar(
             p,
           ) as unknown as CalendarView)
         : undefined,
-    async (cal) => {
-      if (sync) await putRecords(sync.ws, "booking", cal.bookings as unknown as RecordJson[]);
-    },
+    (cal) => keepServerCopy(sync, "booking", cal.bookings as unknown as RecordJson[]),
   );
 }
 

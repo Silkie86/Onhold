@@ -4,6 +4,11 @@ import { dialable, phonesOf } from "../phones.ts";
 import { validateListSearch } from "./crm.tsx";
 import { awaitingOutcome, dayOf, dueLabel, dueWhat, happenedAt, keyFor, mailtoLink, newKey, smsLink, uniqueItems, unfilled, whatsappLink } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { NAV, inNav } from "../shell.tsx";
+import { setupOf } from "../setup.ts";
+import { Header } from "./talent-calendars.tsx";
 
 test("after signing in, only paths on this site are followed", () => {
   expect(safeRedirect("/crm/contacts?q=jo")).toBe("/crm/contacts?q=jo");
@@ -159,6 +164,24 @@ test("a pitch opens in an email app, a text or WhatsApp ready to send", () => {
   // Without the country, WhatsApp asks who to send it to.
   expect(whatsappLink("07700 900123", "Hi")).toBe("https://wa.me/?text=Hi");
   expect(smsLink("+44 7700 900123", "Hi Jo")).toBe("sms:+447700900123?&body=Hi%20Jo");
+});
+
+test("the inbox is in the menu for talent's portal messages, with or without email", () => {
+  const inbox = NAV.flatMap((g) => g.items).find((i) => i.to === "/inbox");
+  if (!inbox) throw new Error("no inbox in the menu");
+  const using = (...modules: string[]) => setupOf({ enabled_modules: modules, extras: [] });
+  expect(inNav(inbox, using("bookings", "portal"))).toBe(true);
+  expect(inNav(inbox, using("messaging"))).toBe(true);
+  expect(inNav(inbox, using("bookings"))).toBe(false);
+});
+
+test("the calendar-connect page shows the logo the branding settings save", () => {
+  const logo = "data:image/png;base64,iVBORw0KGgo=";
+  const html = renderToStaticMarkup(
+    createElement(Header, { workspace: "Agency", title: "Connect", branding: { logo, primary_color: "#336699" } }),
+  );
+  expect(html).toContain(`src="${logo}"`);
+  expect(renderToStaticMarkup(createElement(Header, { workspace: "Agency", title: "Connect", branding: null }))).not.toContain("<img");
 });
 
 test("placeholders left in a pitch are found once each", () => {

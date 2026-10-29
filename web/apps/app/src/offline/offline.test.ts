@@ -2,12 +2,17 @@ import "fake-indexeddb/auto";
 import type { RecordJson } from "@onhold/ui";
 import { beforeEach, describe, expect, it } from "vitest";
 import { localList, localTags, matches, sortRecords } from "./query.ts";
+import type { Me } from "../api.ts";
+import { keptWorkspaces } from "../session.tsx";
 import {
+  ORPHANED,
   type OutboxItem,
   allRecords,
   applyPatch,
   claimFor,
   enqueue,
+  failOrphans,
+  forgetWorkspacesExcept,
   getMeta,
   isLocalId,
   mergePatches,
@@ -198,5 +203,67 @@ describe("the device's copy", () => {
     await claimFor("u2");
     expect(await outbox("w1")).toEqual([]);
     expect(await getMeta("owner")).toBe("u2");
+  });
+
+  it("clears a copy no one claimed, as one written after a sign-out would be", async () => {
+    await putRecords("w1", "contact", [rec("a")]);
+    await claimFor("u2");
+    expect(await allRecords("w1", "contact")).toEqual([]);
+    expect(await getMeta("owner")).toBe("u2");
+  });
+
+  it("forgets the whole copy of a workspace the person may no longer keep, but not their unsent changes", async () => {
+    await claimFor("u1");
+    for (const ws of ["w1", "w2"]) {
+      await putRecords(ws, "contact", [rec(`${ws}-a`)]);
+      await putRecords(ws, "booking", [rec(`${ws}-b`)]);
+      await setMeta(`${ws}:cursor`, 5);
+      await setMeta(`${ws}:workspace`, { hold_days: 7 });
+      await setMeta(`${ws}:invoices:all:`, { items: [] });
+      await putOutbox({ ...item("update", `${ws}-a`), ws });
+    }
+    await forgetWorkspacesExcept(["w2"]);
+    expect(await allRecords("w1", "contact")).toEqual([]);
+    expect(await allRecords("w1", "booking")).toEqual([]);
+    expect(await getMeta("w1:cursor")).toBeUndefined();
+    expect(await getMeta("w1:workspace")).toBeUndefined();
+    expect(await getMeta("w1:invoices:all:")).toBeUndefined();
+    expect(await outbox("w1")).toHaveLength(1);
+    // The rest stays.
+    expect(await allRecords("w2", "contact")).toHaveLength(1);
+    expect(await getMeta("w2:workspace")).toEqual({ hold_days: 7 });
+    expect(await getMeta("owner")).toBe("u1");
+    // None kept at all: nothing stays but who owns the device.
+    await forgetWorkspacesExcept([]);
+    expect(await allRecords("w2", "booking")).toEqual([]);
+    expect(await getMeta("owner")).toBe("u1");
+  });
+});
+
+describe("the people the device may keep a copy for", () => {
+  const w = (id: string, role: string, apps: boolean) =>
+    ({ id, slug: id, name: id, status: "active", role, apps_allowed: apps }) as Me["workspaces"][number];
+
+  it("leaves out workspaces where they are talent, and in the apps those without them", () => {
+    const list = [w("staff", "agent", true), w("portal", "talent", true), w("noapps", "owner", false)];
+    expect(keptWorkspaces(list, true)).toEqual(["staff"]);
+    expect(keptWorkspaces(list, false)).toEqual(["staff", "noapps"]);
+  });
+});
+
+describe("changes linking to a record made offline", () => {
+  it("are refused once its creation is no longer queued, and wait while it is", () => {
+    const boss = newLocalId();
+    const report = { ...item("create", newLocalId(), { name: "R", manager_id: boss }), seq: 2 };
+    const step = { ...item("status", boss, { status: "confirmed" }), seq: 3 };
+    const creating = { ...item("create", boss, { name: "B" }), seq: 1 };
+    expect(failOrphans([creating, report, step])).toEqual([creating, report, step]);
+    expect(failOrphans([report, step]).map((q) => [q.seq, q.state, q.error])).toEqual([
+      [2, "failed", ORPHANED],
+      [3, "failed", ORPHANED],
+    ]);
+    // A link to a record already on the server is no reason.
+    const other = item("update", "srv-1", { organisation_id: "srv-2" });
+    expect(failOrphans([other])).toEqual([other]);
   });
 });

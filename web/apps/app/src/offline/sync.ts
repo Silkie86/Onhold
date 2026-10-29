@@ -35,6 +35,7 @@ import {
   changeOutbox,
   deleteRecord,
   enqueue,
+  failOrphans,
   getMeta,
   getRecord,
   isLocalId,
@@ -96,6 +97,26 @@ const AVAILABILITY_BACK_DAYS = 60;
 const AVAILABILITY_AHEAD_DAYS = 339;
 /** …and the window is moved on once a day. */
 const AVAILABILITY_STALE_MS = 86_400_000;
+/**
+ * The server recognises an Idempotency-Key for a day. A creation or reply
+ * that may have arrived, first sent longer ago than this, is not sent again
+ * blindly, as it would then simply be made a second time; the person checks.
+ */
+export const KEY_KEPT_MS = 20 * 3_600_000;
+export const KEY_EXPIRED =
+  "This may have reached OnHold when the connection dropped, too long ago for OnHold to recognise it now. Check it is not there already before trying again.";
+/** More records changed than this since the last run (an import, say), and everything is downloaded again instead. */
+const REFETCH_MAX = 250;
+/** How many changed records are read at once. */
+const REFETCH_AT_ONCE = 6;
+
+/** Engines running on this page, so signing out can stop them all. */
+const engines = new Set<OfflineSync>();
+
+/** Stops every sync on this page, before the device's copy is deleted. */
+export function stopEverySync(): void {
+  for (const engine of engines) engine.stop();
+}
 
 const P = (entity: StoredEntity) => `/api/v1/${RECORD_PATHS[entity]}` as "/api/v1/contacts";
 const PI = (entity: StoredEntity) => `/api/v1/${RECORD_PATHS[entity]}/{id}` as "/api/v1/contacts/{id}";
@@ -165,6 +186,8 @@ export class OfflineSync {
   private readonly offline = () => this.set({ online: false });
 
   async start(): Promise<void> {
+    if (this.stopping.signal.aborted) return;
+    engines.add(this);
     const lastSync = (await getMeta<string>(`${this.ws}:lastSync`)) ?? null;
     this.set({ lastSync, ready: lastSync !== null });
     await this.refreshCounts();
@@ -181,6 +204,7 @@ export class OfflineSync {
     document.removeEventListener("visibilitychange", this.kick);
     if (this.timer) clearInterval(this.timer);
     this.stopping.abort();
+    engines.delete(this);
   }
 
   /** Sends waiting changes, then fetches what changed. One run at a time. */
@@ -381,53 +405,72 @@ export class OfflineSync {
     }
   }
 
+  /**
+   * Reads the feed a page at a time, fetching what each page names and then
+   * noting the position, so a run stopped part way carries on from there.
+   * When more records changed than is worth fetching one by one (an import,
+   * or undoing one), everything is downloaded again instead.
+   */
   private async pullChanges(cursor: number): Promise<void> {
     let after = cursor;
     const topics = (await this.mail.enabled()) ? MAIL_TOPICS : TOPICS;
-    const touched = new Map<string, EntityName | "enquiry" | "booking" | "task">();
-    let fieldsChanged = false;
-    let availabilityChanged = false;
-    let stagesChanged = false;
-    for (;;) {
-      let page;
-      try {
-        page = await ok(api.GET("/api/v1/events", { ...this.req, params: { query: { after, topics, limit: PAGE } } }));
-      } catch (e) {
-        if (e instanceof ApiFailure && e.status === 410) {
+    const waiting = new Set((await outbox(this.ws)).map((q) => q.id));
+    let fetched = 0;
+    let changed = false;
+    try {
+      for (;;) {
+        let page;
+        try {
+          page = await ok(api.GET("/api/v1/events", { ...this.req, params: { query: { after, topics, limit: PAGE } } }));
+        } catch (e) {
+          if (e instanceof ApiFailure && e.status === 410) {
+            await this.downloadAll();
+            return;
+          }
+          throw e;
+        }
+        const touched = new Map<string, EntityName | "enquiry" | "booking" | "task">();
+        let fieldsChanged = false;
+        let availabilityChanged = false;
+        let stagesChanged = false;
+        for (const ev of page.events) {
+          const entity = ev.topic.split(".")[0] ?? "";
+          if ((entity === "thread" || entity === "message") && ev.object_id) this.mailTouched.add(ev.object_id);
+          else if (entity === "custom_field") fieldsChanged = true;
+          else if (entity === "availability") availabilityChanged = true;
+          else if (entity === "pipeline") stagesChanged = true;
+          else if (ev.object_id && [...OFFLINE_ENTITIES, "enquiry", "booking", "task"].includes(entity)) {
+            // A record with changes still to send keeps them; a conflict will show if needed.
+            if (!waiting.has(ev.object_id)) touched.set(ev.object_id, entity as EntityName);
+          }
+        }
+        fetched += touched.size;
+        if (fetched > REFETCH_MAX) {
           await this.downloadAll();
           return;
         }
-        throw e;
-      }
-      for (const ev of page.events) {
-        const entity = ev.topic.split(".")[0] ?? "";
-        if ((entity === "thread" || entity === "message") && ev.object_id) this.mailTouched.add(ev.object_id);
-        else if (entity === "custom_field") fieldsChanged = true;
-        else if (entity === "availability") availabilityChanged = true;
-        else if (entity === "pipeline") stagesChanged = true;
-        else if (ev.object_id && [...OFFLINE_ENTITIES, "enquiry", "booking", "task"].includes(entity)) {
-          touched.set(ev.object_id, entity as EntityName);
+        const ids = [...touched];
+        for (let i = 0; i < ids.length; i += REFETCH_AT_ONCE) {
+          await Promise.all(ids.slice(i, i + REFETCH_AT_ONCE).map(([id, entity]) => this.refetch(entity, id)));
         }
+        if (fieldsChanged) {
+          for (const entity of [...OFFLINE_ENTITIES, "enquiry", "booking"] as const) await this.downloadSchema(entity);
+        }
+        if (availabilityChanged) await this.downloadAvailability();
+        if (stagesChanged) await this.downloadStages();
+        after = page.next_after;
+        await setMeta(`${this.ws}:cursor`, after);
+        changed ||= touched.size > 0 || fieldsChanged || availabilityChanged || stagesChanged;
+        if (!page.has_more) break;
       }
-      after = page.next_after;
-      if (!page.has_more) break;
+      const availabilityAt = (await getMeta<number>(`${this.ws}:availabilityAt`)) ?? 0;
+      if (Date.now() - availabilityAt > AVAILABILITY_STALE_MS) {
+        await this.downloadAvailability();
+        await this.downloadExtras();
+      }
+    } finally {
+      if (changed) this.notifyChanged();
     }
-    const waiting = new Set((await outbox(this.ws)).map((q) => q.id));
-    for (const [id, entity] of touched) {
-      // A record with changes still to send keeps them; a conflict will show if needed.
-      if (waiting.has(id)) continue;
-      await this.refetch(entity, id);
-    }
-    if (fieldsChanged) {
-      for (const entity of [...OFFLINE_ENTITIES, "enquiry", "booking"] as const) await this.downloadSchema(entity);
-    }
-    const availabilityAt = (await getMeta<number>(`${this.ws}:availabilityAt`)) ?? 0;
-    const availabilityStale = Date.now() - availabilityAt > AVAILABILITY_STALE_MS;
-    if (availabilityChanged || availabilityStale) await this.downloadAvailability();
-    if (stagesChanged) await this.downloadStages();
-    if (availabilityStale) await this.downloadExtras();
-    await setMeta(`${this.ws}:cursor`, after);
-    if (touched.size || fieldsChanged || availabilityChanged || stagesChanged) this.notifyChanged();
   }
 
   private async refetch(entity: StoredEntity, id: string) {
@@ -478,9 +521,13 @@ export class OfflineSync {
       key,
       createdAt: new Date().toISOString(),
       state: "pending",
-      ...(sent && { tries: 0 }),
+      ...(sent && { tries: 0, sentAt: new Date().toISOString() }),
     };
-    await this.saveQueue((queue) => enqueue(queue, item, this.sending));
+    await this.saveQueue((queue) => {
+      const next = enqueue(queue, item, this.sending);
+      // Deleting a record made here and never sent: what links to it can never go.
+      return op === "delete" && isLocalId(recordId) ? failOrphans(next) : next;
+    });
 
     let result: RecordJson | null = null;
     if (op === "delete") {
@@ -552,7 +599,7 @@ export class OfflineSync {
       key,
       createdAt: new Date().toISOString(),
       state: "pending",
-      ...(sent && { tries: 0 }),
+      ...(sent && { tries: 0, sentAt: new Date().toISOString() }),
     };
     await this.saveQueue((queue) => enqueue(queue, item, this.sending));
     void this.syncNow();
@@ -579,9 +626,22 @@ export class OfflineSync {
       // From here a change to the same record queues behind this one instead of folding into it.
       this.sending = next.seq;
       try {
-        // Read again, with anything folded into it before that.
-        const item = (await outbox(this.ws)).find((q) => q.seq === next.seq);
-        if (item?.state === "pending") await this.send(item);
+        // Read again, with anything folded into it before that, and marked as
+        // on its way in the queue itself, so another window of the app does
+        // not fold its changes into it either.
+        const at = new Date().toISOString();
+        let item: OutboxItem | undefined;
+        await this.saveQueue((queue) =>
+          queue.map((q) => {
+            if (q.seq !== next.seq || q.state !== "pending") return q;
+            if (q.op === "create" && q.sentAt && Date.parse(at) - Date.parse(q.sentAt) > KEY_KEPT_MS) {
+              return { ...q, state: "failed" as const, error: KEY_EXPIRED };
+            }
+            item = q;
+            return { ...q, tries: q.tries ?? 0, sentAt: q.sentAt ?? at };
+          }),
+        );
+        if (item) await this.send(item);
       } finally {
         this.sending = undefined;
       }
@@ -665,17 +725,27 @@ export class OfflineSync {
         );
         throw e;
       }
-      if (!(e instanceof ApiFailure) || e.status === 429) throw e;
-      // Signed out, or the session's form token is stale: nothing wrong with
-      // the change itself. It waits for the next sign-in.
-      if (e.status === 401 || e.code === "csrf_failed") throw e;
+      if (!(e instanceof ApiFailure)) throw e;
+      // Too many requests; or signed out, or the session's form token is
+      // stale: nothing wrong with the change itself, and it did not arrive.
+      // It waits, as it was, for the next run or sign-in.
+      if (e.status === 429 || e.status === 401 || e.code === "csrf_failed") {
+        await changeOutbox(this.ws, (queue) => queue.map((q) => (q.seq === item.seq ? item : q)));
+        throw e;
+      }
       if (e.status === 408 || (e.status === 409 && e.code === "request_in_progress")) {
         // The server gave up waiting, or is still working on it under this
         // key: nothing wrong with the change. It is tried again later, less
         // often each time, and the rest of the queue carries on meanwhile.
         const tries = (item.tries ?? 0) + 1;
         const wait = Math.min(RETRY_MS * 2 ** (tries - 1), RETRY_MAX_MS);
-        await putOutbox({ ...item, tries, retryAt: new Date(Date.now() + wait).toISOString(), error: e.message });
+        await putOutbox({
+          ...item,
+          tries,
+          sentAt: item.sentAt ?? new Date().toISOString(),
+          retryAt: new Date(Date.now() + wait).toISOString(),
+          error: e.message,
+        });
       } else if (e.status === 412 && item.entity !== "reply") {
         const entity = item.entity;
         // Someone else changed it first: keep both versions and ask.
@@ -740,7 +810,8 @@ export class OfflineSync {
           : mine,
       ]);
     } else {
-      await removeOutbox(seq);
+      // Dropping the creation of a record made here leaves what links to it nothing to link to.
+      await this.saveQueue((queue) => failOrphans(queue.filter((q) => q.seq !== seq)));
       if (item.server) await putRecords(this.ws, item.entity, [item.server]);
       else if (isLocalId(item.id)) await deleteRecord(this.ws, item.entity, item.id);
       else if (navigator.onLine) await this.refetch(item.entity, item.id).catch(() => undefined);
@@ -754,8 +825,13 @@ export class OfflineSync {
   async retry(seq: number): Promise<void> {
     const item = (await outbox(this.ws)).find((q) => q.seq === seq);
     if (!item || item.state !== "failed") return;
-    await putOutbox({ ...item, state: "pending", error: undefined, retryAt: undefined });
-    await this.refreshCounts();
+    // Asked for, so it goes even if it may have arrived long ago; but not if
+    // what it links to is gone, as it would only wait for ever.
+    await this.saveQueue((queue) =>
+      failOrphans(
+        queue.map((q) => (q.seq === seq ? { ...q, state: "pending", error: undefined, retryAt: undefined, sentAt: undefined } : q)),
+      ),
+    );
     await this.syncNow();
   }
 }

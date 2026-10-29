@@ -15,8 +15,8 @@ import {
   Input,
   Label,
   Spinner,
-  applyBranding,
-  type Branding,
+  applyBrandTheme,
+  readBranding,
   relativeTime,
 } from "@onhold/ui";
 import {
@@ -364,13 +364,13 @@ function remembered(): string | null {
 
 function useBranding(branding: unknown, title: string | undefined) {
   useEffect(() => {
-    const b = branding as { colours?: Branding } | undefined;
-    if (b?.colours) applyBranding(b.colours);
+    // The keys the branding settings save, as the quote and signing pages read them.
+    if (branding) applyBrandTheme(readBranding(branding));
     if (title) document.title = title;
   }, [branding, title]);
 }
 
-function Header({
+export function Header({
   workspace,
   branding,
   title,
@@ -379,7 +379,7 @@ function Header({
   branding: unknown;
   title: string;
 }) {
-  const logo = (branding as { logo_url?: string } | null)?.logo_url;
+  const logo = readBranding(branding).logo;
   return (
     <header className="flex items-center gap-3">
       {logo && (

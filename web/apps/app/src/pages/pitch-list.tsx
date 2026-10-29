@@ -313,6 +313,10 @@ export function WhoToPitchCard({ talentId }: { talentId: string }) {
           params: { query: { item_kind: "talent", item_id: talentId, hide_resting: true, limit: 5 } },
         }),
       ),
+    // Ranking means scoring every organisation; pitches logged here refresh it
+    // themselves, so it is not run again on every visit to the talent.
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   });
   const settings = usePitchingSettings();
   const { statusOf, regionName } = lookups(settings.data);
