@@ -406,15 +406,18 @@ fn member(ctx: &Ctx) -> ApiResult<core_domain::UserId> {
         .ok_or_else(not_member)
 }
 
+/// The member's choice and mailbox; for an API key, the workspace's way.
 pub async fn me(state: &AppState, ctx: &Ctx) -> ApiResult<PitchingMe> {
     ctx.authorize(Permission::OrganisationRead)?;
-    let user = member(ctx)?;
     let mut tx = begin(state, ctx).await?;
     let (settings, _) = settings_in(&mut tx).await?;
-    let send_with = core_db::pitching::send_with(&mut tx, user)
-        .await?
-        .as_deref()
-        .and_then(PitchSendWith::parse);
+    let send_with = match member(ctx) {
+        Ok(user) => core_db::pitching::send_with(&mut tx, user)
+            .await?
+            .as_deref()
+            .and_then(PitchSendWith::parse),
+        Err(_) => None,
+    };
     let mailbox = if ctx.permissions.contains(&Permission::InboxWrite) {
         inbox::own_mailbox(&mut tx, ctx)
             .await?
