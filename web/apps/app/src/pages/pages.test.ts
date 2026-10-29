@@ -1,7 +1,8 @@
 import { safeRedirect } from "./auth.tsx";
 import { canUndo, decodeFile, isWorkbook, needsResaving, rowLabel, sheetsSummary, stripCardAttachments } from "./imports.tsx";
-import { dialable, validateListSearch } from "./crm.tsx";
-import { dayOf, happenedAt, keyFor, newKey, uniqueItems } from "./pitching.tsx";
+import { dialable } from "../phones.ts";
+import { validateListSearch } from "./crm.tsx";
+import { dayOf, happenedAt, keyFor, mailtoLink, newKey, smsLink, uniqueItems, unfilled, whatsappLink } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
 
 test("after signing in, only paths on this site are followed", () => {
@@ -117,4 +118,19 @@ test("an act on both of an organisation's lists is offered once", () => {
   const owls = { kind: "talent" as const, id: "1", name: "Owls" };
   const tour = { kind: "project" as const, id: "1", name: "Tour" };
   expect(uniqueItems([owls, tour, { ...owls }])).toEqual([owls, tour]);
+});
+
+test("a pitch opens in an email app, a text or WhatsApp ready to send", () => {
+  expect(mailtoLink("jo@club.test", "Owls & you", "Hi Jo,\nDates?")).toBe(
+    "mailto:jo@club.test?subject=Owls%20%26%20you&body=Hi%20Jo%2C%0ADates%3F",
+  );
+  expect(mailtoLink(null, "S", "B")).toBe("mailto:?subject=S&body=B");
+  expect(whatsappLink("+44 7700 900123", "Hi Jo")).toBe("https://wa.me/447700900123?text=Hi%20Jo");
+  // Without the country, WhatsApp asks who to send it to.
+  expect(whatsappLink("07700 900123", "Hi")).toBe("https://wa.me/?text=Hi");
+  expect(smsLink("+44 7700 900123", "Hi Jo")).toBe("sms:+447700900123?body=Hi%20Jo");
+});
+
+test("placeholders left in a pitch are found once each", () => {
+  expect(unfilled("Hi {firstName}, see {link} {link} {notOne} {}")).toEqual(["firstName", "link"]);
 });

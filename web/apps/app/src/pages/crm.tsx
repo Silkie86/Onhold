@@ -49,6 +49,7 @@ import { useSetup } from "../setup.ts";
 import { RelatedConversations } from "./inbox.tsx";
 import { TalentCalendarsCard } from "./talent-calendars.tsx";
 import { PortalAccessCard } from "./portal-settings.tsx";
+import { dialable } from "../phones.ts";
 import { OrganisationPitching } from "./pitching.tsx";
 
 type Entity = (typeof ENTITIES)[keyof typeof ENTITIES];
@@ -694,11 +695,6 @@ function phonesOf(c: RecordJson): string[] {
   return intl && intl.length === phones.length ? intl : phones;
 }
 
-/** What to dial: the number up to anything that is not part of it ("ext 12", "/ 0770…"). */
-export function dialable(phone: string): string {
-  const number = phone.split(/[^\d+\s().-]/)[0] ?? "";
-  return number.replace(/[^\d+]/g, "");
-}
 
 /** A contact's emails, numbers and links, each a tap away from the clipboard. */
 function QuickCopy({ contact }: { contact: RecordJson }) {
