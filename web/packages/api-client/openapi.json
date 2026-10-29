@@ -37304,7 +37304,7 @@
               "string",
               "null"
             ],
-            "description": "What it logs, a key from the workspace's actions; default the\ntemplate's, or `pitched`."
+            "description": "What it logs, a key from the workspace's actions; default the\ntemplate's, or the workspace's first action."
           }
         }
       },
@@ -37668,7 +37668,8 @@
             "type": "object",
             "required": [
               "version",
-              "countries"
+              "countries",
+              "placeholders"
             ],
             "properties": {
               "countries": {
@@ -37677,6 +37678,13 @@
                   "$ref": "#/components/schemas/CountryView"
                 },
                 "description": "Every country, for choosing which region each is in."
+              },
+              "placeholders": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Placeholder"
+                },
+                "description": "What a pitch template can say, filled in for each pitch."
               },
               "updated_at": {
                 "type": [
@@ -37703,6 +37711,22 @@
             }
           }
         ]
+      },
+      "Placeholder": {
+        "type": "object",
+        "required": [
+          "name",
+          "means"
+        ],
+        "properties": {
+          "means": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "Written in a template as `{name}`."
+          }
+        }
       },
       "Plan": {
         "type": "object",

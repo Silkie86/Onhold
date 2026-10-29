@@ -1,6 +1,6 @@
 import { safeRedirect } from "./auth.tsx";
 import { canUndo, decodeFile, isWorkbook, needsResaving, rowLabel, sheetsSummary, stripCardAttachments } from "./imports.tsx";
-import { dialable } from "../phones.ts";
+import { dialable, phonesOf } from "../phones.ts";
 import { validateListSearch } from "./crm.tsx";
 import { dayOf, happenedAt, keyFor, mailtoLink, newKey, smsLink, uniqueItems, unfilled, whatsappLink } from "./pitching.tsx";
 import { keyFrom } from "./settings.tsx";
@@ -120,6 +120,11 @@ test("an act on both of an organisation's lists is offered once", () => {
   expect(uniqueItems([owls, tour, { ...owls }])).toEqual([owls, tour]);
 });
 
+test("numbers changed offline are dialled as written, not as the server last wrote them", () => {
+  expect(phonesOf({ phones: ["07700 900123"], phones_international: ["+44 7700 900123"] })).toEqual(["+44 7700 900123"]);
+  expect(phonesOf({ phones: ["07700 900123", "0113 496 0000"], phones_international: ["+44 7700 900123"] })).toEqual(["07700 900123", "0113 496 0000"]);
+});
+
 test("a pitch opens in an email app, a text or WhatsApp ready to send", () => {
   expect(mailtoLink("jo@club.test", "Owls & you", "Hi Jo,\nDates?")).toBe(
     "mailto:jo@club.test?subject=Owls%20%26%20you&body=Hi%20Jo%2C%0ADates%3F",
@@ -128,9 +133,9 @@ test("a pitch opens in an email app, a text or WhatsApp ready to send", () => {
   expect(whatsappLink("+44 7700 900123", "Hi Jo")).toBe("https://wa.me/447700900123?text=Hi%20Jo");
   // Without the country, WhatsApp asks who to send it to.
   expect(whatsappLink("07700 900123", "Hi")).toBe("https://wa.me/?text=Hi");
-  expect(smsLink("+44 7700 900123", "Hi Jo")).toBe("sms:+447700900123?body=Hi%20Jo");
+  expect(smsLink("+44 7700 900123", "Hi Jo")).toBe("sms:+447700900123?&body=Hi%20Jo");
 });
 
 test("placeholders left in a pitch are found once each", () => {
-  expect(unfilled("Hi {firstName}, see {link} {link} {notOne} {}")).toEqual(["firstName", "link"]);
+  expect(unfilled("Hi {firstName}, see {link} {link} {notOne} {}", ["firstName", "link", "city"])).toEqual(["firstName", "link"]);
 });

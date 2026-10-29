@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT t.id\n           FROM threads t\n           LEFT JOIN integrations i ON i.workspace_id = t.workspace_id AND i.id = t.integration_id\n           WHERE t.workspace_id = app_workspace_id() AND t.id = ANY($1)\n             AND ($2::uuid IS NULL OR t.integration_id IS NULL OR i.shared OR i.owner_id = $2)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d0a693248483d9ab9d37ebb12439e5cf3b207715c3941bd96175c892b54fe005"
+}

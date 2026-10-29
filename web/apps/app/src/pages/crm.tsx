@@ -49,7 +49,7 @@ import { useSetup } from "../setup.ts";
 import { RelatedConversations } from "./inbox.tsx";
 import { TalentCalendarsCard } from "./talent-calendars.tsx";
 import { PortalAccessCard } from "./portal-settings.tsx";
-import { dialable } from "../phones.ts";
+import { dialable, phonesOf } from "../phones.ts";
 import { OrganisationPitching } from "./pitching.tsx";
 
 type Entity = (typeof ENTITIES)[keyof typeof ENTITIES];
@@ -689,11 +689,6 @@ function firstPhone(c: RecordJson): string | null {
  * A contact's numbers, with their country code when the server worked them
  * out from these numbers (a change still on this device has none yet).
  */
-function phonesOf(c: RecordJson): string[] {
-  const phones = (c.phones as string[] | undefined) ?? [];
-  const intl = c.phones_international as string[] | undefined;
-  return intl && intl.length === phones.length ? intl : phones;
-}
 
 
 /** A contact's emails, numbers and links, each a tap away from the clipboard. */
