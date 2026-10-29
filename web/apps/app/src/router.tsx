@@ -314,6 +314,17 @@ const pitchingSettings = createRoute({
   path: "/settings/pitching",
   component: lazyRouteComponent(() => import("./pages/pitching.tsx"), "PitchingSettingsPage"),
 });
+const pitchingList = createRoute({
+  getParentRoute: () => app,
+  path: "/pitching",
+  // What is pitched, as a pair.
+  validateSearch: (s: Record<string, unknown>): { kind?: "talent" | "project"; id?: string } => {
+    const kind = s.kind === "talent" || s.kind === "project" ? s.kind : undefined;
+    const id = str(s.id);
+    return kind && id ? { kind, id } : {};
+  },
+  component: lazyRouteComponent(() => import("./pages/pitch-list.tsx"), "PitchListPage"),
+});
 const pitchingFollowUps = createRoute({
   getParentRoute: () => app,
   path: "/pitching/follow-ups",
@@ -360,6 +371,7 @@ const tree = root.addChildren([
     textsSettings,
     followUpsSettings,
     pitchingSettings,
+    pitchingList,
     pitchingFollowUps,
     sendingDomain,
     brandingSettings,

@@ -16211,6 +16211,258 @@
         ]
       }
     },
+    "/api/v1/pitching/list": {
+      "get": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "The pitching list: organisations to pitch something to (or anything,\nwith no item), where each stands with it, and the \"best to pitch first\"\nranking with its reasons. Those marked do not contact are never listed;\nthose resting after an answer, or waiting for one, come last, greyed.",
+        "operationId": "pitch_list",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "item_kind",
+            "in": "query",
+            "description": "What is pitched: `talent` or `project`, with `item_id`.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ItemKind"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Words in the name, type or tags.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "description": "A region key from the pitching settings.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "An ISO country code.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "A status key from the pitching settings.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "relationship",
+            "in": "query",
+            "description": "`client` or `prospect`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "pitch_status",
+            "in": "query",
+            "description": "Only those standing this way with what is pitched.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/PitchStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "hide_resting",
+            "in": "query",
+            "description": "Leave out organisations resting after an answer, or waiting for one.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "description": "How to order the list.",
+                  "enum": [
+                    "rank",
+                    "name"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1 to 200; default 50.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PitchList"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/pitching/me": {
       "get": {
         "tags": [
@@ -36898,6 +37150,24 @@
           }
         }
       },
+      "OwnReason": {
+        "type": "object",
+        "description": "A reason of the workspace's own: organisations with this tag are worth\nso many points more (or fewer).",
+        "required": [
+          "tag",
+          "points"
+        ],
+        "properties": {
+          "points": {
+            "type": "integer",
+            "format": "int32",
+            "description": "-100 to 100."
+          },
+          "tag": {
+            "type": "string"
+          }
+        }
+      },
       "PasswordChangeRequest": {
         "type": "object",
         "required": [
@@ -37549,6 +37819,144 @@
           "outcome"
         ]
       },
+      "PitchList": {
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "capped"
+        ],
+        "properties": {
+          "capped": {
+            "type": "boolean",
+            "description": "More organisations matched than OnHold looks at in one go; narrow\nthe list with a filter to see them all."
+          },
+          "item": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemRef",
+                "description": "What is pitched, when one is picked."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PitchListRow"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many match in all."
+          }
+        }
+      },
+      "PitchListRow": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "name",
+          "pitch_status",
+          "score",
+          "reasons",
+          "resting"
+        ],
+        "properties": {
+          "but": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RankLine",
+                "description": "The strongest reason against, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "city": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "follow_up_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "name": {
+            "type": "string"
+          },
+          "organisation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pitch_status": {
+            "$ref": "#/components/schemas/PitchStatus"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RankLine"
+            },
+            "description": "What counts for it, best first."
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The region it is in, picked or from its country."
+          },
+          "relationship": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rest_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resting": {
+            "type": "boolean",
+            "description": "Resting after an answer or waiting for one: shown greyed and last."
+          },
+          "resting_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "Until when (none: not again, after an answer tagged never)."
+          },
+          "score": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its status, a key from the pitching settings."
+          }
+        }
+      },
       "PitchMessage": {
         "type": "object",
         "description": "A pitch sent from OnHold: its thread in the inbox, and whether it went.",
@@ -37586,6 +37994,14 @@
           },
           "label": {
             "type": "string"
+          },
+          "rest_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Days to leave them be after this answer before pitching the same\nthing again, 0 for no wait; left out, the tag's usual wait. An answer\ntagged never is never followed by another pitch of the same thing."
           },
           "tag": {
             "$ref": "#/components/schemas/OutcomeTag"
@@ -37740,6 +38156,19 @@
           "onhold",
           "mail_app",
           "copy"
+        ]
+      },
+      "PitchStatus": {
+        "type": "string",
+        "description": "Where an organisation stands with what is pitched.",
+        "enum": [
+          "booked",
+          "awaiting",
+          "interested",
+          "tried",
+          "pitched",
+          "match",
+          "not_pitched"
         ]
       },
       "PitchTemplate": {
@@ -38019,6 +38448,20 @@
             },
             "description": "The answers a pitch can get."
           },
+          "own_reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OwnReason"
+            },
+            "description": "The workspace's own reasons, from tags."
+          },
+          "ranking": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RankWeight"
+            },
+            "description": "What each reason in the \"best to pitch first\" ranking is worth."
+          },
           "regions": {
             "type": "array",
             "items": {
@@ -38089,6 +38532,24 @@
             ],
             "items": {
               "$ref": "#/components/schemas/PitchOutcome"
+            }
+          },
+          "own_reasons": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/OwnReason"
+            }
+          },
+          "ranking": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RankWeight"
             }
           },
           "regions": {
@@ -40055,6 +40516,68 @@
               "null"
             ],
             "format": "date-time"
+          }
+        }
+      },
+      "RankLine": {
+        "type": "object",
+        "description": "One reason in the ranking, and what it is worth.",
+        "required": [
+          "label",
+          "points"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "points": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RankReason",
+                "description": "Which reason; none for one of the workspace's own (from a tag)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RankReason": {
+        "type": "string",
+        "description": "A reason one organisation is better to pitch than another, worth so\nmany points (less than 0 counts against).",
+        "enum": [
+          "asked_about",
+          "potential_match",
+          "booked_before",
+          "client",
+          "same_taste",
+          "nearby",
+          "said_yes",
+          "no_answer",
+          "said_no",
+          "no_way_to_reach"
+        ]
+      },
+      "RankWeight": {
+        "type": "object",
+        "description": "What a reason is worth; 0 switches it off.",
+        "required": [
+          "reason",
+          "points"
+        ],
+        "properties": {
+          "points": {
+            "type": "integer",
+            "format": "int32",
+            "description": "-100 to 100."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/RankReason"
           }
         }
       },

@@ -33,6 +33,9 @@ pub const MAX_TEMPLATE_SUBJECT: usize = 300;
 pub const MAX_TEMPLATE_BODY: usize = 5000;
 pub const MAX_FOLLOW_UPS: usize = 10;
 pub const MAX_FOLLOW_UP_DAYS: i32 = 365;
+pub const MAX_REST_DAYS: i32 = 3650;
+pub const MAX_OWN_REASONS: usize = 30;
+pub const MAX_POINTS: i32 = 100;
 
 /// A part of the world, by the countries in it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -126,6 +129,97 @@ pub struct PitchOutcome {
     pub key: String,
     pub label: String,
     pub tag: OutcomeTag,
+    /// Days to leave them be after this answer before pitching the same
+    /// thing again, 0 for no wait; left out, the tag's usual wait. An answer
+    /// tagged never is never followed by another pitch of the same thing.
+    #[serde(default)]
+    pub rest_days: Option<i32>,
+}
+
+impl PitchOutcome {
+    /// Days to rest after this answer; `None` for never again.
+    pub fn rest(&self) -> Option<i32> {
+        match self.tag {
+            OutcomeTag::Never => None,
+            OutcomeTag::Good => Some(self.rest_days.unwrap_or(0)),
+            OutcomeTag::Wait => Some(self.rest_days.unwrap_or(90)),
+            OutcomeTag::No => Some(self.rest_days.unwrap_or(180)),
+        }
+    }
+}
+
+/// A reason one organisation is better to pitch than another, worth so
+/// many points (less than 0 counts against).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RankReason {
+    /// The item is on their "interested in" list.
+    AskedAbout,
+    /// The item is on their "potential matches" list.
+    PotentialMatch,
+    /// They booked the item before.
+    BookedBefore,
+    /// They are a client: they have booked through the workspace.
+    Client,
+    /// One of the item's tags is among theirs, or the acts they book.
+    SameTaste,
+    /// The item has a date in their city soon.
+    Nearby,
+    /// Their last answer was a good one.
+    SaidYes,
+    /// The last pitch went unanswered.
+    NoAnswer,
+    /// Their last answer was a no, now rested.
+    SaidNo,
+    /// Nobody there has an email address or a phone number.
+    NoWayToReach,
+}
+
+impl RankReason {
+    pub const ALL: [RankReason; 10] = [
+        RankReason::AskedAbout,
+        RankReason::PotentialMatch,
+        RankReason::BookedBefore,
+        RankReason::Client,
+        RankReason::SameTaste,
+        RankReason::Nearby,
+        RankReason::SaidYes,
+        RankReason::NoAnswer,
+        RankReason::SaidNo,
+        RankReason::NoWayToReach,
+    ];
+
+    pub fn default_points(self) -> i32 {
+        match self {
+            RankReason::AskedAbout => 40,
+            RankReason::PotentialMatch => 25,
+            RankReason::BookedBefore => 30,
+            RankReason::Client => 10,
+            RankReason::SameTaste => 15,
+            RankReason::Nearby => 20,
+            RankReason::SaidYes => 20,
+            RankReason::NoAnswer => -10,
+            RankReason::SaidNo => -20,
+            RankReason::NoWayToReach => -30,
+        }
+    }
+}
+
+/// What a reason is worth; 0 switches it off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct RankWeight {
+    pub reason: RankReason,
+    /// -100 to 100.
+    pub points: i32,
+}
+
+/// A reason of the workspace's own: organisations with this tag are worth
+/// so many points more (or fewer).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct OwnReason {
+    pub tag: String,
+    /// -100 to 100.
+    pub points: i32,
 }
 
 /// Something done to win them over: pitched, followed up, called…
@@ -214,6 +308,12 @@ pub struct PitchingSettings {
     /// 0 never asks.
     #[serde(default = "default_give_up_days")]
     pub give_up_after_days: i32,
+    /// What each reason in the "best to pitch first" ranking is worth.
+    #[serde(default = "default_ranking")]
+    pub ranking: Vec<RankWeight>,
+    /// The workspace's own reasons, from tags.
+    #[serde(default)]
+    pub own_reasons: Vec<OwnReason>,
 }
 
 /// New settings. A list left out keeps what is stored, so a client from
@@ -229,6 +329,8 @@ pub struct PitchingSettingsInput {
     pub send_with: Option<PitchSendWith>,
     pub follow_ups: Option<Vec<FollowUpStep>>,
     pub give_up_after_days: Option<i32>,
+    pub ranking: Option<Vec<RankWeight>>,
+    pub own_reasons: Option<Vec<OwnReason>>,
 }
 
 impl PitchingSettingsInput {
@@ -256,6 +358,8 @@ impl PitchingSettingsInput {
             send_with: self.send_with.unwrap_or(stored.send_with),
             follow_ups,
             give_up_after_days: self.give_up_after_days.unwrap_or(stored.give_up_after_days),
+            ranking: self.ranking.unwrap_or(stored.ranking),
+            own_reasons: self.own_reasons.unwrap_or(stored.own_reasons),
         }
     }
 }
@@ -272,6 +376,8 @@ impl Default for PitchingSettings {
             send_with: default_send_with(),
             follow_ups: default_follow_ups(),
             give_up_after_days: default_give_up_days(),
+            ranking: default_ranking(),
+            own_reasons: Vec::new(),
         }
     }
 }
@@ -327,17 +433,18 @@ fn default_items() -> Vec<ItemKind> {
 }
 
 fn default_outcomes() -> Vec<PitchOutcome> {
-    let o = |key: &str, label: &str, tag| PitchOutcome {
+    let o = |key: &str, label: &str, tag, rest_days| PitchOutcome {
         key: key.into(),
         label: label.into(),
         tag,
+        rest_days,
     };
     vec![
-        o("interested", "Interested or yes", OutcomeTag::Good),
-        o("not_now", "Not now", OutcomeTag::Wait),
-        o("no", "No", OutcomeTag::No),
-        o("not_a_fit", "Not a fit", OutcomeTag::Never),
-        o("no_answer", "No answer", OutcomeTag::Wait),
+        o("interested", "Interested or yes", OutcomeTag::Good, Some(0)),
+        o("not_now", "Not now", OutcomeTag::Wait, Some(90)),
+        o("no", "No", OutcomeTag::No, Some(180)),
+        o("not_a_fit", "Not a fit", OutcomeTag::Never, None),
+        o("no_answer", "No answer", OutcomeTag::Wait, Some(60)),
     ]
 }
 
@@ -405,6 +512,34 @@ fn default_give_up_days() -> i32 {
     14
 }
 
+fn default_ranking() -> Vec<RankWeight> {
+    RankReason::ALL
+        .iter()
+        .map(|&reason| RankWeight {
+            reason,
+            points: reason.default_points(),
+        })
+        .collect()
+}
+
+/// One weight per reason, in OnHold's order: any missing (a reason added
+/// in a later release) at its usual points, and any repeat dropped.
+fn settle_ranking(weights: &mut Vec<RankWeight>) {
+    *weights = RankReason::ALL
+        .iter()
+        .map(|&reason| {
+            weights
+                .iter()
+                .find(|w| w.reason == reason)
+                .copied()
+                .unwrap_or(RankWeight {
+                    reason,
+                    points: reason.default_points(),
+                })
+        })
+        .collect();
+}
+
 /// Drops follow-ups logging an action no longer listed, and lets one whose
 /// template is gone become a reminder.
 fn settle_follow_ups(
@@ -459,6 +594,14 @@ impl PitchingSettings {
 
     pub fn template(&self, key: &str) -> Option<&PitchTemplate> {
         self.templates.iter().find(|t| t.key == key)
+    }
+
+    /// What a ranking reason is worth.
+    pub fn points(&self, reason: RankReason) -> i32 {
+        self.ranking
+            .iter()
+            .find(|w| w.reason == reason)
+            .map_or_else(|| reason.default_points(), |w| w.points)
     }
 }
 
@@ -557,10 +700,17 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
             outcomes.iter().any(|x| x.key == k)
         });
         let label = check.required(&format!("outcomes[{i}].label"), &o.label, 60);
+        if o.rest_days.is_some_and(|d| !(0..=MAX_REST_DAYS).contains(&d)) {
+            check.issue(
+                format!("outcomes[{i}].rest_days"),
+                format!("give 0 to {MAX_REST_DAYS} days"),
+            );
+        }
         outcomes.push(PitchOutcome {
             key,
             label,
             tag: o.tag,
+            rest_days: o.rest_days,
         });
     }
     if input.actions.is_empty() || input.actions.len() > MAX_ACTIONS {
@@ -668,6 +818,39 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
             format!("give 0 to {MAX_FOLLOW_UP_DAYS} days"),
         );
     }
+    let mut ranking = input.ranking.clone();
+    for (i, w) in ranking.iter().enumerate() {
+        if !(-MAX_POINTS..=MAX_POINTS).contains(&w.points) {
+            check.issue(
+                format!("ranking[{i}].points"),
+                format!("give -{MAX_POINTS} to {MAX_POINTS} points"),
+            );
+        }
+    }
+    settle_ranking(&mut ranking);
+    if input.own_reasons.len() > MAX_OWN_REASONS {
+        check.issue(
+            "own_reasons",
+            format!("give at most {MAX_OWN_REASONS} reasons of your own"),
+        );
+    }
+    let mut own_reasons: Vec<OwnReason> = Vec::new();
+    for (i, r) in input.own_reasons.iter().enumerate() {
+        let tag = check.required(&format!("own_reasons[{i}].tag"), &r.tag, 60);
+        if own_reasons.iter().any(|x| x.tag.eq_ignore_ascii_case(&tag)) {
+            check.issue(format!("own_reasons[{i}].tag"), "is used twice");
+        }
+        if !(-MAX_POINTS..=MAX_POINTS).contains(&r.points) {
+            check.issue(
+                format!("own_reasons[{i}].points"),
+                format!("give -{MAX_POINTS} to {MAX_POINTS} points"),
+            );
+        }
+        own_reasons.push(OwnReason {
+            tag,
+            points: r.points,
+        });
+    }
     check.finish()?;
     Ok(PitchingSettings {
         regions,
@@ -679,6 +862,8 @@ fn check_settings(input: PitchingSettings) -> ApiResult<PitchingSettings> {
         send_with: input.send_with,
         follow_ups,
         give_up_after_days: input.give_up_after_days,
+        ranking,
+        own_reasons,
     })
 }
 
@@ -702,6 +887,7 @@ pub(crate) async fn settings_in(tx: &mut Tx) -> ApiResult<(PitchingSettings, i64
                 &settings.actions,
                 &settings.templates,
             );
+            settle_ranking(&mut settings.ranking);
             (settings, row.version)
         }
         None => (PitchingSettings::default(), 0),
