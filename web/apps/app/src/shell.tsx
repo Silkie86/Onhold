@@ -22,6 +22,7 @@ import {
 import {
   Building2,
   BellRing,
+  CalendarClock,
   BookOpenCheck,
   CalendarCheck,
   CalendarDays,
@@ -116,6 +117,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
       { to: "/crm/contacts", label: "Contacts", icon: <Contact /> },
       { to: "/crm/organisations", label: "Organisations", icon: <Building2 /> },
       { to: "/crm/talent", label: "Talent", icon: <Mic2 />, word: ["crm", "talent"] },
+      { to: "/pitching/follow-ups", label: "Follow-ups due", icon: <CalendarClock />, module: "pitching" },
     ],
   },
   {

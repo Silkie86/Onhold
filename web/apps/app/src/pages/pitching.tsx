@@ -48,6 +48,8 @@ type PitchChannel = Schemas["PitchChannel"];
 type PitchTemplate = Schemas["PitchTemplate"];
 type SendWith = Schemas["PitchSendWith"];
 type Unlogged = Schemas["UnloggedMail"];
+type FollowUpStep = Schemas["FollowUpStep"];
+type Due = Schemas["DueFollowUp"];
 
 const COLOURS: Colour[] = ["green", "amber", "red", "grey", "blue", "purple"];
 const MEANINGS: { value: Meaning; label: string }[] = [
@@ -159,6 +161,8 @@ function SettingsForm({
   const [actions, setActions] = useState<ActionType[]>(saved.actions ?? []);
   const [templates, setTemplates] = useState<PitchTemplate[]>(saved.templates ?? []);
   const [sendWith, setSendWith] = useState<SendWith>(saved.send_with ?? "onhold");
+  const [followUps, setFollowUps] = useState<FollowUpStep[]>(saved.follow_ups ?? []);
+  const [giveUp, setGiveUp] = useState(saved.give_up_after_days ?? 14);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -211,7 +215,7 @@ function SettingsForm({
       const after = await ok(
         api.PUT("/api/v1/pitching/settings", {
           headers: { "If-Match": `"${saved.version}"` },
-          body: { regions, statuses, items, outcomes, actions, templates, send_with: sendWith },
+          body: { regions, statuses, items, outcomes, actions, templates, send_with: sendWith, follow_ups: followUps, give_up_after_days: giveUp },
         }),
       );
       onSaved();
@@ -447,8 +451,14 @@ function SettingsForm({
                   variant="ghost"
                   size="icon"
                   aria-label={`Remove ${a.label || "action"}`}
-                  disabled={templates.some((t) => t.action === a.key)}
-                  title={templates.some((t) => t.action === a.key) ? "A pitch template logs this; change the template first." : undefined}
+                  disabled={templates.some((t) => t.action === a.key) || followUps.some((f) => f.action === a.key)}
+                  title={
+                    templates.some((t) => t.action === a.key)
+                      ? "A pitch template logs this; change the template first."
+                      : followUps.some((f) => f.action === a.key)
+                        ? "A follow-up logs this; change the follow-up first."
+                        : undefined
+                  }
                   onClick={() => {
                     changed();
                     setActions((xs) => xs.filter((_, j) => j !== i));
@@ -550,6 +560,8 @@ function SettingsForm({
                       onClick={() => {
                         changed();
                         setTemplates((xs) => xs.filter((_, j) => j !== i));
+                        // A follow-up that sent it becomes a reminder.
+                        setFollowUps((fs) => fs.map((f) => (f.template_key === t.key ? { ...f, template_key: null } : f)));
                       }}
                     >
                       <Trash2 />
@@ -593,6 +605,133 @@ function SettingsForm({
             </Button>
           </div>
         )}
+      </Card>
+
+      <Card className="flex flex-col gap-4 p-5 text-sm">
+        <h2 className="font-semibold">Follow-ups</h2>
+        <p className="text-muted-foreground">
+          What to do next when a pitch gets no answer, each so many days after the last thing done. With a template it's a message to send; without,
+          a reminder. An answer stops them. They show under Follow-ups due, and nothing goes without you sending it.
+        </p>
+        <ol className="flex flex-col gap-3">
+          {followUps.map((f, i) => {
+            const set = (patch: Partial<FollowUpStep>) => {
+              changed();
+              setFollowUps((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+            };
+            return (
+              <li key={i} className="flex flex-wrap items-end gap-2 rounded-md border p-3">
+                <span className="w-full font-medium">Follow-up {i + 1}</span>
+                <div className="flex w-28 flex-col gap-1">
+                  <Label htmlFor={`follow-up-${i}-days`}>Days after</Label>
+                  <Input
+                    id={`follow-up-${i}-days`}
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={f.after_days}
+                    disabled={!admin}
+                    onChange={(e) => set({ after_days: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="flex w-36 flex-col gap-1">
+                  <Label htmlFor={`follow-up-${i}-channel`}>How</Label>
+                  <NativeSelect
+                    id={`follow-up-${i}-channel`}
+                    value={f.channel}
+                    disabled={!admin}
+                    onChange={(e) => set({ channel: e.target.value as PitchChannel })}
+                  >
+                    {CHANNELS.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+                <div className="flex w-44 flex-col gap-1">
+                  <Label htmlFor={`follow-up-${i}-template`}>Send</Label>
+                  <NativeSelect
+                    id={`follow-up-${i}-template`}
+                    value={f.template_key ?? ""}
+                    disabled={!admin}
+                    onChange={(e) => {
+                      const t = templates.find((x) => x.key === e.target.value);
+                      set({ template_key: t?.key ?? null, ...(t && { action: t.action }) });
+                    }}
+                  >
+                    <option value="">Nothing: a reminder</option>
+                    {templates.map((t) => (
+                      <option key={t.key} value={t.key}>
+                        {t.name || "Unnamed template"}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+                <div className="flex w-44 flex-col gap-1">
+                  <Label htmlFor={`follow-up-${i}-action`}>Logs as</Label>
+                  <NativeSelect id={`follow-up-${i}-action`} value={f.action} disabled={!admin} onChange={(e) => set({ action: e.target.value })}>
+                    {!actions.some((a) => a.key === f.action) && <option value={f.action}>Choose an action</option>}
+                    {actions.map((a) => (
+                      <option key={a.key} value={a.key}>
+                        {a.label || "Unnamed action"}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+                {admin && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Remove follow-up ${i + 1}`}
+                    onClick={() => {
+                      changed();
+                      setFollowUps((xs) => xs.filter((_, j) => j !== i));
+                    }}
+                  >
+                    <Trash2 />
+                  </Button>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+        {followUps.length === 0 && <p className="text-muted-foreground">No follow-ups: pitches wait for an answer.</p>}
+        {admin && followUps.length < 10 && (
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                changed();
+                const t = templates.find((x) => x.action !== templates[0]?.action) ?? null;
+                setFollowUps((xs) => [
+                  ...xs,
+                  { after_days: 7, channel: "email", action: t?.action ?? actions[0]?.key ?? "", template_key: t?.key ?? null },
+                ]);
+              }}
+            >
+              <Plus /> Add a follow-up
+            </Button>
+          </div>
+        )}
+        <label className="flex flex-wrap items-center gap-2">
+          After the last one, ask what came of it after
+          <Input
+            type="number"
+            aria-label="Days after the last follow-up"
+            className="w-20"
+            min={0}
+            max={365}
+            value={giveUp}
+            disabled={!admin}
+            onChange={(e) => {
+              changed();
+              setGiveUp(Number(e.target.value));
+            }}
+          />
+          days (0 never asks).
+        </label>
       </Card>
 
       <Card className="flex flex-col gap-4 p-5 text-sm">
@@ -910,6 +1049,198 @@ export function uniqueItems(items: ItemRef[]): ItemRef[] {
     seen.add(key);
     return true;
   });
+}
+
+/** When a follow-up is due, from today. */
+export function dueLabel(dueOn: string, today: string): string {
+  const days = Math.round((Date.parse(`${dueOn}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+  if (days === 0) return "Due today";
+  if (days === -1) return "Due yesterday";
+  if (days < 0) return `${-days} days overdue`;
+  if (days === 1) return "Due tomorrow";
+  return `Due in ${days} days`;
+}
+
+/** What a follow-up is, in a few words. */
+export function dueWhat(d: Due, templates: PitchTemplate[]): string {
+  if (d.kind === "date") return "The follow-up date you set";
+  if (d.kind === "no_answer") return "No answer after the follow-ups: what came of it?";
+  const how = CHANNELS.find((c) => c.value === d.channel)?.label ?? "Follow up";
+  const t = templates.find((x) => x.key === d.template_key);
+  const step = d.steps > 1 ? `Follow-up ${d.step} of ${d.steps}` : "Follow-up";
+  return t ? `${step}: ${how}, "${t.name}"` : `${step}: ${how} (${d.action_label ?? "reminder"})`;
+}
+
+/** Everything due to follow up, soonest first, with what to do about each. */
+export function FollowUpsDuePage() {
+  const settings = usePitchingSettings();
+  const [ahead, setAhead] = useState(0);
+  const due = useQuery({
+    queryKey: ["follow-ups", "due", ahead],
+    queryFn: () => ok(api.GET("/api/v1/pitching/follow-ups", { params: { query: { days_ahead: ahead } } })),
+  });
+  return (
+    <div className="mx-auto flex max-w-3xl flex-col gap-4 p-4 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold">Follow-ups due</h1>
+        <NativeSelect aria-label="Show" className="w-48" value={ahead} onChange={(e) => setAhead(Number(e.target.value))}>
+          <option value={0}>Due now</option>
+          <option value={7}>And the next 7 days</option>
+          <option value={30}>And the next 30 days</option>
+        </NativeSelect>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Pitches with no answer yet, by the follow-ups in{" "}
+        <Link to="/settings/pitching" className="underline">
+          Settings → Pitching
+        </Link>
+        , and organisations given a follow-up date.
+      </p>
+      {due.isPending || settings.isPending ? (
+        <Spinner />
+      ) : due.isError ? (
+        <Alert>{due.error.message}</Alert>
+      ) : due.data.length === 0 ? (
+        <Card className="p-5 text-sm text-muted-foreground">Nothing to follow up. Pitches waiting on an answer show here when their next step is due.</Card>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {due.data.map((d) => (
+            <DueRow key={`${d.organisation_id}:${d.kind}`} due={d} settings={settings.data} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function DueRow({ due: d, settings }: { due: Due; settings: View | undefined }) {
+  const qc = useQueryClient();
+  const sync = useOffline();
+  const [pitching, setPitching] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const people = useQuery({
+    queryKey: ["list", "contact", "org", d.organisation_id],
+    queryFn: async () => (await fetchList(sync, "contact", { organisation_id: d.organisation_id, limit: 100 })).data,
+    enabled: pitching,
+  });
+  const today = dayOf(new Date().toISOString());
+  const overdue = d.due_on < today;
+  const done = () => {
+    void qc.invalidateQueries({ queryKey: ["follow-ups"] });
+    void qc.invalidateQueries({ queryKey: ["pitches", d.organisation_id] });
+  };
+  const run = async (call: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await call();
+      done();
+    } catch (e) {
+      setError(failure(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  // A reminder done: logged as its action.
+  const logStep = () =>
+    run(() =>
+      ok(
+        api.POST("/api/v1/pitches", {
+          body: {
+            organisation_id: d.organisation_id,
+            kind: "action",
+            type_key: d.action ?? "",
+            channel: d.channel ?? null,
+            contact_id: d.contact_id ?? null,
+            item: d.item ? { kind: d.item.kind, id: d.item.id } : null,
+          },
+        }),
+      ),
+    );
+  const logOutcome = (o: Outcome) =>
+    run(() =>
+      ok(
+        api.POST("/api/v1/pitches", {
+          body: {
+            organisation_id: d.organisation_id,
+            kind: "outcome",
+            type_key: o.key,
+            contact_id: d.contact_id ?? null,
+            item: d.item ? { kind: d.item.kind, id: d.item.id } : null,
+          },
+        }),
+      ),
+    );
+  // A date set by hand, done: cleared.
+  const clearDate = () =>
+    run(async () => {
+      const org = await ok(api.GET("/api/v1/organisations/{id}", { params: { path: { id: d.organisation_id } } }));
+      await ok(
+        api.PATCH("/api/v1/organisations/{id}", {
+          params: { path: { id: d.organisation_id } },
+          headers: { "If-Match": `"${String((org as RecordJson).version)}"` },
+          body: { follow_up_on: null },
+        }),
+      );
+    });
+
+  return (
+    <li className="flex flex-col gap-2 rounded-md border bg-card p-3 text-sm">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <Link to="/crm/$entity/$id" params={{ entity: "organisations", id: d.organisation_id }} className="font-medium underline">
+            {d.organisation_name}
+          </Link>
+          <span>{dueWhat(d, settings?.templates ?? [])}</span>
+          <span className="text-muted-foreground">
+            {[d.contact_name, d.item?.name, d.last_action_at && `last done ${new Date(d.last_action_at).toLocaleDateString()}`]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        </div>
+        <Badge className={overdue ? "text-destructive" : undefined}>{dueLabel(d.due_on, today)}</Badge>
+      </div>
+      {error && <Alert>{error}</Alert>}
+      <div className="flex flex-wrap items-center gap-2">
+        {d.kind === "step" && d.template_key && (
+          <Button size="sm" disabled={busy || !settings} onClick={() => setPitching(true)}>
+            <Send /> Write it
+          </Button>
+        )}
+        {d.kind === "step" && (
+          <Button size="sm" variant={d.template_key ? "outline" : "default"} disabled={busy} onClick={() => void logStep()}>
+            {d.template_key ? "I've sent it" : `Done: log "${d.action_label ?? "it"}"`}
+          </Button>
+        )}
+        {d.kind === "no_answer" &&
+          (settings?.outcomes ?? []).map((o) => (
+            <Button key={o.key} variant="outline" size="sm" disabled={busy} onClick={() => void logOutcome(o)}>
+              <StatusDot colour={TAG_COLOUR[o.tag]} label={o.label} />
+            </Button>
+          ))}
+        {d.kind === "date" && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => void clearDate()}>
+            Done: clear the date
+          </Button>
+        )}
+      </div>
+      {pitching && settings && people.data && (
+        <PitchDialog
+          organisationId={d.organisation_id}
+          settings={settings}
+          people={people.data.items.map(person)}
+          items={d.item ? [d.item] : []}
+          initial={{ template: d.template_key ?? null, contact: d.contact_id ?? null, item: d.item ?? null }}
+          onClose={() => setPitching(false)}
+          onLogged={() => {
+            setPitching(false);
+            done();
+          }}
+        />
+      )}
+    </li>
+  );
 }
 
 /**
@@ -1256,6 +1587,7 @@ function PitchDialog({
   settings,
   people,
   items,
+  initial,
   onClose,
   onLogged,
 }: {
@@ -1263,6 +1595,8 @@ function PitchDialog({
   settings: View;
   people: Person[];
   items: ItemRef[];
+  /** A follow-up's template, person and item, to start from. */
+  initial?: { template: string | null; contact: string | null; item: ItemRef | null };
   onClose: () => void;
   onLogged: () => void;
 }) {
@@ -1270,9 +1604,11 @@ function PitchDialog({
   const qc = useQueryClient();
   const templates = settings.templates ?? [];
   const me = useQuery({ queryKey: ["pitching-me"], queryFn: () => ok(api.GET("/api/v1/pitching/me")) });
-  const [contact, setContact] = useState(() => (people.find((p) => p.email) ?? people[0])?.id ?? "");
-  const [item, setItem] = useState<ItemRef | null>(items[0] ?? null);
-  const [template, setTemplate] = useState(templates[0]?.key ?? "");
+  const [contact, setContact] = useState(
+    () => (initial?.contact && people.some((p) => p.id === initial.contact) ? initial.contact : (people.find((p) => p.email) ?? people[0])?.id) ?? "",
+  );
+  const [item, setItem] = useState<ItemRef | null>(initial ? initial.item : (items[0] ?? null));
+  const [template, setTemplate] = useState(initial ? (initial.template ?? "") : (templates[0]?.key ?? ""));
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
