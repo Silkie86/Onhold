@@ -966,7 +966,7 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
         </div>
         {canWrite && settings.data && (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => setPitching(true)}>
+            <Button size="sm" disabled={!people.data} onClick={() => setPitching(true)}>
               <Send /> Pitch
             </Button>
             <Button variant="outline" size="sm" onClick={() => setEditing("action")}>
@@ -1191,6 +1191,8 @@ function PitchDialog({
           },
         }),
       );
+      // It shows among the organisation's and the person's conversations.
+      void qc.invalidateQueries({ queryKey: ["threads"] });
       onLogged();
     } catch (e) {
       setError(failure(e));
@@ -1265,7 +1267,17 @@ function PitchDialog({
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="pitch-template">Template</Label>
-            <NativeSelect id="pitch-template" value={template} onChange={(e) => setTemplate(e.target.value)}>
+            <NativeSelect
+              id="pitch-template"
+              value={template}
+              onChange={(e) => {
+                setTemplate(e.target.value);
+                if (e.target.value === "") {
+                  setSubject("");
+                  setBody("");
+                }
+              }}
+            >
               {templates.map((t) => (
                 <option key={t.key} value={t.key}>
                   {t.name}
@@ -1320,7 +1332,7 @@ function PitchDialog({
             <span className="font-medium">Did you send it?</span>
             {asked === "copy" && (
               <NativeSelect aria-label="How you sent it" value={askedChannel} onChange={(e) => setAskedChannel(e.target.value as PitchChannel | "")}>
-                <option value="">Not saying</option>
+                <option value="">How you sent it (optional)</option>
                 {CHANNELS.map((c) => (
                   <option key={c.value} value={c.value}>
                     {c.label}
@@ -1373,10 +1385,8 @@ function PitchDialog({
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
           <label className="flex items-center gap-2 text-muted-foreground">
             Usually I
-            <NativeSelect aria-label="How you usually pitch" className="w-56" value={me.data?.send_with ?? ""} onChange={(e) => void setUsual(e.target.value as SendWith | "")}>
-              <option value="">
-                Use the workspace's way ({SEND_WITH.find((w) => w.value === (me.data?.workspace_send_with ?? "onhold"))?.label.toLowerCase()})
-              </option>
+            <NativeSelect aria-label="How you usually pitch" className="w-60" value={me.data?.send_with ?? ""} onChange={(e) => void setUsual(e.target.value as SendWith | "")}>
+              <option value="">Do as the workspace does</option>
               {SEND_WITH.map((w) => (
                 <option key={w.value} value={w.value}>
                   {w.label}

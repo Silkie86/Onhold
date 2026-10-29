@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE pitch_log SET contact_id = $2, type_key = $3, channel = $4, talent_id = $5, project_id = $6,\n                  note = $7, happened_at = $8, template_key = $9, updated_by = $10\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Timestamptz",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2d2b25c384b2b6fcc3d8996181ea1270e818c2cfc6e2ffa3083a0a5f87e3d770"
+}

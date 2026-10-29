@@ -1,7 +1,8 @@
 //! The pitch log: what was done to win an organisation over (pitched,
 //! followed up, called… from the workspace's own list of actions) and the
-//! answers it gave (from its own list of outcomes). Logged by hand here;
-//! everything later in pitching (follow-ups, rest periods, the ranking)
+//! answers it gave (from its own list of outcomes). Logged by hand here, or
+//! by sending a pitch from OnHold ([`super::pitch_sending`]); everything
+//! later in pitching (follow-ups, rest periods, the ranking)
 //! reads it, so a hand-logged entry counts the same as any other.
 
 use chrono::{DateTime, Duration, Utc};
