@@ -13894,6 +13894,103 @@
         ]
       }
     },
+    "/api/v1/organisations/{id}/pitches/draft": {
+      "post": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "A pitch template filled in for a person at the organisation and what is\npitched to them, to change before sending. Placeholders with nothing to\nfill them stay in the text and are listed in `missing`.",
+        "operationId": "draft_pitch",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PitchDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PitchDraft"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/organisations/{id}/timeline": {
       "get": {
         "tags": [
@@ -15622,6 +15719,96 @@
         ]
       }
     },
+    "/api/v1/pitches/send": {
+      "post": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "Send a pitch by email from OnHold, through your own mailbox if you\nconnected one, and log it. Its answers arrive in the inbox.",
+        "operationId": "send_pitch",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PitchSend"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PitchView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/pitches/{id}": {
       "delete": {
         "tags": [
@@ -15762,6 +15949,125 @@
             }
           },
           "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pitching/me": {
+      "get": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "How you send a pitch, over the workspace's default, and the mailbox\nsending from OnHold uses.",
+        "operationId": "get_me",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PitchingMe"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "Pick how you send a pitch; `null` follows the workspace's default.",
+        "operationId": "set_me",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PitchingMePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PitchingMe"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
             "content": {
               "application/json": {
                 "schema": {
@@ -35379,6 +35685,13 @@
             "type": "string",
             "format": "uuid"
           },
+          "template_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The pitch template it was written from, if any."
+          },
           "type_key": {
             "type": "string",
             "description": "A key from the workspace's actions or outcomes, as `kind` says."
@@ -36729,6 +37042,80 @@
           "other"
         ]
       },
+      "PitchDraft": {
+        "type": "object",
+        "description": "A pitch template filled in, to change before it goes.",
+        "required": [
+          "template_key",
+          "action",
+          "subject",
+          "body",
+          "missing"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "What sending it logs."
+          },
+          "body": {
+            "type": "string"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where it can go: the person's first email address and phone number."
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Placeholders nothing filled in, left in the text to fill by hand."
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "template_key": {
+            "type": "string"
+          }
+        }
+      },
+      "PitchDraftRequest": {
+        "type": "object",
+        "required": [
+          "template_key"
+        ],
+        "properties": {
+          "contact_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "item": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "template_key": {
+            "type": "string"
+          }
+        }
+      },
       "PitchKind": {
         "type": "string",
         "description": "Whether an entry is something done or an answer.",
@@ -36736,6 +37123,29 @@
           "action",
           "outcome"
         ]
+      },
+      "PitchMessage": {
+        "type": "object",
+        "description": "A pitch sent from OnHold: its thread in the inbox, and whether it went.",
+        "required": [
+          "id",
+          "thread_id",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "description": "`queued`, `sent` or `failed`."
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
       },
       "PitchOutcome": {
         "type": "object",
@@ -36819,11 +37229,120 @@
               "null"
             ]
           },
+          "template_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "type_key": {
             "type": [
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "PitchSend": {
+        "type": "object",
+        "required": [
+          "organisation_id",
+          "contact_id",
+          "subject",
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "description": "Plain text; the sender's signature goes under it."
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "integration_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The mailbox to send from; default the sender's own, if connected."
+          },
+          "item": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ItemInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "organisation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "template_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The pitch template it was written from, if any."
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default: the person's first email address."
+          },
+          "type_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What it logs, a key from the workspace's actions; default the\ntemplate's, or `pitched`."
+          }
+        }
+      },
+      "PitchSendWith": {
+        "type": "string",
+        "description": "How a pitch is usually sent: from OnHold through the member's mailbox\n(so it and the answers are logged by themselves), by opening it in\ntheir own email app, or by copying it to paste anywhere.",
+        "enum": [
+          "onhold",
+          "mail_app",
+          "copy"
+        ]
+      },
+      "PitchTemplate": {
+        "type": "object",
+        "description": "Wording to pitch with. `{firstName}`, `{item}`, `{link}`, `{yourName}`\nand the rest of [`super::pitch_sending::PLACEHOLDERS`] are filled in.",
+        "required": [
+          "key",
+          "name",
+          "action",
+          "subject",
+          "body"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "What sending it logs, a key from the workspace's actions."
+          },
+          "body": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
           }
         }
       },
@@ -36901,6 +37420,17 @@
           "kind": {
             "$ref": "#/components/schemas/PitchKind"
           },
+          "message": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PitchMessage",
+                "description": "For a pitch sent from OnHold: its message."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "note": {
             "type": [
               "string",
@@ -36913,7 +37443,7 @@
           },
           "source": {
             "type": "string",
-            "description": "`manual`: logged by hand."
+            "description": "`manual`: logged by hand; `sent`: sent from OnHold."
           },
           "tag": {
             "oneOf": [
@@ -36925,6 +37455,13 @@
                 "type": "null"
               }
             ]
+          },
+          "template_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The pitch template it was written from, if any."
           },
           "type_key": {
             "type": "string",
@@ -36957,6 +37494,53 @@
           }
         }
       },
+      "PitchingMe": {
+        "type": "object",
+        "description": "How the member sends a pitch, and what they would send it from.",
+        "required": [
+          "workspace_send_with"
+        ],
+        "properties": {
+          "mailbox": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The mailbox Send goes from: their own connected one. Without it,\nOnHold sends in the workspace's name with answers going to them."
+          },
+          "send_with": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PitchSendWith",
+                "description": "What they picked, if anything."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workspace_send_with": {
+            "$ref": "#/components/schemas/PitchSendWith",
+            "description": "The workspace's default, used when they picked nothing."
+          }
+        }
+      },
+      "PitchingMePatch": {
+        "type": "object",
+        "properties": {
+          "send_with": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PitchSendWith",
+                "description": "`null` goes back to the workspace's default."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "PitchingSettings": {
         "type": "object",
         "properties": {
@@ -36986,11 +37570,22 @@
               "$ref": "#/components/schemas/Region"
             }
           },
+          "send_with": {
+            "$ref": "#/components/schemas/PitchSendWith",
+            "description": "How members send a pitch unless they pick otherwise."
+          },
           "statuses": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Status"
             }
+          },
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PitchTemplate"
+            },
+            "description": "The wording members pitch with."
           }
         }
       },
