@@ -16,6 +16,7 @@ use core_db::Tx;
 use core_db::documents::{Document, Signature, Version};
 use core_db::jobs::NewJob;
 use core_domain::crypto::{hash_token, new_token};
+use core_domain::workspace::WorkspaceStatus;
 use core_domain::{Ctx, Permission, UserId, WorkspaceId};
 use core_engines::documents::{self as engine, Branding, SignatureRecord};
 use core_engines::templates::Kind;
@@ -1556,6 +1557,11 @@ async fn open_public(
         .await?
         .ok_or(ApiError::NotFound)?;
     core_db::set_context(&mut tx, Some(workspace), None).await?;
+    // A closed or suspended workspace's links stop working, as if withdrawn.
+    core_db::workspaces::get(&mut tx, workspace)
+        .await?
+        .filter(|w| matches!(w.status, WorkspaceStatus::Trial | WorkspaceStatus::Active))
+        .ok_or(ApiError::NotFound)?;
     let mut ctx = Ctx::system(workspace);
     ctx.meta = meta;
     // Signers answer one at a time per document (locked before the

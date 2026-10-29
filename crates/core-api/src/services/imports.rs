@@ -2387,8 +2387,22 @@ fn count_person(
     true
 }
 
+/// The worker acts as the member who started a job, with what they may
+/// still do; a superadmin visiting the workspace is no member, so a job
+/// they queued could only fail.
+fn refuse_visitor(ctx: &Ctx) -> ApiResult<()> {
+    if ctx.impersonator().is_some() {
+        return Err(ApiError::forbidden(
+            "not_a_member",
+            "an import runs as the member who starts it; a member of the workspace has to start this one, not a superadmin visiting it",
+        ));
+    }
+    Ok(())
+}
+
 /// Queues the import for the worker.
 pub async fn run(state: &AppState, ctx: &Ctx, id: Uuid, plan: ImportPlan) -> ApiResult<ImportView> {
+    refuse_visitor(ctx)?;
     let (mut tx, import, _) = load_for_plan(state, ctx, id, &plan).await?;
     // Checked now, so a bad mapping fails here rather than in the worker.
     let setup = setup(&mut tx, &import, plan).await?;
@@ -2985,6 +2999,7 @@ async fn undo_permissions(
 /// Queues taking away what a finished import created. Records changed since
 /// the import, or now in use elsewhere, are kept; what it updated stays.
 pub async fn undo(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<ImportView> {
+    refuse_visitor(ctx)?;
     let mut tx = begin(state, ctx).await?;
     let import = core_db::imports::get(&mut tx, id)
         .await?

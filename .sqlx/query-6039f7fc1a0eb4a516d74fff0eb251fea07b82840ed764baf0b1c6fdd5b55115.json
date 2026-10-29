@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH p AS (\n               SELECT id, workspace_id, organisation_id, contact_id, happened_at,\n                      happened_at + make_interval(days => $2) AS until\n               FROM pitch_log\n               WHERE workspace_id = app_workspace_id() AND id = $1 AND kind = 'action'\n           ),\n           c AS (\n               SELECT c.id, c.emails FROM contacts c, p\n               WHERE c.workspace_id = p.workspace_id AND c.organisation_id = p.organisation_id\n                 AND c.deleted_at IS NULL AND (p.contact_id IS NULL OR c.id = p.contact_id)\n           ),\n           -- Each way in starts from the organisation's people, so only\n           -- their own messages are read.\n           answer AS (\n               (SELECT m.id, m.sent_at FROM p, c, unnest(c.emails) e, thread_messages m\n                JOIN threads t ON t.workspace_id = m.workspace_id AND t.id = m.thread_id\n                WHERE m.workspace_id = p.workspace_id AND m.direction = 'inbound' AND m.from_address = e\n                  AND m.sent_at > p.happened_at AND m.sent_at <= p.until\n                  AND NOT m.automatic AND NOT m.bulk AND t.channel = 'email'\n                UNION ALL\n                SELECT m.id, m.sent_at FROM p, c, unnest(c.emails) e, thread_messages m\n                JOIN threads t ON t.workspace_id = m.workspace_id AND t.id = m.thread_id\n                WHERE m.workspace_id = p.workspace_id AND m.direction = 'inbound' AND m.reply_to = e\n                  AND m.sent_at > p.happened_at AND m.sent_at <= p.until\n                  AND NOT m.automatic AND NOT m.bulk AND t.channel = 'email'\n                UNION ALL\n                SELECT m.id, m.sent_at FROM p, c\n                JOIN threads t ON t.contact_id = c.id\n                JOIN thread_messages m ON m.workspace_id = t.workspace_id AND m.thread_id = t.id\n                WHERE t.workspace_id = p.workspace_id AND t.channel <> 'email'\n                  AND m.direction = 'inbound' AND NOT m.automatic AND NOT m.bulk\n                  AND m.sent_at > p.happened_at AND m.sent_at <= p.until)\n               ORDER BY sent_at, id LIMIT 1\n           )\n           UPDATE pitch_log l\n           SET answer_message_id = (SELECT id FROM answer),\n               answered_at = (SELECT sent_at FROM answer)\n           FROM p\n           WHERE l.workspace_id = p.workspace_id AND l.id = p.id\n           RETURNING l.answered_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "answered_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "answered_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "6039f7fc1a0eb4a516d74fff0eb251fea07b82840ed764baf0b1c6fdd5b55115"
+}

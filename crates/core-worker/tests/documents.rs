@@ -689,3 +689,68 @@ async fn each_request_for_signatures_stands_alone(pool: PgPool) {
         .await;
     assert_eq!(i["status"], "ready", "{i}");
 }
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn signing_links_stop_when_the_workspace_closes(pool: PgPool) {
+    let h = harness(pool).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let talent = h
+        .post(
+            &owner,
+            "/api/v1/talent",
+            json!({ "name": "The Midnight Owls" }),
+        )
+        .await
+        .id("/id");
+    let booking = h
+        .post(
+            &owner,
+            "/api/v1/bookings",
+            json!({ "title": "Gala night", "talent_ids": [talent], "status": "confirmed",
+                    "starts_at": "2031-06-01T19:00:00Z", "ends_at": "2031-06-01T23:00:00Z" }),
+        )
+        .await
+        .id("/id");
+    let doc = h
+        .post(
+            &owner,
+            "/api/v1/documents/generate",
+            json!({ "template_key": "document.contract", "related_entity": "booking", "related_id": booking }),
+        )
+        .await
+        .id("/id");
+    h.drain().await;
+    h.post(
+        &owner,
+        &format!("/api/v1/documents/{doc}/signatures"),
+        json!({ "signers": [{ "name": "Bea", "email": "bea@x.test" }] }),
+    )
+    .await
+    .ok();
+    h.drain().await;
+    let token = signing_token(&h, "bea@x.test");
+    h.app
+        .get(&format!("/api/v1/public/sign/{token}"))
+        .send()
+        .await
+        .ok();
+
+    h.post(
+        &owner,
+        "/api/v1/workspace/close",
+        json!({ "confirm_slug": "acme" }),
+    )
+    .await
+    .ok();
+    h.app
+        .get(&format!("/api/v1/public/sign/{token}"))
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+    h.app
+        .post(&format!("/api/v1/public/sign/{token}"))
+        .json(json!({ "sign": true, "signed_name": "Bea", "agree": true }))
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+}

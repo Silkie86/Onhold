@@ -54,6 +54,11 @@ const PUBLISH_BATCH: i64 = 200;
 const DUE_BATCH: i64 = 200;
 /// Sign-in links and invitations go before everything else.
 const SYSTEM_MAIL_PRIORITY: i16 = 10;
+/// How long what Stripe sent is kept after it was handled.
+const STRIPE_PAYLOAD_RETENTION: chrono::Duration = chrono::Duration::days(90);
+/// How long sessions, sign-in links, invitations and calendar links are
+/// kept once they ended.
+const SIGN_IN_RETENTION: chrono::Duration = chrono::Duration::days(30);
 
 #[derive(Debug, Clone)]
 pub struct Settings {
@@ -462,23 +467,63 @@ impl Worker {
         Ok(queued)
     }
 
-    /// Deletes old events, finished jobs, stored idempotent responses and
-    /// uploads never run.
+    /// Deletes old events, finished jobs, stored idempotent responses,
+    /// uploads never run, delivery and rule logs, Stripe's payloads and
+    /// sign-ins that ended.
     pub async fn cleanup_once(&self) -> Result<(), DbError> {
         let now = Utc::now();
-        let mut tx = self.queue.begin().await?;
-        let events =
-            core_db::outbox::prune_published_before(&mut tx, now - self.settings.event_retention)
-                .await?;
-        let jobs =
-            core_db::jobs::delete_succeeded_before(&mut tx, now - self.settings.job_retention)
-                .await?;
-        let keys =
-            core_db::idempotency::delete_before(&mut tx, now - chrono::Duration::hours(24)).await?;
-        let uploads =
-            core_db::imports::delete_stale_uploads(&mut tx, now - self.settings.upload_retention)
-                .await?;
-        tx.commit().await?;
+        let logs_before = now - self.settings.event_retention;
+        // Each in its own transaction: one that fails (a lock or statement
+        // timeout) is tried again next time and holds up none of the others.
+        macro_rules! prune {
+            ($what:literal, |$c:ident| $body:expr) => {{
+                let done: Result<_, DbError> = async {
+                    let mut tx = self.queue.begin().await?;
+                    let $c: &mut sqlx::PgConnection = &mut tx;
+                    let n = $body.await?;
+                    tx.commit().await?;
+                    Ok(n)
+                }
+                .await;
+                done.unwrap_or_else(|err| {
+                    tracing::warn!(error = %err, what = $what, "clearing out old data failed");
+                    Default::default()
+                })
+            }};
+        }
+        let events = prune!("events", |c| core_db::outbox::prune_published_before(
+            c,
+            logs_before
+        ));
+        let jobs = prune!("jobs", |c| core_db::jobs::delete_succeeded_before(
+            c,
+            now - self.settings.job_retention
+        ));
+        // Dead jobs can be retried while their event is still kept.
+        let dead_jobs = prune!("dead jobs", |c| core_db::jobs::delete_finished_before(
+            c,
+            logs_before
+        ));
+        let deliveries = prune!("webhook deliveries", |c| {
+            core_db::housekeeping::delete_webhook_deliveries_before(c, logs_before)
+        });
+        let rule_runs = prune!("rule runs", |c| {
+            core_db::housekeeping::delete_skipped_rule_runs_before(c, logs_before)
+        });
+        let stripe_payloads = prune!("Stripe payloads", |c| {
+            core_db::housekeeping::forget_stripe_payloads_before(c, now - STRIPE_PAYLOAD_RETENTION)
+        });
+        let sign_ins = prune!("sign-ins", |c| {
+            core_db::housekeeping::forget_sign_ins_before(c, now - SIGN_IN_RETENTION)
+        });
+        let keys = prune!("idempotency keys", |c| core_db::idempotency::delete_before(
+            c,
+            now - chrono::Duration::hours(24)
+        ));
+        let uploads = prune!("uploads", |c| core_db::imports::delete_stale_uploads(
+            c,
+            now - self.settings.upload_retention
+        ));
         // Files uploaded but never attached to anything.
         let mut conn = self.queue.acquire().await?;
         let files = match core_api::services::files::sweep_unattached(&self.app, &mut conn).await {
@@ -491,6 +536,11 @@ impl Worker {
         tracing::info!(
             events,
             jobs,
+            dead_jobs,
+            deliveries,
+            rule_runs,
+            stripe_payloads,
+            sign_ins,
             idempotency_keys = keys,
             uploads,
             files,

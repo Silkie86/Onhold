@@ -648,12 +648,7 @@ pub(crate) async fn reply(
     )
     .await?;
     let id = queue(tx, ctx, &channel, thread, &phone, text, false).await?;
-    let t = inbox::load(tx, ctx, thread.id).await?;
-    let d = inbox::detail(state, tx, t).await?;
-    d.messages
-        .into_iter()
-        .find(|m| m.id == id)
-        .ok_or(ApiError::NotFound)
+    inbox::one_message(tx, id).await
 }
 
 fn links(t: &Thread) -> Links {

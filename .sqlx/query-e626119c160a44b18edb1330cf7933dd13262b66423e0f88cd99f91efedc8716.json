@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM rule_runs WHERE outcome = 'skipped' AND created_at < $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e626119c160a44b18edb1330cf7933dd13262b66423e0f88cd99f91efedc8716"
+}

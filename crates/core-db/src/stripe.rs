@@ -77,6 +77,29 @@ pub async fn account_workspace(
     .await?)
 }
 
+/// The workspace an event belongs to, from any workspace: the one its
+/// Checkout session (`session`) names (`workspace`), if that workspace made
+/// the session on this account; else the one holding the payment it is
+/// about (`intent`), so long as that workspace has had the account;
+/// otherwise as [`account_workspace`].
+pub async fn event_workspace(
+    conn: &mut PgConnection,
+    account_id: &str,
+    workspace: Option<Uuid>,
+    session: Option<&str>,
+    intent: Option<&str>,
+) -> Result<Option<WorkspaceId>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT stripe_event_workspace($1, $2, $3, $4) AS "w: WorkspaceId""#,
+        account_id,
+        workspace,
+        session,
+        intent
+    )
+    .fetch_one(conn)
+    .await?)
+}
+
 /// The workspace an account is connected to now, from any workspace.
 pub async fn account_live_workspace(
     conn: &mut PgConnection,
@@ -281,6 +304,42 @@ pub async fn set_invoice_session(
     .execute(conn)
     .await?;
     Ok(())
+}
+
+/// Notes a Checkout session made here for an invoice, on an account.
+pub async fn issue_session(
+    conn: &mut PgConnection,
+    invoice_id: Uuid,
+    session_id: &str,
+    account_id: &str,
+) -> Result<()> {
+    sqlx::query!(
+        r#"INSERT INTO stripe_checkout_sessions (workspace_id, id, account_id, invoice_id)
+           VALUES (app_workspace_id(), $1, $2, $3) ON CONFLICT DO NOTHING"#,
+        session_id,
+        account_id,
+        invoice_id
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// The invoice a Checkout session was made here for, if this workspace
+/// made it on that account.
+pub async fn issued_session(
+    conn: &mut PgConnection,
+    session_id: &str,
+    account_id: &str,
+) -> Result<Option<Uuid>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT invoice_id FROM stripe_checkout_sessions
+           WHERE workspace_id = app_workspace_id() AND id = $1 AND account_id = $2"#,
+        session_id,
+        account_id
+    )
+    .fetch_optional(conn)
+    .await?)
 }
 
 /// Forgets an invoice's session if it is still the one named.

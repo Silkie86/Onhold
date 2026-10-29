@@ -331,6 +331,42 @@ pub async fn disconnect(state: &AppState, ctx: &Ctx) -> ApiResult<StripeStatus> 
     Ok(after)
 }
 
+/// When the workspace closes: its open payment links are closed and its
+/// account disconnected (in Stripe too, as far as Stripe answers now), so a
+/// closed workspace takes no more card payments. Money that already moved
+/// is still recorded when Stripe tells of it.
+pub(crate) async fn disconnect_on_close(state: &AppState, tx: &mut Tx, ctx: &Ctx) -> ApiResult<()> {
+    let Some(a) = core_db::stripe::account(tx)
+        .await?
+        .filter(|a| a.disconnected_at.is_none())
+    else {
+        return Ok(());
+    };
+    if let Some(client) = state.config.stripe.as_ref() {
+        close_account(client, tx, &a.account_id).await;
+        if let Err(e) = client.deauthorize(&a.account_id).await {
+            tracing::warn!(error = %e, account = %a.account_id, "could not disconnect a closed workspace's account in Stripe");
+        }
+    }
+    let before = status_of(state, Some(a.clone()));
+    core_db::stripe::disconnect(tx, &a.account_id).await?;
+    let after = status_of(state, core_db::stripe::account(tx).await?);
+    record(
+        tx,
+        ctx,
+        Change {
+            topic: "stripe.disconnected",
+            resource: ENTITY,
+            object_id: None,
+            before: Some(to_json(&before)),
+            after: Some(to_json(&after)),
+            event_extra: Some(json!({ "reason": "workspace_closed" })),
+        },
+    )
+    .await?;
+    Ok(())
+}
+
 // The payer's side ------------------------------------------------------------------------------
 
 /// Whether the payer can pay this invoice by card now.
@@ -484,6 +520,22 @@ pub async fn public_pay(state: &AppState, token: &str) -> ApiResult<PaymentLink>
         account_id: account_id.clone(),
     };
 
+    // Note it as made here at once: even if it is not kept, the payer may
+    // pay it before Stripe closes it, and that payment is recorded.
+    let noted = async {
+        let (mut tx, _, _) = super::invoices::open_public(state, token, Default::default()).await?;
+        core_db::stripe::issue_session(&mut tx, id, &made.id, &account_id).await?;
+        tx.commit().await?;
+        Ok::<(), ApiError>(())
+    }
+    .await;
+    if let Err(e) = noted {
+        if let Err(e) = client.expire_checkout(&account_id, &made.id).await {
+            tracing::warn!(error = %e, session = %made.id, "could not expire an unused Checkout session");
+        }
+        return Err(e);
+    }
+
     // Keep it, unless things moved on while Stripe was asked.
     let (mut tx, ctx, _) = super::invoices::open_public(state, token, Default::default()).await?;
     let outcome = match pay_state(state, &mut tx, &ctx, id).await {
@@ -571,8 +623,26 @@ pub async fn receive_webhook(
     let Some(account) = event.account.as_deref() else {
         return Ok(());
     };
+    // An account may have moved to another workspace since the money moved:
+    // a session OnHold made names its workspace, a refund has its payment.
+    let object = &event.data.object;
+    let named = event
+        .kind
+        .starts_with("checkout.session.")
+        .then(|| object.pointer("/metadata/workspace_id"))
+        .flatten()
+        .and_then(Value::as_str)
+        .and_then(|s| s.parse::<Uuid>().ok());
+    let session = named
+        .is_some()
+        .then(|| object.get("id"))
+        .flatten()
+        .and_then(Value::as_str);
+    let intent = object.get("payment_intent").and_then(Value::as_str);
     let mut tx = core_db::begin(&state.db, None, None).await?;
-    let Some(workspace) = core_db::stripe::account_workspace(&mut tx, account).await? else {
+    let Some(workspace) =
+        core_db::stripe::event_workspace(&mut tx, account, named, session, intent).await?
+    else {
         tracing::info!(account, event = %event.id, "a Stripe event for an account no workspace has");
         tx.commit().await?;
         return Ok(());
@@ -662,7 +732,7 @@ async fn handle(
             if session.payment_status.as_deref() != Some("paid") {
                 return Ok("waiting for the payment to clear".into());
             }
-            record_payment(tx, ctx, &session).await
+            record_payment(tx, ctx, account, &session).await
         }
         "checkout.session.async_payment_failed" | "checkout.session.expired" => {
             let session: CheckoutSession = serde_json::from_value(object.clone())
@@ -756,7 +826,12 @@ async fn handle(
 /// A paid session becomes a card payment, allocated to its invoice as far
 /// as the invoice still owes. Money beyond that (the invoice was paid
 /// another way meanwhile) stays unallocated for the client to refund.
-async fn record_payment(tx: &mut Tx, ctx: &Ctx, session: &CheckoutSession) -> ApiResult<String> {
+async fn record_payment(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    account: &StripeAccount,
+    session: &CheckoutSession,
+) -> ApiResult<String> {
     let Some(intent) = session.payment_intent.as_deref() else {
         return Ok("the session has no payment".into());
     };
@@ -769,10 +844,18 @@ async fn record_payment(tx: &mut Tx, ctx: &Ctx, session: &CheckoutSession) -> Ap
     if amount <= 0 {
         return Ok("nothing was paid".into());
     }
-    let inv = match core_db::invoices::lock(tx, invoice_id).await? {
-        Some(_) => super::invoices::load(tx, invoice_id).await?,
-        None => None,
-    };
+    // Another workspace's invoice is not this workspace's money.
+    if core_db::invoices::lock(tx, invoice_id).await?.is_none() {
+        return Ok("not an invoice of this workspace".into());
+    }
+    // Only a session made here, for this invoice: whoever holds the account
+    // can make sessions of their own on it, naming any invoice.
+    if core_db::stripe::issued_session(tx, &session.id, &account.account_id).await?
+        != Some(invoice_id)
+    {
+        return Ok("not a session OnHold made for this invoice".into());
+    }
+    let inv = super::invoices::load(tx, invoice_id).await?;
     if core_db::stripe::payment_for_intent(tx, intent)
         .await?
         .is_some()

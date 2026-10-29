@@ -26,6 +26,7 @@ pub mod enquiries;
 pub mod fields;
 pub mod files;
 pub mod finance;
+pub mod housekeeping;
 pub mod idempotency;
 pub mod imports;
 pub mod inbox;
