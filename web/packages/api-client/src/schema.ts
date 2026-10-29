@@ -7884,7 +7884,10 @@ export interface components {
             /** @description What sending it logs. */
             action: string;
             body: string;
-            /** @description Where it can go: the person's first email address and phone number. */
+            /**
+             * @description Where it can go: the person's first email address, and first phone
+             *     number written internationally where its country is known.
+             */
             email?: string | null;
             /** @description Placeholders nothing filled in, left in the text to fill by hand. */
             missing: string[];

@@ -37065,7 +37065,7 @@
               "string",
               "null"
             ],
-            "description": "Where it can go: the person's first email address and phone number."
+            "description": "Where it can go: the person's first email address, and first phone\nnumber written internationally where its country is known."
           },
           "missing": {
             "type": "array",
