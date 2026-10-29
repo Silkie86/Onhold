@@ -13,6 +13,7 @@ use ammonia::Builder;
 use chrono::{DateTime, Duration, Utc};
 use core_db::inbox::{Links, NewMessage, NewThread, Thread};
 use core_db::integrations::Integration;
+use core_domain::workspace::WorkspaceStatus;
 use core_domain::{Ctx, Permission, UserId, WorkspaceId};
 use core_integrations::mail::{Attachment, Email, MailError, Mailer};
 use core_integrations::mailbox::{self, FetchedMail, OutgoingMail};
@@ -1334,6 +1335,14 @@ pub async fn send(
     }
     if m.status != "queued" {
         return Ok(SendOutcome::AlreadyDone);
+    }
+    // A workspace closed (or suspended) while this waited sends nothing more.
+    let open = core_db::workspaces::get(&mut tx, ws)
+        .await?
+        .is_some_and(|w| matches!(w.status, WorkspaceStatus::Trial | WorkspaceStatus::Active));
+    if !open {
+        tx.commit().await?;
+        return finish(state, &ctx, &m, Err("the workspace was closed".into())).await;
     }
     let thread = core_db::inbox::get(&mut tx, m.thread_id, None)
         .await?

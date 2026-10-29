@@ -169,6 +169,18 @@ pub async fn render_public(state: &AppState, token: &str) -> ApiResult<Option<St
         tx.commit().await?;
         return Ok(None);
     };
+    // Only while whoever made it may still see bookings: a role that does
+    // not (talent, say) does not get the workspace's calendar through it.
+    let may_read = match core_db::members::role_of(&mut tx, found.created_by).await? {
+        Some(role) => core_db::workspaces::role_permissions(&mut tx, role)
+            .await?
+            .contains(&Permission::BookingRead),
+        None => false,
+    };
+    if !may_read {
+        tx.commit().await?;
+        return Ok(None);
+    }
     let now = Utc::now();
     let statuses = [
         BookingStatus::Hold,

@@ -188,6 +188,11 @@ pub const DATE_KINDS: &[&str] = &[
 /// The date kinds that carry no fee, for agencies that keep fees from talent.
 pub const DATE_KINDS_WITHOUT_FEES: &[&str] = &["advance_sheet", "rider", "tech_spec", "stage_plot"];
 
+/// The date kinds that state the booking's fee. On a booking with several
+/// acts the fee is theirs together, not any one act's to see, so these show
+/// only when the act is alone on it, or was asked to sign the document.
+pub const FEE_KINDS: &[&str] = &["contract", "confirmation"];
+
 /// The kinds of a date's documents a talent may see.
 pub fn date_kinds(show_fees: bool) -> &'static [&'static str] {
     if show_fees {
@@ -223,7 +228,13 @@ pub async fn documents(
              AND ((d.related_entity = 'booking' AND d.related_id = ANY($1) AND d.kind = ANY($2)
                    AND EXISTS (SELECT 1 FROM booking_talent bt JOIN talent t ON t.id = bt.talent_id
                                WHERE bt.booking_id = d.related_id AND t.portal_user_id = app_user_id()
-                                 AND t.deleted_at IS NULL))
+                                 AND t.deleted_at IS NULL)
+                   AND (d.kind <> ALL($4)
+                        OR (SELECT count(*) FROM booking_talent x
+                            WHERE x.workspace_id = d.workspace_id AND x.booking_id = d.related_id) = 1
+                        OR EXISTS (SELECT 1 FROM signature_requests sr JOIN users u ON u.id = app_user_id()
+                                   WHERE sr.workspace_id = d.workspace_id AND sr.document_id = d.id
+                                     AND sr.status <> 'cancelled' AND lower(sr.signer_email) = lower(u.email))))
                   OR (d.related_entity = 'talent' AND d.kind = ANY($3)
                       AND d.related_id IN (SELECT id FROM talent WHERE workspace_id = app_workspace_id()
                                            AND portal_user_id = app_user_id() AND deleted_at IS NULL)))
@@ -232,6 +243,7 @@ pub async fn documents(
         booking_ids,
         date_kinds as &[&str],
         TALENT_KINDS as &[&str],
+        FEE_KINDS as &[&str],
     )
     .fetch_all(conn)
     .await?)
@@ -257,7 +269,13 @@ pub async fn may_open_document(
                      AND EXISTS (SELECT 1 FROM booking_talent bt JOIN talent t ON t.id = bt.talent_id
                                  JOIN bookings b ON b.id = bt.booking_id AND b.deleted_at IS NULL
                                  WHERE bt.booking_id = d.related_id AND t.portal_user_id = app_user_id()
-                                   AND t.deleted_at IS NULL AND b.status = ANY($6)))
+                                   AND t.deleted_at IS NULL AND b.status = ANY($6))
+                     AND (d.kind <> ALL($7)
+                          OR (SELECT count(*) FROM booking_talent x
+                              WHERE x.workspace_id = d.workspace_id AND x.booking_id = d.related_id) = 1
+                          OR EXISTS (SELECT 1 FROM signature_requests sr JOIN users u ON u.id = app_user_id()
+                                     WHERE sr.workspace_id = d.workspace_id AND sr.document_id = d.id
+                                       AND sr.status <> 'cancelled' AND lower(sr.signer_email) = lower(u.email))))
                     OR ($4 AND d.related_entity = 'talent' AND d.kind = ANY($3)
                         AND d.related_id IN (SELECT id FROM talent WHERE workspace_id = app_workspace_id()
                                              AND portal_user_id = app_user_id() AND deleted_at IS NULL))
@@ -273,6 +291,7 @@ pub async fn may_open_document(
         with_documents,
         with_statements,
         statuses as &[BookingStatus],
+        FEE_KINDS as &[&str],
     )
     .fetch_one(conn)
     .await?)

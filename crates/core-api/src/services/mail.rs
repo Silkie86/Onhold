@@ -450,7 +450,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
             let ws = job
                 .workspace_id
                 .ok_or_else(|| permanent("portal message without a workspace"))?;
-            let to = event
+            let to = secret
                 .get("to")
                 .and_then(Value::as_str)
                 .ok_or_else(|| permanent("portal message without an address"))?
@@ -465,7 +465,7 @@ pub async fn prepare_system(state: &AppState, job: &Claimed) -> ApiResult<Outgoi
                 SYSTEM_PORTAL_MESSAGE,
                 (PORTAL_MESSAGE_SUBJECT, PORTAL_MESSAGE_BODY),
                 json!({
-                    "message": event.get("message"),
+                    "message": secret.get("message"),
                     "link": { "url": LINK_PLACEHOLDER },
                 }),
                 url,

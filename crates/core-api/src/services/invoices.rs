@@ -17,6 +17,7 @@ use core_domain::crypto::{hash_token, new_token};
 use core_domain::finance::{
     Rate, TaxedAmount, convert, format_number, percent_of, status_from_amounts, totals,
 };
+use core_domain::workspace::WorkspaceStatus;
 use core_domain::{Ctx, InvoiceStatus, Money, Permission, UserId, WorkspaceId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -1722,6 +1723,11 @@ pub(crate) async fn open_public(
         .await?
         .ok_or(ApiError::NotFound)?;
     core_db::set_context(&mut tx, Some(workspace), None).await?;
+    // A closed or suspended workspace's links stop working, as if withdrawn.
+    core_db::workspaces::get(&mut tx, workspace)
+        .await?
+        .filter(|w| matches!(w.status, WorkspaceStatus::Trial | WorkspaceStatus::Active))
+        .ok_or(ApiError::NotFound)?;
     let mut ctx = Ctx::system(workspace);
     ctx.meta = meta;
     Ok((tx, ctx, id))

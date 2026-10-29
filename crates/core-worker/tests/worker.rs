@@ -294,6 +294,48 @@ async fn invitations_and_sign_in_links_are_emailed(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_talent_is_emailed_what_their_agent_wrote_in_the_portal(pool: PgPool) {
+    let h = harness(pool).await;
+    let (ws, owner) = h.app.workspace_with_owner("acme").await;
+    let ada = h
+        .app
+        .post("/api/v1/talent")
+        .signed_in(&owner)
+        .json(json!({ "name": "Ada" }))
+        .send()
+        .await
+        .ok()
+        .id("/id");
+    h.app
+        .post(&format!("/api/v1/talent/{ada}/portal"))
+        .signed_in(&owner)
+        .json(json!({ "email": "ada@artist.test" }))
+        .send()
+        .await
+        .ok();
+    let token = h.app.last_invitation_token(ws).await;
+    h.app.accept_new(&token, "Ada Lovelace").await;
+    h.drain().await;
+    let before = h.mailer.sent().len();
+    h.app
+        .post(&format!("/api/v1/talent/{ada}/portal/messages"))
+        .signed_in(&owner)
+        .json(json!({ "body": "Soundcheck moved to 5pm." }))
+        .send()
+        .await
+        .ok();
+    h.drain().await;
+    let sent = h.mailer.sent();
+    assert_eq!(sent.len(), before + 1);
+    assert_eq!(sent[before].to, "ada@artist.test");
+    assert!(
+        sent[before].text.contains("Soundcheck moved to 5pm."),
+        "{}",
+        sent[before].text
+    );
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn a_custom_invitation_template_cannot_leak_the_link(pool: PgPool) {
     let h = harness(pool).await;
     let (ws, owner) = h.app.workspace_with_owner("acme").await;

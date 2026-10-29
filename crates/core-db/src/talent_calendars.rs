@@ -84,6 +84,25 @@ pub async fn revoke_links(conn: &mut PgConnection, talent_id: Option<Uuid>) -> R
     Ok(())
 }
 
+/// Stops every link someone made, for one talent or for any when `None`:
+/// a portal user's links go when their portal access does.
+pub async fn revoke_links_by(
+    conn: &mut PgConnection,
+    created_by: Uuid,
+    talent_id: Option<Uuid>,
+) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE calendar_connect_links SET revoked_at = now()
+           WHERE workspace_id = app_workspace_id() AND revoked_at IS NULL AND created_by = $1
+             AND ($2::uuid IS NULL OR talent_id = $2)"#,
+        created_by,
+        talent_id
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 pub struct FoundLink {
     pub id: Uuid,

@@ -414,6 +414,22 @@ async fn an_invoice_is_issued_part_paid_credited_and_refunded(pool: PgPool) {
         "{text}"
     );
     assert!(text.contains("1320.00"), "{text}");
+    // A name that a spreadsheet would run as a formula is written as text.
+    sqlx::query("UPDATE organisations SET name = $2 WHERE id = $1")
+        .bind(c.organisation)
+        .bind("=HYPERLINK(\"https://evil.test\",\"Open\")")
+        .execute(&app.owner)
+        .await
+        .unwrap();
+    let csv = app
+        .get("/api/v1/reports/payments/csv")
+        .signed_in(&c.owner)
+        .send()
+        .await
+        .ok();
+    let text = csv.body.as_str().unwrap();
+    assert!(text.contains("\"'=HYPERLINK("), "{text}");
+    assert!(!text.contains(",\"=HYPERLINK("), "{text}");
     app.get("/api/v1/reports/nothing/csv")
         .signed_in(&c.owner)
         .send()

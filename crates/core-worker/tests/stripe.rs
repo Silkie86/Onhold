@@ -796,7 +796,7 @@ fn completed(session: &str, invoice: &str, amount: i64, event: &str, account: &s
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn payments_on_a_replaced_account_still_count(pool: PgPool) {
     let h = harness(pool).await;
-    let (_, owner) = h.app.workspace_with_owner("owls").await;
+    let (owls, owner) = h.app.workspace_with_owner("owls").await;
     connect(&h, &owner, "ac_test_owls").await.ok();
     let (invoice, total, token) = sent_invoice(&h, &owner).await;
     pay(&h, &token).await.ok();
@@ -834,6 +834,48 @@ async fn payments_on_a_replaced_account_still_count(pool: PgPool) {
     connect(&h, &other, "ac_test_other")
         .await
         .expect(StatusCode::CONFLICT, "stripe_account_in_use");
+
+    // Stripe still sends events about money that moved here; they are
+    // recorded here, not in the workspace the account is with now. A refund
+    // of this workspace's payment:
+    let mut refunded = now(fixture("event_charge_refunded"));
+    refunded["id"] = json!("evt_3QOwlsRefundedAfterMove");
+    assert_eq!(h.webhook(&refunded).await.status, StatusCode::NO_CONTENT);
+    // A session made here, which names this workspace:
+    let (second, second_total, _) = sent_invoice(&h, &owner).await;
+    let mut paid = completed(
+        "cs_test_a1OwlsSecond",
+        &second,
+        second_total,
+        "evt_1QOwlsSecondPaid",
+        ACCOUNT,
+    );
+    paid["data"]["object"]["payment_intent"] = json!("pi_3QOwlsSecondIntent");
+    paid["data"]["object"]["metadata"]["workspace_id"] = json!(owls.0.to_string());
+    assert_eq!(h.webhook(&paid).await.status, StatusCode::NO_CONTENT);
+    // And one naming no workspace, which goes to the account's workspace
+    // now: an invoice it cannot see is no payment of its own.
+    let mut stray = completed(
+        "cs_test_a1OwlsStray",
+        &invoice,
+        total,
+        "evt_1QOwlsStray",
+        ACCOUNT,
+    );
+    stray["data"]["object"]["payment_intent"] = json!("pi_3QOwlsStrayIntent");
+    assert_eq!(h.webhook(&stray).await.status, StatusCode::NO_CONTENT);
+    h.drain().await;
+
+    let inv = h.get(&owner, &format!("/api/v1/invoices/{invoice}")).await;
+    assert_eq!(inv["outstanding"]["minor"], 20_000, "{inv}");
+    let inv = h.get(&owner, &format!("/api/v1/invoices/{second}")).await;
+    assert_eq!(inv["status"], "paid", "{inv}");
+    assert_eq!(
+        h.processed("evt_1QOwlsStray").await.as_deref(),
+        Some("not an invoice of this workspace")
+    );
+    let theirs = h.get(&other, "/api/v1/payments").await;
+    assert_eq!(theirs["items"], json!([]), "{theirs}");
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -942,4 +984,41 @@ async fn a_paid_link_is_not_replaced_by_a_second_one(pool: PgPool) {
         .await
         .expect(StatusCode::CONFLICT, "card_payment_in_progress");
     assert_eq!(h.calls.lock().unwrap().checkouts.len(), 1);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_closed_workspace_takes_no_more_card_payments(pool: PgPool) {
+    let h = harness(pool).await;
+    let (_, owner) = h.app.workspace_with_owner("owls").await;
+    connect(&h, &owner, "ac_test_owls").await.ok();
+    let (_, _, token) = sent_invoice(&h, &owner).await;
+    pay(&h, &token).await.ok();
+
+    h.post(
+        &owner,
+        "/api/v1/workspace/close",
+        json!({ "confirm_slug": "owls" }),
+    )
+    .await
+    .ok();
+    // Its open payment link is closed and the account disconnected.
+    {
+        let calls = h.calls.lock().unwrap();
+        assert_eq!(calls.expired, vec!["cs_test_a1Owls1".to_owned()]);
+        assert_eq!(calls.deauthorized, vec![ACCOUNT.to_owned()]);
+    }
+    // The payer's link no longer opens, prints or pays.
+    for path in [
+        format!("/api/v1/public/invoices/{token}"),
+        format!("/api/v1/public/invoices/{token}/pdf"),
+    ] {
+        h.app
+            .get(&path)
+            .send()
+            .await
+            .expect(StatusCode::NOT_FOUND, "not_found");
+    }
+    pay(&h, &token)
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
 }

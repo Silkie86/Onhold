@@ -1082,6 +1082,38 @@ async fn without_a_mailbox_messages_go_through_onhold_and_answers_join_the_threa
     assert!(detail["thread"]["integration_id"].is_string(), "{detail}");
 }
 
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn mail_waiting_to_go_is_not_sent_once_the_workspace_closes(pool: PgPool) {
+    let h = harness(pool).await;
+    let (_ws, owner) = h.app.workspace_with_owner("owls").await;
+    let made = h
+        .post(
+            &owner,
+            "/api/v1/inbox/threads",
+            json!({ "to": ["bea@grand.test"], "subject": "Dates for June", "body": "Hi Bea" }),
+        )
+        .await;
+    assert_eq!(made.status, StatusCode::CREATED, "{}", made.body);
+    let thread_id: uuid::Uuid = made.body["thread"]["id"].as_str().unwrap().parse().unwrap();
+    h.post(
+        &owner,
+        "/api/v1/workspace/close",
+        json!({ "confirm_slug": "owls" }),
+    )
+    .await
+    .ok();
+    h.drain().await;
+    assert!(h.sent_to("bea@grand.test").is_empty());
+    let (status, error): (String, Option<String>) =
+        sqlx::query_as("SELECT status, error FROM thread_messages WHERE thread_id = $1")
+            .bind(thread_id)
+            .fetch_one(&h.app.owner)
+            .await
+            .unwrap();
+    assert_eq!(status, "failed");
+    assert_eq!(error.as_deref(), Some("the workspace was closed"));
+}
+
 // IMAP and SMTP ------------------------------------------------------------------------
 
 /// A stand-in mail server's INBOX (UID, raw message) and what was sent

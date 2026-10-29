@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT d.id, d.kind, d.title, d.related_entity AS \"related_entity!\", d.related_id AS \"related_id!\",\n                  d.expires_on, d.signature_status, d.updated_at\n           FROM documents d\n           WHERE d.workspace_id = app_workspace_id() AND d.deleted_at IS NULL AND d.current_version > 0\n             AND ((d.related_entity = 'booking' AND d.related_id = ANY($1) AND d.kind = ANY($2)\n                   AND EXISTS (SELECT 1 FROM booking_talent bt JOIN talent t ON t.id = bt.talent_id\n                               WHERE bt.booking_id = d.related_id AND t.portal_user_id = app_user_id()\n                                 AND t.deleted_at IS NULL))\n                  OR (d.related_entity = 'talent' AND d.kind = ANY($3)\n                      AND d.related_id IN (SELECT id FROM talent WHERE workspace_id = app_workspace_id()\n                                           AND portal_user_id = app_user_id() AND deleted_at IS NULL)))\n           ORDER BY d.updated_at DESC, d.id\n           LIMIT 200",
+  "query": "SELECT d.id, d.kind, d.title, d.related_entity AS \"related_entity!\", d.related_id AS \"related_id!\",\n                  d.expires_on, d.signature_status, d.updated_at\n           FROM documents d\n           WHERE d.workspace_id = app_workspace_id() AND d.deleted_at IS NULL AND d.current_version > 0\n             AND ((d.related_entity = 'booking' AND d.related_id = ANY($1) AND d.kind = ANY($2)\n                   AND EXISTS (SELECT 1 FROM booking_talent bt JOIN talent t ON t.id = bt.talent_id\n                               WHERE bt.booking_id = d.related_id AND t.portal_user_id = app_user_id()\n                                 AND t.deleted_at IS NULL)\n                   AND (d.kind <> ALL($4)\n                        OR (SELECT count(*) FROM booking_talent x\n                            WHERE x.workspace_id = d.workspace_id AND x.booking_id = d.related_id) = 1\n                        OR EXISTS (SELECT 1 FROM signature_requests sr JOIN users u ON u.id = app_user_id()\n                                   WHERE sr.workspace_id = d.workspace_id AND sr.document_id = d.id\n                                     AND sr.status <> 'cancelled' AND lower(sr.signer_email) = lower(u.email))))\n                  OR (d.related_entity = 'talent' AND d.kind = ANY($3)\n                      AND d.related_id IN (SELECT id FROM talent WHERE workspace_id = app_workspace_id()\n                                           AND portal_user_id = app_user_id() AND deleted_at IS NULL)))\n           ORDER BY d.updated_at DESC, d.id\n           LIMIT 200",
   "describe": {
     "columns": [
       {
@@ -96,6 +96,7 @@
       "Left": [
         "UuidArray",
         "TextArray",
+        "TextArray",
         "TextArray"
       ]
     },
@@ -110,5 +111,5 @@
       false
     ]
   },
-  "hash": "35d06a070a539b298004bb28f6a6ca991aa3e946821c673a73917722e34079ad"
+  "hash": "50f0ee2155c39f520fa0938129f01120b84c4bc7b3894db38c5a7e7fbf39468f"
 }

@@ -236,6 +236,8 @@ pub(crate) async fn end_access_in(tx: &mut Tx, ctx: &Ctx, talent_id: Uuid) -> Ap
     let revoked = core_db::portal::revoke_invitations(tx, talent_id).await?;
     let user = core_db::portal::unlink_talent(tx, talent_id, ctx.user_id()).await?;
     if let Some(user) = user {
+        // The calendar links they made for the record stop working too.
+        core_db::talent_calendars::revoke_links_by(tx, user, Some(talent_id)).await?;
         record(
             tx,
             ctx,
@@ -640,11 +642,27 @@ async fn detail_in(tx: &mut Tx, id: Uuid, s: &PortalSettings) -> ApiResult<Porta
     })
 }
 
-/// Whether a travel item names one of these acts among its travellers.
+/// Whether a travel item names one of these acts among its travellers:
+/// the act's name, word for word, somewhere in a traveller's ("Ada" in
+/// "Ada Lovelace", but not "Al" in "Alice").
 fn travels_with(travellers: &[String], names: &[String]) -> bool {
+    let words = |s: &str| -> Vec<String> {
+        s.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(str::to_owned)
+            .collect()
+    };
+    let names: Vec<Vec<String>> = names
+        .iter()
+        .map(|n| words(n))
+        .filter(|n| !n.is_empty())
+        .collect();
     travellers.iter().any(|t| {
-        let t = t.to_lowercase();
-        names.iter().any(|n| t.contains(n.as_str()))
+        let t = words(t);
+        names
+            .iter()
+            .any(|n| t.windows(n.len()).any(|run| run == n.as_slice()))
     })
 }
 
@@ -1331,17 +1349,20 @@ pub(crate) async fn reply_in(
             object_id: Some(thread),
             before: None,
             after: Some(json!({ "message_id": id, "talent_id": talent_id })),
-            event_extra: Some(json!({
-                "to": to.email,
-                "message": {
-                    "talent": talent_name,
-                    "sender": author_name,
-                    "preview": preview,
-                },
-            })),
+            event_extra: None,
         },
         &state.config.keyring,
-        &json!({ "url": url.as_str() }),
+        // Sealed with the link: events about a conversation never carry its
+        // addresses or text, since webhooks carry events outside OnHold.
+        &json!({
+            "url": url.as_str(),
+            "to": to.email,
+            "message": {
+                "talent": talent_name,
+                "sender": author_name,
+                "preview": preview,
+            },
+        }),
     )
     .await?;
     Ok(id)
@@ -1571,6 +1592,14 @@ mod tests {
         assert!(travels_with(&["Crew".into(), "ADA".into()], &names));
         assert!(!travels_with(&["Grace".into()], &names));
         assert!(!travels_with(&[], &names));
+        // Whole words only: a short name is not found inside a longer one.
+        let names = vec!["jo".to_owned(), "the comets".to_owned()];
+        assert!(!travels_with(&["Joanna Smith".into()], &names));
+        assert!(!travels_with(&["The Comet".into()], &names));
+        assert!(travels_with(&["Alice Jones (The Comets)".into()], &names));
+        assert!(travels_with(&["Jo".into()], &names));
+        assert!(!travels_with(&["Alice Jones".into()], &["al".to_owned()]));
+        assert!(!travels_with(&["Anyone".into()], &["  ".to_owned()]));
     }
 
     use super::*;

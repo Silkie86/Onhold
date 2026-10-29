@@ -1126,6 +1126,60 @@ async fn the_calendar_shows_bookings_and_availability_and_publishes_ical(pool: P
     assert!(listed.body[0]["last_used_at"].is_string());
     assert!(!listed.body.to_string().contains(&url));
 
+    // A member's link works while their role sees bookings, and stops for
+    // good when they leave: rejoining (as talent, say) does not revive it.
+    let agent = app.add_member(&owner, "agent@acme.test", "agent").await;
+    let theirs = post(
+        &app,
+        &agent,
+        "/api/v1/calendar/feeds",
+        json!({ "name": "Agent's phone" }),
+    )
+    .await
+    .ok();
+    let their_url = theirs.body["url"].as_str().unwrap().to_owned();
+    let their_path = &their_url[their_url.find("/api/v1/public/").unwrap()..];
+    app.get(their_path).send().await.ok();
+    let agent_id = app.user_id("agent@acme.test").await;
+    let set_role = |role: &'static str| {
+        let pool = &app.owner;
+        async move {
+            sqlx::query(
+                "UPDATE memberships SET role = $2::member_role WHERE user_id = $1 AND deleted_at IS NULL",
+            )
+            .bind(agent_id.0)
+            .bind(role)
+            .execute(pool)
+            .await
+            .unwrap();
+        }
+    };
+    set_role("talent").await;
+    app.get(their_path)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+    set_role("agent").await;
+    app.get(their_path).send().await.ok();
+    app.delete(&format!("/api/v1/members/{}", agent_id.0))
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::NO_CONTENT, "");
+    sqlx::query(
+        "INSERT INTO memberships (id, workspace_id, user_id, role)
+         SELECT gen_random_uuid(), workspace_id, user_id, 'agent' FROM memberships
+         WHERE user_id = $1 LIMIT 1",
+    )
+    .bind(agent_id.0)
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    app.get(their_path)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+
     // Revoking stops the link.
     app.delete(&format!("/api/v1/calendar/feeds/{feed_id}"))
         .signed_in(&owner)

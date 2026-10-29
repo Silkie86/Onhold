@@ -1308,6 +1308,21 @@ async fn impersonation_is_time_boxed_and_audited(pool: PgPool) {
         .send()
         .await
         .expect(StatusCode::FORBIDDEN, "not_a_member");
+    // Nor would an import or its undoing, which the worker runs as the
+    // member who started it: refused up front rather than failing later.
+    let some_import = uuid::Uuid::new_v4();
+    app.post(&format!("/api/v1/imports/{some_import}/run"))
+        .signed_in(&in_customer)
+        .json(json!({ "columns": ["name"] }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
+    app.post(&format!("/api/v1/imports/{some_import}/undo"))
+        .signed_in(&in_customer)
+        .json(json!({}))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
     // A visitor has no signature of their own to set.
     let sigs = app
         .get("/api/v1/signatures")

@@ -9,6 +9,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::begin;
+use super::tenancy::csv_safe;
 use crate::AppState;
 use crate::error::{ApiError, ApiResult};
 
@@ -248,10 +249,10 @@ pub async fn csv(state: &AppState, ctx: &Ctx, table: &str, p: &Period) -> ApiRes
             for i in page.items {
                 let c = i.currency.clone();
                 w.write_record([
-                    i.reference.unwrap_or_default(),
+                    csv_safe(i.reference.unwrap_or_default()),
                     i.kind,
                     i.status.as_str().to_owned(),
-                    i.payer_name,
+                    csv_safe(i.payer_name),
                     i.issue_date.map(|d| d.to_string()).unwrap_or_default(),
                     i.due_date.map(|d| d.to_string()).unwrap_or_default(),
                     c.clone(),
@@ -302,9 +303,9 @@ pub async fn csv(state: &AppState, ctx: &Ctx, table: &str, p: &Period) -> ApiRes
                     x.method,
                     x.amount.currency.clone(),
                     decimal(x.amount.minor, &x.amount.currency),
-                    x.reference.unwrap_or_default(),
-                    x.organisation_name.unwrap_or_default(),
-                    x.talent_name.unwrap_or_default(),
+                    csv_safe(x.reference.unwrap_or_default()),
+                    csv_safe(x.organisation_name.unwrap_or_default()),
+                    csv_safe(x.talent_name.unwrap_or_default()),
                     x.voided_at.map(|_| "yes".to_owned()).unwrap_or_default(),
                 ])
                 .map_err(err)?;
@@ -326,8 +327,8 @@ pub async fn csv(state: &AppState, ctx: &Ctx, table: &str, p: &Period) -> ApiRes
                 .map_err(err)?;
                 for o in r.outstanding {
                     w.write_record([
-                        o.reference.unwrap_or_default(),
-                        o.payer,
+                        csv_safe(o.reference.unwrap_or_default()),
+                        csv_safe(o.payer),
                         o.status,
                         o.due_date.map(|d| d.to_string()).unwrap_or_default(),
                         o.days_overdue.to_string(),
@@ -349,7 +350,7 @@ pub async fn csv(state: &AppState, ctx: &Ctx, table: &str, p: &Period) -> ApiRes
                     .map_err(err)?;
                 for row in rows {
                     w.write_record([
-                        row.key,
+                        csv_safe(row.key),
                         row.invoices.to_string(),
                         row.invoiced.currency.clone(),
                         decimal(row.invoiced.minor, &row.invoiced.currency),

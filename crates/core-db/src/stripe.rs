@@ -77,6 +77,26 @@ pub async fn account_workspace(
     .await?)
 }
 
+/// The workspace an event belongs to, from any workspace: the one its
+/// Checkout session names (`workspace`), else the one holding the payment
+/// it is about (`intent`), so long as that workspace has had the account;
+/// otherwise as [`account_workspace`].
+pub async fn event_workspace(
+    conn: &mut PgConnection,
+    account_id: &str,
+    workspace: Option<Uuid>,
+    intent: Option<&str>,
+) -> Result<Option<WorkspaceId>> {
+    Ok(sqlx::query_scalar!(
+        r#"SELECT stripe_event_workspace($1, $2, $3) AS "w: WorkspaceId""#,
+        account_id,
+        workspace,
+        intent
+    )
+    .fetch_one(conn)
+    .await?)
+}
+
 /// The workspace an account is connected to now, from any workspace.
 pub async fn account_live_workspace(
     conn: &mut PgConnection,
