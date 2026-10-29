@@ -13991,6 +13991,78 @@
         ]
       }
     },
+    "/api/v1/organisations/{id}/pitches/unlogged": {
+      "get": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "Recent email to the organisation sent from members' own mailboxes\noutside OnHold and not in the log, newest first (at most five), to log\nas pitches (`POST /pitches` with its `message_id`) or set aside.",
+        "operationId": "unlogged_mail",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UnloggedMail"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/v1/organisations/{id}/timeline": {
       "get": {
         "tags": [
@@ -15700,6 +15772,79 @@
             }
           },
           "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pitches/not-a-pitch": {
+      "post": {
+        "tags": [
+          "pitching"
+        ],
+        "summary": "Set an email in Sent aside as not a pitch, so it is not offered again.",
+        "operationId": "not_a_pitch",
+        "parameters": [
+          {
+            "name": "X-Workspace-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotAPitch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -35675,6 +35820,14 @@
           "kind": {
             "$ref": "#/components/schemas/PitchKind"
           },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "For an action: the email in Sent it went as, from the organisation's\nunlogged mail."
+          },
           "note": {
             "type": [
               "string",
@@ -35990,6 +36143,18 @@
         ],
         "properties": {
           "file_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "NotAPitch": {
+        "type": "object",
+        "required": [
+          "message_id"
+        ],
+        "properties": {
+          "message_id": {
             "type": "string",
             "format": "uuid"
           }
@@ -37029,6 +37194,24 @@
           }
         }
       },
+      "PitchAnswer": {
+        "type": "object",
+        "description": "An answer that arrived in the inbox: the message and its conversation.",
+        "required": [
+          "message_id",
+          "thread_id"
+        ],
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "PitchChannel": {
         "type": "string",
         "description": "How it was done or how the answer came.",
@@ -37360,6 +37543,24 @@
           "updated_at"
         ],
         "properties": {
+          "answer": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PitchAnswer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "answered_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "For an action: when the organisation answered it, as an answer from\nthem arrived in the inbox."
+          },
           "channel": {
             "oneOf": [
               {
@@ -37424,7 +37625,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/PitchMessage",
-                "description": "For a pitch sent from OnHold: its message."
+                "description": "For a pitch sent from OnHold or spotted in Sent: its message."
               },
               {
                 "type": "null"
@@ -37443,7 +37644,7 @@
           },
           "source": {
             "type": "string",
-            "description": "`manual`: logged by hand; `sent`: sent from OnHold."
+            "description": "`manual`: logged by hand; `sent`: sent from OnHold; `spotted`:\nlogged from the member's own Sent mail."
           },
           "tag": {
             "oneOf": [
@@ -43510,6 +43711,55 @@
           "version": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "UnloggedMail": {
+        "type": "object",
+        "description": "An email the member sent the organisation from their own mailbox,\noutside OnHold, that might be a pitch to log.",
+        "required": [
+          "message_id",
+          "thread_id",
+          "to",
+          "sent_at"
+        ],
+        "properties": {
+          "contact_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "contact_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

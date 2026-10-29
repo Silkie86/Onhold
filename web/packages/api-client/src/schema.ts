@@ -2564,6 +2564,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organisations/{id}/pitches/unlogged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent email to the organisation sent from members' own mailboxes
+         *     outside OnHold and not in the log, newest first (at most five), to log
+         *     as pitches (`POST /pitches` with its `message_id`) or set aside.
+         */
+        get: operations["unlogged_mail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organisations/{id}/timeline": {
         parameters: {
             query?: never;
@@ -2848,6 +2869,23 @@ export interface paths {
          *     It can be backdated.
          */
         post: operations["log_pitch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pitches/not-a-pitch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set an email in Sent aside as not a pitch, so it is not offered again. */
+        post: operations["not_a_pitch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7495,6 +7533,12 @@ export interface components {
             happened_at?: string | null;
             item?: components["schemas"]["ItemInput"] | null;
             kind: components["schemas"]["PitchKind"];
+            /**
+             * Format: uuid
+             * @description For an action: the email in Sent it went as, from the organisation's
+             *     unlogged mail.
+             */
+            message_id?: string | null;
             note?: string | null;
             /** Format: uuid */
             organisation_id: string;
@@ -7580,6 +7624,10 @@ export interface components {
         NewVersionFile: {
             /** Format: uuid */
             file_id: string;
+        };
+        NotAPitch: {
+            /** Format: uuid */
+            message_id: string;
         };
         OidcProviderView: {
             display_name: string;
@@ -7874,6 +7922,13 @@ export interface components {
             key: string;
             label: string;
         };
+        /** @description An answer that arrived in the inbox: the message and its conversation. */
+        PitchAnswer: {
+            /** Format: uuid */
+            message_id: string;
+            /** Format: uuid */
+            thread_id: string;
+        };
         /**
          * @description How it was done or how the answer came.
          * @enum {string}
@@ -7981,6 +8036,13 @@ export interface components {
             subject: string;
         };
         PitchView: {
+            answer?: components["schemas"]["PitchAnswer"] | null;
+            /**
+             * Format: date-time
+             * @description For an action: when the organisation answered it, as an answer from
+             *     them arrived in the inbox.
+             */
+            answered_at?: string | null;
             channel?: components["schemas"]["PitchChannel"] | null;
             /**
              * Format: uuid
@@ -8001,7 +8063,10 @@ export interface components {
             note?: string | null;
             /** Format: uuid */
             organisation_id: string;
-            /** @description `manual`: logged by hand; `sent`: sent from OnHold. */
+            /**
+             * @description `manual`: logged by hand; `sent`: sent from OnHold; `spotted`:
+             *     logged from the member's own Sent mail.
+             */
             source: string;
             tag?: components["schemas"]["OutcomeTag"] | null;
             /** @description The pitch template it was written from, if any. */
@@ -9948,6 +10013,23 @@ export interface components {
             updated_by?: components["schemas"]["UserId"] | null;
             /** Format: int64 */
             version: number;
+        };
+        /**
+         * @description An email the member sent the organisation from their own mailbox,
+         *     outside OnHold, that might be a pitch to log.
+         */
+        UnloggedMail: {
+            /** Format: uuid */
+            contact_id?: string | null;
+            contact_name?: string | null;
+            /** Format: uuid */
+            message_id: string;
+            /** Format: date-time */
+            sent_at: string;
+            subject?: string | null;
+            /** Format: uuid */
+            thread_id: string;
+            to: string[];
         };
         UpdateMemberRequest: {
             role: components["schemas"]["Role"];
@@ -17478,6 +17560,45 @@ export interface operations {
             };
         };
     };
+    unlogged_mail: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnloggedMail"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     organisation_timeline: {
         parameters: {
             query?: {
@@ -18277,6 +18398,46 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    not_a_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotAPitch"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
