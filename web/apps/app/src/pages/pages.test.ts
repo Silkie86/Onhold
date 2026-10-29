@@ -121,7 +121,7 @@ test("an act on both of an organisation's lists is offered once", () => {
 });
 
 test("an answered pitch asks what they said until an answer is logged", () => {
-  const base = { organisation_id: "o", created_at: "2026-10-01T09:00:00Z", source: "sent", type_key: "pitched" };
+  const base = { organisation_id: "o", created_at: "2026-10-01T09:00:00Z", updated_at: "2026-10-01T09:00:00Z", version: 1, source: "sent", type_key: "pitched" };
   const pitch = { ...base, id: "a", kind: "action" as const, happened_at: "2026-10-01T09:00:00Z", answered_at: "2026-10-03T10:00:00Z" };
   const before = { ...base, id: "b", kind: "outcome" as const, type_key: "no", happened_at: "2026-10-02T10:00:00Z" };
   const after = { ...before, id: "c", happened_at: "2026-10-03T10:00:00Z" };
