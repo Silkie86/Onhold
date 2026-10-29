@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT t.organisation_id AS \"organisation_id!\"\n           FROM thread_messages m\n           JOIN threads t ON t.workspace_id = m.workspace_id AND t.id = m.thread_id\n           LEFT JOIN integrations i ON i.workspace_id = t.workspace_id AND i.id = t.integration_id\n           WHERE m.workspace_id = app_workspace_id() AND m.id = $1 AND t.organisation_id IS NOT NULL\n             AND t.channel = 'email' AND m.direction = 'outbound' AND m.author_id IS NULL\n             AND NOT m.automatic AND m.status = 'sent'\n             AND ($2::uuid IS NULL OR t.integration_id IS NULL OR i.shared OR i.owner_id = $2)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "organisation_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "organisation_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "28e115da623d978d54660a1d1e5fe70f2991e899cccfe48b5985e58bf27adc3f"
+}

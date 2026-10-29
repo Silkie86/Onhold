@@ -127,6 +127,8 @@ pub struct PitchMessage {
 pub struct PitchAnswer {
     pub message_id: Uuid,
     pub thread_id: Uuid,
+    /// How it came: email, text or WhatsApp.
+    pub channel: PitchChannel,
 }
 
 fn view(settings: &PitchingSettings, e: Entry) -> PitchView {
@@ -183,6 +185,11 @@ fn view(settings: &PitchingSettings, e: Entry) -> PitchView {
             (Some(message_id), Some(thread_id)) => Some(PitchAnswer {
                 message_id,
                 thread_id,
+                channel: match e.answer_channel.as_deref() {
+                    Some("sms") => PitchChannel::Text,
+                    Some("whatsapp") => PitchChannel::Whatsapp,
+                    _ => PitchChannel::Email,
+                },
             }),
             _ => None,
         },
@@ -450,14 +457,28 @@ pub(super) async fn insert(
     source: Source,
 ) -> ApiResult<PitchView> {
     let id = core_domain::ids::new_id();
-    core_db::pitches::insert(
+    let inserted = core_db::pitches::insert(
         tx,
         id,
         values(organisation, kind, parts),
         source,
         ctx.user_id(),
     )
-    .await?;
+    .await;
+    if let Err(err) = inserted {
+        // Logged at the same moment by someone else.
+        return Err(
+            if err.is_unique_violation(Some("pitch_log_one_per_message")) {
+                ApiError::invalid("message_id", "is in the log already")
+            } else {
+                err.into()
+            },
+        );
+    }
+    if kind == PitchKind::Action {
+        // Their answer may be in already.
+        core_db::pitches::recheck_answer(tx, id).await?;
+    }
     let view = load(tx, settings, id).await?.ok_or(ApiError::NotFound)?;
     record(
         tx,
@@ -493,7 +514,10 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewPitch) -> ApiResult<Pit
     let source = match new.message_id {
         None => Source::Manual,
         Some(m) => {
-            let at_org = core_db::pitches::unlogged_organisation(&mut tx, m).await?;
+            ctx.authorize(Permission::InboxRead)?;
+            let at_org =
+                core_db::pitches::unlogged_organisation(&mut tx, m, viewer(ctx).map(|v| v.0))
+                    .await?;
             if at_org != Some(new.organisation_id) || new.kind != PitchKind::Action {
                 found.issue(
                     "message_id",
@@ -537,7 +561,10 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: NewPitch) -> ApiResult<Pit
         source,
     )
     .await?;
+    let mut view = [view];
+    hide_unseen(&mut tx, ctx, &mut view).await?;
     tx.commit().await?;
+    let [view] = view;
     Ok(view)
 }
 
@@ -613,6 +640,10 @@ pub async fn update(
         ctx.user_id(),
     )
     .await?;
+    if before.kind == PitchKind::Action {
+        // When or who it was with may have changed which answer is theirs.
+        core_db::pitches::recheck_answer(&mut tx, id).await?;
+    }
     let after = load(&mut tx, &settings, id)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -738,6 +769,7 @@ pub async fn unlogged(
         organisation,
         Utc::now() - Duration::days(UNLOGGED_DAYS),
         5,
+        viewer(ctx).map(|v| v.0),
     )
     .await?;
     tx.commit().await?;
@@ -763,8 +795,9 @@ pub struct NotAPitch {
 /// Sets an email in Sent aside as not a pitch, so it is not offered again.
 pub async fn not_a_pitch(state: &AppState, ctx: &Ctx, n: NotAPitch) -> ApiResult<()> {
     ctx.authorize(Permission::OrganisationWrite)?;
+    ctx.authorize(Permission::InboxRead)?;
     let mut tx = begin(state, ctx).await?;
-    if core_db::pitches::unlogged_organisation(&mut tx, n.message_id)
+    if core_db::pitches::unlogged_organisation(&mut tx, n.message_id, viewer(ctx).map(|v| v.0))
         .await?
         .is_none()
     {

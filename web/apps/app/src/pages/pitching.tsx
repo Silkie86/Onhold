@@ -4,7 +4,11 @@
 // interested in and might be a match for, and its pitch log.
 
 import type { Schemas } from "@onhold/api-client";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Alert,
@@ -70,8 +74,16 @@ export const SEND_WITH: { value: SendWith; label: string; hint: string }[] = [
     label: "Send from OnHold",
     hint: "Logged by itself. With your own mailbox connected it goes from there and the answers come into OnHold too.",
   },
-  { value: "mail_app", label: "Open in my email app", hint: "The pitch opens ready to send in your own email app." },
-  { value: "copy", label: "Copy", hint: "Copy the pitch to paste wherever you like." },
+  {
+    value: "mail_app",
+    label: "Open in my email app",
+    hint: "The pitch opens ready to send in your own email app.",
+  },
+  {
+    value: "copy",
+    label: "Copy",
+    hint: "Copy the pitch to paste wherever you like.",
+  },
 ];
 
 export const CHANNELS: { value: PitchChannel; label: string }[] = [
@@ -85,14 +97,20 @@ export const CHANNELS: { value: PitchChannel; label: string }[] = [
 ];
 
 function failure(e: unknown): string {
-  return e instanceof ApiFailure || e instanceof Error ? e.message : "Something went wrong.";
+  return e instanceof ApiFailure || e instanceof Error
+    ? e.message
+    : "Something went wrong.";
 }
 
 /**
  * A key for a new status or region. It carries the time, so it never
  * matches one removed earlier, which organisations may still hold.
  */
-export function newKey(prefix: string, taken: string[], now = Date.now()): string {
+export function newKey(
+  prefix: string,
+  taken: string[],
+  now = Date.now(),
+): string {
   return keyFor(`${prefix}_${now.toString(36)}`, taken);
 }
 
@@ -125,7 +143,8 @@ export function PitchingSettingsPage() {
       </div>
     );
   }
-  if (settings.isError) return <Alert className="m-4">{settings.error.message}</Alert>;
+  if (settings.isError)
+    return <Alert className="m-4">{settings.error.message}</Alert>;
   return (
     <SettingsForm
       key={settings.data.version}
@@ -157,8 +176,12 @@ function SettingsForm({
   const [items, setItems] = useState<ItemKind[]>(saved.items ?? []);
   const [outcomes, setOutcomes] = useState<Outcome[]>(saved.outcomes ?? []);
   const [actions, setActions] = useState<ActionType[]>(saved.actions ?? []);
-  const [templates, setTemplates] = useState<PitchTemplate[]>(saved.templates ?? []);
-  const [sendWith, setSendWith] = useState<SendWith>(saved.send_with ?? "onhold");
+  const [templates, setTemplates] = useState<PitchTemplate[]>(
+    saved.templates ?? [],
+  );
+  const [sendWith, setSendWith] = useState<SendWith>(
+    saved.send_with ?? "onhold",
+  );
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -169,7 +192,11 @@ function SettingsForm({
     return m;
   }, [regions]);
   const q = search.trim().toLowerCase();
-  const shown = q ? saved.countries.filter((c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase() === q) : saved.countries;
+  const shown = q
+    ? saved.countries.filter(
+        (c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase() === q,
+      )
+    : saved.countries;
   const unplaced = saved.countries.filter((c) => !regionOf.has(c.code)).length;
 
   const changed = () => {
@@ -180,12 +207,19 @@ function SettingsForm({
     setRegions((rs) =>
       rs.map((r) => {
         const without = r.countries.filter((c) => c !== code);
-        return r.key === to ? { ...r, countries: [...without, code] } : { ...r, countries: without };
+        return r.key === to
+          ? { ...r, countries: [...without, code] }
+          : { ...r, countries: without };
       }),
     );
   };
   const resetRegions = () => {
-    if (!window.confirm("Go back to OnHold's world regions? Your own regions are replaced when you save.")) return;
+    if (
+      !window.confirm(
+        "Go back to OnHold's world regions? Your own regions are replaced when you save.",
+      )
+    )
+      return;
     changed();
     const names: Record<string, string> = {
       europe: "Europe",
@@ -199,7 +233,9 @@ function SettingsForm({
       Object.entries(names).map(([key, name]) => ({
         key,
         name,
-        countries: saved.countries.filter((c) => c.default_region === key).map((c) => c.code),
+        countries: saved.countries
+          .filter((c) => c.default_region === key)
+          .map((c) => c.code),
       })),
     );
   };
@@ -211,7 +247,15 @@ function SettingsForm({
       const after = await ok(
         api.PUT("/api/v1/pitching/settings", {
           headers: { "If-Match": `"${saved.version}"` },
-          body: { regions, statuses, items, outcomes, actions, templates, send_with: sendWith },
+          body: {
+            regions,
+            statuses,
+            items,
+            outcomes,
+            actions,
+            templates,
+            send_with: sendWith,
+          },
         }),
       );
       onSaved();
@@ -219,7 +263,10 @@ function SettingsForm({
       // Region and status choices on organisations come from these.
       void qc.invalidateQueries({ queryKey: ["schema"] });
     } catch (e) {
-      if (e instanceof ApiFailure && e.status === 412) setError("Someone else changed these while you were editing. Reload to see their changes.");
+      if (e instanceof ApiFailure && e.status === 412)
+        setError(
+          "Someone else changed these while you were editing. Reload to see their changes.",
+        );
       else setError(failure(e));
     } finally {
       setBusy(false);
@@ -230,10 +277,14 @@ function SettingsForm({
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
       <h1 className="text-xl font-semibold">Pitching</h1>
       <p className="text-sm text-muted-foreground">
-        How you sort the venues, brands and buyers you pitch to. Organisations are placed in a region from their country, and you can pick another
-        on any of them. Statuses show as a coloured dot; bookings and enquiries move an organisation along by themselves.
+        How you sort the venues, brands and buyers you pitch to. Organisations
+        are placed in a region from their country, and you can pick another on
+        any of them. Statuses show as a coloured dot; bookings and enquiries
+        move an organisation along by themselves.
       </p>
-      {!admin && <Alert tone="info">Only owners and admins can change these.</Alert>}
+      {!admin && (
+        <Alert tone="info">Only owners and admins can change these.</Alert>
+      )}
 
       <Card className="flex flex-col gap-4 p-5 text-sm">
         <h2 className="font-semibold">What you pitch</h2>
@@ -243,7 +294,11 @@ function SettingsForm({
             disabled={!admin}
             onChange={(e) => {
               changed();
-              setItems((xs) => (e.target.checked ? [...xs, "talent"] : xs.filter((x) => x !== "talent")));
+              setItems((xs) =>
+                e.target.checked
+                  ? [...xs, "talent"]
+                  : xs.filter((x) => x !== "talent"),
+              );
             }}
           />
           {setup.word("crm", "talent", true)}
@@ -254,7 +309,11 @@ function SettingsForm({
             disabled={!admin}
             onChange={(e) => {
               changed();
-              setItems((xs) => (e.target.checked ? [...xs, "project"] : xs.filter((x) => x !== "project")));
+              setItems((xs) =>
+                e.target.checked
+                  ? [...xs, "project"]
+                  : xs.filter((x) => x !== "project"),
+              );
             }}
           />
           Tours and projects
@@ -264,7 +323,8 @@ function SettingsForm({
       <Card className="flex flex-col gap-4 p-5 text-sm">
         <h2 className="font-semibold">Statuses</h2>
         <p className="text-muted-foreground">
-          What each colour means to you. "Booked" and "Talking" are the ones a confirmed booking or a new enquiry sets by themselves.
+          What each colour means to you. "Booked" and "Talking" are the ones a
+          confirmed booking or a new enquiry sets by themselves.
         </p>
         <ul className="flex flex-col gap-3">
           {statuses.map((s, i) => (
@@ -278,7 +338,11 @@ function SettingsForm({
                   disabled={!admin}
                   onChange={(e) => {
                     changed();
-                    setStatuses((xs) => xs.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)));
+                    setStatuses((xs) =>
+                      xs.map((x, j) =>
+                        j === i ? { ...x, label: e.target.value } : x,
+                      ),
+                    );
                   }}
                 />
               </div>
@@ -292,7 +356,13 @@ function SettingsForm({
                   disabled={!admin}
                   onChange={(e) => {
                     changed();
-                    setStatuses((xs) => xs.map((x, j) => (j === i ? { ...x, colour: e.target.value as Colour } : x)));
+                    setStatuses((xs) =>
+                      xs.map((x, j) =>
+                        j === i
+                          ? { ...x, colour: e.target.value as Colour }
+                          : x,
+                      ),
+                    );
                   }}
                 >
                   {COLOURS.map((c) => (
@@ -310,7 +380,13 @@ function SettingsForm({
                   disabled={!admin}
                   onChange={(e) => {
                     changed();
-                    setStatuses((xs) => xs.map((x, j) => (j === i ? { ...x, meaning: e.target.value as Meaning } : x)));
+                    setStatuses((xs) =>
+                      xs.map((x, j) =>
+                        j === i
+                          ? { ...x, meaning: e.target.value as Meaning }
+                          : x,
+                      ),
+                    );
                   }}
                 >
                   {MEANINGS.map((m) => (
@@ -345,7 +421,15 @@ function SettingsForm({
                 changed();
                 setStatuses((xs) => [
                   ...xs,
-                  { key: newKey("status", xs.map((x) => x.key)), label: "", colour: "blue", meaning: "other" },
+                  {
+                    key: newKey(
+                      "status",
+                      xs.map((x) => x.key),
+                    ),
+                    label: "",
+                    colour: "blue",
+                    meaning: "other",
+                  },
                 ]);
               }}
             >
@@ -358,7 +442,8 @@ function SettingsForm({
       <Card className="flex flex-col gap-4 p-5 text-sm">
         <h2 className="font-semibold">Answers</h2>
         <p className="text-muted-foreground">
-          What people say back when you pitch. What each one means decides when to try them again.
+          What people say back when you pitch. What each one means decides when
+          to try them again.
         </p>
         <ul className="flex flex-col gap-3">
           {outcomes.map((o, i) => (
@@ -372,7 +457,11 @@ function SettingsForm({
                   disabled={!admin}
                   onChange={(e) => {
                     changed();
-                    setOutcomes((xs) => xs.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)));
+                    setOutcomes((xs) =>
+                      xs.map((x, j) =>
+                        j === i ? { ...x, label: e.target.value } : x,
+                      ),
+                    );
                   }}
                 />
               </div>
@@ -384,7 +473,13 @@ function SettingsForm({
                   disabled={!admin}
                   onChange={(e) => {
                     changed();
-                    setOutcomes((xs) => xs.map((x, j) => (j === i ? { ...x, tag: e.target.value as OutcomeTag } : x)));
+                    setOutcomes((xs) =>
+                      xs.map((x, j) =>
+                        j === i
+                          ? { ...x, tag: e.target.value as OutcomeTag }
+                          : x,
+                      ),
+                    );
                   }}
                 >
                   {TAGS.map((t) => (
@@ -417,7 +512,17 @@ function SettingsForm({
               size="sm"
               onClick={() => {
                 changed();
-                setOutcomes((xs) => [...xs, { key: newKey("answer", xs.map((x) => x.key)), label: "", tag: "wait" }]);
+                setOutcomes((xs) => [
+                  ...xs,
+                  {
+                    key: newKey(
+                      "answer",
+                      xs.map((x) => x.key),
+                    ),
+                    label: "",
+                    tag: "wait",
+                  },
+                ]);
               }}
             >
               <Plus /> Add an answer
@@ -428,7 +533,9 @@ function SettingsForm({
 
       <Card className="flex flex-col gap-4 p-5 text-sm">
         <h2 className="font-semibold">Actions</h2>
-        <p className="text-muted-foreground">The things you do to win people over, to log on each organisation.</p>
+        <p className="text-muted-foreground">
+          The things you do to win people over, to log on each organisation.
+        </p>
         <ul className="flex flex-col gap-2">
           {actions.map((a, i) => (
             <li key={a.key} className="flex items-center gap-2">
@@ -439,7 +546,11 @@ function SettingsForm({
                 disabled={!admin}
                 onChange={(e) => {
                   changed();
-                  setActions((xs) => xs.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)));
+                  setActions((xs) =>
+                    xs.map((x, j) =>
+                      j === i ? { ...x, label: e.target.value } : x,
+                    ),
+                  );
                 }}
               />
               {admin && actions.length > 1 && (
@@ -448,7 +559,11 @@ function SettingsForm({
                   size="icon"
                   aria-label={`Remove ${a.label || "action"}`}
                   disabled={templates.some((t) => t.action === a.key)}
-                  title={templates.some((t) => t.action === a.key) ? "A pitch template logs this; change the template first." : undefined}
+                  title={
+                    templates.some((t) => t.action === a.key)
+                      ? "A pitch template logs this; change the template first."
+                      : undefined
+                  }
                   onClick={() => {
                     changed();
                     setActions((xs) => xs.filter((_, j) => j !== i));
@@ -467,7 +582,16 @@ function SettingsForm({
               size="sm"
               onClick={() => {
                 changed();
-                setActions((xs) => [...xs, { key: newKey("action", xs.map((x) => x.key)), label: "" }]);
+                setActions((xs) => [
+                  ...xs,
+                  {
+                    key: newKey(
+                      "action",
+                      xs.map((x) => x.key),
+                    ),
+                    label: "",
+                  },
+                ]);
               }}
             >
               <Plus /> Add an action
@@ -478,7 +602,10 @@ function SettingsForm({
 
       <Card className="flex flex-col gap-4 p-5 text-sm">
         <h2 className="font-semibold">Sending pitches</h2>
-        <p className="text-muted-foreground">How pitches go out unless a member picks their own way. Nothing is sent without someone pressing send.</p>
+        <p className="text-muted-foreground">
+          How pitches go out unless a member picks their own way. Nothing is
+          sent without someone pressing send.
+        </p>
         <div className="flex flex-col gap-2">
           {SEND_WITH.map((w) => (
             <label key={w.value} className="flex items-start gap-2">
@@ -505,8 +632,9 @@ function SettingsForm({
       <Card className="flex flex-col gap-4 p-5 text-sm">
         <h2 className="font-semibold">Pitch templates</h2>
         <p className="text-muted-foreground">
-          The wording you pitch with. These fill themselves in: {(saved.placeholders ?? []).map((p) => `{${p.name}}`).join(" ")}. You can change the words on
-          each pitch before it goes.
+          The wording you pitch with. These fill themselves in:{" "}
+          {(saved.placeholders ?? []).map((p) => `{${p.name}}`).join(" ")}. You
+          can change the words on each pitch before it goes.
         </p>
         <details className="text-muted-foreground">
           <summary className="cursor-pointer">What each one means</summary>
@@ -522,19 +650,37 @@ function SettingsForm({
           {templates.map((t, i) => {
             const set = (patch: Partial<PitchTemplate>) => {
               changed();
-              setTemplates((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+              setTemplates((xs) =>
+                xs.map((x, j) => (j === i ? { ...x, ...patch } : x)),
+              );
             };
             return (
-              <li key={t.key} className="flex flex-col gap-2 rounded-md border p-3">
+              <li
+                key={t.key}
+                className="flex flex-col gap-2 rounded-md border p-3"
+              >
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="flex min-w-40 flex-1 flex-col gap-1">
                     <Label htmlFor={`template-${t.key}-name`}>Name</Label>
-                    <Input id={`template-${t.key}-name`} value={t.name} maxLength={80} disabled={!admin} onChange={(e) => set({ name: e.target.value })} />
+                    <Input
+                      id={`template-${t.key}-name`}
+                      value={t.name}
+                      maxLength={80}
+                      disabled={!admin}
+                      onChange={(e) => set({ name: e.target.value })}
+                    />
                   </div>
                   <div className="flex w-48 flex-col gap-1">
                     <Label htmlFor={`template-${t.key}-action`}>Logs as</Label>
-                    <NativeSelect id={`template-${t.key}-action`} value={t.action} disabled={!admin} onChange={(e) => set({ action: e.target.value })}>
-                      {!actions.some((a) => a.key === t.action) && <option value={t.action}>Choose an action</option>}
+                    <NativeSelect
+                      id={`template-${t.key}-action`}
+                      value={t.action}
+                      disabled={!admin}
+                      onChange={(e) => set({ action: e.target.value })}
+                    >
+                      {!actions.some((a) => a.key === t.action) && (
+                        <option value={t.action}>Choose an action</option>
+                      )}
                       {actions.map((a) => (
                         <option key={a.key} value={a.key}>
                           {a.label || "Unnamed action"}
@@ -558,7 +704,13 @@ function SettingsForm({
                 </div>
                 <div className="flex flex-col gap-1">
                   <Label htmlFor={`template-${t.key}-subject`}>Subject</Label>
-                  <Input id={`template-${t.key}-subject`} value={t.subject} maxLength={300} disabled={!admin} onChange={(e) => set({ subject: e.target.value })} />
+                  <Input
+                    id={`template-${t.key}-subject`}
+                    value={t.subject}
+                    maxLength={300}
+                    disabled={!admin}
+                    onChange={(e) => set({ subject: e.target.value })}
+                  />
                 </div>
                 <div className="flex flex-col gap-1">
                   <Label htmlFor={`template-${t.key}-body`}>Message</Label>
@@ -575,7 +727,11 @@ function SettingsForm({
             );
           })}
         </ul>
-        {templates.length === 0 && <p className="text-muted-foreground">No templates. Pitches start from a blank message.</p>}
+        {templates.length === 0 && (
+          <p className="text-muted-foreground">
+            No templates. Pitches start from a blank message.
+          </p>
+        )}
         {admin && templates.length < 30 && (
           <div>
             <Button
@@ -585,7 +741,16 @@ function SettingsForm({
                 changed();
                 setTemplates((xs) => [
                   ...xs,
-                  { key: newKey("template", xs.map((x) => x.key)), name: "", action: actions[0]?.key ?? "", subject: "", body: "Hi {firstName},\n\n" },
+                  {
+                    key: newKey(
+                      "template",
+                      xs.map((x) => x.key),
+                    ),
+                    name: "",
+                    action: actions[0]?.key ?? "",
+                    subject: "",
+                    body: "Hi {firstName},\n\n",
+                  },
                 ]);
               }}
             >
@@ -605,7 +770,8 @@ function SettingsForm({
           )}
         </div>
         <p className="text-muted-foreground">
-          Rename them, add your own (say, "UK" apart from the rest of Europe) and choose which countries go in each.
+          Rename them, add your own (say, "UK" apart from the rest of Europe)
+          and choose which countries go in each.
         </p>
         <ul className="flex flex-col gap-2">
           {regions.map((r, i) => (
@@ -617,11 +783,16 @@ function SettingsForm({
                 disabled={!admin}
                 onChange={(e) => {
                   changed();
-                  setRegions((xs) => xs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)));
+                  setRegions((xs) =>
+                    xs.map((x, j) =>
+                      j === i ? { ...x, name: e.target.value } : x,
+                    ),
+                  );
                 }}
               />
               <span className="w-24 shrink-0 text-muted-foreground">
-                {r.countries.length} {r.countries.length === 1 ? "country" : "countries"}
+                {r.countries.length}{" "}
+                {r.countries.length === 1 ? "country" : "countries"}
               </span>
               {admin && regions.length > 1 && (
                 <Button
@@ -646,7 +817,17 @@ function SettingsForm({
               size="sm"
               onClick={() => {
                 changed();
-                setRegions((xs) => [...xs, { key: newKey("region", xs.map((x) => x.key)), name: "", countries: [] }]);
+                setRegions((xs) => [
+                  ...xs,
+                  {
+                    key: newKey(
+                      "region",
+                      xs.map((x) => x.key),
+                    ),
+                    name: "",
+                    countries: [],
+                  },
+                ]);
               }}
             >
               <Plus /> Add a region
@@ -655,15 +836,24 @@ function SettingsForm({
         )}
         <div className="flex flex-col gap-2">
           <Label htmlFor="country-search">Countries</Label>
-          <Input id="country-search" placeholder="Search countries…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input
+            id="country-search"
+            placeholder="Search countries…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
           {unplaced > 0 && (
             <p className="text-muted-foreground">
-              {unplaced} {unplaced === 1 ? "country is" : "countries are"} in no region; organisations there show no region unless you pick one.
+              {unplaced} {unplaced === 1 ? "country is" : "countries are"} in no
+              region; organisations there show no region unless you pick one.
             </p>
           )}
           <ul className="max-h-96 divide-y overflow-y-auto rounded-md border">
             {shown.map((c) => (
-              <li key={c.code} className="flex items-center justify-between gap-2 px-3 py-1.5">
+              <li
+                key={c.code}
+                className="flex items-center justify-between gap-2 px-3 py-1.5"
+              >
                 <span className="min-w-0 truncate">{c.name}</span>
                 <NativeSelect
                   aria-label={`Region for ${c.name}`}
@@ -681,7 +871,11 @@ function SettingsForm({
                 </NativeSelect>
               </li>
             ))}
-            {shown.length === 0 && <li className="px-3 py-2 text-muted-foreground">No country matches.</li>}
+            {shown.length === 0 && (
+              <li className="px-3 py-2 text-muted-foreground">
+                No country matches.
+              </li>
+            )}
           </ul>
         </div>
       </Card>
@@ -716,10 +910,15 @@ export function OrganisationPitching({
   const kinds: ItemKind[] = settings.data?.items ?? ["talent"];
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const interested = (organisation.interested_in as ItemRef[] | undefined) ?? [];
-  const matches = (organisation.potential_matches as ItemRef[] | undefined) ?? [];
+  const interested =
+    (organisation.interested_in as ItemRef[] | undefined) ?? [];
+  const matches =
+    (organisation.potential_matches as ItemRef[] | undefined) ?? [];
 
-  const save = async (list: "interested_in" | "potential_matches", next: ItemRef[]) => {
+  const save = async (
+    list: "interested_in" | "potential_matches",
+    next: ItemRef[],
+  ) => {
     setBusy(true);
     setError(null);
     try {
@@ -732,7 +931,10 @@ export function OrganisationPitching({
       );
       onSaved(after as unknown as RecordJson);
     } catch (e) {
-      if (e instanceof ApiFailure && e.status === 412) setError("Someone else changed this organisation. Reload to see their changes.");
+      if (e instanceof ApiFailure && e.status === 412)
+        setError(
+          "Someone else changed this organisation. Reload to see their changes.",
+        );
       else setError(failure(e));
     } finally {
       setBusy(false);
@@ -759,7 +961,11 @@ export function OrganisationPitching({
         canWrite={canWrite && !busy}
         onChange={(next) => void save("potential_matches", next)}
       />
-      <PitchLog organisationId={String(organisation.id)} items={uniqueItems([...interested, ...matches])} canWrite={canWrite} />
+      <PitchLog
+        organisationId={String(organisation.id)}
+        items={uniqueItems([...interested, ...matches])}
+        canWrite={canWrite}
+      />
     </section>
   );
 }
@@ -796,18 +1002,33 @@ function ItemList({
       ) : (
         <ul className="flex flex-wrap gap-2">
           {items.map((x) => (
-            <li key={`${x.kind}:${x.id}`} className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5">
+            <li
+              key={`${x.kind}:${x.id}`}
+              className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5"
+            >
               {x.kind === "talent" ? (
-                <Link to="/crm/$entity/$id" params={{ entity: "talent", id: x.id }} className="hover:underline">
+                <Link
+                  to="/crm/$entity/$id"
+                  params={{ entity: "talent", id: x.id }}
+                  className="hover:underline"
+                >
                   {x.name}
                 </Link>
               ) : (
-                <Link to="/projects/$id" params={{ id: x.id }} className="hover:underline">
+                <Link
+                  to="/projects/$id"
+                  params={{ id: x.id }}
+                  className="hover:underline"
+                >
                   {x.name}
                 </Link>
               )}
               {canWrite && (
-                <button type="button" aria-label={`Remove ${x.name}`} onClick={() => onChange(items.filter((y) => y !== x))}>
+                <button
+                  type="button"
+                  aria-label={`Remove ${x.name}`}
+                  onClick={() => onChange(items.filter((y) => y !== x))}
+                >
                   <X className="size-3.5" />
                 </button>
               )}
@@ -818,14 +1039,24 @@ function ItemList({
       {canWrite && items.length < 50 && (
         <div className="flex flex-wrap gap-2">
           {kinds.length > 1 && (
-            <NativeSelect aria-label={`What to add to ${title.toLowerCase()}`} className="w-40" value={kind} onChange={(e) => setKind(e.target.value as ItemKind)}>
-              <option value="talent">{setup.word("crm", "talent", true)}</option>
+            <NativeSelect
+              aria-label={`What to add to ${title.toLowerCase()}`}
+              className="w-40"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as ItemKind)}
+            >
+              <option value="talent">
+                {setup.word("crm", "talent", true)}
+              </option>
               <option value="project">Projects</option>
             </NativeSelect>
           )}
           <div className="min-w-48 flex-1">
             {(kinds.length > 1 ? kind : kinds[0]) === "project" ? (
-              <ProjectSearch exclude={items.map((x) => x.id)} onPick={(p) => add({ kind: "project", id: p.id, name: p.name })} />
+              <ProjectSearch
+                exclude={items.map((x) => x.id)}
+                onPick={(p) => add({ kind: "project", id: p.id, name: p.name })}
+              />
             ) : (
               <RecordSearch
                 entity="talent"
@@ -842,18 +1073,34 @@ function ItemList({
 }
 
 /** Projects have no search on the server; the workspace's are few, so filter here. */
-function ProjectSearch({ exclude, onPick }: { exclude: string[]; onPick: (p: { id: string; name: string }) => void }) {
+function ProjectSearch({
+  exclude,
+  onPick,
+}: {
+  exclude: string[];
+  onPick: (p: { id: string; name: string }) => void;
+}) {
   const [q, setQ] = useState("");
   const projects = useQuery({
     queryKey: ["projects", "pick"],
-    queryFn: () => ok(api.GET("/api/v1/projects", { params: { query: { limit: 200 } } })),
+    queryFn: () =>
+      ok(api.GET("/api/v1/projects", { params: { query: { limit: 200 } } })),
     enabled: q.trim().length > 0,
   });
   const needle = q.trim().toLowerCase();
-  const items = (projects.data?.items ?? []).filter((p) => !exclude.includes(p.id) && p.name.toLowerCase().includes(needle)).slice(0, 8);
+  const items = (projects.data?.items ?? [])
+    .filter(
+      (p) => !exclude.includes(p.id) && p.name.toLowerCase().includes(needle),
+    )
+    .slice(0, 8);
   return (
     <div className="relative">
-      <Input placeholder="Add a project…" value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" />
+      <Input
+        placeholder="Add a project…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        autoComplete="off"
+      />
       {needle && (
         <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-card text-sm shadow-md">
           {projects.isFetching && !projects.data && (
@@ -875,7 +1122,9 @@ function ProjectSearch({ exclude, onPick }: { exclude: string[]; onPick: (p: { i
               </button>
             </li>
           ))}
-          {projects.data && items.length === 0 && <li className="p-2 text-muted-foreground">No project matches.</li>}
+          {projects.data && items.length === 0 && (
+            <li className="p-2 text-muted-foreground">No project matches.</li>
+          )}
         </ul>
       )}
     </div>
@@ -898,7 +1147,9 @@ export function happenedAt(day: string, now = new Date()): string {
   return new Date(`${day}T12:00:00`).toISOString();
 }
 
-const TAG_COLOUR = Object.fromEntries(TAGS.map((t) => [t.value, t.colour])) as Record<OutcomeTag, Colour>;
+const TAG_COLOUR = Object.fromEntries(
+  TAGS.map((t) => [t.value, t.colour]),
+) as Record<OutcomeTag, Colour>;
 const LOG_PAGE = 50;
 
 /** Each item once, in the order first seen. */
@@ -919,11 +1170,21 @@ export function uniqueItems(items: ItemRef[]): ItemRef[] {
 export function awaitingOutcome(entry: Pitch, entries: Pitch[]): boolean {
   if (entry.kind !== "action" || !entry.answered_at) return false;
   const at = new Date(entry.answered_at).getTime();
-  return !entries.some((e) => e.kind === "outcome" && new Date(e.happened_at).getTime() >= at);
+  return !entries.some(
+    (e) => e.kind === "outcome" && new Date(e.happened_at).getTime() >= at,
+  );
 }
 
 /** An organisation's pitch log: what was done and the answers given, latest first. */
-function PitchLog({ organisationId, items, canWrite }: { organisationId: string; items: ItemRef[]; canWrite: boolean }) {
+function PitchLog({
+  organisationId,
+  items,
+  canWrite,
+}: {
+  organisationId: string;
+  items: ItemRef[];
+  canWrite: boolean;
+}) {
   const settings = usePitchingSettings();
   const qc = useQueryClient();
   const sync = useOffline();
@@ -931,7 +1192,14 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
     queryKey: ["pitches", organisationId],
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
-      ok(api.GET("/api/v1/organisations/{id}/pitches", { params: { path: { id: organisationId }, query: { offset: pageParam, limit: LOG_PAGE } } })),
+      ok(
+        api.GET("/api/v1/organisations/{id}/pitches", {
+          params: {
+            path: { id: organisationId },
+            query: { offset: pageParam, limit: LOG_PAGE },
+          },
+        }),
+      ),
     getNextPageParam: (last, pages) => {
       const shown = pages.reduce((n, p) => n + p.items.length, 0);
       return shown < last.total && last.items.length > 0 ? shown : undefined;
@@ -941,35 +1209,66 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
   const total = log.data?.pages.at(-1)?.total ?? 0;
   const people = useQuery({
     queryKey: ["list", "contact", "org", organisationId],
-    queryFn: async () => (await fetchList(sync, "contact", { organisation_id: organisationId, limit: 100 })).data,
+    queryFn: async () =>
+      (
+        await fetchList(sync, "contact", {
+          organisation_id: organisationId,
+          limit: 100,
+        })
+      ).data,
   });
   const [editing, setEditing] = useState<Pitch | PitchKind | null>(null);
   const [pitching, setPitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const refresh = () => void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["pitches", organisationId] });
+    // Sent mail logged or removed elsewhere comes and goes from "In your
+    // Sent mail"; not asked again for those who can't read the inbox.
+    if (qc.getQueryState(["unlogged", organisationId])?.status !== "error")
+      void qc.invalidateQueries({ queryKey: ["unlogged", organisationId] });
+  };
   const remove = async (p: Pitch) => {
-    if (!window.confirm(`Remove "${p.type_label ?? "this entry"}" from the log?`)) return;
+    if (
+      !window.confirm(`Remove "${p.type_label ?? "this entry"}" from the log?`)
+    )
+      return;
     setError(null);
     try {
-      await ok(api.DELETE("/api/v1/pitches/{id}", { params: { path: { id: p.id } } }));
+      await ok(
+        api.DELETE("/api/v1/pitches/{id}", { params: { path: { id: p.id } } }),
+      );
       refresh();
     } catch (e) {
       setError(failure(e));
     }
   };
-  // What they said in their answer, logged at the time it came in.
+  // What they said in their answer, logged at the time it came in (never
+  // later than now, should a clock run ahead), by the person who answered
+  // when they still work here.
+  const [saying, setSaying] = useState<string | null>(null);
   const said = async (p: Pitch, outcome: Outcome) => {
+    if (saying || !p.answered_at) return;
+    setSaying(p.id);
     setError(null);
+    const at = new Date(
+      Math.min(new Date(p.answered_at).getTime(), Date.now()),
+    ).toISOString();
+    const contact =
+      p.contact_id &&
+      people.data?.items.some((c) => String(c.id) === p.contact_id)
+        ? p.contact_id
+        : null;
     try {
       await ok(
         api.POST("/api/v1/pitches", {
+          params: { header: { "Idempotency-Key": crypto.randomUUID() } },
           body: {
             organisation_id: organisationId,
             kind: "outcome",
             type_key: outcome.key,
-            happened_at: p.answered_at,
-            channel: p.channel ?? null,
-            contact_id: p.contact_id ?? null,
+            happened_at: at,
+            channel: p.answer?.channel ?? p.channel ?? null,
+            contact_id: contact,
             item: p.item ? { kind: p.item.kind, id: p.item.id } : null,
           },
         }),
@@ -977,33 +1276,56 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
       refresh();
     } catch (e) {
       setError(failure(e));
+    } finally {
+      setSaying(null);
     }
   };
-  const channel = (c: PitchChannel | null | undefined) => CHANNELS.find((x) => x.value === c)?.label;
+  const channel = (c: PitchChannel | null | undefined) =>
+    CHANNELS.find((x) => x.value === c)?.label;
 
   return (
     <Card className="flex flex-col gap-3 p-4 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="font-medium">Pitch log</h3>
-          <p className="text-muted-foreground">What you have done and what they said.</p>
+          <p className="text-muted-foreground">
+            What you have done and what they said.
+          </p>
         </div>
         {canWrite && settings.data && (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" disabled={!people.data} onClick={() => setPitching(true)}>
+            <Button
+              size="sm"
+              disabled={!people.data}
+              onClick={() => setPitching(true)}
+            >
               <Send /> Pitch
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setEditing("action")}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditing("action")}
+            >
               <Plus /> Log an action
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setEditing("outcome")}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditing("outcome")}
+            >
               <Plus /> Log an answer
             </Button>
           </div>
         )}
       </div>
       {error && <Alert>{error}</Alert>}
-      {canWrite && settings.data && <InSent organisationId={organisationId} settings={settings.data} onChanged={refresh} />}
+      {canWrite && settings.data && (
+        <InSent
+          organisationId={organisationId}
+          settings={settings.data}
+          onChanged={refresh}
+        />
+      )}
       {log.isPending ? (
         <Spinner />
       ) : log.isError ? (
@@ -1013,23 +1335,42 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
       ) : (
         <ul className="divide-y rounded-md border">
           {entries.map((p) => (
-            <li key={p.id} className="flex items-start justify-between gap-2 px-3 py-2">
+            <li
+              key={p.id}
+              className="flex items-start justify-between gap-2 px-3 py-2"
+            >
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex flex-wrap items-center gap-2">
                   {p.kind === "outcome" ? (
                     <StatusDot
                       colour={p.tag ? TAG_COLOUR[p.tag] : "grey"}
-                      label={<span className="font-medium">{p.type_label ?? "An answer no longer listed"}</span>}
+                      label={
+                        <span className="font-medium">
+                          {p.type_label ?? "An answer no longer listed"}
+                        </span>
+                      }
                     />
                   ) : (
-                    <span className="font-medium">{p.type_label ?? "An action no longer listed"}</span>
+                    <span className="font-medium">
+                      {p.type_label ?? "An action no longer listed"}
+                    </span>
                   )}
                   {p.item && <Badge>{p.item.name}</Badge>}
                 </span>
                 <span className="text-muted-foreground">
-                  {[new Date(p.happened_at).toLocaleDateString(), channel(p.channel), p.contact_name].filter(Boolean).join(" · ")}
+                  {[
+                    new Date(p.happened_at).toLocaleDateString(),
+                    channel(p.channel),
+                    p.contact_name,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
-                {p.note && <span className="break-words whitespace-pre-line">{p.note}</span>}
+                {p.note && (
+                  <span className="break-words whitespace-pre-line">
+                    {p.note}
+                  </span>
+                )}
                 {p.message && (
                   <span className="text-muted-foreground">
                     {p.source === "spotted" ? (
@@ -1041,38 +1382,75 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
                     ) : (
                       "Sending…"
                     )}{" "}
-                    <Link to="/inbox" search={{ thread: p.message.thread_id }} className="underline">
+                    <Link
+                      to="/inbox"
+                      search={{ thread: p.message.thread_id }}
+                      className="underline"
+                    >
                       Open the conversation
                     </Link>
                   </span>
                 )}
                 {p.answered_at && (
                   <span className="text-muted-foreground">
-                    They answered on {new Date(p.answered_at).toLocaleDateString()}.{" "}
+                    They answered on{" "}
+                    {new Date(p.answered_at).toLocaleDateString()}.{" "}
                     {p.answer && (
-                      <Link to="/inbox" search={{ thread: p.answer.thread_id }} className="underline">
+                      <Link
+                        to="/inbox"
+                        search={{ thread: p.answer.thread_id }}
+                        className="underline"
+                      >
                         Read their answer
                       </Link>
                     )}
                   </span>
                 )}
-                {canWrite && settings.data && awaitingOutcome(p, entries) && (settings.data.outcomes ?? []).length > 0 && (
-                  <span className="flex flex-wrap items-center gap-1.5 pt-1" role="group" aria-label="What did they say?">
-                    <span className="text-muted-foreground">What did they say?</span>
-                    {(settings.data.outcomes ?? []).map((o) => (
-                      <Button key={o.key} variant="outline" size="sm" onClick={() => void said(p, o)}>
-                        <StatusDot colour={TAG_COLOUR[o.tag]} label={o.label} />
-                      </Button>
-                    ))}
-                  </span>
-                )}
+                {canWrite &&
+                  settings.data &&
+                  awaitingOutcome(p, entries) &&
+                  (settings.data.outcomes ?? []).length > 0 && (
+                    <span
+                      className="flex flex-wrap items-center gap-1.5 pt-1"
+                      role="group"
+                      aria-label="What did they say?"
+                    >
+                      <span className="text-muted-foreground">
+                        What did they say?
+                      </span>
+                      {(settings.data.outcomes ?? []).map((o) => (
+                        <Button
+                          key={o.key}
+                          variant="outline"
+                          size="sm"
+                          disabled={saying !== null}
+                          onClick={() => void said(p, o)}
+                        >
+                          <StatusDot
+                            colour={TAG_COLOUR[o.tag]}
+                            label={o.label}
+                          />
+                        </Button>
+                      ))}
+                    </span>
+                  )}
               </div>
               {canWrite && (
                 <span className="flex shrink-0">
-                  <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setEditing(p)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Edit"
+                    onClick={() => setEditing(p)}
+                  >
                     <Pencil />
                   </Button>
-                  <Button variant="ghost" size="icon" aria-label="Remove" onClick={() => void remove(p)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Remove"
+                    onClick={() => void remove(p)}
+                  >
                     <Trash2 />
                   </Button>
                 </span>
@@ -1082,8 +1460,15 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
         </ul>
       )}
       {log.hasNextPage && (
-        <Button variant="ghost" size="sm" className="self-start" disabled={log.isFetchingNextPage} onClick={() => void log.fetchNextPage()}>
-          {log.isFetchingNextPage && <Spinner className="size-4" />} Show older ({total - entries.length} more)
+        <Button
+          variant="ghost"
+          size="sm"
+          className="self-start"
+          disabled={log.isFetchingNextPage}
+          onClick={() => void log.fetchNextPage()}
+        >
+          {log.isFetchingNextPage && <Spinner className="size-4" />} Show older
+          ({total - entries.length} more)
         </Button>
       )}
       {pitching && settings.data && (
@@ -1105,7 +1490,10 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
           entry={typeof editing === "string" ? null : editing}
           kind={typeof editing === "string" ? editing : editing.kind}
           settings={settings.data}
-          people={(people.data?.items ?? []).map((c) => ({ id: String(c.id), name: String(c.name) }))}
+          people={(people.data?.items ?? []).map((c) => ({
+            id: String(c.id),
+            name: String(c.name),
+          }))}
           items={items}
           onClose={() => setEditing(null)}
           onSaved={() => {
@@ -1123,10 +1511,23 @@ function PitchLog({ organisationId, items, canWrite }: { organisationId: string;
  * OnHold, and isn't in the log: log each as a pitch or set it aside. Shown
  * only to those who can read the inbox.
  */
-function InSent({ organisationId, settings, onChanged }: { organisationId: string; settings: View; onChanged: () => void }) {
+function InSent({
+  organisationId,
+  settings,
+  onChanged,
+}: {
+  organisationId: string;
+  settings: View;
+  onChanged: () => void;
+}) {
   const mail = useQuery({
-    queryKey: ["pitches", organisationId, "unlogged"],
-    queryFn: () => ok(api.GET("/api/v1/organisations/{id}/pitches/unlogged", { params: { path: { id: organisationId } } })),
+    queryKey: ["unlogged", organisationId],
+    queryFn: () =>
+      ok(
+        api.GET("/api/v1/organisations/{id}/pitches/unlogged", {
+          params: { path: { id: organisationId } },
+        }),
+      ),
     retry: false,
   });
   const actions = settings.actions ?? [];
@@ -1140,6 +1541,7 @@ function InSent({ organisationId, settings, onChanged }: { organisationId: strin
     setError(null);
     try {
       await call();
+      void mail.refetch();
       onChanged();
     } catch (e) {
       setError(failure(e));
@@ -1156,7 +1558,9 @@ function InSent({ organisationId, settings, onChanged }: { organisationId: strin
             kind: "action",
             type_key: chosen[m.message_id] ?? actions[0]?.key ?? "",
             message_id: m.message_id,
-            happened_at: m.sent_at,
+            happened_at: new Date(
+              Math.min(new Date(m.sent_at).getTime(), Date.now()),
+            ).toISOString(),
             channel: "email",
             contact_id: m.contact_id ?? null,
           },
@@ -1164,24 +1568,47 @@ function InSent({ organisationId, settings, onChanged }: { organisationId: strin
       ),
     );
   const setAside = (m: Unlogged) =>
-    act(m, () => ok(api.POST("/api/v1/pitches/not-a-pitch", { body: { message_id: m.message_id } })));
+    act(m, () =>
+      ok(
+        api.POST("/api/v1/pitches/not-a-pitch", {
+          body: { message_id: m.message_id },
+        }),
+      ),
+    );
 
   return (
-    <section aria-label="In your Sent mail" className="flex flex-col gap-2 rounded-md border border-dashed p-3">
+    <section
+      aria-label="In your Sent mail"
+      className="flex flex-col gap-2 rounded-md border border-dashed p-3"
+    >
       <div>
         <h4 className="font-medium">In your Sent mail</h4>
-        <p className="text-muted-foreground">Email to them that isn't in the log yet. Log it, or set it aside.</p>
+        <p className="text-muted-foreground">
+          Email to them that isn't in the log yet. Log it, or set it aside.
+        </p>
       </div>
       {error && <Alert>{error}</Alert>}
       <ul className="flex flex-col gap-2">
         {mail.data.map((m) => (
-          <li key={m.message_id} className="flex flex-wrap items-center justify-between gap-2">
+          <li
+            key={m.message_id}
+            className="flex flex-wrap items-center justify-between gap-2"
+          >
             <span className="flex min-w-0 flex-col">
-              <Link to="/inbox" search={{ thread: m.thread_id }} className="truncate font-medium underline">
+              <Link
+                to="/inbox"
+                search={{ thread: m.thread_id }}
+                className="truncate font-medium underline"
+              >
                 {m.subject || "(no subject)"}
               </Link>
               <span className="text-muted-foreground">
-                {[new Date(m.sent_at).toLocaleDateString(), m.contact_name ?? m.to.join(", ")].filter(Boolean).join(" · ")}
+                {[
+                  new Date(m.sent_at).toLocaleDateString(),
+                  m.contact_name ?? m.to.join(", "),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </span>
             </span>
             <span className="flex flex-wrap items-center gap-2">
@@ -1189,7 +1616,9 @@ function InSent({ organisationId, settings, onChanged }: { organisationId: strin
                 aria-label="Log it as"
                 className="w-40"
                 value={chosen[m.message_id] ?? actions[0]?.key ?? ""}
-                onChange={(e) => setChosen({ ...chosen, [m.message_id]: e.target.value })}
+                onChange={(e) =>
+                  setChosen({ ...chosen, [m.message_id]: e.target.value })
+                }
               >
                 {actions.map((a) => (
                   <option key={a.key} value={a.key}>
@@ -1197,10 +1626,19 @@ function InSent({ organisationId, settings, onChanged }: { organisationId: strin
                   </option>
                 ))}
               </NativeSelect>
-              <Button size="sm" disabled={busy !== null} onClick={() => void log(m)}>
+              <Button
+                size="sm"
+                disabled={busy !== null}
+                onClick={() => void log(m)}
+              >
                 Log
               </Button>
-              <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void setAside(m)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy !== null}
+                onClick={() => void setAside(m)}
+              >
                 Not a pitch
               </Button>
             </span>
@@ -1213,27 +1651,51 @@ function InSent({ organisationId, settings, onChanged }: { organisationId: strin
 
 const itemKey = (x: ItemRef | null) => (x ? `${x.kind}:${x.id}` : "");
 
-type Person = { id: string; name: string; email: string | null; phone: string | null };
+type Person = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+};
 
 function person(c: RecordJson): Person {
-  return { id: String(c.id), name: String(c.name), email: ((c.emails as string[] | undefined) ?? [])[0] ?? null, phone: phonesOf(c)[0] ?? null };
+  return {
+    id: String(c.id),
+    name: String(c.name),
+    email: ((c.emails as string[] | undefined) ?? [])[0] ?? null,
+    phone: phonesOf(c)[0] ?? null,
+  };
 }
 
 /** The placeholders (of those `known`) still in a pitch, to fill in by hand. */
 export function unfilled(text: string, known: string[]): string[] {
   const names = new Set(known);
-  return [...new Set([...text.matchAll(/\{([A-Za-z]+)\}/g)].map((m) => m[1] ?? "").filter((n) => names.has(n)))];
+  return [
+    ...new Set(
+      [...text.matchAll(/\{([A-Za-z]+)\}/g)]
+        .map((m) => m[1] ?? "")
+        .filter((n) => names.has(n)),
+    ),
+  ];
 }
 
 /** A pitch opened in the sender's own email app. */
-export function mailtoLink(to: string | null, subject: string, body: string): string {
-  const q = new URLSearchParams({ subject, body }).toString().replace(/\+/g, "%20");
+export function mailtoLink(
+  to: string | null,
+  subject: string,
+  body: string,
+): string {
+  const q = new URLSearchParams({ subject, body })
+    .toString()
+    .replace(/\+/g, "%20");
   return `mailto:${to ? encodeURIComponent(to).replace(/%40/g, "@") : ""}?${q}`;
 }
 
 /** A pitch opened in WhatsApp to an international number, or to pick a chat. */
 export function whatsappLink(phone: string | null, text: string): string {
-  const digits = phone?.startsWith("+") ? dialable(phone).replace(/\D/g, "") : "";
+  const digits = phone?.startsWith("+")
+    ? dialable(phone).replace(/\D/g, "")
+    : "";
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
 }
 
@@ -1243,7 +1705,12 @@ export function smsLink(phone: string | null, text: string): string {
 }
 
 type Way = "mail_app" | "copy" | "text" | "whatsapp";
-const WAY_CHANNEL: Record<Way, PitchChannel | ""> = { mail_app: "email", copy: "", text: "text", whatsapp: "whatsapp" };
+const WAY_CHANNEL: Record<Way, PitchChannel | ""> = {
+  mail_app: "email",
+  copy: "",
+  text: "text",
+  whatsapp: "whatsapp",
+};
 
 /**
  * Pitching someone: a template filled in for them and what is pitched,
@@ -1269,8 +1736,13 @@ function PitchDialog({
   const setup = useSetup();
   const qc = useQueryClient();
   const templates = settings.templates ?? [];
-  const me = useQuery({ queryKey: ["pitching-me"], queryFn: () => ok(api.GET("/api/v1/pitching/me")) });
-  const [contact, setContact] = useState(() => (people.find((p) => p.email) ?? people[0])?.id ?? "");
+  const me = useQuery({
+    queryKey: ["pitching-me"],
+    queryFn: () => ok(api.GET("/api/v1/pitching/me")),
+  });
+  const [contact, setContact] = useState(
+    () => (people.find((p) => p.email) ?? people[0])?.id ?? "",
+  );
   const [item, setItem] = useState<ItemRef | null>(items[0] ?? null);
   const [template, setTemplate] = useState(templates[0]?.key ?? "");
   const [subject, setSubject] = useState("");
@@ -1284,7 +1756,10 @@ function PitchDialog({
   const chosen = templates.find((t) => t.key === template) ?? null;
   // What it logs: the template's action, or the workspace's first.
   const action = chosen?.action ?? settings.actions?.[0]?.key ?? "";
-  const choices = item && !items.some((x) => itemKey(x) === itemKey(item)) ? [item, ...items] : items;
+  const choices =
+    item && !items.some((x) => itemKey(x) === itemKey(item))
+      ? [item, ...items]
+      : items;
 
   const draft = useQuery({
     queryKey: ["pitch-draft", organisationId, template, contact, itemKey(item)],
@@ -1298,7 +1773,11 @@ function PitchDialog({
       ok(
         api.POST("/api/v1/organisations/{id}/pitches/draft", {
           params: { path: { id: organisationId } },
-          body: { template_key: template, contact_id: contact || null, item: item ? { kind: item.kind, id: item.id } : null },
+          body: {
+            template_key: template,
+            contact_id: contact || null,
+            item: item ? { kind: item.kind, id: item.id } : null,
+          },
         }),
       ),
   });
@@ -1310,8 +1789,15 @@ function PitchDialog({
     setBody(draft.data.body);
   }
 
-  const usual: SendWith = me.data?.send_with ?? me.data?.workspace_send_with ?? settings.send_with ?? "onhold";
-  const left = unfilled(`${subject}\n${body}`, (settings.placeholders ?? []).map((p) => p.name));
+  const usual: SendWith =
+    me.data?.send_with ??
+    me.data?.workspace_send_with ??
+    settings.send_with ??
+    "onhold";
+  const left = unfilled(
+    `${subject}\n${body}`,
+    (settings.placeholders ?? []).map((p) => p.name),
+  );
   const text = subject ? `${subject}\n\n${body}` : body;
   const ready = body.trim() !== "" && !draft.isFetching;
 
@@ -1345,15 +1831,26 @@ function PitchDialog({
     setError(null);
     try {
       if (way === "copy") {
-        if (!navigator.clipboard) throw new Error("This browser can't copy here. Select the words and copy them instead.");
+        if (!navigator.clipboard)
+          throw new Error(
+            "This browser can't copy here. Select the words and copy them instead.",
+          );
         await navigator.clipboard.writeText(text);
       } else {
         await openInBrowser(
-          way === "mail_app" ? mailtoLink(who?.email ?? null, subject, body) : way === "text" ? smsLink(who?.phone ?? null, text) : whatsappLink(who?.phone ?? null, text),
+          way === "mail_app"
+            ? mailtoLink(who?.email ?? null, subject, body)
+            : way === "text"
+              ? smsLink(who?.phone ?? null, text)
+              : whatsappLink(who?.phone ?? null, text),
         );
       }
     } catch (e) {
-      setError(e instanceof Error && e.message ? e.message : "That didn't work. Copy the words instead.");
+      setError(
+        e instanceof Error && e.message
+          ? e.message
+          : "That didn't work. Copy the words instead.",
+      );
       return;
     }
     setAsked(way);
@@ -1385,7 +1882,9 @@ function PitchDialog({
   };
   const setUsual = async (v: SendWith | "") => {
     try {
-      const after = await ok(api.PUT("/api/v1/pitching/me", { body: { send_with: v || null } }));
+      const after = await ok(
+        api.PUT("/api/v1/pitching/me", { body: { send_with: v || null } }),
+      );
       qc.setQueryData(["pitching-me"], after);
     } catch (e) {
       setError(failure(e));
@@ -1399,8 +1898,12 @@ function PitchDialog({
     { way: "text", label: "Text", hidden: !who?.phone },
     { way: "whatsapp", label: "WhatsApp", hidden: !who?.phone },
   ];
-  const go = (way: SendWith | Way) => (way === "onhold" ? void send() : void elsewhere(way));
-  const primary = ways.find((w) => w.way === usual && !w.hidden) ?? ways.find((w) => !w.hidden && w.way !== "onhold") ?? ways[1];
+  const go = (way: SendWith | Way) =>
+    way === "onhold" ? void send() : void elsewhere(way);
+  const primary =
+    ways.find((w) => w.way === usual && !w.hidden) ??
+    ways.find((w) => !w.hidden && w.way !== "onhold") ??
+    ways[1];
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title="Pitch">
@@ -1408,8 +1911,14 @@ function PitchDialog({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
             <Label htmlFor="pitch-contact">To</Label>
-            <NativeSelect id="pitch-contact" value={contact} onChange={(e) => setContact(e.target.value)}>
-              {people.length === 0 && <option value="">No one at this organisation yet</option>}
+            <NativeSelect
+              id="pitch-contact"
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
+            >
+              {people.length === 0 && (
+                <option value="">No one at this organisation yet</option>
+              )}
               {people.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -1448,7 +1957,11 @@ function PitchDialog({
             <NativeSelect
               id="pitch-item"
               value={itemKey(item)}
-              onChange={(e) => setItem(choices.find((x) => itemKey(x) === e.target.value) ?? null)}
+              onChange={(e) =>
+                setItem(
+                  choices.find((x) => itemKey(x) === e.target.value) ?? null,
+                )
+              }
             >
               <option value="">Nothing in particular</option>
               {choices.map((x) => (
@@ -1461,7 +1974,9 @@ function PitchDialog({
           <RecordSearch
             id={choices.length > 0 ? undefined : "pitch-item"}
             entity="talent"
-            exclude={choices.filter((x) => x.kind === "talent").map((x) => x.id)}
+            exclude={choices
+              .filter((x) => x.kind === "talent")
+              .map((x) => x.id)}
             placeholder={`Or find ${setup.word("crm", "talent", true).toLowerCase()}…`}
             onPick={(p) => setItem({ kind: "talent", id: p.id, name: p.name })}
           />
@@ -1469,24 +1984,44 @@ function PitchDialog({
         {draft.isError && <Alert>{draft.error.message}</Alert>}
         <div className="flex flex-col gap-1">
           <Label htmlFor="pitch-subject">Subject</Label>
-          <Input id="pitch-subject" value={subject} maxLength={1000} onChange={(e) => setSubject(e.target.value)} />
+          <Input
+            id="pitch-subject"
+            value={subject}
+            maxLength={1000}
+            onChange={(e) => setSubject(e.target.value)}
+          />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="pitch-body">Message</Label>
-          <Textarea id="pitch-body" value={body} rows={10} onChange={(e) => setBody(e.target.value)} />
+          <Textarea
+            id="pitch-body"
+            value={body}
+            rows={10}
+            onChange={(e) => setBody(e.target.value)}
+          />
           {draft.isFetching && <Spinner className="size-4" />}
         </div>
         {left.length > 0 && (
           <Alert tone="info">
-            Fill in {left.map((n) => `{${n}}`).join(", ")} before it goes: there was nothing to fill {left.length === 1 ? "it" : "them"} with.
+            Fill in {left.map((n) => `{${n}}`).join(", ")} before it goes: there
+            was nothing to fill {left.length === 1 ? "it" : "them"} with.
           </Alert>
         )}
         {error && <Alert>{error}</Alert>}
         {asked ? (
-          <div className="flex flex-col gap-2 rounded-md border bg-muted/40 p-3" role="status">
+          <div
+            className="flex flex-col gap-2 rounded-md border bg-muted/40 p-3"
+            role="status"
+          >
             <span className="font-medium">Did you send it?</span>
             {asked === "copy" && (
-              <NativeSelect aria-label="How you sent it" value={askedChannel} onChange={(e) => setAskedChannel(e.target.value as PitchChannel | "")}>
+              <NativeSelect
+                aria-label="How you sent it"
+                value={askedChannel}
+                onChange={(e) =>
+                  setAskedChannel(e.target.value as PitchChannel | "")
+                }
+              >
                 <option value="">How you sent it (optional)</option>
                 {CHANNELS.map((c) => (
                   <option key={c.value} value={c.value}>
@@ -1509,10 +2044,15 @@ function PitchDialog({
             <div className="flex flex-wrap gap-2">
               {primary && (
                 <Button
-                  disabled={busy || !ready || (primary.way === "onhold" && left.length > 0)}
+                  disabled={
+                    busy ||
+                    !ready ||
+                    (primary.way === "onhold" && left.length > 0)
+                  }
                   onClick={() => go(primary.way)}
                 >
-                  {busy && <Spinner className="size-4" />} {primary.way === "onhold" ? "Send" : primary.label}
+                  {busy && <Spinner className="size-4" />}{" "}
+                  {primary.way === "onhold" ? "Send" : primary.label}
                 </Button>
               )}
               {ways
@@ -1521,7 +2061,9 @@ function PitchDialog({
                   <Button
                     key={w.way}
                     variant="outline"
-                    disabled={busy || !ready || (w.way === "onhold" && left.length > 0)}
+                    disabled={
+                      busy || !ready || (w.way === "onhold" && left.length > 0)
+                    }
                     onClick={() => go(w.way)}
                   >
                     {w.label}
@@ -1535,13 +2077,22 @@ function PitchDialog({
                   : "Sent by OnHold in your workspace's name, then logged here. Answers go to your own email; connect it under Email accounts to see them in OnHold."}
               </p>
             )}
-            {!who?.email && people.length > 0 && <p className="text-muted-foreground">They have no email address, so it cannot be sent from OnHold.</p>}
+            {!who?.email && people.length > 0 && (
+              <p className="text-muted-foreground">
+                They have no email address, so it cannot be sent from OnHold.
+              </p>
+            )}
           </div>
         )}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
           <label className="flex items-center gap-2 text-muted-foreground">
             Usually I
-            <NativeSelect aria-label="How you usually pitch" className="w-60" value={me.data?.send_with ?? ""} onChange={(e) => void setUsual(e.target.value as SendWith | "")}>
+            <NativeSelect
+              aria-label="How you usually pitch"
+              className="w-60"
+              value={me.data?.send_with ?? ""}
+              onChange={(e) => void setUsual(e.target.value as SendWith | "")}
+            >
               <option value="">Do as the workspace does</option>
               {SEND_WITH.map((w) => (
                 <option key={w.value} value={w.value}>
@@ -1579,12 +2130,21 @@ function LogDialog({
   onSaved: () => void;
 }) {
   const setup = useSetup();
-  const types = kind === "action" ? (settings.actions ?? []) : (settings.outcomes ?? []);
+  const types =
+    kind === "action" ? (settings.actions ?? []) : (settings.outcomes ?? []);
   // An entry starts as it is; a new one with likely choices.
   const [start] = useState(() => ({
     type: entry ? entry.type_key : (types[0]?.key ?? ""),
-    channel: (entry ? (entry.channel ?? "") : kind === "action" ? "email" : "") as PitchChannel | "",
-    contact: entry ? (entry.contact_id ?? "") : people.length === 1 ? (people[0]?.id ?? "") : "",
+    channel: (entry
+      ? (entry.channel ?? "")
+      : kind === "action"
+        ? "email"
+        : "") as PitchChannel | "",
+    contact: entry
+      ? (entry.contact_id ?? "")
+      : people.length === 1
+        ? (people[0]?.id ?? "")
+        : "",
     item: entry ? (entry.item ?? null) : null,
     day: dayOf(entry?.happened_at ?? new Date().toISOString()),
     note: entry?.note ?? "",
@@ -1597,9 +2157,15 @@ function LogDialog({
   const [note, setNote] = useState(start.note);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const choices = item && !items.some((x) => x.kind === item.kind && x.id === item.id) ? [item, ...items] : items;
+  const choices =
+    item && !items.some((x) => x.kind === item.kind && x.id === item.id)
+      ? [item, ...items]
+      : items;
   // A type since removed from the settings stays on the entry until changed.
-  const typeChoices = entry && !types.some((t) => t.key === entry.type_key) ? [{ key: entry.type_key, label: "No longer listed" }, ...types] : types;
+  const typeChoices =
+    entry && !types.some((t) => t.key === entry.type_key)
+      ? [{ key: entry.type_key, label: "No longer listed" }, ...types]
+      : types;
 
   const save = async () => {
     setBusy(true);
@@ -1631,17 +2197,28 @@ function LogDialog({
           }),
         );
       } else {
-        await ok(api.POST("/api/v1/pitches", { body: { ...body, organisation_id: organisationId, kind } }));
+        await ok(
+          api.POST("/api/v1/pitches", {
+            body: { ...body, organisation_id: organisationId, kind },
+          }),
+        );
       }
       onSaved();
     } catch (e) {
-      if (e instanceof ApiFailure && e.status === 412) setError("Someone else changed this entry. Close and open it again to see their changes.");
+      if (e instanceof ApiFailure && e.status === 412)
+        setError(
+          "Someone else changed this entry. Close and open it again to see their changes.",
+        );
       else setError(failure(e));
       setBusy(false);
     }
   };
 
-  const title = entry ? "Edit the entry" : kind === "action" ? "Log an action" : "Log an answer";
+  const title = entry
+    ? "Edit the entry"
+    : kind === "action"
+      ? "Log an action"
+      : "Log an answer";
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={title}>
       <form
@@ -1652,8 +2229,14 @@ function LogDialog({
         }}
       >
         <div className="flex flex-col gap-1">
-          <Label htmlFor="log-type">{kind === "action" ? "What you did" : "What they said"}</Label>
-          <NativeSelect id="log-type" value={type} onChange={(e) => setType(e.target.value)}>
+          <Label htmlFor="log-type">
+            {kind === "action" ? "What you did" : "What they said"}
+          </Label>
+          <NativeSelect
+            id="log-type"
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          >
             {typeChoices.map((t) => (
               <option key={t.key} value={t.key}>
                 {t.label}
@@ -1664,11 +2247,22 @@ function LogDialog({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
             <Label htmlFor="log-day">When</Label>
-            <Input id="log-day" type="date" value={day} max={dayOf(new Date().toISOString())} required onChange={(e) => setDay(e.target.value)} />
+            <Input
+              id="log-day"
+              type="date"
+              value={day}
+              max={dayOf(new Date().toISOString())}
+              required
+              onChange={(e) => setDay(e.target.value)}
+            />
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="log-channel">How</Label>
-            <NativeSelect id="log-channel" value={channel} onChange={(e) => setChannel(e.target.value as PitchChannel | "")}>
+            <NativeSelect
+              id="log-channel"
+              value={channel}
+              onChange={(e) => setChannel(e.target.value as PitchChannel | "")}
+            >
               <option value="">Not saying</option>
               {CHANNELS.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -1680,11 +2274,18 @@ function LogDialog({
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="log-contact">With</Label>
-          <NativeSelect id="log-contact" value={contact} onChange={(e) => setContact(e.target.value)}>
+          <NativeSelect
+            id="log-contact"
+            value={contact}
+            onChange={(e) => setContact(e.target.value)}
+          >
             <option value="">The organisation</option>
-            {entry?.contact_id && !people.some((p) => p.id === entry.contact_id) && (
-              <option value={entry.contact_id}>{entry.contact_name ?? "Someone no longer here"}</option>
-            )}
+            {entry?.contact_id &&
+              !people.some((p) => p.id === entry.contact_id) && (
+                <option value={entry.contact_id}>
+                  {entry.contact_name ?? "Someone no longer here"}
+                </option>
+              )}
             {people.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -1693,12 +2294,19 @@ function LogDialog({
           </NativeSelect>
         </div>
         <div className="flex flex-col gap-1">
-          <Label htmlFor="log-item">{kind === "action" ? "What you pitched" : "About"}</Label>
+          <Label htmlFor="log-item">
+            {kind === "action" ? "What you pitched" : "About"}
+          </Label>
           {choices.length > 0 && (
             <NativeSelect
               id="log-item"
               value={item ? `${item.kind}:${item.id}` : ""}
-              onChange={(e) => setItem(choices.find((x) => `${x.kind}:${x.id}` === e.target.value) ?? null)}
+              onChange={(e) =>
+                setItem(
+                  choices.find((x) => `${x.kind}:${x.id}` === e.target.value) ??
+                    null,
+                )
+              }
             >
               <option value="">Nothing in particular</option>
               {choices.map((x) => (
@@ -1711,14 +2319,22 @@ function LogDialog({
           <RecordSearch
             id={choices.length > 0 ? undefined : "log-item"}
             entity="talent"
-            exclude={choices.filter((x) => x.kind === "talent").map((x) => x.id)}
+            exclude={choices
+              .filter((x) => x.kind === "talent")
+              .map((x) => x.id)}
             placeholder={`Or find ${setup.word("crm", "talent", true).toLowerCase()}…`}
             onPick={(p) => setItem({ kind: "talent", id: p.id, name: p.name })}
           />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="log-note">Note</Label>
-          <Textarea id="log-note" value={note} maxLength={2000} rows={3} onChange={(e) => setNote(e.target.value)} />
+          <Textarea
+            id="log-note"
+            value={note}
+            maxLength={2000}
+            rows={3}
+            onChange={(e) => setNote(e.target.value)}
+          />
         </div>
         {error && <Alert>{error}</Alert>}
         <div className="flex justify-end gap-2">

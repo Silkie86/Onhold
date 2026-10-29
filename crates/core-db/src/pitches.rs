@@ -33,6 +33,8 @@ pub struct Entry {
     pub answered_at: Option<DateTime<Utc>>,
     pub answer_message_id: Option<Uuid>,
     pub answer_thread_id: Option<Uuid>,
+    /// The answer's conversation's channel: `email`, `sms` or `whatsapp`.
+    pub answer_channel: Option<String>,
     pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -52,7 +54,7 @@ pub async fn list(
                   p.channel, p.talent_id, p.project_id, coalesce(t.name, pr.name) AS item_name, p.note,
                   p.happened_at, p.source, p.template_key, p.message_id, m.thread_id AS "thread_id?",
                   m.status AS "message_status?", p.answered_at, p.answer_message_id,
-                  am.thread_id AS "answer_thread_id?", p.version, p.created_at, p.updated_at,
+                  am.thread_id AS "answer_thread_id?", at.channel AS "answer_channel?", p.version, p.created_at, p.updated_at,
                   p.created_by AS "created_by: UserId", p.updated_by AS "updated_by: UserId",
                   count(*) OVER () AS "total!"
            FROM pitch_log p
@@ -62,6 +64,7 @@ pub async fn list(
                                 AND pr.deleted_at IS NULL
            LEFT JOIN thread_messages m ON m.workspace_id = p.workspace_id AND m.id = p.message_id
            LEFT JOIN thread_messages am ON am.workspace_id = p.workspace_id AND am.id = p.answer_message_id
+           LEFT JOIN threads at ON at.workspace_id = am.workspace_id AND at.id = am.thread_id
            WHERE p.workspace_id = app_workspace_id() AND p.organisation_id = $1 AND p.deleted_at IS NULL
            ORDER BY p.happened_at DESC, p.id DESC
            OFFSET $2 LIMIT $3"#,
@@ -95,6 +98,7 @@ pub async fn list(
             answered_at: r.answered_at,
             answer_message_id: r.answer_message_id,
             answer_thread_id: r.answer_thread_id,
+            answer_channel: r.answer_channel,
             version: r.version,
             created_at: r.created_at,
             updated_at: r.updated_at,
@@ -112,7 +116,7 @@ pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<Entry>> {
                   p.channel, p.talent_id, p.project_id, coalesce(t.name, pr.name) AS item_name, p.note,
                   p.happened_at, p.source, p.template_key, p.message_id, m.thread_id AS "thread_id?",
                   m.status AS "message_status?", p.answered_at, p.answer_message_id,
-                  am.thread_id AS "answer_thread_id?", p.version, p.created_at, p.updated_at,
+                  am.thread_id AS "answer_thread_id?", at.channel AS "answer_channel?", p.version, p.created_at, p.updated_at,
                   p.created_by AS "created_by: UserId", p.updated_by AS "updated_by: UserId"
            FROM pitch_log p
            LEFT JOIN contacts c ON c.workspace_id = p.workspace_id AND c.id = p.contact_id AND c.deleted_at IS NULL
@@ -121,6 +125,7 @@ pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<Entry>> {
                                 AND pr.deleted_at IS NULL
            LEFT JOIN thread_messages m ON m.workspace_id = p.workspace_id AND m.id = p.message_id
            LEFT JOIN thread_messages am ON am.workspace_id = p.workspace_id AND am.id = p.answer_message_id
+           LEFT JOIN threads at ON at.workspace_id = am.workspace_id AND at.id = am.thread_id
            WHERE p.workspace_id = app_workspace_id() AND p.id = $1 AND p.deleted_at IS NULL"#,
         id
     )
@@ -258,7 +263,7 @@ pub async fn note_answer(
     Ok(sqlx::query_scalar!(
         r#"UPDATE pitch_log SET answered_at = $4, answer_message_id = $3
            WHERE workspace_id = app_workspace_id() AND organisation_id = $1 AND kind = 'action'
-             AND answered_at IS NULL AND deleted_at IS NULL
+             AND (answered_at IS NULL OR answered_at > $4) AND deleted_at IS NULL
              AND happened_at <= $4 AND happened_at > $4 - make_interval(days => $5)
              AND ($2::uuid IS NULL OR contact_id IS NULL OR contact_id = $2)
            RETURNING id"#,
@@ -270,6 +275,45 @@ pub async fn note_answer(
     )
     .fetch_all(conn)
     .await?)
+}
+
+/// Works out again when an action was answered: the first message from
+/// someone at its organisation (the person it was with, if anyone) after
+/// it, within [`ANSWER_WINDOW_DAYS`]. For an action logged or changed
+/// after their answer had come in. Returns when, if it was.
+pub async fn recheck_answer(conn: &mut PgConnection, id: Uuid) -> Result<Option<DateTime<Utc>>> {
+    Ok(sqlx::query_scalar!(
+        r#"WITH a AS (
+               SELECT p.id,
+                      (SELECT m.id FROM thread_messages m
+                       JOIN threads t ON t.workspace_id = m.workspace_id AND t.id = m.thread_id
+                       WHERE m.workspace_id = p.workspace_id AND m.direction = 'inbound'
+                         AND NOT m.automatic AND NOT m.bulk
+                         AND m.sent_at > p.happened_at
+                         AND m.sent_at <= p.happened_at + make_interval(days => $2)
+                         AND EXISTS (SELECT 1 FROM contacts c
+                                     WHERE c.workspace_id = m.workspace_id AND c.deleted_at IS NULL
+                                       AND c.organisation_id = p.organisation_id
+                                       AND (p.contact_id IS NULL OR c.id = p.contact_id)
+                                       AND ((t.channel = 'email' AND m.from_address = ANY (c.emails))
+                                            OR (t.channel <> 'email' AND t.contact_id = c.id)))
+                       ORDER BY m.sent_at, m.id LIMIT 1) AS message_id
+               FROM pitch_log p
+               WHERE p.workspace_id = app_workspace_id() AND p.id = $1 AND p.kind = 'action'
+           )
+           UPDATE pitch_log p
+           SET answer_message_id = a.message_id,
+               answered_at = (SELECT sent_at FROM thread_messages m
+                              WHERE m.workspace_id = p.workspace_id AND m.id = a.message_id)
+           FROM a
+           WHERE p.workspace_id = app_workspace_id() AND p.id = a.id
+           RETURNING p.answered_at"#,
+        id,
+        ANSWER_WINDOW_DAYS
+    )
+    .fetch_optional(conn)
+    .await?
+    .flatten())
 }
 
 /// Mail the member sent an organisation from their own mailbox, outside
@@ -288,22 +332,27 @@ pub struct Unlogged {
 /// Up to `limit` recent messages sent to the organisation from a mailbox,
 /// not written in OnHold, newest first, leaving out those logged, called
 /// not a pitch, or sent within a day of an email action already logged
-/// (most likely the same pitch, logged by hand).
+/// by hand (most likely the same pitch). Only mail in mailboxes `viewer`
+/// can open (shared, or their own) is listed.
 pub async fn unlogged(
     conn: &mut PgConnection,
     organisation: Uuid,
     since: DateTime<Utc>,
     limit: i64,
+    viewer: Option<Uuid>,
 ) -> Result<Vec<Unlogged>> {
     Ok(sqlx::query_as!(
         Unlogged,
-        r#"SELECT m.id AS message_id, m.thread_id, t.contact_id, c.name AS "contact_name?", m.subject,
+        r#"SELECT m.id AS message_id, m.thread_id, c.id AS "contact_id?", c.name AS "contact_name?", m.subject,
                   m.to_addresses AS "to", m.sent_at
            FROM thread_messages m
            JOIN threads t ON t.workspace_id = m.workspace_id AND t.id = m.thread_id
+           LEFT JOIN integrations i ON i.workspace_id = t.workspace_id AND i.id = t.integration_id
            LEFT JOIN contacts c ON c.workspace_id = t.workspace_id AND c.id = t.contact_id AND c.deleted_at IS NULL
+                               AND c.organisation_id = $1
            WHERE m.workspace_id = app_workspace_id() AND t.organisation_id = $1 AND t.channel = 'email'
-             AND m.direction = 'outbound' AND m.author_id IS NULL AND NOT m.automatic
+             AND m.direction = 'outbound' AND m.author_id IS NULL AND NOT m.automatic AND m.status = 'sent'
+             AND ($4::uuid IS NULL OR t.integration_id IS NULL OR i.shared OR i.owner_id = $4)
              AND m.sent_at >= $2
              AND NOT EXISTS (SELECT 1 FROM pitch_log p WHERE p.workspace_id = m.workspace_id
                              AND p.message_id = m.id AND p.deleted_at IS NULL)
@@ -311,28 +360,38 @@ pub async fn unlogged(
                              AND n.message_id = m.id)
              AND NOT EXISTS (SELECT 1 FROM pitch_log p WHERE p.workspace_id = m.workspace_id
                              AND p.organisation_id = $1 AND p.kind = 'action' AND p.deleted_at IS NULL
-                             AND (p.channel IS NULL OR p.channel = 'email')
+                             AND p.message_id IS NULL AND (p.channel IS NULL OR p.channel = 'email')
                              AND p.happened_at BETWEEN m.sent_at - interval '1 day' AND m.sent_at + interval '1 day')
            ORDER BY m.sent_at DESC, m.id DESC
            LIMIT $3"#,
         organisation,
         since,
-        limit
+        limit,
+        viewer
     )
     .fetch_all(conn)
     .await?)
 }
 
 /// The organisation an unlogged message went to, if it is one: sent from
-/// a mailbox outside OnHold, by email, to an organisation.
-pub async fn unlogged_organisation(conn: &mut PgConnection, message: Uuid) -> Result<Option<Uuid>> {
+/// a mailbox outside OnHold, by email, to an organisation, in a mailbox
+/// `viewer` can open.
+pub async fn unlogged_organisation(
+    conn: &mut PgConnection,
+    message: Uuid,
+    viewer: Option<Uuid>,
+) -> Result<Option<Uuid>> {
     Ok(sqlx::query_scalar!(
         r#"SELECT t.organisation_id AS "organisation_id!"
            FROM thread_messages m
            JOIN threads t ON t.workspace_id = m.workspace_id AND t.id = m.thread_id
+           LEFT JOIN integrations i ON i.workspace_id = t.workspace_id AND i.id = t.integration_id
            WHERE m.workspace_id = app_workspace_id() AND m.id = $1 AND t.organisation_id IS NOT NULL
-             AND t.channel = 'email' AND m.direction = 'outbound' AND m.author_id IS NULL"#,
-        message
+             AND t.channel = 'email' AND m.direction = 'outbound' AND m.author_id IS NULL
+             AND NOT m.automatic AND m.status = 'sent'
+             AND ($2::uuid IS NULL OR t.integration_id IS NULL OR i.shared OR i.owner_id = $2)"#,
+        message,
+        viewer
     )
     .fetch_optional(conn)
     .await?)

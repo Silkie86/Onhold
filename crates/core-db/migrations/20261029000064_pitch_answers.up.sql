@@ -20,6 +20,25 @@ ALTER TABLE pitch_log
 CREATE INDEX pitch_log_unanswered ON pitch_log (workspace_id, organisation_id, happened_at DESC)
     WHERE kind = 'action' AND answered_at IS NULL AND deleted_at IS NULL;
 
+-- An answer coming in is not an edit: it leaves the version (and so an
+-- open edit) and the time it was last changed alone.
+DROP TRIGGER pitch_log_updated_at ON pitch_log;
+DROP TRIGGER pitch_log_version ON pitch_log;
+CREATE TRIGGER pitch_log_updated_at BEFORE UPDATE ON pitch_log FOR EACH ROW
+    WHEN ((OLD.contact_id, OLD.kind, OLD.type_key, OLD.channel, OLD.talent_id, OLD.project_id, OLD.note,
+           OLD.happened_at, OLD.template_key, OLD.message_id, OLD.source, OLD.deleted_at)
+          IS DISTINCT FROM
+          (NEW.contact_id, NEW.kind, NEW.type_key, NEW.channel, NEW.talent_id, NEW.project_id, NEW.note,
+           NEW.happened_at, NEW.template_key, NEW.message_id, NEW.source, NEW.deleted_at))
+    EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER pitch_log_version BEFORE UPDATE ON pitch_log FOR EACH ROW
+    WHEN ((OLD.contact_id, OLD.kind, OLD.type_key, OLD.channel, OLD.talent_id, OLD.project_id, OLD.note,
+           OLD.happened_at, OLD.template_key, OLD.message_id, OLD.source, OLD.deleted_at)
+          IS DISTINCT FROM
+          (NEW.contact_id, NEW.kind, NEW.type_key, NEW.channel, NEW.talent_id, NEW.project_id, NEW.note,
+           NEW.happened_at, NEW.template_key, NEW.message_id, NEW.source, NEW.deleted_at))
+    EXECUTE FUNCTION bump_version();
+
 -- Mail in Sent that is not a pitch, so it is not offered again.
 CREATE TABLE pitch_not_pitches (
     workspace_id uuid NOT NULL REFERENCES workspaces (id),
