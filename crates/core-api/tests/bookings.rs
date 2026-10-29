@@ -1466,3 +1466,39 @@ async fn links_stop_working_when_the_workspace_is_suspended_or_closed(pool: PgPo
         "nothing was decided in a closed workspace"
     );
 }
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_calendar_too_full_to_list_says_so_rather_than_cutting_short(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let c = cast(&app, &owner).await;
+    let add = |n: i32| {
+        let pool = app.owner.clone();
+        async move {
+            sqlx::query(
+                "INSERT INTO availability (id, workspace_id, talent_id, starts_at, ends_at)
+                 SELECT gen_random_uuid(), $1, $2, '2031-06-01'::timestamptz + i * interval '1 hour',
+                        '2031-06-01'::timestamptz + i * interval '1 hour' + interval '30 minutes'
+                 FROM generate_series(1, $3) i",
+            )
+            .bind(ws.0)
+            .bind(c.talent)
+            .bind(n)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+    };
+    // As many marked stretches as one list holds.
+    add(5000).await;
+    let window = "from=2031-06-01T00:00:00Z&to=2032-01-01T00:00:00Z";
+    let cal = get(&app, &owner, &format!("/api/v1/calendar?{window}")).await;
+    assert_eq!(cal.body["availability"].as_array().unwrap().len(), 5000);
+    // One more and the list is refused, never silently short.
+    add(1).await;
+    app.get(&format!("/api/v1/calendar?{window}"))
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+}

@@ -276,7 +276,8 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
     // The queue tables, plus the few columns scheduling, cleanup and the
     // bookings sweep (holds lapsing, bookings ending, quotes expiring),
     // invoices falling overdue, file cleanup, exchange rates, mailboxes due
-    // to be read and snoozed conversations coming back need.
+    // to be read, snoozed conversations coming back and clearing out old
+    // delivery and rule logs need.
     let queue = [
         "bookings",
         "quotes",
@@ -297,6 +298,8 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "talent_calendars",
         "calendar_pushes",
         "accounting_connections",
+        "webhook_deliveries",
+        "rule_runs",
     ];
     for table in tables(&app.owner).await {
         let read =
@@ -347,6 +350,8 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "SELECT remote_id FROM accounting_links",
         "SELECT total_minor FROM invoices",
         "UPDATE invoices SET status = 'paid'",
+        "SELECT response_excerpt FROM webhook_deliveries",
+        "SELECT reason FROM rule_runs",
     ] {
         let err = sqlx::query(query).fetch_all(&worker).await.unwrap_err();
         assert!(

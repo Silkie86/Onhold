@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM jobs WHERE status IN ('dead', 'cancelled')\n             AND coalesce(finished_at, updated_at) < $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a0469ea55ac23d09584c4e77461665f57cba1d51492c79885946ee38d185c05c"
+}

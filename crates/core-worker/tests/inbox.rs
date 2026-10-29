@@ -941,6 +941,57 @@ async fn gmail_enquiries_arrive_linked_and_replies_go_out_from_the_mailbox(pool:
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_shared_mailbox_connected_again_by_another_member_carries_on(pool: PgPool) {
+    let h = harness(pool).await;
+    let (ws, owner) = h.app.workspace_with_owner("owls").await;
+    h.fake
+        .lock()
+        .unwrap()
+        .add_gmail("g-bea", "t-bea", &["INBOX"], &fixture("enquiry.eml"));
+    let mailbox_id = h
+        .connect(&owner, "google", "good-code")
+        .await
+        .ok()
+        .id("/id")
+        .to_string();
+    h.patch(
+        &owner,
+        &format!("/api/v1/inbox/mailboxes/{mailbox_id}"),
+        json!({ "shared": true }),
+    )
+    .await
+    .ok();
+    h.drain().await;
+    assert_eq!(h.threads(&owner).await["total"], 1);
+    let gone = h
+        .app
+        .delete(&format!("/api/v1/inbox/mailboxes/{mailbox_id}"))
+        .signed_in(&owner)
+        .send()
+        .await;
+    assert_eq!(gone.status, StatusCode::NO_CONTENT, "{}", gone.body);
+
+    // Another member connects it: the same connection, now theirs, so the
+    // mail it read is not read in again.
+    let agent = h.app.add_member(&owner, "cy@owls.test", "agent").await;
+    let back = h.connect(&agent, "google", "good-code").await.ok().body;
+    assert_eq!(back["id"], mailbox_id.as_str(), "{back}");
+    let theirs: bool = sqlx::query_scalar(
+        "SELECT owner_id = (SELECT id FROM users WHERE email = 'cy@owls.test')
+         FROM integrations WHERE id = $1::uuid",
+    )
+    .bind(&mailbox_id)
+    .fetch_one(&h.app.owner)
+    .await
+    .unwrap();
+    assert!(theirs);
+    h.drain().await;
+    assert_eq!(h.threads(&agent).await["total"], 1);
+    let actions = h.app.audit_actions(ws).await;
+    assert!(actions.iter().any(|a| a == "integration.reconnected"));
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn outlook_mail_is_read_and_replies_are_matched_to_their_sent_copy(pool: PgPool) {
     let h = harness(pool).await;
     let (_ws, owner) = h.app.workspace_with_owner("owls").await;
@@ -1080,6 +1131,42 @@ async fn without_a_mailbox_messages_go_through_onhold_and_answers_join_the_threa
     let detail = h.thread(&owner, &thread_id).await;
     assert_eq!(detail["messages"].as_array().unwrap().len(), 2, "{detail}");
     assert!(detail["thread"]["integration_id"].is_string(), "{detail}");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn messages_too_long_to_store_are_refused_not_failed(pool: PgPool) {
+    let h = harness(pool).await;
+    let (_ws, owner) = h.app.workspace_with_owner("owls").await;
+    // Within the length allowed, but its HTML is longer than can be stored.
+    let quotes = "\"".repeat(100_000);
+    let res = h
+        .post(
+            &owner,
+            "/api/v1/inbox/threads",
+            json!({ "to": ["bea@grand.test"], "subject": "Quotes", "body": quotes }),
+        )
+        .await;
+    res.expect(StatusCode::BAD_REQUEST, "invalid_input");
+
+    // A template that makes far more than is kept of mail read in.
+    let line = "x".repeat(100);
+    h.post(
+        &owner,
+        "/api/v1/templates",
+        json!({ "kind": "email", "key": "huge", "name": "Huge", "subject": "Long",
+                "body": format!("{{% for i in range(3000) %}}<p>{line}</p>{{% endfor %}}") }),
+    )
+    .await
+    .ok();
+    let res = h
+        .post(
+            &owner,
+            "/api/v1/inbox/threads",
+            json!({ "to": ["bea@grand.test"], "template_key": "huge" }),
+        )
+        .await;
+    res.expect(StatusCode::BAD_REQUEST, "invalid_input");
+    assert_eq!(res.body["error"]["field"], "template_key", "{}", res.body);
 }
 
 // IMAP and SMTP ------------------------------------------------------------------------
@@ -1438,6 +1525,80 @@ fn sent_mail(id: &str, subject: &str, days_ago: i64) -> String {
          Message-ID: <{id}@owls.test>\r\nDate: {date}\r\nMIME-Version: 1.0\r\n\
          Content-Type: text/plain; charset=utf-8\r\n\r\nHi Bea, have a listen.\r\n"
     )
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_answer_asking_for_replies_to_a_contact_stays_one_when_the_pitch_is_edited(
+    pool: PgPool,
+) {
+    let h = harness(pool).await;
+    let (_ws, owner) = h.app.workspace_with_owner("owls").await;
+    let venue = h
+        .post(
+            &owner,
+            "/api/v1/organisations",
+            json!({ "name": "The Venue" }),
+        )
+        .await
+        .ok()
+        .id("/id");
+    h.post(
+        &owner,
+        "/api/v1/contacts",
+        json!({ "name": "Jane Venue", "emails": ["jane@venue.test"], "organisation_id": venue }),
+    )
+    .await
+    .ok();
+    let happened = (chrono::Utc::now() - chrono::Duration::days(5)).to_rfc3339();
+    let pitched = h
+        .post(
+            &owner,
+            "/api/v1/pitches",
+            json!({ "organisation_id": venue, "kind": "action", "type_key": "pitched",
+                    "channel": "phone", "happened_at": happened }),
+        )
+        .await
+        .ok()
+        .id("/id");
+    // Their booking system writes, asking for replies to go to Jane.
+    let date = (chrono::Utc::now() - chrono::Duration::days(2)).to_rfc2822();
+    h.fake.lock().unwrap().add_gmail(
+        "g-jane",
+        "t-jane",
+        &["INBOX"],
+        &format!(
+            "From: Venue Bookings <bookings@venuesystem.test>\r\nReply-To: Jane <jane@venue.test>\r\n\
+             To: ana@owls.test\r\nSubject: Your pitch\r\nMessage-ID: <jane1@venuesystem.test>\r\n\
+             Date: {date}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n\
+             We would love to have you.\r\n"
+        ),
+    );
+    h.connect(&owner, "google", "good-code").await.ok();
+    h.drain().await;
+    let answered = |log: &Value| log["items"][0]["answered_at"].clone();
+    let log = h
+        .get(&owner, &format!("/api/v1/organisations/{venue}/pitches"))
+        .await
+        .ok()
+        .body;
+    assert!(answered(&log).is_string(), "{log}");
+
+    // Editing the note works the answer out again, and finds the same one.
+    let edited = h
+        .app
+        .patch(&format!("/api/v1/pitches/{pitched}"))
+        .signed_in(&owner)
+        .header("If-Match", &format!("\"{}\"", log["items"][0]["version"]))
+        .json(json!({ "note": "Sent the live video too" }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(
+        edited.body["answered_at"],
+        answered(&log),
+        "{}",
+        edited.body
+    );
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]

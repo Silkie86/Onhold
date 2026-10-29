@@ -8,10 +8,13 @@
 //! they give the booking's money check: what is left once everything is
 //! paid, with a warning when the costs eat the fee.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, NaiveDate, Utc};
 use core_db::Tx;
 pub use core_db::travel::Owner;
 use core_db::travel::{LineValues, MoneyLine, TravelItem, TravelValues};
+use core_domain::finance::Rate;
 use core_domain::touring::{self, COST_CATEGORIES, INCOME_CATEGORIES, TRAVEL_KINDS, Warning};
 use core_domain::{Ctx, Money, Permission, UserId};
 use serde::{Deserialize, Serialize};
@@ -776,10 +779,16 @@ pub struct MoneyCheck {
     pub lines: Vec<MoneyLineView>,
 }
 
+/// Reference rates already looked up, by (from, to, day), so a check of
+/// many amounts asks for each rate once.
+#[derive(Default)]
+pub(crate) struct Rates(HashMap<(String, String, NaiveDate), Option<Rate>>);
+
 /// Converts `m` to `to` at the reference rate on `on`; `None` when there is
 /// no rate.
 pub(crate) async fn convert(
     tx: &mut Tx,
+    rates: &mut Rates,
     m: &Money,
     to: &str,
     on: NaiveDate,
@@ -787,21 +796,25 @@ pub(crate) async fn convert(
     if m.currency == to {
         return Ok(Some(m.minor));
     }
-    let Some(q) = super::finance::reference_rate(tx, &m.currency, to, on).await? else {
-        return Ok(None);
+    let key = (m.currency.clone(), to.to_owned(), on);
+    let rate = match rates.0.get(&key) {
+        Some(r) => *r,
+        None => {
+            let r = super::finance::reference_rate(tx, &m.currency, to, on)
+                .await?
+                .map(|q| q.rate);
+            rates.0.insert(key, r);
+            r
+        }
     };
-    Ok(core_domain::finance::convert(
-        m.minor,
-        &m.currency,
-        to,
-        q.rate,
-    ))
+    Ok(rate.and_then(|r| core_domain::finance::convert(m.minor, &m.currency, to, r)))
 }
 
 /// Adds `items` into `out` in `currency`, noting the currencies that could
 /// not be converted.
 async fn gather(
     tx: &mut Tx,
+    rates: &mut Rates,
     currency: &str,
     on: NaiveDate,
     items: Vec<(String, String, Money, Option<Uuid>)>,
@@ -809,7 +822,7 @@ async fn gather(
     unconverted: &mut Vec<String>,
 ) -> ApiResult<()> {
     for (category, description, original, source_id) in items {
-        match convert(tx, &original, currency, on).await? {
+        match convert(tx, rates, &original, currency, on).await? {
             Some(minor) => out.push(MoneyItem {
                 category,
                 description,
@@ -877,16 +890,62 @@ fn travel_label(t: &TravelView) -> String {
     label
 }
 
+/// What a money check reads besides the booking, loaded once for many.
+pub(crate) struct CheckInputs {
+    pub today: NaiveDate,
+    pub base_currency: String,
+    /// Income and cost lines, and travel, of the bookings being checked.
+    pub lines: Vec<MoneyLineView>,
+    pub travel: Vec<TravelView>,
+}
+
+impl CheckInputs {
+    pub(crate) async fn load(tx: &mut Tx, ctx: &Ctx, bookings: &[Uuid]) -> ApiResult<Self> {
+        Ok(Self {
+            today: super::finance::today(tx, ctx).await?,
+            base_currency: super::finance::base_currency(tx, ctx).await?,
+            lines: core_db::travel::lines(tx, bookings, None)
+                .await?
+                .into_iter()
+                .map(MoneyLineView::from)
+                .collect(),
+            travel: core_db::travel::list(tx, bookings, None)
+                .await?
+                .into_iter()
+                .map(TravelView::from)
+                .collect(),
+        })
+    }
+
+    /// One booking's travel.
+    pub(crate) fn travel_of(&self, booking: Uuid) -> impl Iterator<Item = &TravelView> {
+        self.travel
+            .iter()
+            .filter(move |t| t.booking_id == Some(booking))
+    }
+}
+
 /// The money check of a loaded booking, inside the caller's transaction.
 pub(crate) async fn check_booking(
     tx: &mut Tx,
     ctx: &Ctx,
     b: &BookingView,
 ) -> ApiResult<MoneyCheck> {
+    let inputs = CheckInputs::load(tx, ctx, &[b.id]).await?;
+    check_with(tx, &inputs, &mut Rates::default(), b).await
+}
+
+/// The money check of a booking from inputs loaded beforehand.
+pub(crate) async fn check_with(
+    tx: &mut Tx,
+    inputs: &CheckInputs,
+    rates: &mut Rates,
+    b: &BookingView,
+) -> ApiResult<MoneyCheck> {
     // The whole fee counts even when no talent is on the booking to share it.
     let (fee_currency, shares, fee_total) = super::settlements::shares(tx, b).await?;
     let currency = if fee_currency.is_empty() {
-        super::finance::base_currency(tx, ctx).await?
+        inputs.base_currency.clone()
     } else {
         fee_currency.clone()
     };
@@ -896,13 +955,14 @@ pub(crate) async fn check_booking(
         .starts_at
         .with_timezone(&tz)
         .date_naive()
-        .min(super::finance::today(tx, ctx).await?);
-    let lines: Vec<MoneyLineView> = core_db::travel::lines(tx, &[b.id], None)
-        .await?
-        .into_iter()
-        .map(MoneyLineView::from)
+        .min(inputs.today);
+    let lines: Vec<MoneyLineView> = inputs
+        .lines
+        .iter()
+        .filter(|l| l.booking_id == Some(b.id))
+        .cloned()
         .collect();
-    let travel = travel_of(tx, b.id).await?;
+    let travel: Vec<&TravelView> = inputs.travel_of(b.id).collect();
     let mut unconverted = Vec::new();
 
     let mut income = Vec::new();
@@ -956,6 +1016,7 @@ pub(crate) async fn check_booking(
         .collect();
     gather(
         tx,
+        rates,
         &currency,
         on,
         extra_income,
@@ -974,6 +1035,7 @@ pub(crate) async fn check_booking(
         .collect();
     gather(
         tx,
+        rates,
         &currency,
         on,
         travel_costs,
@@ -993,7 +1055,16 @@ pub(crate) async fn check_booking(
             )
         })
         .collect();
-    gather(tx, &currency, on, line_costs, &mut costs, &mut unconverted).await?;
+    gather(
+        tx,
+        rates,
+        &currency,
+        on,
+        line_costs,
+        &mut costs,
+        &mut unconverted,
+    )
+    .await?;
 
     let (total_income, total_commission, total_costs) =
         (sum(&income)?, sum(&commission)?, sum(&costs)?);

@@ -54,6 +54,11 @@ const PUBLISH_BATCH: i64 = 200;
 const DUE_BATCH: i64 = 200;
 /// Sign-in links and invitations go before everything else.
 const SYSTEM_MAIL_PRIORITY: i16 = 10;
+/// How long what Stripe sent is kept after it was handled.
+const STRIPE_PAYLOAD_RETENTION: chrono::Duration = chrono::Duration::days(90);
+/// How long sessions, sign-in links, invitations and calendar links are
+/// kept once they ended.
+const SIGN_IN_RETENTION: chrono::Duration = chrono::Duration::days(30);
 
 #[derive(Debug, Clone)]
 pub struct Settings {
@@ -462,17 +467,30 @@ impl Worker {
         Ok(queued)
     }
 
-    /// Deletes old events, finished jobs, stored idempotent responses and
-    /// uploads never run.
+    /// Deletes old events, finished jobs, stored idempotent responses,
+    /// uploads never run, delivery and rule logs, Stripe's payloads and
+    /// sign-ins that ended.
     pub async fn cleanup_once(&self) -> Result<(), DbError> {
         let now = Utc::now();
+        let logs_before = now - self.settings.event_retention;
         let mut tx = self.queue.begin().await?;
-        let events =
-            core_db::outbox::prune_published_before(&mut tx, now - self.settings.event_retention)
-                .await?;
+        let events = core_db::outbox::prune_published_before(&mut tx, logs_before).await?;
         let jobs =
             core_db::jobs::delete_succeeded_before(&mut tx, now - self.settings.job_retention)
                 .await?;
+        // Dead jobs can be retried while their event is still kept.
+        let dead_jobs = core_db::jobs::delete_finished_before(&mut tx, logs_before).await?;
+        let deliveries =
+            core_db::housekeeping::delete_webhook_deliveries_before(&mut tx, logs_before).await?;
+        let rule_runs =
+            core_db::housekeeping::delete_skipped_rule_runs_before(&mut tx, logs_before).await?;
+        let stripe_payloads = core_db::housekeeping::forget_stripe_payloads_before(
+            &mut tx,
+            now - STRIPE_PAYLOAD_RETENTION,
+        )
+        .await?;
+        let sign_ins =
+            core_db::housekeeping::forget_sign_ins_before(&mut tx, now - SIGN_IN_RETENTION).await?;
         let keys =
             core_db::idempotency::delete_before(&mut tx, now - chrono::Duration::hours(24)).await?;
         let uploads =
@@ -491,6 +509,11 @@ impl Worker {
         tracing::info!(
             events,
             jobs,
+            dead_jobs,
+            deliveries,
+            rule_runs,
+            stripe_payloads,
+            sign_ins,
             idempotency_keys = keys,
             uploads,
             files,

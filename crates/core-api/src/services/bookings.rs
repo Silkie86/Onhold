@@ -139,6 +139,12 @@ pub(crate) async fn load(tx: &mut Tx, id: Uuid) -> ApiResult<Option<BookingView>
     Ok(Some(view(b, talent)))
 }
 
+/// Several bookings at once, in date order.
+pub(crate) async fn load_many(tx: &mut Tx, ids: &[Uuid]) -> ApiResult<Vec<BookingView>> {
+    let rows = core_db::bookings::get_many(tx, ids).await?;
+    with_talent(tx, rows).await
+}
+
 async fn with_talent(tx: &mut Tx, rows: Vec<Booking>) -> ApiResult<Vec<BookingView>> {
     let ids: Vec<Uuid> = rows.iter().map(|b| b.id).collect();
     let talent = core_db::bookings::talent_of(tx, &ids).await?;
@@ -536,11 +542,27 @@ pub async fn calendar(state: &AppState, ctx: &Ctx, q: &CalendarQuery) -> ApiResu
     .await?;
     let bookings = with_talent(&mut tx, rows).await?;
     let talent: Vec<Uuid> = q.talent_id.into_iter().collect();
-    let availability = core_db::availability::list(&mut tx, &talent, q.from, q.to, &[])
+    let availability: Vec<_> = core_db::availability::list(&mut tx, &talent, q.from, q.to, &[])
         .await?
         .into_iter()
-        .map(Into::into)
+        .map(super::availability::AvailabilityView::from)
         .collect();
+    // Never a list cut short, which a device keeping a copy would take as
+    // the rest having been removed.
+    if availability
+        .iter()
+        .filter(|a| a.source != "external")
+        .count()
+        > core_db::availability::LIST_CAP
+    {
+        return Err(ApiError::invalid(
+            "to",
+            format!(
+                "there are more than {} availability entries in this window; ask for a shorter one or one talent",
+                core_db::availability::LIST_CAP
+            ),
+        ));
+    }
     tx.commit().await?;
     Ok(CalendarView {
         bookings,

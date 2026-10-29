@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE jobs SET status = 'running', attempts = attempts + 1,\n                           locked_until = now() + make_interval(secs => $2)\n           WHERE id IN (SELECT id FROM jobs\n                        WHERE status = 'queued' AND run_at <= now()\n                        ORDER BY priority DESC, run_at, id\n                        LIMIT $1\n                        FOR UPDATE SKIP LOCKED)\n           RETURNING id, workspace_id AS \"workspace_id: WorkspaceId\", kind, payload, secret,\n                     attempts AS attempt, max_attempts",
+  "query": "WITH running AS (\n               SELECT coalesce(workspace_id, '00000000-0000-0000-0000-000000000000') AS ws, count(*) AS n\n               FROM jobs WHERE status = 'running' GROUP BY 1\n           ),\n           ready AS (\n               SELECT q.id, q.priority, q.run_at,\n                      row_number() OVER (PARTITION BY q.workspace_id ORDER BY q.priority DESC, q.run_at, q.id)\n                          + coalesce(r.n, 0) AS turn\n               FROM jobs q\n               LEFT JOIN running r ON r.ws = coalesce(q.workspace_id, '00000000-0000-0000-0000-000000000000')\n               WHERE q.status = 'queued' AND q.run_at <= now()\n           )\n           UPDATE jobs SET status = 'running', attempts = attempts + 1,\n                           locked_until = now() + make_interval(secs => $2)\n           WHERE id IN (SELECT j.id FROM ready t JOIN jobs j ON j.id = t.id\n                        WHERE j.status = 'queued'\n                        ORDER BY t.priority DESC, t.turn, t.run_at, t.id\n                        LIMIT $1\n                        FOR UPDATE OF j SKIP LOCKED)\n           RETURNING id, workspace_id AS \"workspace_id: WorkspaceId\", kind, payload, secret,\n                     attempts AS attempt, max_attempts",
   "describe": {
     "columns": [
       {
@@ -97,5 +97,5 @@
       false
     ]
   },
-  "hash": "7feabff67410410418decb04001ef2566c786937f61b8a50d7c686b10cadb55d"
+  "hash": "ee2e1fa6dce40537dc2e749702b32ff9603dec5e28ca66ce051c7a36cb407243"
 }
