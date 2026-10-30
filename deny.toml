@@ -20,8 +20,10 @@ ignore = [
 unmaintained = "workspace"
 
 [licenses]
-# Permissive licences only. Copyleft (GPL, AGPL, LGPL-only, MPL-only) would
-# put conditions on how OnHold itself is sold, so it fails the check.
+# Permissive licences, plus MPL-2.0. Strong copyleft (GPL, AGPL, LGPL-only)
+# would put conditions on how OnHold itself is sold, so it fails the check.
+# MPL-2.0 is copyleft per file only: it covers changes to those crates' own
+# files (cssparser and dtoa-short, used unmodified by ammonia), not our code.
 allow = [
     "0BSD",
     "Apache-2.0",
@@ -34,6 +36,7 @@ allow = [
     "ISC",
     "MIT",
     "MIT-0",
+    "MPL-2.0",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",
