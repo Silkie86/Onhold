@@ -2880,7 +2880,7 @@ pub async fn execute(
     let mut stored = i32::try_from(import.issues.as_array().map_or(0, Vec::len)).unwrap_or(0);
     let start = usize::try_from(import.processed).unwrap_or(0);
 
-    let mut tx = super::begin(state, &ctx).await?;
+    let mut tx = begin(state, &ctx).await?;
     let mut index = Index::load(&mut tx, &import.entity).await?;
     index.import = Some(id);
     tx.commit().await?;
@@ -2890,7 +2890,7 @@ pub async fn execute(
         if first + batch.len() <= start {
             continue;
         }
-        let mut tx = super::begin(state, &ctx).await?;
+        let mut tx = begin(state, &ctx).await?;
         let mut counts = core_db::imports::Counts::default();
         let mut issues: Vec<ImportIssue> = Vec::new();
         for (j, row) in batch.iter().enumerate() {

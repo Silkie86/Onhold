@@ -390,7 +390,7 @@ pub(crate) async fn ensure_tax_codes(tx: &mut Tx, ctx: &Ctx) -> ApiResult<()> {
         .await?
         .map(|w| w.country.trim().to_owned())
         .unwrap_or_default();
-    for (i, d) in default_tax_codes(&country).into_iter().enumerate() {
+    for (i, d) in (0..).zip(default_tax_codes(&country)) {
         core_db::finance::insert_tax_code(
             tx,
             core_domain::ids::new_id(),
@@ -400,7 +400,7 @@ pub(crate) async fn ensure_tax_codes(tx: &mut Tx, ctx: &Ctx) -> ApiResult<()> {
                 kind: d.kind.as_str(),
                 note: d.note,
                 is_default: d.is_default,
-                position: i as i32,
+                position: i,
             },
             None,
         )

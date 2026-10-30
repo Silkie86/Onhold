@@ -112,6 +112,10 @@ fn number_text(f: f64) -> String {
         let s = format!("{f:.0}");
         return if s == "-0" { "0".into() } else { s };
     }
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a decimal exponent, within ±400"
+    )]
     let magnitude = f.abs().log10().floor() as i32;
     let decimals = usize::try_from((14 - magnitude).clamp(0, 15)).unwrap_or(0);
     let s = format!("{f:.decimals$}");
@@ -135,6 +139,7 @@ fn cell_text(cell: &DataRef<'_>) -> String {
             let serial = d.as_f64();
             if d.is_duration() || (0.0..1.0).contains(&serial) {
                 // A time of day (19:30) or a length of time (26:15).
+                #[expect(clippy::cast_possible_truncation, reason = "under a day of minutes")]
                 let minutes = (serial * 24.0 * 60.0).round() as i64;
                 format!("{}:{:02}", minutes / 60, (minutes % 60).abs())
             } else {
@@ -564,6 +569,10 @@ pub fn colour_name(rgb: u32) -> Option<&'static str> {
     if saturation < 0.15 || delta < 0.06 {
         return Some("grey");
     }
+    #[expect(
+        clippy::float_cmp,
+        reason = "max is one of r, g and b, so equality is exact"
+    )]
     let hue = if max == r {
         60.0 * ((g - b) / delta).rem_euclid(6.0)
     } else if max == g {
@@ -593,7 +602,13 @@ fn tinted(rgb: u32, tint: f64) -> u32 {
         } else {
             c + (255.0 - c) * tint
         };
-        v.round().clamp(0.0, 255.0) as u32
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "clamped to 0 to 255"
+        )]
+        let v = v.round().clamp(0.0, 255.0) as u32;
+        v
     };
     (shade(r) << 16) | (shade(g) << 8) | shade(b)
 }
@@ -609,7 +624,7 @@ fn attr(e: &BytesStart<'_>, name: &str) -> Option<String> {
             .then(|| {
                 a.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                     .ok()
-                    .map(|v| v.into_owned())
+                    .map(std::borrow::Cow::into_owned)
             })
             .flatten()
     })
@@ -901,7 +916,7 @@ mod tests {
     #[test]
     fn hostile_workbooks_are_refused_before_they_are_read() {
         // Unpacks far past the cap from a small file.
-        let bomb = vec![b'A'; (MAX_UNPACKED_BYTES + 1) as usize];
+        let bomb = vec![b'A'; usize::try_from(MAX_UNPACKED_BYTES + 1).expect("fits")];
         let zipped = zip_of(&[("xl/worksheets/sheet1.xml", &bomb)]);
         assert!(zipped.len() < 1024 * 1024);
         assert!(to_csv(&zipped).expect_err("refused").contains("unpacks"));
@@ -918,8 +933,8 @@ mod tests {
 
     fn inline_row(r: u32, cells: &[(&str, Option<u32>)]) -> String {
         let mut out = format!(r#"<row r="{r}">"#);
-        for (i, (text, style)) in cells.iter().enumerate() {
-            let col = (b'A' + i as u8) as char;
+        for ((text, style), i) in cells.iter().zip(0u8..) {
+            let col = (b'A' + i) as char;
             let s = style.map(|s| format!(r#" s="{s}""#)).unwrap_or_default();
             if text.is_empty() {
                 out.push_str(&format!(r#"<c r="{col}{r}"{s}/>"#));
@@ -1181,7 +1196,7 @@ mod tests {
     fn column_name(mut c: usize) -> String {
         let mut out = Vec::new();
         loop {
-            out.push(b'A' + (c % 26) as u8);
+            out.push(b'A' + u8::try_from(c % 26).unwrap_or(0));
             if c < 26 {
                 break;
             }

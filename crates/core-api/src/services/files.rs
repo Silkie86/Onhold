@@ -238,7 +238,7 @@ pub(crate) async fn bytes(state: &AppState, tx: &mut Tx, file: &File) -> ApiResu
         .map_err(|e| match e {
             StorageError::NotFound => ApiError::NotFound,
             StorageError::Unavailable(m) => ApiError::internal(m),
-            other => ApiError::internal(other.to_string()),
+            other @ StorageError::Failed(_) => ApiError::internal(other.to_string()),
         })
 }
 

@@ -402,11 +402,8 @@ mod tests {
     #[test]
     fn valid_rules_parse() {
         let email = json!([{ "type": "send_email", "template": "welcome", "to": { "field": "thing.custom.email" } }]);
-        let r = parse_rule(
-            json!({"kind": "event", "topic": "thing.created"}),
-            email.clone(),
-        )
-        .expect("valid");
+        let r =
+            parse_rule(json!({"kind": "event", "topic": "thing.created"}), email).expect("valid");
         assert_eq!(r.trigger.kind(), "event");
         assert!(matches!(
             &r.actions[0],
@@ -467,7 +464,7 @@ mod tests {
             ),
             (
                 json!({"kind": "schedule", "cron": "0 9 * * *", "timezone": "Mars/Base"}),
-                email.clone(),
+                email,
                 "trigger.timezone",
             ),
             (
@@ -536,9 +533,7 @@ mod tests {
         );
         let to = json!([{ "type": "send_sms", "template": "reminder", "to": "not a path" }]);
         assert_eq!(
-            parse_rule(trigger.clone(), to)
-                .expect_err("not a path")
-                .field,
+            parse_rule(trigger, to).expect_err("not a path").field,
             "actions[0].to"
         );
     }

@@ -400,7 +400,7 @@ impl ApiArgs {
         }
         match (self.microsoft_client_id, self.microsoft_client_secret) {
             (Some(id), Some(secret)) => {
-                oidc.push(OidcProvider::microsoft(id, secret, &self.microsoft_tenant))
+                oidc.push(OidcProvider::microsoft(id, secret, &self.microsoft_tenant));
             }
             (None, None) => {}
             _ => anyhow::bail!(

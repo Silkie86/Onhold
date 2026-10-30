@@ -203,8 +203,8 @@ fn decimal(minor: i64, currency: &str) -> String {
     let abs = minor.unsigned_abs();
     format!(
         "{sign}{}.{:0width$}",
-        abs / scale as u64,
-        abs % scale as u64,
+        abs / scale.unsigned_abs(),
+        abs % scale.unsigned_abs(),
         width = places as usize
     )
 }

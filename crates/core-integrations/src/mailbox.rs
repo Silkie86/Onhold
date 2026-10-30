@@ -441,7 +441,7 @@ JVBERi0xLjcK\r\n\
         assert_eq!(back.in_reply_to, ["abc123@grand.test"]);
         assert_eq!(back.attachments[0].filename, "contract.pdf");
 
-        let mut none = mail.clone();
+        let mut none = mail;
         none.to.clear();
         assert!(build(&none).is_err());
     }

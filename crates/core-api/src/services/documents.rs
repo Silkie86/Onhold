@@ -480,6 +480,7 @@ pub(crate) async fn booking_context(
             "venue".into(),
             json!(b.venue_name.clone().or(b.venue_text.clone())),
         );
+        #[expect(clippy::cast_possible_truncation, reason = "a percentage, 0 to 100")]
         o.insert(
             "deposit_bps".into(),
             json!(b.deposit_percent.map(|p| (p * 100.0).round() as i64)),
@@ -1449,7 +1450,7 @@ pub async fn request_signatures(
     let w = core_db::workspaces::get(&mut tx, ctx.workspace_id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    for (position, (name, email)) in clean.iter().enumerate() {
+    for (position, (name, email)) in (0..).zip(clean.iter()) {
         let sid = core_domain::ids::new_id();
         let token = new_token();
         core_db::documents::insert_signature(
@@ -1459,7 +1460,7 @@ pub async fn request_signatures(
                 document_id: id,
                 version_number: current.number,
                 round_id,
-                position: position as i32,
+                position,
                 signer_name: name,
                 signer_email: email,
                 token_hash: &hash_token(&token),

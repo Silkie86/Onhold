@@ -75,7 +75,7 @@ pub async fn layer(State(state): State<AppState>, req: Request, next: Next) -> R
         parts
             .uri
             .path_and_query()
-            .map(|p| p.as_str())
+            .map(axum::http::uri::PathAndQuery::as_str)
             .unwrap_or_default(),
     );
     hasher.update(b"\n");

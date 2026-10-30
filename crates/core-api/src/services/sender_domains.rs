@@ -806,7 +806,7 @@ async fn finish_check(
     match cfg.doh.has_dmarc(&d.domain).await {
         Ok(has) => dmarc = has,
         Err(e) => {
-            tracing::info!(domain = %d.domain, error = %e, "looking for a DMARC record failed")
+            tracing::info!(domain = %d.domain, error = %e, "looking for a DMARC record failed");
         }
     }
 

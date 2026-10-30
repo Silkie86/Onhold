@@ -536,7 +536,7 @@ One production deployment serves every tenant; the monthly fee is paying for thi
 
 - RLS on every tenant table; a test that asserts every table with `workspace_id` has a policy.
 - OWASP basics enforced in middleware: CSRF on cookie sessions, rate limits per user (per IP in M8), strict CSP, security headers, input size limits, HTML sanitisation of inbound email and user content.
-- Secrets from environment or a secret store, never committed; `cargo audit` in CI (`pnpm audit` still to add); dependabot.
+- Secrets from environment or a secret store, never committed; `cargo deny` (advisories, licences, sources) in CI (`pnpm audit` still to add); dependabot.
 - Files are served only through the authenticated API (or private links), with type detected from their bytes and `Content-Security-Policy: sandbox`. Virus scanning (ClamAV in the worker) and signed, expiring URLs once files move to object storage are M8 hardening.
 - Per-workspace API keys scoped to permissions; all keys hashed; last-used tracking.
 - Password policy, breached-password check (k-anonymity API, M8), session listing and revocation per user, mandatory 2FA for superadmin.

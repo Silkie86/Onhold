@@ -68,7 +68,7 @@ fn win_ansi(s: &str) -> Vec<u8> {
     s.chars()
         .map(|c| match c {
             '\u{20}'..='\u{7e}' => c as u8,
-            '\u{a0}'..='\u{ff}' => c as u32 as u8,
+            '\u{a0}'..='\u{ff}' => u8::try_from(u32::from(c)).unwrap_or(b'?'),
             '\u{202f}' | '\u{2009}' | '\u{2007}' => b' ',
             '€' => 0x80,
             '‚' => 0x82,
@@ -90,7 +90,7 @@ fn win_ansi(s: &str) -> Vec<u8> {
 
 /// A PDF of `lines` in Courier, as many pages as they need.
 pub fn text_pdf(lines: &[&str], title: &str) -> Result<Vec<u8>, RenderError> {
-    let per_page = ((PAGE_HEIGHT - 2 * MARGIN) / LEADING) as usize;
+    let per_page = usize::try_from((PAGE_HEIGHT - 2 * MARGIN) / LEADING).unwrap_or(1);
     let mut doc = Document::with_version("1.7");
     let pages_id = doc.new_object_id();
     let font_id = doc.add_object(dictionary! {

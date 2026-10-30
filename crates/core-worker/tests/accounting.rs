@@ -4,7 +4,11 @@
 //! was paid in the books read back; past invoices imported; an answer lost,
 //! a refusal put right, a grant withdrawn, and disconnecting.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::cast_possible_truncation
+)]
 
 #[path = "../../core-api/tests/common/mod.rs"]
 mod common;

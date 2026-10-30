@@ -251,7 +251,7 @@ pub async fn start(
     let client = CoreClient::from_provider_metadata(
         meta,
         ClientId::new(provider.client_id.clone()),
-        Some(ClientSecret::new(provider.client_secret.clone())),
+        Some(ClientSecret::new(provider.client_secret)),
     )
     .set_redirect_uri(redirect_uri(state, provider_name)?);
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();

@@ -136,7 +136,9 @@ impl Keyring {
             .expect("AES-GCM encryption of an in-memory buffer cannot fail");
         let mut out = Vec::with_capacity(2 + id.len() + NONCE_LEN + sealed.len());
         out.push(FORMAT_V1);
-        out.push(id.len() as u8);
+        // Key ids are at most 32 bytes, checked when the keys are loaded.
+        #[allow(clippy::expect_used)]
+        out.push(u8::try_from(id.len()).expect("key ids are at most 32 bytes"));
         out.extend_from_slice(id.as_bytes());
         out.extend_from_slice(&nonce);
         out.extend_from_slice(&sealed);

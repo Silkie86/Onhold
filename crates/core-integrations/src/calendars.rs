@@ -916,7 +916,7 @@ fn skip_ahead(rule: &str, local: NaiveDateTime, target: NaiveDateTime) -> Option
     if let Some(period) = period {
         let n = (target - local).num_seconds() / period.num_seconds() - 1;
         return Some(if n > 0 {
-            local + period * (n as i32)
+            local + period * i32::try_from(n).ok()?
         } else {
             local
         });

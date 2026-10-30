@@ -360,7 +360,7 @@ pub(crate) fn pnm(
             for px in raw.get(..w * h * 4)?.as_chunks::<4>().0 {
                 let k = 255 - u32::from(px[3]);
                 for c in &px[..3] {
-                    out.push(((255 - u32::from(*c)) * k / 255) as u8);
+                    out.push(u8::try_from((255 - u32::from(*c)) * k / 255).unwrap_or(u8::MAX));
                 }
             }
             Some(out)
@@ -386,33 +386,37 @@ pub(crate) fn ccitt_tiff(
     let t4_options: u32 = if k > 0 { 1 } else { 0 };
     let photometric: u16 = if black_is_1 { 1 } else { 0 };
     let mut entries: Vec<(u16, u16, u32, u32)> = vec![
-        (256, 4, 1, width),                  // ImageWidth
-        (257, 4, 1, height),                 // ImageLength
-        (258, 3, 1, 1),                      // BitsPerSample
-        (259, 3, 1, u32::from(compression)), // Compression
-        (262, 3, 1, u32::from(photometric)), // PhotometricInterpretation
-        (273, 4, 1, 0),                      // StripOffsets, set below
-        (277, 3, 1, 1),                      // SamplesPerPixel
-        (278, 4, 1, height),                 // RowsPerStrip
-        (279, 4, 1, data.len() as u32),      // StripByteCounts
+        (256, 4, 1, width),                                         // ImageWidth
+        (257, 4, 1, height),                                        // ImageLength
+        (258, 3, 1, 1),                                             // BitsPerSample
+        (259, 3, 1, u32::from(compression)),                        // Compression
+        (262, 3, 1, u32::from(photometric)),                        // PhotometricInterpretation
+        (273, 4, 1, 0),                                             // StripOffsets, set below
+        (277, 3, 1, 1),                                             // SamplesPerPixel
+        (278, 4, 1, height),                                        // RowsPerStrip
+        (279, 4, 1, u32::try_from(data.len()).unwrap_or(u32::MAX)), // StripByteCounts
     ];
     if compression == 3 {
         entries.push((292, 4, 1, t4_options)); // T4Options
     }
     entries.sort_by_key(|e| e.0);
     let ifd_len = 2 + entries.len() * 12 + 4;
-    let data_offset = (8 + ifd_len) as u32;
+    let data_offset = u32::try_from(8 + ifd_len).unwrap_or(u32::MAX);
     let mut out = Vec::with_capacity(data_offset as usize + data.len());
     out.extend_from_slice(b"II*\0");
     out.extend_from_slice(&8u32.to_le_bytes());
-    out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    out.extend_from_slice(
+        &u16::try_from(entries.len())
+            .unwrap_or(u16::MAX)
+            .to_le_bytes(),
+    );
     for (tag, kind, count, value) in entries {
         let value = if tag == 273 { data_offset } else { value };
         out.extend_from_slice(&tag.to_le_bytes());
         out.extend_from_slice(&kind.to_le_bytes());
         out.extend_from_slice(&count.to_le_bytes());
         if kind == 3 {
-            out.extend_from_slice(&(value as u16).to_le_bytes());
+            out.extend_from_slice(&u16::try_from(value).unwrap_or(u16::MAX).to_le_bytes());
             out.extend_from_slice(&[0, 0]);
         } else {
             out.extend_from_slice(&value.to_le_bytes());

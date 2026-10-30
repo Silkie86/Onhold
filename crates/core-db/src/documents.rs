@@ -578,7 +578,7 @@ pub async fn find_public_signature(
 pub async fn expiring_between(
     conn: &mut PgConnection,
     timezone: &str,
-    offset_minutes: i64,
+    offset_minutes: i32,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     limit: i64,
@@ -593,7 +593,7 @@ pub async fn expiring_between(
            ORDER BY at, id
            LIMIT $5"#,
         timezone,
-        offset_minutes as i32,
+        offset_minutes,
         from,
         to,
         limit

@@ -655,6 +655,10 @@ pub struct BookingPatch {
     pub override_reason: Option<String>,
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "checked to be 0 to 10,000 first"
+)]
 fn deposit(check: &mut Check, percent: Option<f64>) -> Option<i32> {
     let p = percent?;
     let bps = (p * 100.0).round();

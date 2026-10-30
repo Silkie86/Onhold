@@ -2068,7 +2068,7 @@ impl Run<'_> {
     /// already counted. Matched to an organisation of the same name.
     async fn import_page(&mut self) -> Result<(), ProviderError> {
         let name = Kind::parse(&self.c.provider).map_or("the books", Kind::name);
-        let page_no = self.c.import_page.max(1) as u32;
+        let page_no = self.c.import_page.max(1).cast_unsigned();
         self.calls += 1;
         let page = match step(self.b.past_invoices(self.c.start_date, page_no).await)? {
             Step::Done(p) => p,
@@ -2213,7 +2213,7 @@ impl Run<'_> {
             .await
             .map_err(invalid)?;
         tx.commit().await.map_err(invalid)?;
-        self.out.imported += added as usize;
+        self.out.imported += usize::try_from(added).unwrap_or(0);
         if page.more {
             self.out.more = true;
         }
@@ -2236,7 +2236,7 @@ async fn failed(
             retry_after: Some(s),
         } => Duration::seconds((*s).clamp(30, 6 * 3600) as i64),
         _ => {
-            let doubling = 2i64.saturating_pow(c.failures.clamp(0, 16) as u32);
+            let doubling = 2i64.saturating_pow(c.failures.clamp(0, 16).cast_unsigned());
             Duration::minutes(5 * doubling).min(Duration::hours(6))
         }
     };

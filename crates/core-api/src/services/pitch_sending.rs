@@ -519,7 +519,11 @@ mod tests {
             "epk": "https://example.com/epk",
             "old": "https://old.example.com",
         });
-        let keys = |k: &[&str]| k.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let keys = |k: &[&str]| {
+            k.iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
             first_link(&custom, &keys(&["genre", "epk", "agreement"])).as_deref(),
             Some("https://example.com/epk")

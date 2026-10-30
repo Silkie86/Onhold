@@ -377,7 +377,7 @@ pub async fn download(
     }
     let raw = super::integrations::fetch_raw(state, ctx, integration_id, &external_id).await?;
     let attachment = mailbox::parse(&raw)
-        .and_then(|m| m.attachments.into_iter().nth(part as usize))
+        .and_then(|m| m.attachments.into_iter().nth(usize::try_from(part).ok()?))
         .ok_or_else(|| {
             ApiError::conflict(
                 "message_gone",
@@ -1241,7 +1241,7 @@ async fn queue_outbound(
     let from_address = match (mailbox, o.answer_to, &author) {
         (Some(m), _, _) => Some(m.mailbox().to_owned()),
         (None, Some(a), _) => Some(a),
-        (None, None, Some(a)) => Some(a.email.to_string()),
+        (None, None, Some(a)) => Some(a.email.clone()),
         (None, None, None) => None,
     };
     let from_name = mailbox
@@ -1887,7 +1887,7 @@ pub(crate) async fn ingest(
     }
     // Attachments stay in the mailbox; shown inside the message (`cid:`)
     // ones are not shown at all.
-    for (part, a) in parsed.attachments.iter().enumerate() {
+    for (part, a) in (0..).zip(&parsed.attachments) {
         if a.inline || a.bytes.is_empty() {
             continue;
         }
@@ -1896,7 +1896,7 @@ pub(crate) async fn ingest(
         core_db::inbox::attach_part(
             &mut tx,
             message_id,
-            part as i32,
+            part,
             &filename,
             truncate(&content_type, 255),
             a.bytes.len() as i64,

@@ -608,7 +608,7 @@ mod tests {
             &Candidate {
                 outcome_key: Some("no".into()),
                 outcome_at: Some(at("2025-01-10T10:00:00Z")),
-                ..c.clone()
+                ..c
             },
         );
         assert!(!row.resting);

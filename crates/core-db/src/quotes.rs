@@ -405,7 +405,7 @@ pub async fn date_between(
     conn: &mut PgConnection,
     field: &str,
     timezone: &str,
-    offset_minutes: i64,
+    offset_minutes: i32,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     limit: i64,
@@ -426,7 +426,7 @@ pub async fn date_between(
            LIMIT $6"#,
         field,
         timezone,
-        offset_minutes as i32,
+        offset_minutes,
         from,
         to,
         limit

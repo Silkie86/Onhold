@@ -55,15 +55,17 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
 
-  audit:
-    name: cargo audit
+  # Security advisories, licences, wildcard versions and crate sources for
+  # every dependency; the rules are in deny.toml.
+  deny:
+    name: cargo deny (dependencies)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-audit
-      - run: cargo audit
+          tool: cargo-deny@0.18
+      - run: cargo deny check
 
   docker:
     name: Docker image builds
@@ -77,6 +79,8 @@ jobs:
           file: infra/Dockerfile
           push: false
           tags: onhold:ci
+          # Quicker, less optimised build: this job only checks the image builds.
+          build-args: PROFILE=release-ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

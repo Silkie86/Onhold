@@ -476,7 +476,8 @@ impl FromStr for Rate {
         let frac_value: i128 = if frac.is_empty() {
             0
         } else {
-            frac.parse::<i128>().map_err(|_| bad())? * 10i128.pow(10 - frac.len() as u32)
+            frac.parse::<i128>().map_err(|_| bad())?
+                * 10i128.pow(10 - u32::try_from(frac.len()).map_err(|_| bad())?)
         };
         let value = whole * RATE_SCALE + frac_value;
         if value <= 0 {

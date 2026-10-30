@@ -987,13 +987,16 @@ pub(crate) async fn from_booking_in(
             let pct = booking.deposit_percent.ok_or_else(|| {
                 ApiError::conflict("no_deposit", "the booking has no deposit percentage")
             })?;
+            #[expect(clippy::cast_possible_truncation, reason = "a percentage, 0 to 100")]
             let bps = (pct * 100.0).round() as i64;
             full.into_iter()
                 .filter_map(|l| {
-                    let amount = core_domain::bookings::line_amount(
-                        (l.quantity.unwrap_or(1.0) * 1000.0).round() as i64,
-                        l.unit_minor,
-                    )?;
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "a stored line quantity, checked when it was saved"
+                    )]
+                    let milli = (l.quantity.unwrap_or(1.0) * 1000.0).round() as i64;
+                    let amount = core_domain::bookings::line_amount(milli, l.unit_minor)?;
                     Some(LineInput {
                         description: format!(
                             "Deposit ({}): {}",
@@ -1205,7 +1208,7 @@ pub(crate) async fn issue_in(
             if before.total.minor > room {
                 return Err(ApiError::invalid(
                     "line_items",
-                    format!("the invoice has {} left to credit", room),
+                    format!("the invoice has {room} left to credit"),
                 ));
             }
             Some(o)

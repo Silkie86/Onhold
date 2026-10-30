@@ -4,11 +4,13 @@
 FROM rust:1.99.1-slim-bookworm AS builder
 WORKDIR /src
 ENV SQLX_OFFLINE=true
+# CI passes `release-ci` (quicker to build); deploys use the full release.
+ARG PROFILE=release
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    cargo build --release --locked --bin onhold \
-    && cp target/release/onhold /usr/local/bin/onhold
+    cargo build --profile "$PROFILE" --locked --bin onhold \
+    && cp "target/$PROFILE/onhold" /usr/local/bin/onhold
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \

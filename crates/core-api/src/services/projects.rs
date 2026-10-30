@@ -865,7 +865,7 @@ pub async fn overview(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Projec
                 *slot = add(*slot, minor)?;
             }
             None if !unconverted.contains(&cost.currency) => {
-                unconverted.push(cost.currency.clone())
+                unconverted.push(cost.currency.clone());
             }
             None => {}
         }

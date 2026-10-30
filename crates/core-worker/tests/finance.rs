@@ -319,13 +319,12 @@ async fn deposit_paid_and_balance_chased_in_two_currencies(pool: PgPool) {
                 &format!("/api/v1/documents?related_entity=booking&related_id={booking}"),
             )
             .await;
-        let kinds: Vec<&str> = docs["items"]
+        let has_confirmation = docs["items"]
             .as_array()
             .unwrap()
             .iter()
-            .map(|d| d["kind"].as_str().unwrap())
-            .collect();
-        assert!(kinds.contains(&"confirmation"), "{docs}");
+            .any(|d| d["kind"].as_str().unwrap() == "confirmation");
+        assert!(has_confirmation, "{docs}");
     }
     let topics = h.topics().await;
     assert_eq!(

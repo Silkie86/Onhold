@@ -1282,7 +1282,7 @@ async fn failed(state: &AppState, ctx: &Ctx, c: &Calendar, err: ProviderError) -
             retry_after: Some(s),
         } => Duration::seconds((*s).clamp(30, 6 * 3600) as i64),
         _ => {
-            let doubling = 2i64.saturating_pow(c.failures.clamp(0, 16) as u32);
+            let doubling = 2i64.saturating_pow(c.failures.clamp(0, 16).cast_unsigned());
             Duration::minutes(5 * doubling).min(Duration::hours(6))
         }
     };

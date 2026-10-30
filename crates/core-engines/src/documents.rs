@@ -81,6 +81,11 @@ pub fn readable_on_white(hex: &str) -> Option<String> {
         let k = 1.0 - f64::from(step) * 0.05;
         let shade = rgb.map(|c| (c * k).round());
         if 1.05 / (luminance(shade) + 0.05) >= 4.5 {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "colour channels, 0 to 255"
+            )]
             let [r, g, b] = shade.map(|c| c as u8);
             return Some(format!("#{r:02x}{g:02x}{b:02x}"));
         }

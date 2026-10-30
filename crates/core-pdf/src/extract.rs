@@ -376,7 +376,7 @@ impl Layout {
         for g in glyphs {
             match lines.last_mut() {
                 Some(line) if (g.y - line[0].y).abs() <= 0.5 * g.size.min(line[0].size) => {
-                    line.push(g)
+                    line.push(g);
                 }
                 _ => lines.push(vec![g]),
             }
@@ -401,6 +401,11 @@ impl Layout {
                     if gap > 1.5 * g.size {
                         // A column break: at least three spaces, more for
                         // wider gaps so tables keep a rough alignment.
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            clippy::cast_sign_loss,
+                            reason = "the gap is positive and the count is clamped"
+                        )]
                         let n = ((gap / (0.5 * g.size)) as usize).clamp(3, 40);
                         out.extend(std::iter::repeat_n(' ', n));
                     } else if gap > 0.15 * g.size && !out.ends_with(' ') && g.text != " " {
@@ -464,7 +469,7 @@ mod tests {
     #[test]
     fn garbage_after_header_is_an_error_not_a_panic() {
         let mut bytes = b"%PDF-1.7\n".to_vec();
-        bytes.extend((0..5000u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8));
+        bytes.extend((0..5000u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 13).to_le_bytes()[0]));
         assert!(matches!(
             extract(&bytes, &Limits::default()),
             Err(ExtractError::Unreadable(_))

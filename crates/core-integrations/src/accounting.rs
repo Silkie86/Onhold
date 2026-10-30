@@ -68,6 +68,10 @@ fn decimal(minor: i64, exponent: u32) -> Value {
     json!(minor as f64 / 10f64.powi(exponent as i32))
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a provider's amount; the float saturates and the books reject nonsense"
+)]
 fn minor(v: Option<&Value>, exponent: u32) -> i64 {
     let n = v
         .and_then(|v| {
@@ -682,6 +686,10 @@ impl Books {
             .map(|l| {
                 // Xero multiplies quantity by unit price itself; when that
                 // would not give OnHold's amount, one of the whole amount.
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "only compared with the amount"
+                )]
                 let exact = (l.quantity * l.unit_minor as f64).round() as i64 == l.amount_minor;
                 let (qty, unit) = if exact {
                     (l.quantity, l.unit_minor)
@@ -709,6 +717,10 @@ impl Books {
             .lines
             .iter()
             .map(|l| {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "only compared with the amount"
+                )]
                 let exact = (l.quantity * l.unit_minor as f64).round() as i64 == l.amount_minor;
                 let (qty, unit) = if exact {
                     (l.quantity, l.unit_minor)

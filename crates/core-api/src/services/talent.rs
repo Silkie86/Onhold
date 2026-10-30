@@ -243,6 +243,10 @@ impl Checked {
     }
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "checked to be 0 to 10,000 first"
+)]
 fn commission(check: &mut Check, percent: Option<f64>) -> Option<i32> {
     let p = percent?;
     let bps = (p * 100.0).round();

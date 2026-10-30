@@ -141,12 +141,10 @@ impl Imap {
             .trim()
             .trim_start_matches('[')
             .trim_end_matches(']');
-        let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, server.port))
+        let mut addrs = tokio::net::lookup_host((host, server.port))
             .await
-            .map_err(|e| ProviderError::Unavailable(format!("{host}: {e}")))?
-            .collect();
+            .map_err(|e| ProviderError::Unavailable(format!("{host}: {e}")))?;
         addrs
-            .into_iter()
             .find(|a| self.allow_private || is_public(a.ip()))
             .ok_or_else(|| ProviderError::Refused {
                 status: 0,
