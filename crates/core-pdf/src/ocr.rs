@@ -360,7 +360,7 @@ pub(crate) fn pnm(
             for px in raw.get(..w * h * 4)?.as_chunks::<4>().0 {
                 let k = 255 - u32::from(px[3]);
                 for c in &px[..3] {
-                    out.push(((255 - u32::from(*c)) * k / 255) as u8);
+                    out.push(u8::try_from((255 - u32::from(*c)) * k / 255).unwrap_or(u8::MAX));
                 }
             }
             Some(out)
@@ -372,6 +372,10 @@ pub(crate) fn pnm(
 /// Wraps CCITT fax data in a one-strip TIFF. `k` is the PDF's K: negative
 /// for Group 4, zero for Group 3 one-dimensional, positive for Group 3
 /// two-dimensional.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "TIFF sizes are 16 and 32 bits; one scanned page is far smaller"
+)]
 pub(crate) fn ccitt_tiff(
     width: u32,
     height: u32,

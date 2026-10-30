@@ -1,0 +1,53 @@
+# cargo-deny checks every crate we depend on, in CI on every push:
+#   advisories  known security holes and yanked releases (RustSec database)
+#   licenses    only licences that let us sell OnHold without opening its code
+#   bans        no wildcard versions
+#   sources     crates come from crates.io only, never an unknown git repo
+# Run it locally with `cargo deny check`.
+
+[graph]
+all-features = false
+
+[advisories]
+# Advisories accepted after review. Each entry says why it cannot affect
+# OnHold; remove it as soon as a fixed version is available upstream.
+ignore = [
+    { id = "RUSTSEC-2023-0071", reason = "rsa 0.9 Marvin attack: a timing leak in RSA decryption and signing with a private key. It reaches us only through openidconnect, which we use to verify ID token signatures with providers' public keys; we hold no RSA private key in production. No fixed rsa release exists yet." },
+    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5 non-constant-time arithmetic: reaches us only through openidconnect's p256/p384 for ECDSA signature verification, which handles public values only. Fixed in 0.7.6, which openidconnect 4.0.1 (latest) cannot use yet." },
+]
+# Unmaintained crates fail the check only when we depend on them directly;
+# deep in the tree they are for the crate that pulls them in to replace.
+unmaintained = "workspace"
+
+[licenses]
+# Permissive licences only. Copyleft (GPL, AGPL, LGPL-only, MPL-only) would
+# put conditions on how OnHold itself is sold, so it fails the check.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.9
+# Our own crates are UNLICENSED and never published.
+private = { ignore = true }
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+# Our own crates depend on each other by path, which is fine.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

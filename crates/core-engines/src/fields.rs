@@ -294,7 +294,7 @@ pub fn normalize(def: &FieldDef, value: &Value) -> Result<Value, String> {
             } else {
                 s.trim().to_owned()
             };
-            let len = s.chars().count() as u32;
+            let len = u32::try_from(s.chars().count()).unwrap_or(u32::MAX);
             let cap = if def.field_type == FieldType::LongText {
                 LONG_TEXT_MAX
             } else {
@@ -384,12 +384,13 @@ pub fn normalize(def: &FieldDef, value: &Value) -> Result<Value, String> {
                     return Err(format!("`{s}` is chosen twice"));
                 }
             }
-            let n = items.len() as u32;
+            let n = u32::try_from(items.len()).unwrap_or(u32::MAX);
             if v.min_length.is_some_and(|m| n < m) || v.max_length.is_some_and(|m| n > m) {
                 return Err(format!(
                     "choose between {} and {} options",
                     v.min_length.unwrap_or(0),
-                    v.max_length.unwrap_or(v.options.len() as u32)
+                    v.max_length
+                        .unwrap_or_else(|| u32::try_from(v.options.len()).unwrap_or(u32::MAX))
                 ));
             }
             Ok(value.clone())

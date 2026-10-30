@@ -622,7 +622,7 @@ fn depth_of(event: &Event) -> u8 {
         .payload
         .pointer("/actor/rule_depth")
         .and_then(Value::as_u64)
-        .map_or(0, |d| d.min(u64::from(u8::MAX)) as u8)
+        .map_or(0, |d| u8::try_from(d).unwrap_or(u8::MAX))
 }
 
 /// `event.dispatch`: runs the event's rules and queues its webhook deliveries.
@@ -715,7 +715,7 @@ pub async fn dispatch_event(
                         Some(&format!("the rule is invalid: {reason}")),
                         &[],
                     )
-                    .await?
+                    .await?;
                 }
             }
         }
@@ -816,6 +816,10 @@ pub async fn scan_rule(
     else {
         return Ok(());
     };
+    // Saved rules are checked to be within a year, so this always fits.
+    let Ok(offset_minutes) = i32::try_from(*offset_minutes) else {
+        return Ok(());
+    };
     let from = rule.scanned_until.unwrap_or(rule.created_at);
     if until <= from {
         return Ok(());
@@ -824,7 +828,7 @@ pub async fn scan_rule(
     let is_booking = entity == super::bookings::ENTITY;
     let reached: Vec<(Uuid, DateTime<Utc>)> = match (is_booking, field.strip_prefix("custom.")) {
         (false, None) => {
-            core_db::things::due_between(&mut tx, *offset_minutes, from, until, SCAN_BATCH)
+            core_db::things::due_between(&mut tx, offset_minutes, from, until, SCAN_BATCH)
                 .await?
                 .into_iter()
                 .map(|r| (r.id, r.at))
@@ -834,7 +838,7 @@ pub async fn scan_rule(
             &mut tx,
             key,
             options.timezone.name(),
-            *offset_minutes,
+            offset_minutes,
             from,
             until,
             SCAN_BATCH,
@@ -843,22 +847,17 @@ pub async fn scan_rule(
         .into_iter()
         .map(|r| (r.id, r.at))
         .collect(),
-        (true, None) => core_db::bookings::date_between(
-            &mut tx,
-            field,
-            *offset_minutes,
-            from,
-            until,
-            SCAN_BATCH,
-        )
-        .await?
-        .into_iter()
-        .map(|r| (r.id, r.at))
-        .collect(),
+        (true, None) => {
+            core_db::bookings::date_between(&mut tx, field, offset_minutes, from, until, SCAN_BATCH)
+                .await?
+                .into_iter()
+                .map(|r| (r.id, r.at))
+                .collect()
+        }
         (true, Some(key)) => core_db::bookings::custom_date_between(
             &mut tx,
             key,
-            *offset_minutes,
+            offset_minutes,
             from,
             until,
             SCAN_BATCH,
@@ -942,7 +941,7 @@ pub async fn run_scheduled(
                     Some(&format!("the rule is invalid: {reason}")),
                     &[],
                 )
-                .await?
+                .await?;
             }
         }
     }

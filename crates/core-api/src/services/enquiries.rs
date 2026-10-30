@@ -311,7 +311,7 @@ pub(crate) async fn default_pipeline(tx: &mut Tx, ctx: &Ctx) -> ApiResult<(Uuid,
     }
     let id = core_domain::ids::new_id();
     core_db::pipelines::insert(tx, id, ENTITY, "Enquiries", ctx.user_id()).await?;
-    for (i, (key, name, outcome, colour)) in DEFAULT_STAGES.iter().enumerate() {
+    for (i, (key, name, outcome, colour)) in (0..).zip(DEFAULT_STAGES) {
         core_db::pipelines::insert_stage(
             tx,
             core_domain::ids::new_id(),
@@ -319,7 +319,7 @@ pub(crate) async fn default_pipeline(tx: &mut Tx, ctx: &Ctx) -> ApiResult<(Uuid,
             key,
             core_db::pipelines::StageValues {
                 name,
-                position: i as i32,
+                position: i,
                 colour: Some(colour),
                 sla_days: None,
                 outcome: outcome.as_str(),

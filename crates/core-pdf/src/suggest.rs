@@ -573,6 +573,7 @@ fn month(name: &str) -> Option<u32> {
         return None;
     }
     let i = months.iter().position(|m| n.starts_with(m))?;
+    let month = u32::try_from(i + 1).ok()?;
     // Accept the abbreviation or a prefix of the full name, `Sept` too.
     let full = [
         "january",
@@ -588,7 +589,7 @@ fn month(name: &str) -> Option<u32> {
         "november",
         "december",
     ];
-    (full[i].starts_with(&n) || n == "sept").then_some(i as u32 + 1)
+    (full[i].starts_with(&n) || n == "sept").then_some(month)
 }
 
 /// Finds the first date in `s` and where it ends.
@@ -683,9 +684,8 @@ pub fn valid_iban(iban: &str) -> bool {
     let (head, tail) = s.split_at(4);
     let mut rem: u32 = 0;
     for c in tail.chars().chain(head.chars()) {
-        let digits = match c.to_digit(36) {
-            Some(d) => d,
-            None => return false,
+        let Some(digits) = c.to_digit(36) else {
+            return false;
         };
         rem = if digits >= 10 {
             (rem * 100 + digits) % 97
@@ -703,7 +703,13 @@ pub fn valid_gb_vat(digits: &str) -> bool {
     if d.len() != 9 && d.len() != 12 {
         return false;
     }
-    let sum: u32 = (0..7).map(|i| d[i] * (8 - i as u32)).sum::<u32>() + d[7] * 10 + d[8];
+    let sum: u32 = d[..7]
+        .iter()
+        .zip((2..=8).rev())
+        .map(|(x, w)| x * w)
+        .sum::<u32>()
+        + d[7] * 10
+        + d[8];
     sum.is_multiple_of(97) || (sum + 55).is_multiple_of(97)
 }
 
@@ -717,11 +723,11 @@ struct Line<'a> {
 fn lines<'a>(pages: &[&'a str]) -> Vec<Line<'a>> {
     pages
         .iter()
-        .enumerate()
-        .flat_map(|(p, text)| {
-            text.lines().enumerate().map(move |(i, l)| Line {
-                page: p as u32 + 1,
-                number: i as u32 + 1,
+        .zip(1..)
+        .flat_map(|(text, page)| {
+            text.lines().zip(1..).map(move |(l, number)| Line {
+                page,
+                number,
                 text: l,
             })
         })
@@ -1251,11 +1257,11 @@ fn clean_party(s: &str) -> String {
 /// of it with only spaces changed).
 pub(crate) fn locate(pages: &[&str], joined: &str, at: usize) -> (u32, u32) {
     let mut n = joined[..at.min(joined.len())].matches('\n').count();
-    for (i, p) in pages.iter().enumerate() {
+    for ((i, p), page) in pages.iter().enumerate().zip(1..) {
         // The page's own line breaks, plus the one `join` adds after it.
         let breaks = p.matches('\n').count() + 1;
         if n < breaks || i + 1 == pages.len() {
-            return (i as u32 + 1, n as u32 + 1);
+            return (page, u32::try_from(n + 1).unwrap_or(u32::MAX));
         }
         n -= breaks;
     }

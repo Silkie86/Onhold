@@ -208,10 +208,10 @@ impl Worker {
                 });
                 match retry_at {
                     Some(_) => {
-                        tracing::warn!(job_id = %job.id, kind = %job.kind, attempt = job.attempt, error = %err.message, "job failed; will retry")
+                        tracing::warn!(job_id = %job.id, kind = %job.kind, attempt = job.attempt, error = %err.message, "job failed; will retry");
                     }
                     None => {
-                        tracing::error!(job_id = %job.id, kind = %job.kind, attempt = job.attempt, error = %err.message, "job failed for good")
+                        tracing::error!(job_id = %job.id, kind = %job.kind, attempt = job.attempt, error = %err.message, "job failed for good");
                     }
                 }
                 core_db::jobs::fail(&mut tx, job.id, &err.message, retry_at).await?;

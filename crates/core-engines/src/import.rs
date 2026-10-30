@@ -306,7 +306,12 @@ pub fn parse_money(s: &str, default: &str) -> Result<core_domain::Money, String>
     if !minor.is_finite() || minor.abs() > 9.0e15 {
         return Err(format!("`{s}` is too large"));
     }
-    core_domain::Money::new(minor as i64, &currency).map_err(|e| e.message)
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a whole number within 9e15, checked above"
+    )]
+    let minor = minor as i64;
+    core_domain::Money::new(minor, &currency).map_err(|e| e.message)
 }
 
 /// Reads a date: ISO (`2027-03-07`), or day, month and year separated by

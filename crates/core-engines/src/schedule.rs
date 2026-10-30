@@ -44,7 +44,7 @@ pub fn next_run(cron: &Cron, tz: Tz, after: DateTime<Utc>) -> Option<DateTime<Ut
 pub fn retry_delay(attempt: i32) -> Duration {
     const BASE: u64 = 30;
     const CAP: u64 = 6 * 3600;
-    let exp = attempt.saturating_sub(1).clamp(0, 20) as u32;
+    let exp = attempt.saturating_sub(1).clamp(0, 20).cast_unsigned();
     let secs = BASE.saturating_mul(1u64 << exp).min(CAP);
     let mut byte = [0u8; 2];
     let jitter = if getrandom::fill(&mut byte).is_ok() {

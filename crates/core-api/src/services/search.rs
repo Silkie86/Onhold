@@ -95,7 +95,7 @@ pub async fn search(
                 .total_cmp(&a.score)
                 .then_with(|| a.name.cmp(&b.name))
         });
-        hits.truncate(limit as usize);
+        hits.truncate(usize::try_from(limit).unwrap_or(0));
     }
     tx.commit().await?;
     Ok(hits
@@ -412,7 +412,7 @@ pub async fn timeline(
         .collect();
     // Ids are time-ordered (UUIDv7), so they order the merged sources.
     entries.sort_by_key(|e| std::cmp::Reverse(e.id));
-    entries.truncate(limit as usize);
+    entries.truncate(usize::try_from(limit).unwrap_or(0));
     let next_before = (entries.len() as i64 == limit)
         .then(|| entries.last().map(|e| e.id))
         .flatten();

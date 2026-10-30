@@ -167,13 +167,13 @@ pub async fn create(
     check_stage_inputs(&mut tx, entity, &stages).await?;
     let id = core_domain::ids::new_id();
     core_db::pipelines::insert(&mut tx, id, entity, &name, ctx.user_id()).await?;
-    for (i, s) in stages.iter().enumerate() {
+    for (i, s) in (0..).zip(&stages) {
         core_db::pipelines::insert_stage(
             &mut tx,
             core_domain::ids::new_id(),
             id,
             &s.key,
-            stage_values(s, i as i32),
+            stage_values(s, i),
         )
         .await?;
     }
@@ -231,15 +231,11 @@ pub async fn update(
     }
     if let Some(stages) = &patch.stages {
         check_stage_inputs(&mut tx, &entity, stages).await?;
-        for (i, input) in stages.iter().enumerate() {
+        for (i, input) in (0..).zip(stages) {
             match before.stages.iter().find(|s| s.key == input.key) {
                 Some(existing) => {
-                    core_db::pipelines::update_stage(
-                        &mut tx,
-                        existing.id,
-                        stage_values(input, i as i32),
-                    )
-                    .await?
+                    core_db::pipelines::update_stage(&mut tx, existing.id, stage_values(input, i))
+                        .await?;
                 }
                 None => {
                     core_db::pipelines::insert_stage(
@@ -247,9 +243,9 @@ pub async fn update(
                         core_domain::ids::new_id(),
                         id,
                         &input.key,
-                        stage_values(input, i as i32),
+                        stage_values(input, i),
                     )
-                    .await?
+                    .await?;
                 }
             }
         }

@@ -38,7 +38,7 @@ fn new_user_code() -> String {
 pub fn normalize_code(input: &str) -> Option<String> {
     let code: String = input
         .chars()
-        .filter(|c| c.is_ascii_alphabetic())
+        .filter(char::is_ascii_alphabetic)
         .map(|c| c.to_ascii_uppercase())
         .collect();
     (code.len() == CODE_LEN).then_some(code)

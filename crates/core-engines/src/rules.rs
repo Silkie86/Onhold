@@ -307,11 +307,8 @@ mod tests {
     #[test]
     fn valid_rules_parse() {
         let email = json!([{ "type": "send_email", "template": "welcome", "to": { "field": "thing.custom.email" } }]);
-        let r = parse_rule(
-            json!({"kind": "event", "topic": "thing.created"}),
-            email.clone(),
-        )
-        .expect("valid");
+        let r =
+            parse_rule(json!({"kind": "event", "topic": "thing.created"}), email).expect("valid");
         assert_eq!(r.trigger.kind(), "event");
         assert!(matches!(
             &r.actions[0],
@@ -372,7 +369,7 @@ mod tests {
             ),
             (
                 json!({"kind": "schedule", "cron": "0 9 * * *", "timezone": "Mars/Base"}),
-                email.clone(),
+                email,
                 "trigger.timezone",
             ),
             (

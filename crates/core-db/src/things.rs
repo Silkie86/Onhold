@@ -175,7 +175,7 @@ pub struct Reached {
 /// date-offset rules.
 pub async fn due_between(
     conn: &mut PgConnection,
-    offset_minutes: i64,
+    offset_minutes: i32,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     limit: i64,
@@ -188,7 +188,7 @@ pub async fn due_between(
              AND due_at + make_interval(mins => $1::int) <= $3
            ORDER BY 2, id
            LIMIT $4"#,
-        offset_minutes as i32,
+        offset_minutes,
         from,
         to,
         limit
@@ -203,7 +203,7 @@ pub async fn custom_date_between(
     conn: &mut PgConnection,
     key: &str,
     timezone: &str,
-    offset_minutes: i64,
+    offset_minutes: i32,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     limit: i64,
@@ -226,7 +226,7 @@ pub async fn custom_date_between(
            LIMIT $6"#,
         key,
         timezone,
-        offset_minutes as i32,
+        offset_minutes,
         from,
         to,
         limit

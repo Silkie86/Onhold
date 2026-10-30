@@ -532,7 +532,7 @@ pub struct Reached {
 pub async fn date_between(
     conn: &mut PgConnection,
     field: &str,
-    offset_minutes: i64,
+    offset_minutes: i32,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     limit: i64,
@@ -551,7 +551,7 @@ pub async fn date_between(
            ORDER BY at, id
            LIMIT $5"#,
         field,
-        offset_minutes as i32,
+        offset_minutes,
         from,
         to,
         limit
@@ -565,7 +565,7 @@ pub async fn date_between(
 pub async fn custom_date_between(
     conn: &mut PgConnection,
     key: &str,
-    offset_minutes: i64,
+    offset_minutes: i32,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
     limit: i64,
@@ -588,7 +588,7 @@ pub async fn custom_date_between(
            ORDER BY at, id
            LIMIT $5"#,
         key,
-        offset_minutes as i32,
+        offset_minutes,
         from,
         to,
         limit

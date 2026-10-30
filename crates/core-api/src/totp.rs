@@ -83,7 +83,7 @@ pub fn new_recovery_codes() -> (Vec<String>, Vec<Vec<u8>>) {
 pub fn hash_recovery_code(code: &str) -> Vec<u8> {
     let normalised: String = code
         .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
+        .filter(char::is_ascii_alphanumeric)
         .map(|c| c.to_ascii_lowercase())
         .collect();
     hash_token(&normalised)

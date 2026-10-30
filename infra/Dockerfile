@@ -4,6 +4,11 @@
 FROM rust:1.99.1-slim-bookworm AS builder
 WORKDIR /src
 ENV SQLX_OFFLINE=true
+# The full release optimisation (Cargo.toml [profile.release]) takes about
+# twice as long to build. CI, which only checks the image builds, passes
+# thin/16 here; deploys keep the defaults.
+ARG CARGO_PROFILE_RELEASE_LTO=fat
+ARG CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \

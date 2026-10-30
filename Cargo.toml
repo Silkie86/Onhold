@@ -75,14 +75,49 @@ proptest = "1"
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
+# Checks the compiler runs on every build. CI turns every warning into an
+# error, so nothing here reaches main unfixed.
 [workspace.lints.rust]
 unsafe_code = "forbid"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused_lifetimes = "warn"
+unit_bindings = "warn"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+# Leftovers that must not ship.
 dbg_macro = "warn"
 todo = "warn"
+unimplemented = "warn"
 unwrap_used = "warn"
+mem_forget = "warn"
+exit = "warn"
+# Numbers: a cast that silently cuts off a value or flips its sign (money,
+# durations, counts). Write `T::try_from(x)` or say why the cast is safe.
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+cast_lossless = "warn"
+float_cmp = "warn"
+lossy_float_literal = "warn"
+# Async: futures and values too big for the stack, and needless copying.
+large_futures = "warn"
+large_stack_arrays = "warn"
+large_types_passed_by_value = "warn"
+trivially_copy_pass_by_ref = "warn"
+inefficient_to_string = "warn"
+implicit_clone = "warn"
+cloned_instead_of_copied = "warn"
+redundant_clone = "warn"
+needless_collect = "warn"
+format_collect = "warn"
+unnecessary_box_returns = "warn"
+# Clearer code.
+manual_let_else = "warn"
+semicolon_if_nothing_returned = "warn"
+redundant_closure_for_method_calls = "warn"
+match_wildcard_for_single_variants = "warn"
+unnested_or_patterns = "warn"
+uninlined_format_args = "warn"
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3
@@ -97,3 +132,16 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
+
+# The server binary: as fast and as small as Rust can make it. Whole-program
+# optimisation (LTO, one codegen unit) lets the compiler inline across crates;
+# stripping symbols takes the binary from 44 MB to about half that. It costs
+# a few minutes on release builds only; dev and test builds are unaffected.
+# Panics still unwind, so one failing request cannot take the server down.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+# Integer overflow stops the request with an error instead of wrapping
+# silently into a wrong number (money, counts, dates).
+overflow-checks = true

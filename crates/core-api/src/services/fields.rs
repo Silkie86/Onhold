@@ -179,9 +179,12 @@ pub async fn create(
     let mut tx = begin(state, ctx).await?;
     let position = match settings.position {
         Some(p) => p,
-        None => core_db::fields::list(&mut tx, Some(entity), false)
-            .await?
-            .len() as i32,
+        None => {
+            let n = core_db::fields::list(&mut tx, Some(entity), false)
+                .await?
+                .len();
+            i32::try_from(n).unwrap_or(i32::MAX)
+        }
     };
     let id = core_domain::ids::new_id();
     let inserted = core_db::fields::insert(

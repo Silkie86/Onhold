@@ -191,7 +191,7 @@ mod tests {
         let mut bad_next = a.clone();
         bad_next.allowed_next = Some(vec!["nowhere".into()]);
         assert!(check_stages(&[bad_next, b.clone()], &fields).is_err());
-        let mut bad_field = b.clone();
+        let mut bad_field = b;
         bad_field.required_fields = vec!["nope".into()];
         assert!(check_stages(&[a, bad_field], &fields).is_err());
     }

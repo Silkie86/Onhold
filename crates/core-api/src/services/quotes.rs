@@ -230,7 +230,12 @@ fn check_lines(check: &mut Check, lines: &[LineInput]) -> (Vec<Line>, i64) {
             );
             continue;
         }
-        let Some(amount) = core_domain::bookings::line_amount(milli as i64, l.unit_minor) else {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a whole number, 0 to 1e9, checked above"
+        )]
+        let whole_milli = milli as i64;
+        let Some(amount) = core_domain::bookings::line_amount(whole_milli, l.unit_minor) else {
             check.issue(format!("line_items[{i}].unit_minor"), "is too large");
             continue;
         };
