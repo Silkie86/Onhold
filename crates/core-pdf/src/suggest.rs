@@ -1257,10 +1257,11 @@ fn clean_party(s: &str) -> String {
 /// of it with only spaces changed).
 pub(crate) fn locate(pages: &[&str], joined: &str, at: usize) -> (u32, u32) {
     let mut n = joined[..at.min(joined.len())].matches('\n').count();
-    for ((i, p), page) in pages.iter().enumerate().zip(1..) {
+    let last = pages.len();
+    for (p, page) in pages.iter().zip(1..) {
         // The page's own line breaks, plus the one `join` adds after it.
         let breaks = p.matches('\n').count() + 1;
-        if n < breaks || i + 1 == pages.len() {
+        if n < breaks || usize::try_from(page).is_ok_and(|page| page == last) {
             return (page, u32::try_from(n + 1).unwrap_or(u32::MAX));
         }
         n -= breaks;

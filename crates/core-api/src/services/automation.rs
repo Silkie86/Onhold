@@ -818,6 +818,7 @@ pub async fn scan_rule(
     };
     // Saved rules are checked to be within a year, so this always fits.
     let Ok(offset_minutes) = i32::try_from(*offset_minutes) else {
+        tracing::warn!(rule_id = %rule.id, offset_minutes, "date-offset rule skipped: offset out of range");
         return Ok(());
     };
     let from = rule.scanned_until.unwrap_or(rule.created_at);

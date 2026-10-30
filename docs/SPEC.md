@@ -415,7 +415,7 @@ One production deployment serves every tenant; the monthly fee is paying for thi
 
 - RLS on every tenant table; a test that asserts every table with `workspace_id` has a policy.
 - OWASP basics enforced in middleware: CSRF on cookie sessions, rate limits per IP and per user, strict CSP, security headers, input size limits, HTML sanitisation of inbound email and user content.
-- Secrets from environment or a secret store, never committed; `cargo audit` and `npm audit` in CI; dependabot.
+- Secrets from environment or a secret store, never committed; `cargo deny` (advisories, licences, sources) and `npm audit` in CI; dependabot.
 - Uploaded files virus-scanned (ClamAV in the worker) and served through signed, expiring URLs.
 - Per-workspace API keys scoped to permissions; all keys hashed; last-used tracking.
 - Password policy, breached-password check (k-anonymity API), session listing and revocation per user, mandatory 2FA for superadmin.

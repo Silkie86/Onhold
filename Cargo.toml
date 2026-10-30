@@ -41,7 +41,7 @@ thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "time"] }
 tokio-util = "0.7"
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.7", features = ["trace", "request-id", "timeout", "limit", "cors"] }
+tower-http = { version = "0.7", features = ["trace", "request-id", "timeout", "limit", "cors", "catch-panic"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v7", "serde"] }
@@ -137,11 +137,23 @@ opt-level = 3
 # optimisation (LTO, one codegen unit) lets the compiler inline across crates;
 # stripping symbols takes the binary from 44 MB to about half that. It costs
 # a few minutes on release builds only; dev and test builds are unaffected.
-# Panics still unwind, so one failing request cannot take the server down.
+# Panics still unwind: a failing request gets a 500 and a failing job is
+# retried, while the server carries on.
 [profile.release]
 lto = "fat"
 codegen-units = 1
 strip = true
-# Integer overflow stops the request with an error instead of wrapping
-# silently into a wrong number (money, counts, dates).
+# In OnHold's own code, integer overflow fails the request or job instead of
+# wrapping silently into a wrong number (money, counts, dates), as it already
+# does in tests. Libraries keep their own release behaviour.
 overflow-checks = true
+
+[profile.release.package."*"]
+overflow-checks = false
+
+# The same build with quicker settings, for CI's Docker image check, which
+# only needs to know the image builds.
+[profile.release-ci]
+inherits = "release"
+lto = "thin"
+codegen-units = 16

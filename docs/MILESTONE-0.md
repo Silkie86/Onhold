@@ -11,7 +11,7 @@
 - `core-worker`: the worker lifecycle (start, heartbeat, stop) with its own `/healthz` and `/readyz` on port 8081.
 - Structured JSON logging via `tracing`, levels from `RUST_LOG`.
 - Docker: one image for every role, running as a non-root user; compose stack with Postgres 16, a one-shot `migrate`, `api` and `worker`, all with health checks.
-- CI (GitHub Actions): `cargo fmt --check`, offline sqlx build, `clippy -D warnings`, migrations against Postgres 16, `sqlx prepare --check`, `cargo test`, `cargo audit`, Docker image build. Dependabot for Cargo, Actions and Docker.
+- CI (GitHub Actions): `cargo fmt --check`, offline sqlx build, `clippy -D warnings`, migrations against Postgres 16, `sqlx prepare --check`, `cargo test`, `cargo audit` (now `cargo deny`), Docker image build. Dependabot for Cargo, Actions and Docker.
 
 ## Verified
 

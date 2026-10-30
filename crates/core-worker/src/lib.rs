@@ -18,6 +18,7 @@
 mod handlers;
 
 use std::collections::BTreeSet;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -32,6 +33,7 @@ use core_db::DbError;
 use core_db::jobs::{Claimed, LogLine, NewJob, RunRecord};
 use core_integrations::http::WebhookClient;
 use core_integrations::mail::Mailer;
+use futures_util::FutureExt;
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgListener;
@@ -169,13 +171,14 @@ impl Worker {
     pub async fn execute(&self, job: Claimed) {
         let started_at = Utc::now();
         let mut log = Vec::new();
-        let result = match tokio::time::timeout(
-            self.settings.job_timeout,
-            self.handle(&job, &mut log),
-        )
-        .await
-        {
-            Ok(r) => r,
+        // A job that panics is recorded as failed and retried like any other
+        // failure, rather than staying claimed until its lease runs out.
+        let handled = AssertUnwindSafe(self.handle(&job, &mut log)).catch_unwind();
+        let result = match tokio::time::timeout(self.settings.job_timeout, handled).await {
+            Ok(Ok(r)) => r,
+            Ok(Err(_)) => Err(JobError::retry(
+                "stopped unexpectedly (a bug); see the server log",
+            )),
             Err(_) => Err(JobError::retry(format!(
                 "timed out after {} seconds",
                 self.settings.job_timeout.as_secs()

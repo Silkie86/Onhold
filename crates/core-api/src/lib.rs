@@ -24,6 +24,7 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceBuilder;
 use tower_http::LatencyUnit;
+use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::timeout::TimeoutLayer;
@@ -240,7 +241,14 @@ pub fn router(state: AppState) -> Router {
                     axum::http::StatusCode::REQUEST_TIMEOUT,
                     REQUEST_TIMEOUT,
                 ))
-                .layer(axum::middleware::from_fn(limit_body)),
+                .layer(axum::middleware::from_fn(limit_body))
+                // A bug that panics fails its own request with a 500, logged
+                // with the request id, and the server carries on.
+                .layer(CatchPanicLayer::custom(|_| {
+                    axum::response::IntoResponse::into_response(error::ApiError::internal(
+                        "the request panicked",
+                    ))
+                })),
         )
 }
 
