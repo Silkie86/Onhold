@@ -5,21 +5,34 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use lettre::message::header::ContentType;
-use lettre::message::{Mailbox, MultiPart, SinglePart};
+use lettre::message::{Attachment as Part, Mailbox, MultiPart, SinglePart};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
 /// One message to send.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Email {
     pub to: String,
-    /// Display name shown with the platform's sending address, e.g. the workspace name.
+    /// Display name shown with the sending address, e.g. the workspace name.
     pub from_name: Option<String>,
+    /// An address at the workspace's own verified domain, sent from instead
+    /// of the platform's address.
+    pub from_address: Option<String>,
     pub reply_to: Option<String>,
     pub subject: String,
     pub html: Option<String>,
     pub text: String,
     /// Stable per logical message, so a retried send can be recognised downstream.
     pub message_id: String,
+    /// Files sent with it, such as an invoice's PDF.
+    pub attachments: Vec<Attachment>,
+}
+
+/// A file attached to an email.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attachment {
+    pub filename: String,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,7 +78,10 @@ impl SmtpMailer {
     fn build(&self, email: &Email) -> Result<Message, MailError> {
         let bad =
             |what: &str, e: &dyn std::fmt::Display| MailError::Permanent(format!("{what}: {e}"));
-        let mut from = self.from.clone();
+        let mut from = match &email.from_address {
+            Some(a) => Mailbox::new(None, a.parse().map_err(|e| bad("from address", &e))?),
+            None => self.from.clone(),
+        };
         if let Some(name) = &email.from_name {
             from.name = Some(name.clone());
         }
@@ -84,25 +100,34 @@ impl SmtpMailer {
                     .map_err(|e| bad("reply-to", &e))?,
             );
         }
-        let message = match &email.html {
-            Some(html) => builder.multipart(
-                MultiPart::alternative()
-                    .singlepart(
-                        SinglePart::builder()
-                            .header(ContentType::TEXT_PLAIN)
-                            .body(email.text.clone()),
-                    )
-                    .singlepart(
-                        SinglePart::builder()
-                            .header(ContentType::TEXT_HTML)
-                            .body(html.clone()),
-                    ),
+        let text = SinglePart::builder()
+            .header(ContentType::TEXT_PLAIN)
+            .body(email.text.clone());
+        let body = match &email.html {
+            Some(html) => MultiPart::alternative().singlepart(text).singlepart(
+                SinglePart::builder()
+                    .header(ContentType::TEXT_HTML)
+                    .body(html.clone()),
             ),
-            None => builder
-                .header(ContentType::TEXT_PLAIN)
-                .body(email.text.clone()),
+            None if email.attachments.is_empty() => {
+                return builder
+                    .header(ContentType::TEXT_PLAIN)
+                    .body(email.text.clone())
+                    .map_err(|e| bad("message", &e));
+            }
+            None => MultiPart::mixed().singlepart(text),
         };
-        message.map_err(|e| bad("message", &e))
+        if email.attachments.is_empty() {
+            return builder.multipart(body).map_err(|e| bad("message", &e));
+        }
+        let mut mixed = MultiPart::mixed().multipart(body);
+        for a in &email.attachments {
+            let content_type =
+                ContentType::parse(&a.content_type).map_err(|e| bad("attachment", &e))?;
+            mixed =
+                mixed.singlepart(Part::new(a.filename.clone()).body(a.bytes.clone(), content_type));
+        }
+        builder.multipart(mixed).map_err(|e| bad("message", &e))
     }
 }
 
@@ -121,17 +146,40 @@ impl Mailer for SmtpMailer {
 }
 
 /// Logs each message instead of sending it: local development without a
-/// mail server. Never configure in production.
+/// mail server. Never configure in production. Links are cut to their
+/// origin, since sign-in, invitation and quote links are bearer secrets.
 pub struct LogMailer;
 
 #[async_trait]
 impl Mailer for LogMailer {
     async fn send(&self, email: &Email) -> Result<Sent, MailError> {
-        tracing::info!(to = %email.to, subject = %email.subject, "email not sent (no SMTP_URL); text follows\n{}", email.text);
+        tracing::info!(to = %email.to, subject = %email.subject, "email not sent (no SMTP_URL); text follows, links removed\n{}", without_links(&email.text));
         Ok(Sent {
             provider_message_id: None,
         })
     }
+}
+
+/// `text` with everything from `http://` or `https://` to the next space
+/// replaced, keeping only the link's origin.
+fn without_links(text: &str) -> String {
+    text.split_inclusive(char::is_whitespace)
+        .map(|word| {
+            let start = [word.find("http://"), word.find("https://")];
+            let Some(start) = start.into_iter().flatten().min() else {
+                return word.to_owned();
+            };
+            let link = word.trim_end();
+            let origin = url::Url::parse(&link[start..])
+                .map(|u| u.origin().ascii_serialization())
+                .unwrap_or_default();
+            format!(
+                "{}{origin}/[link removed]{}",
+                &word[..start],
+                &word[link.len()..]
+            )
+        })
+        .collect()
 }
 
 /// Keeps messages in memory, and can be told to fail, for tests.
@@ -191,11 +239,13 @@ mod tests {
         Email {
             to: "Ana <ana@example.com>".into(),
             from_name: Some("Acme Agency".into()),
+            from_address: None,
             reply_to: Some("office@acme.test".into()),
             subject: "Hello".into(),
             html: Some("<p>Hi</p>".into()),
             text: "Hi".into(),
             message_id: "<1@onhold.test>".into(),
+            attachments: Vec::new(),
         }
     }
 
@@ -213,6 +263,23 @@ mod tests {
         assert!(raw.contains("Reply-To: office@acme.test"), "{raw}");
         assert!(raw.contains("Message-ID: <1@onhold.test>"), "{raw}");
         assert!(raw.contains("multipart/alternative"), "{raw}");
+        let mut own = email();
+        own.from_address = Some("bookings@acme.test".into());
+        let raw = String::from_utf8(mailer.build(&own).expect("builds").formatted()).expect("utf8");
+        assert!(
+            raw.contains("From: \"Acme Agency\" <bookings@acme.test>"),
+            "{raw}"
+        );
+        let mut with_pdf = email();
+        with_pdf.attachments.push(Attachment {
+            filename: "INV-2026-0001.pdf".into(),
+            content_type: "application/pdf".into(),
+            bytes: b"%PDF-1.7".to_vec(),
+        });
+        let raw =
+            String::from_utf8(mailer.build(&with_pdf).expect("builds").formatted()).expect("utf8");
+        assert!(raw.contains("multipart/mixed"), "{raw}");
+        assert!(raw.contains("filename=\"INV-2026-0001.pdf\""), "{raw}");
         let mut bad = email();
         bad.to = "not an address".into();
         assert!(matches!(mailer.build(&bad), Err(MailError::Permanent(_))));
@@ -222,6 +289,19 @@ mod tests {
     async fn bad_configuration_is_reported() {
         assert!(SmtpMailer::from_url("ftp://x", "a@b.c").is_err());
         assert!(SmtpMailer::from_url("smtp://localhost", "nobody").is_err());
+    }
+
+    #[test]
+    fn logged_emails_keep_no_links() {
+        let text = "Sign in: https://app.example.com/auth/magic?token=s3cret\n\
+                    Quote (http://app.example.com/quote/tok3n) ends.\n";
+        let logged = without_links(text);
+        assert_eq!(
+            logged,
+            "Sign in: https://app.example.com/[link removed]\n\
+             Quote (http://app.example.com/[link removed] ends.\n"
+        );
+        assert!(!logged.contains("s3cret") && !logged.contains("tok3n"));
     }
 
     #[tokio::test]

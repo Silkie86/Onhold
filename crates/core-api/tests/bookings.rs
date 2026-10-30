@@ -1126,6 +1126,60 @@ async fn the_calendar_shows_bookings_and_availability_and_publishes_ical(pool: P
     assert!(listed.body[0]["last_used_at"].is_string());
     assert!(!listed.body.to_string().contains(&url));
 
+    // A member's link works while their role sees bookings, and stops for
+    // good when they leave: rejoining (as talent, say) does not revive it.
+    let agent = app.add_member(&owner, "agent@acme.test", "agent").await;
+    let theirs = post(
+        &app,
+        &agent,
+        "/api/v1/calendar/feeds",
+        json!({ "name": "Agent's phone" }),
+    )
+    .await
+    .ok();
+    let their_url = theirs.body["url"].as_str().unwrap().to_owned();
+    let their_path = &their_url[their_url.find("/api/v1/public/").unwrap()..];
+    app.get(their_path).send().await.ok();
+    let agent_id = app.user_id("agent@acme.test").await;
+    let set_role = |role: &'static str| {
+        let pool = &app.owner;
+        async move {
+            sqlx::query(
+                "UPDATE memberships SET role = $2::member_role WHERE user_id = $1 AND deleted_at IS NULL",
+            )
+            .bind(agent_id.0)
+            .bind(role)
+            .execute(pool)
+            .await
+            .unwrap();
+        }
+    };
+    set_role("talent").await;
+    app.get(their_path)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+    set_role("agent").await;
+    app.get(their_path).send().await.ok();
+    app.delete(&format!("/api/v1/members/{}", agent_id.0))
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::NO_CONTENT, "");
+    sqlx::query(
+        "INSERT INTO memberships (id, workspace_id, user_id, role)
+         SELECT gen_random_uuid(), workspace_id, user_id, 'agent' FROM memberships
+         WHERE user_id = $1 LIMIT 1",
+    )
+    .bind(agent_id.0)
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    app.get(their_path)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+
     // Revoking stops the link.
     app.delete(&format!("/api/v1/calendar/feeds/{feed_id}"))
         .signed_in(&owner)
@@ -1202,4 +1256,303 @@ async fn the_hold_period_is_a_workspace_setting(pool: PgPool) {
     .await
     .ok();
     assert_eq!(own.body["hold_expires_at"], "2031-05-01T12:00:00Z");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn moving_an_overridden_booking_clear_of_its_clash_ends_the_override(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let c = cast(&app, &owner).await;
+    booking(
+        &app,
+        &owner,
+        c.talent,
+        "confirmed",
+        "2031-06-01T19:00:00Z",
+        "2031-06-01T23:00:00Z",
+    )
+    .await
+    .ok();
+    let second = booking(
+        &app,
+        &owner,
+        c.talent,
+        "hold",
+        "2031-06-01T21:00:00Z",
+        "2031-06-02T01:00:00Z",
+    )
+    .await
+    .ok()
+    .id("/id");
+    let overridden = set_status(
+        &app,
+        &owner,
+        second,
+        json!({ "status": "confirmed", "override_reason": "Two sets" }),
+    )
+    .await
+    .ok();
+    assert_eq!(overridden.body["clash_override"], true);
+
+    // Moved to a free night, it no longer clashes, so it is firm again.
+    let moved = app
+        .patch(&format!("/api/v1/bookings/{second}"))
+        .signed_in(&owner)
+        .json(json!({ "starts_at": "2031-06-08T19:00:00Z", "ends_at": "2031-06-08T23:00:00Z" }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(moved.body["clash_override"], false);
+    assert!(moved.body["override_reason"].is_null());
+    // So the double-booking constraint guards it again.
+    let third = booking(
+        &app,
+        &owner,
+        c.talent,
+        "hold",
+        "2031-06-08T20:00:00Z",
+        "2031-06-08T22:00:00Z",
+    )
+    .await
+    .ok()
+    .id("/id");
+    let forced = sqlx::query("UPDATE bookings SET status = 'confirmed' WHERE id = $1")
+        .bind(third)
+        .execute(&app.owner)
+        .await;
+    assert!(
+        forced.is_err(),
+        "a second firm booking slipped past the constraint"
+    );
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_booking_never_has_two_accepted_quotes(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let c = cast(&app, &owner).await;
+    let booking = booking(
+        &app,
+        &owner,
+        c.talent,
+        "hold",
+        "2031-06-01T19:00:00Z",
+        "2031-06-01T23:00:00Z",
+    )
+    .await
+    .ok()
+    .id("/id");
+    let quotes = format!("/api/v1/bookings/{booking}/quotes");
+    let draft = || async { post(&app, &owner, &quotes, json!({})).await.ok().id("/id") };
+    let send = |quote: Uuid| {
+        let path = format!("/api/v1/quotes/{quote}/send");
+        let (app, owner) = (&app, &owner);
+        async move { post(app, owner, &path, json!({ "to": "bea@grand.test" })).await }
+    };
+    let token = |res: common::Resp| {
+        res.ok().body["link"]
+            .as_str()
+            .unwrap()
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .to_owned()
+    };
+    let accept = |token: String| {
+        let path = format!("/api/v1/public/quotes/{token}/accept");
+        let app = &app;
+        async move {
+            app.post(&path)
+                .json(json!({ "name": "Bea Booker" }))
+                .send()
+                .await
+        }
+    };
+    let revise = |quote: Uuid| {
+        let path = format!("/api/v1/quotes/{quote}/revise");
+        let (app, owner) = (&app, &owner);
+        async move { post(app, owner, &path, json!({})).await.ok().id("/id") }
+    };
+
+    // Two quotes out with the buyer at once, as when two sends race: Q-0002
+    // is sent, Q-0001 withdraws it, and the race puts it back.
+    let first = draft().await;
+    let second = draft().await;
+    let second_token = token(send(second).await);
+    let first_token = token(send(first).await);
+    sqlx::query("UPDATE quotes SET status = 'sent' WHERE id = $1")
+        .bind(second)
+        .execute(&app.owner)
+        .await
+        .unwrap();
+    accept(first_token).await.ok();
+    accept(second_token)
+        .await
+        .expect(StatusCode::CONFLICT, "quote_already_accepted");
+
+    // Once one is accepted, another quote for the booking cannot be sent.
+    let third = draft().await;
+    send(third)
+        .await
+        .expect(StatusCode::CONFLICT, "quote_already_accepted");
+
+    // A revision of the accepted quote replaces it, and can be revised again.
+    let revision = revise(first).await;
+    accept(token(send(revision).await)).await.ok();
+    let again = revise(revision).await;
+    send(again).await.ok();
+    send(third)
+        .await
+        .expect(StatusCode::CONFLICT, "quote_already_accepted");
+
+    // The buyer asks for a change instead, so the sent revision is revised
+    // unaccepted: the new one still goes out, can be accepted, and revised.
+    let changed = revise(again).await;
+    accept(token(send(changed).await)).await.ok();
+    let later = revise(changed).await;
+    send(later).await.ok();
+    send(third)
+        .await
+        .expect(StatusCode::CONFLICT, "quote_already_accepted");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn links_stop_working_when_the_workspace_is_suspended_or_closed(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let c = cast(&app, &owner).await;
+    let booking = booking(
+        &app,
+        &owner,
+        c.talent,
+        "hold",
+        "2031-06-01T19:00:00Z",
+        "2031-06-01T23:00:00Z",
+    )
+    .await
+    .ok()
+    .id("/id");
+    let quote = post(
+        &app,
+        &owner,
+        &format!("/api/v1/bookings/{booking}/quotes"),
+        json!({}),
+    )
+    .await
+    .ok()
+    .id("/id");
+    let sent = post(
+        &app,
+        &owner,
+        &format!("/api/v1/quotes/{quote}/send"),
+        json!({ "to": "bea@grand.test" }),
+    )
+    .await
+    .ok();
+    let quote_path = format!(
+        "/api/v1/public/quotes/{}",
+        sent.body["link"]
+            .as_str()
+            .unwrap()
+            .rsplit('/')
+            .next()
+            .unwrap()
+    );
+    let feed = post(
+        &app,
+        &owner,
+        "/api/v1/calendar/feeds",
+        json!({ "name": "My phone" }),
+    )
+    .await
+    .ok();
+    let url = feed.body["url"].as_str().unwrap();
+    let feed_path = url[url.find("/api/v1/public/").unwrap()..].to_owned();
+    let set_workspace_status = |status: &'static str| {
+        let pool = &app.owner;
+        async move {
+            sqlx::query("UPDATE workspaces SET status = $2::workspace_status WHERE id = $1")
+                .bind(ws.0)
+                .bind(status)
+                .execute(pool)
+                .await
+                .unwrap();
+        }
+    };
+    let all_gone = || async {
+        app.get(&feed_path)
+            .send()
+            .await
+            .expect(StatusCode::NOT_FOUND, "not_found");
+        app.get(&quote_path)
+            .send()
+            .await
+            .expect(StatusCode::NOT_FOUND, "not_found");
+        for answer in ["accept", "decline"] {
+            app.post(&format!("{quote_path}/{answer}"))
+                .json(json!({ "name": "Bea Booker" }))
+                .send()
+                .await
+                .expect(StatusCode::NOT_FOUND, "not_found");
+        }
+    };
+
+    set_workspace_status("suspended").await;
+    all_gone().await;
+    set_workspace_status("active").await;
+    app.get(&feed_path).send().await.ok();
+    app.get(&quote_path).send().await.ok();
+
+    app.post("/api/v1/workspace/close")
+        .signed_in(&owner)
+        .json(json!({ "confirm_slug": "acme" }))
+        .send()
+        .await
+        .ok();
+    all_gone().await;
+    let status: String = sqlx::query_scalar("SELECT status::text FROM quotes WHERE id = $1")
+        .bind(quote)
+        .fetch_one(&app.owner)
+        .await
+        .unwrap();
+    assert_eq!(
+        status, "viewed",
+        "nothing was decided in a closed workspace"
+    );
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_calendar_too_full_to_list_says_so_rather_than_cutting_short(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let c = cast(&app, &owner).await;
+    let add = |n: i32| {
+        let pool = app.owner.clone();
+        async move {
+            sqlx::query(
+                "INSERT INTO availability (id, workspace_id, talent_id, starts_at, ends_at)
+                 SELECT gen_random_uuid(), $1, $2, '2031-06-01'::timestamptz + i * interval '1 hour',
+                        '2031-06-01'::timestamptz + i * interval '1 hour' + interval '30 minutes'
+                 FROM generate_series(1, $3) i",
+            )
+            .bind(ws.0)
+            .bind(c.talent)
+            .bind(n)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+    };
+    // As many marked stretches as one list holds.
+    add(5000).await;
+    let window = "from=2031-06-01T00:00:00Z&to=2032-01-01T00:00:00Z";
+    let cal = get(&app, &owner, &format!("/api/v1/calendar?{window}")).await;
+    assert_eq!(cal.body["availability"].as_array().unwrap().len(), 5000);
+    // One more and the list is refused, never silently short.
+    add(1).await;
+    app.get(&format!("/api/v1/calendar?{window}"))
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
 }

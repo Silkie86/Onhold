@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE projects SET kind = $2, name = $3, status = $4, currency = $5, owner_id = $6, budget = $7,\n                  notes = $8, tags = $9, updated_by = $10\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Bpchar",
+        "Uuid",
+        "Jsonb",
+        "Text",
+        "TextArray",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c20456a6cb089a93089cbce9ab29db141539830836799c44cf69196564fd691c"
+}

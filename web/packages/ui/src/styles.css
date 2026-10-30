@@ -26,8 +26,12 @@
   --accent-foreground: oklch(0.3 0.08 265);
   --destructive: oklch(0.55 0.2 27);
   --destructive-foreground: oklch(0.99 0 0);
-  --success: oklch(0.55 0.13 155);
-  --warning: oklch(0.7 0.15 75);
+  --success: oklch(0.5 0.12 155);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.5 0.13 65);
+  --warning-foreground: oklch(0.99 0 0);
+  --info: oklch(0.5 0.12 240);
+  --info-foreground: oklch(0.99 0 0);
   --radius: 0.5rem;
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: light;
@@ -50,6 +54,13 @@
     --accent: oklch(0.28 0.03 265);
     --accent-foreground: oklch(0.95 0.02 265);
     --destructive: oklch(0.65 0.19 27);
+    --destructive-foreground: oklch(0.15 0.02 27);
+    --success: oklch(0.78 0.11 155);
+    --success-foreground: oklch(0.15 0.02 155);
+    --warning: oklch(0.78 0.12 65);
+    --warning-foreground: oklch(0.15 0.02 65);
+    --info: oklch(0.78 0.11 240);
+    --info-foreground: oklch(0.15 0.02 240);
     color-scheme: dark;
   }
 }
@@ -70,7 +81,29 @@
   --accent: oklch(0.28 0.03 265);
   --accent-foreground: oklch(0.95 0.02 265);
   --destructive: oklch(0.65 0.19 27);
+  --destructive-foreground: oklch(0.15 0.02 27);
+  --success: oklch(0.78 0.11 155);
+  --success-foreground: oklch(0.15 0.02 155);
+  --warning: oklch(0.78 0.12 65);
+  --warning-foreground: oklch(0.15 0.02 65);
+  --info: oklch(0.78 0.11 240);
+  --info-foreground: oklch(0.15 0.02 240);
   color-scheme: dark;
+}
+
+/* A client's logo is usually drawn for white paper: in dark mode it sits on
+   a light tile so it stays visible. */
+.dark .brand-logo {
+  background: oklch(0.98 0 0);
+  border-radius: calc(var(--radius) - 2px);
+  padding: 2px 4px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) .brand-logo {
+    background: oklch(0.98 0 0);
+    border-radius: calc(var(--radius) - 2px);
+    padding: 2px 4px;
+  }
 }
 
 @theme inline {
@@ -92,7 +125,11 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 4px);

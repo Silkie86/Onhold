@@ -286,3 +286,39 @@ pub async fn advance(conn: &mut PgConnection, id: Uuid, next: Option<DateTime<Ut
         .await?;
     Ok(())
 }
+
+/// Marks a rule as installed from a ready-made follow-up.
+pub async fn set_preset(conn: &mut PgConnection, id: Uuid, preset: &str) -> Result<()> {
+    sqlx::query!(
+        "UPDATE rules SET preset = $2 WHERE workspace_id = app_workspace_id() AND id = $1",
+        id,
+        preset
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// The live rules installed from ready-made follow-ups: `(preset, id, enabled)`.
+pub async fn presets(conn: &mut PgConnection) -> Result<Vec<(String, Uuid, bool)>> {
+    Ok(sqlx::query!(
+        r#"SELECT preset AS "preset!", id, enabled FROM rules
+           WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL AND preset IS NOT NULL
+           ORDER BY preset"#
+    )
+    .fetch_all(conn)
+    .await?
+    .into_iter()
+    .map(|r| (r.preset, r.id, r.enabled))
+    .collect())
+}
+
+/// Holds the workspace's ready-made follow-ups until the transaction ends.
+pub async fn lock_presets(conn: &mut PgConnection) -> Result<()> {
+    sqlx::query!(
+        "SELECT pg_advisory_xact_lock(hashtextextended('rule-presets:' || app_workspace_id()::text, 0))"
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}

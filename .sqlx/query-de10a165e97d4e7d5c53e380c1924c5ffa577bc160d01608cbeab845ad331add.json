@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE integrations\n           SET status = $2, last_error = left($3, 1000), last_error_at = now(), failures = failures + 1,\n               next_poll_at = $4, poll_lease_until = NULL\n           WHERE workspace_id = app_workspace_id() AND id = $1\n           RETURNING failures",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "failures",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "failures"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "de10a165e97d4e7d5c53e380c1924c5ffa577bc160d01608cbeab845ad331add"
+}

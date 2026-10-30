@@ -24,7 +24,16 @@ const NOT_WORKSPACE_SCOPED: &[(&str, &str)] = &[
     ("/api/v1/admin/", "superadmins only"),
     (
         "/api/v1/public/",
-        "secret-link holders only; the token names one quote or feed",
+        "secret-link holders only; the token names one quote, feed, invoice or signature; \
+         or a workspace's logo for its emails, which shows nothing else",
+    ),
+    (
+        "/api/v1/hooks/messaging/",
+        "signed by Twilio or Meta; the address's token names one number, so one workspace",
+    ),
+    (
+        "/api/v1/webhooks/stripe",
+        "signed by Stripe; the event's connected account names the one workspace",
     ),
 ];
 
@@ -101,13 +110,150 @@ struct World {
     b_job: uuid::Uuid,
     b_crm: Crm,
     b_work: Work,
+    b_money: Money,
+    b_inbox: Inbox,
     b_markers: Vec<String>,
+}
+
+/// One of everything M6 adds, in `owner`'s workspace.
+struct Inbox {
+    thread: uuid::Uuid,
+    mailbox: uuid::Uuid,
+    number: uuid::Uuid,
+}
+
+async fn inbox(app: &TestApp, owner: &Client, slug: &str) -> Inbox {
+    // Written through OnHold's own sender, so no mail server is needed.
+    let thread = app
+        .post("/api/v1/inbox/threads")
+        .signed_in(owner)
+        .json(json!({ "to": [format!("booker@{slug}.test")], "subject": format!("{slug} secret subject"),
+                      "body": format!("{slug} secret message") }))
+        .send()
+        .await
+        .ok()
+        .id("/thread/id");
+    // A connected mailbox, as connecting would leave it.
+    let mailbox = uuid::Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO integrations (id, workspace_id, provider, purposes, owner_id, account, secret, mail_since)
+         SELECT $1, $2, 'imap', '{mail}', m.user_id, $3, '\\x00', now()
+         FROM memberships m WHERE m.workspace_id = $2 AND m.role = 'owner'",
+    )
+    .bind(mailbox)
+    .bind(owner.workspace.unwrap().0)
+    .bind(format!("mail@{slug}.test"))
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    // An SMS number, as connecting would leave it.
+    let number = uuid::Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO messaging_channels (id, workspace_id, kind, provider, sender, account_id, secret, hook_token)
+         VALUES ($1, $2, 'sms', 'twilio', $3, $4, '\\x00', $5)",
+    )
+    .bind(number)
+    .bind(owner.workspace.unwrap().0)
+    .bind(if slug == "alpha" { "+447700900101" } else { "+447700900202" })
+    .bind(format!("{slug}-sms-account"))
+    .bind(format!("{slug}-hook-token-0123456789"))
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    Inbox {
+        thread,
+        mailbox,
+        number,
+    }
+}
+
+/// One of everything M5 adds, in `owner`'s workspace, named after `slug`.
+struct Money {
+    tax_code: uuid::Uuid,
+    invoice: uuid::Uuid,
+    payment: uuid::Uuid,
+    allocation: uuid::Uuid,
+    settlement: uuid::Uuid,
+    document: uuid::Uuid,
+    file: uuid::Uuid,
+    pdf_import: uuid::Uuid,
+}
+
+async fn money(app: &TestApp, owner: &Client, slug: &str, crm: &Crm, work: &Work) -> Money {
+    let post = |path: &str, body: Value| {
+        let req = app.post(path).signed_in(owner).json(body);
+        async move { req.send().await.ok() }
+    };
+    let tax_code = post(
+        "/api/v1/tax-codes",
+        json!({ "name": format!("{slug} secret tax"), "rate_bps": 1234 }),
+    )
+    .await
+    .id("/id");
+    let invoice = post(
+        "/api/v1/invoices",
+        json!({ "payer": { "organisation_id": crm.organisation }, "booking_id": work.booking,
+                "line_items": [{ "description": format!("{slug} secret invoice line"), "unit_minor": 10_000 }] }),
+    )
+    .await
+    .id("/id");
+    post(&format!("/api/v1/invoices/{invoice}/issue"), json!({})).await;
+    let payment = post(
+        "/api/v1/payments",
+        json!({ "amount": { "minor": 1_000, "currency": "GBP" }, "reference": format!("{slug} secret payment"),
+                "allocations": [{ "invoice_id": invoice }] }),
+    )
+    .await;
+    let allocation = payment.id("/allocations/0/id");
+    let payment = payment.id("/id");
+    let settlement = post(
+        &format!("/api/v1/bookings/{}/settlements", work.booking),
+        json!({}),
+    )
+    .await
+    .id("/0/id");
+    let pdf = core_pdf::write::Renderer::render(
+        &core_pdf::write::PlainText,
+        &format!("<p>{slug} secret contract text</p>"),
+        "Secret",
+    )
+    .unwrap();
+    let file = app
+        .post(&format!("/api/v1/files?filename={slug}-secret.pdf"))
+        .signed_in(owner)
+        .bytes("application/pdf", pdf)
+        .send()
+        .await
+        .ok()
+        .id("/id");
+    let pdf_import = post("/api/v1/pdf-imports", json!({ "file_ids": [file] }))
+        .await
+        .id("/0/id");
+    let document = post(
+        "/api/v1/documents/generate",
+        json!({ "template_key": "document.contract", "related_entity": "booking", "related_id": work.booking,
+                "title": format!("{slug} secret contract") }),
+    )
+    .await
+    .id("/id");
+    Money {
+        tax_code,
+        invoice,
+        payment,
+        allocation,
+        settlement,
+        document,
+        file,
+        pdf_import,
+    }
 }
 
 /// One of everything M3 adds, in `owner`'s workspace, named after `slug`.
 struct Crm {
     talent: uuid::Uuid,
     member: uuid::Uuid,
+    calendar_link: uuid::Uuid,
+    calendar: uuid::Uuid,
     organisation: uuid::Uuid,
     contact: uuid::Uuid,
     view: uuid::Uuid,
@@ -137,6 +283,24 @@ async fn crm(app: &TestApp, owner: &Client, slug: &str) -> Crm {
     )
     .await
     .id("/id");
+    let calendar_link = post(
+        &format!("/api/v1/talent/{talent}/calendar-links"),
+        json!({}),
+    )
+    .await
+    .id("/link/id");
+    // A connected calendar, as the talent's link would leave it.
+    let calendar = core_domain::ids::new_id();
+    sqlx::query(
+        "INSERT INTO talent_calendars (id, workspace_id, talent_id, link_id, provider, account, secret, url_hash)
+         SELECT $1, workspace_id, talent_id, id, 'ical', $2, '\\x00', '\\x00' FROM calendar_connect_links WHERE id = $3",
+    )
+    .bind(calendar)
+    .bind(format!("{slug}.secret.test"))
+    .bind(calendar_link)
+    .execute(&app.owner)
+    .await
+    .unwrap();
     let organisation = post(
         "/api/v1/organisations",
         json!({ "name": format!("{slug} secret venue"), "tags": [format!("{slug}-secret-tag")] }),
@@ -167,6 +331,8 @@ async fn crm(app: &TestApp, owner: &Client, slug: &str) -> Crm {
     Crm {
         talent,
         member,
+        calendar_link,
+        calendar,
         organisation,
         contact,
         view,
@@ -182,6 +348,12 @@ struct Work {
     quote: uuid::Uuid,
     task: uuid::Uuid,
     feed: uuid::Uuid,
+    push: uuid::Uuid,
+    books: uuid::Uuid,
+    travel: uuid::Uuid,
+    money_line: uuid::Uuid,
+    project: uuid::Uuid,
+    crew: uuid::Uuid,
 }
 
 async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
@@ -229,6 +401,69 @@ async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
     )
     .await
     .id("/feed/id");
+    // A member's calendar that bookings are written into, as connecting
+    // would leave it.
+    let push = core_domain::ids::new_id();
+    sqlx::query(
+        "INSERT INTO calendar_pushes (id, workspace_id, user_id, provider, account, secret, remote_calendar)
+         SELECT $1, workspace_id, user_id, 'google', $2, '\\x00', 'cal' FROM memberships
+         WHERE workspace_id = (SELECT workspace_id FROM bookings WHERE id = $3) AND role = 'owner' LIMIT 1",
+    )
+    .bind(push)
+    .bind(format!("{slug}.push.test"))
+    .bind(booking)
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    // The workspace's books, as connecting would leave them, with one
+    // invoice linked.
+    let books = core_domain::ids::new_id();
+    sqlx::query(
+        "INSERT INTO accounting_connections (id, workspace_id, provider, tenant_id, tenant_name, secret, start_date, sales_account)
+         SELECT $1, workspace_id, 'xero', $2, $2, '\\x00', current_date, '200' FROM bookings WHERE id = $3",
+    )
+    .bind(books)
+    .bind(format!("{slug}.books.test"))
+    .bind(booking)
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO accounting_links (id, workspace_id, connection_id, kind, local_id, remote_id, state)
+         SELECT $1, workspace_id, $2, 'contact', $1, $3, 'live' FROM accounting_connections WHERE id = $2",
+    )
+    .bind(core_domain::ids::new_id())
+    .bind(books)
+    .bind(format!("{slug}.remote.test"))
+    .execute(&app.owner)
+    .await
+    .unwrap();
+    let travel = post(
+        &format!("/api/v1/bookings/{booking}/travel"),
+        json!({ "kind": "flight", "number": "BA 1", "reference": format!("{slug} secret flight"),
+                "starts_at": "2031-06-01T08:00:00Z" }),
+    )
+    .await
+    .id("/id");
+    let money_line = post(
+        &format!("/api/v1/bookings/{booking}/money"),
+        json!({ "direction": "cost", "category": "crew", "description": format!("{slug} secret cost"),
+                "amount": { "minor": 100, "currency": "GBP" } }),
+    )
+    .await
+    .id("/id");
+    let project = post(
+        "/api/v1/projects",
+        json!({ "name": format!("{slug} secret tour"), "booking_ids": [booking] }),
+    )
+    .await
+    .id("/id");
+    let crew = post(
+        &format!("/api/v1/projects/{project}/crew"),
+        json!({ "name": format!("{slug} secret crew") }),
+    )
+    .await
+    .id("/id");
     Work {
         enquiry,
         booking,
@@ -236,6 +471,12 @@ async fn work(app: &TestApp, owner: &Client, slug: &str, crm: &Crm) -> Work {
         quote,
         task,
         feed,
+        push,
+        books,
+        travel,
+        money_line,
+        project,
+        crew,
     }
 }
 
@@ -303,6 +544,7 @@ async fn world(app: &TestApp) -> World {
     let all = json!([
         "workspace:read",
         "workspace:update",
+        "portal:use",
         "member:read",
         "member:invite",
         "member:update",
@@ -330,11 +572,23 @@ async fn world(app: &TestApp) -> World {
         "enquiry:write",
         "booking:read",
         "booking:write",
+        "project:read",
+        "project:write",
         "booking:override",
         "quote:read",
         "quote:write",
         "task:read",
-        "task:write"
+        "task:write",
+        "document:read",
+        "document:write",
+        "invoice:read",
+        "invoice:write",
+        "payment:write",
+        "report:read",
+        "finance:config",
+        "inbox:read",
+        "inbox:write",
+        "integration:manage"
     ]);
     let mut keys = Vec::new();
     let mut invitations = Vec::new();
@@ -342,6 +596,8 @@ async fn world(app: &TestApp) -> World {
     let mut configs = Vec::new();
     let mut crms = Vec::new();
     let mut works = Vec::new();
+    let mut moneys = Vec::new();
+    let mut inboxes = Vec::new();
     for slug in ["alpha", "bravo"] {
         let (_, owner) = app.workspace_with_owner(slug).await;
         app.add_member(&owner, &format!("agent@{slug}.test"), "agent")
@@ -367,7 +623,10 @@ async fn world(app: &TestApp) -> World {
         ));
         configs.push(configure(app, &owner, slug).await);
         let c = crm(app, &owner, slug).await;
-        works.push(work(app, &owner, slug, &c).await);
+        let wk = work(app, &owner, slug, &c).await;
+        moneys.push(money(app, &owner, slug, &c, &wk).await);
+        inboxes.push(inbox(app, &owner, slug).await);
+        works.push(wk);
         crms.push(c);
         clients.push(owner);
     }
@@ -376,6 +635,8 @@ async fn world(app: &TestApp) -> World {
     let bc = configs.pop().unwrap();
     let b_crm = crms.pop().unwrap();
     let b_work = works.pop().unwrap();
+    let b_money = moneys.pop().unwrap();
+    let b_inbox = inboxes.pop().unwrap();
     app.publish_all().await;
     let b_event: uuid::Uuid = sqlx::query_scalar(
         "SELECT id FROM outbox WHERE workspace_id = $1 AND topic = 'thing.created'",
@@ -407,6 +668,8 @@ async fn world(app: &TestApp) -> World {
             b_job.to_string(),
             b_crm.talent.to_string(),
             b_crm.member.to_string(),
+            b_crm.calendar.to_string(),
+            "bravo.secret.test".into(),
             b_crm.organisation.to_string(),
             b_crm.contact.to_string(),
             b_crm.view.to_string(),
@@ -417,9 +680,29 @@ async fn world(app: &TestApp) -> World {
             b_work.quote.to_string(),
             b_work.task.to_string(),
             b_work.feed.to_string(),
+            b_work.push.to_string(),
+            "bravo.push.test".into(),
+            b_work.books.to_string(),
+            "bravo.books.test".into(),
+            "bravo.remote.test".into(),
+            b_money.tax_code.to_string(),
+            b_money.invoice.to_string(),
+            b_money.payment.to_string(),
+            b_money.settlement.to_string(),
+            b_money.document.to_string(),
+            b_money.file.to_string(),
+            b_money.pdf_import.to_string(),
+            b_inbox.thread.to_string(),
+            b_inbox.mailbox.to_string(),
+            "mail@bravo.test".into(),
+            b_inbox.number.to_string(),
+            "bravo-sms-account".into(),
+            "+447700900202".into(),
         ],
         b_crm,
         b_work,
+        b_money,
+        b_inbox,
         b_field: bc.field,
         b_pipeline: bc.pipeline,
         b_template: bc.template,
@@ -444,6 +727,16 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
         ("PATCH", "/api/v1/workspace") => json!({ "name": "Taken over" }),
         ("POST", "/api/v1/workspace/close") => json!({ "confirm_slug": "bravo" }),
         ("PATCH", p) if p.starts_with("/api/v1/members/") => json!({ "role": "viewer" }),
+        ("POST", p) if p.starts_with("/api/v1/talent/") && p.ends_with("/portal") => {
+            json!({ "email": "intruder@alpha.test" })
+        }
+        ("POST", p) if p.starts_with("/api/v1/portal/dates/") => json!({ "answer": "confirmed" }),
+        ("PUT", p) if p.starts_with("/api/v1/portal/profile/") => {
+            json!({ "bio": "Taken over", "version": 1 })
+        }
+        ("POST", p) if p.starts_with("/api/v1/talent/") && p.ends_with("/portal/messages") => {
+            json!({ "body": "Taken over" })
+        }
         ("POST", "/api/v1/invitations") => {
             json!({ "email": "intruder@alpha.test", "role": "admin" })
         }
@@ -501,13 +794,98 @@ fn body_for(method: &Method, path: &str, w: &World) -> Value {
             json!({ "starts_at": "2031-08-01T00:00:00Z", "ends_at": "2031-08-02T00:00:00Z" })
         }
         ("POST", "/api/v1/calendar/feeds") => json!({ "name": "Intruder" }),
-        ("POST", "/api/v1/quotes/{id}/send") => json!({ "to": "intruder@alpha.test" }),
+        ("POST", "/api/v1/calendar/pushes/start") => json!({ "provider": "google" }),
+        ("POST", "/api/v1/calendar/pushes/finish") => json!({ "code": "x", "state": "x" }),
+        ("POST", "/api/v1/accounting/start") => json!({ "provider": "xero" }),
+        ("POST", "/api/v1/accounting/finish") => json!({ "code": "x", "state": "x" }),
+        ("PUT", "/api/v1/accounting/settings") => json!({ "sales_account": "200" }),
+        ("POST", "/api/v1/quotes/{id}/send" | "/api/v1/invoices/{id}/send") => {
+            json!({ "to": "intruder@alpha.test" })
+        }
+        ("POST", "/api/v1/tax-codes") | ("PUT", "/api/v1/tax-codes/{id}") => {
+            json!({ "name": "Intruder", "rate_bps": 0 })
+        }
+        ("POST", "/api/v1/invoices") => json!({
+            "payer": { "name": "Intruder" }, "line_items": [{ "description": "x", "unit_minor": 1 }]
+        }),
+        ("POST", "/api/v1/invoices/historical") => json!({
+            "reference": "X-1", "payer": { "name": "Intruder" }, "currency": "GBP",
+            "issue_date": "2024-01-01", "total_minor": 1
+        }),
+        ("POST", "/api/v1/bookings/{id}/invoices") => json!({ "purpose": "full" }),
+        ("POST", "/api/v1/projects") | ("PATCH", "/api/v1/projects/{id}") => {
+            json!({ "name": "Intruder" })
+        }
+        ("POST", "/api/v1/projects/{id}/dates") => json!({ "booking_id": w.b_work.booking }),
+        ("POST", "/api/v1/projects/{id}/crew") | ("PUT", "/api/v1/project-crew/{id}") => {
+            json!({ "name": "Intruder" })
+        }
+        ("POST", "/api/v1/bookings/{id}/travel" | "/api/v1/projects/{id}/travel")
+        | ("PUT", "/api/v1/travel/{id}") => {
+            json!({ "kind": "flight", "starts_at": "2031-06-01T08:00:00Z" })
+        }
+        ("POST", "/api/v1/bookings/{id}/money" | "/api/v1/projects/{id}/money")
+        | ("PUT", "/api/v1/money-lines/{id}") => json!({
+            "direction": "cost", "category": "crew", "description": "Intruder",
+            "amount": { "minor": 1, "currency": "GBP" }
+        }),
+        ("POST", "/api/v1/payments") => json!({ "amount": { "minor": 1, "currency": "GBP" } }),
+        ("POST", "/api/v1/payments/{id}/allocations") => json!({ "invoice_id": w.b_money.invoice }),
+        ("POST", "/api/v1/payments/{id}/refunds") => json!({ "amount_minor": 1 }),
+        ("POST", "/api/v1/documents") => json!({ "file_id": w.b_money.file, "kind": "misc" }),
+        ("POST", "/api/v1/documents/generate") => json!({
+            "template_key": "document.contract", "related_entity": "booking", "related_id": w.b_work.booking
+        }),
+        ("POST", "/api/v1/pdf-imports") => json!({ "file_ids": [w.b_money.file] }),
+        ("POST", "/api/v1/documents/{id}/versions") => json!({ "file_id": w.b_money.file }),
+        ("POST", "/api/v1/pdf-imports/{id}/confirm") => json!({ "kind": "misc" }),
+        ("POST", "/api/v1/inbox/threads") => json!({
+            "to": ["intruder@alpha.test"], "subject": "x", "body": "x", "contact_id": w.b_crm.contact
+        }),
+        ("POST", "/api/v1/inbox/threads/{id}/reply") => json!({ "body": "x" }),
+        ("POST", "/api/v1/organisations/{id}/pitches/draft") => {
+            json!({ "template_key": "first_pitch", "contact_id": w.b_crm.contact })
+        }
+        ("POST", "/api/v1/inbox/texts") => json!({
+            "channel": "sms", "contact_id": w.b_crm.contact, "body": "x"
+        }),
+        ("POST", "/api/v1/inbox/numbers/sms") => json!({
+            "account_sid": "ACx", "auth_token": "x", "number": "+447700900303"
+        }),
+        ("POST", "/api/v1/inbox/numbers/whatsapp") => json!({
+            "phone_number_id": "1", "access_token": "x", "app_secret": "x"
+        }),
+        ("PUT", "/api/v1/follow-ups/{key}") => json!({ "on": true }),
+        ("POST", "/api/v1/inbox/threads/{id}/enquiry") => json!({ "title": "Intruder" }),
+        ("PATCH", "/api/v1/inbox/threads/{id}") => json!({ "status": "resolved" }),
+        ("PATCH", "/api/v1/inbox/mailboxes/{id}") => json!({ "shared": true }),
+        ("POST", "/api/v1/inbox/mailboxes/connect") => json!({ "provider": "google" }),
+        ("POST", "/api/v1/inbox/mailboxes/connect/finish") => json!({ "code": "x", "state": "x" }),
+        ("POST", "/api/v1/inbox/mailboxes/imap") => json!({
+            "address": "intruder@alpha.test", "password": "x",
+            "imap": { "host": "imap.alpha.test", "port": 993, "security": "tls" },
+            "smtp": { "host": "smtp.alpha.test", "port": 465, "security": "tls" }
+        }),
         _ => json!({}),
     }
 }
 
 fn fill_path(path: &str, w: &World) -> String {
-    let object = if path.contains("/talent/") {
+    let object = if path.starts_with("/api/v1/travel/") {
+        w.b_work.travel
+    } else if path.starts_with("/api/v1/money-lines/") {
+        w.b_work.money_line
+    } else if path.starts_with("/api/v1/project-crew/") {
+        w.b_work.crew
+    } else if path.starts_with("/api/v1/projects/") {
+        w.b_work.project
+    } else if path.contains("/inbox/numbers/") {
+        w.b_inbox.number
+    } else if path.contains("/inbox/threads/") {
+        w.b_inbox.thread
+    } else if path.contains("/inbox/mailboxes/") {
+        w.b_inbox.mailbox
+    } else if path.contains("/talent/") {
         w.b_crm.talent
     } else if path.contains("/enquiries/") {
         w.b_work.enquiry
@@ -519,8 +897,24 @@ fn fill_path(path: &str, w: &World) -> String {
         w.b_work.quote
     } else if path.contains("/tasks/") {
         w.b_work.task
+    } else if path.contains("/tax-codes/") {
+        w.b_money.tax_code
+    } else if path.contains("/invoices/") {
+        w.b_money.invoice
+    } else if path.contains("/payments/") {
+        w.b_money.payment
+    } else if path.contains("/settlements/") {
+        w.b_money.settlement
+    } else if path.contains("/documents/") {
+        w.b_money.document
+    } else if path.contains("/files/") {
+        w.b_money.file
+    } else if path.contains("/pdf-imports/") {
+        w.b_money.pdf_import
     } else if path.contains("/calendar/feeds/") {
         w.b_work.feed
+    } else if path.contains("/calendar/pushes/") {
+        w.b_work.push
     } else if path.contains("/talent/") {
         w.b_crm.talent
     } else if path.contains("/organisations/") {
@@ -556,7 +950,15 @@ fn fill_path(path: &str, w: &World) -> String {
     };
     path.replace("{user_id}", &object.to_string())
         .replace("{id}", &object.to_string())
+        .replace("{booking_id}", &w.b_work.booking.to_string())
         .replace("{member_id}", &w.b_crm.member.to_string())
+        .replace("{link_id}", &w.b_crm.calendar_link.to_string())
+        .replace("{calendar_id}", &w.b_crm.calendar.to_string())
+        .replace("{allocation_id}", &w.b_money.allocation.to_string())
+        .replace("{file_id}", &w.b_money.file.to_string())
+        // B's own email template: not a document template A can see.
+        .replace("{key}", "bravo.secret")
+        .replace("{table}", "invoices")
         .replace("{entity}", "contact")
 }
 
@@ -615,7 +1017,13 @@ async fn objects_of_another_workspace_do_not_exist_from_inside_this_one(pool: Pg
     for op in operations()
         .iter()
         // An entity's schema names a kind of record, not one of B's.
-        .filter(|o| o.workspace_scoped && o.path.contains('{') && !o.path.contains("{entity}"))
+        // A report names a table, not one of B's records.
+        .filter(|o| {
+            o.workspace_scoped
+                && o.path.contains('{')
+                && !o.path.contains("{entity}")
+                && !o.path.contains("{table}")
+        })
     {
         let path = fill_path(&op.path, &w);
         let body = body_for(&op.method, &op.path, &w);
@@ -657,11 +1065,14 @@ async fn nothing_from_another_workspace_appears_in_this_ones_reads(pool: PgPool)
     for op in operations()
         .iter()
         // The live stream never ends; it has its own test in events.rs.
+        // The books' accounts are read from Xero or QuickBooks themselves;
+        // accounting.rs tests them against stand-ins.
         .filter(|o| {
             o.workspace_scoped
                 && o.method == Method::GET
                 && !o.path.contains('{')
                 && !o.path.ends_with("/stream")
+                && o.path != "/api/v1/accounting/options"
         })
     {
         for query in read_queries(&op.path) {
@@ -689,7 +1100,11 @@ fn read_queries(path: &str) -> Vec<&'static str> {
         "/api/v1/talent" | "/api/v1/organisations" | "/api/v1/contacts" => {
             vec!["", "?q=bravo", "?tag=bravo-secret-tag"]
         }
-        "/api/v1/enquiries" | "/api/v1/bookings" => vec!["", "?q=bravo"],
+        "/api/v1/enquiries" | "/api/v1/bookings" | "/api/v1/invoices" => vec!["", "?q=bravo"],
+        "/api/v1/documents" => vec!["", "?q=bravo", "?q=secret"],
+        "/api/v1/pdf-imports" => vec!["", "?status=all"],
+        // Rates are the same for everyone; same-currency needs no stored rate.
+        "/api/v1/fx-rates" => vec!["?from=GBP&to=GBP"],
         "/api/v1/tasks" => vec!["?status=all"],
         "/api/v1/calendar" => {
             vec!["?from=2031-01-01T00:00:00Z&to=2031-12-31T00:00:00Z"]
@@ -842,13 +1257,15 @@ async fn assert_untouched(app: &TestApp, w: &World) {
         .await
         .unwrap();
     assert_eq!(job, "dead");
-    for path in [
-        format!("/api/v1/talent/{}", w.b_crm.talent),
-        format!("/api/v1/organisations/{}", w.b_crm.organisation),
-        format!("/api/v1/contacts/{}", w.b_crm.contact),
+    // The organisation's own enquiry and confirmed booking made it a
+    // prospect, then a client: versions 2 and 3, and nothing since.
+    for (path, version) in [
+        (format!("/api/v1/talent/{}", w.b_crm.talent), 1),
+        (format!("/api/v1/organisations/{}", w.b_crm.organisation), 3),
+        (format!("/api/v1/contacts/{}", w.b_crm.contact), 1),
     ] {
         let record = app.get(&path).signed_in(&w.b).send().await.ok();
-        assert_eq!(record.body["version"], 1, "{path}");
+        assert_eq!(record.body["version"], version, "{path}");
     }
     let members = app
         .get(&format!("/api/v1/talent/{}/members", w.b_crm.talent))
@@ -857,6 +1274,18 @@ async fn assert_untouched(app: &TestApp, w: &World) {
         .await
         .ok();
     assert_eq!(members.body[0]["name"], "bravo secret drummer");
+    let calendars = app
+        .get(&format!("/api/v1/talent/{}/calendars", w.b_crm.talent))
+        .signed_in(&w.b)
+        .send()
+        .await
+        .ok();
+    assert_eq!(
+        calendars.body["calendars"][0]["account"],
+        "bravo.secret.test"
+    );
+    assert_eq!(calendars.body["calendars"][0]["status"], "active");
+    assert_eq!(calendars.body["links"].as_array().map(Vec::len), Some(1));
     let import = app
         .get(&format!("/api/v1/imports/{}", w.b_crm.import))
         .signed_in(&w.b)

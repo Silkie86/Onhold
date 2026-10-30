@@ -79,8 +79,8 @@ impl Role {
                 .into_iter()
                 .filter(|p| !matches!(p, P::BillingRead | P::BillingWrite | P::WorkspaceClose))
                 .collect(),
-            // Finance sees the workspace's billing details; the finance
-            // module's own permissions arrive with it.
+            // Finance sees the workspace's billing details and runs the money:
+            // invoices, payments, reports and tax settings.
             Role::Finance => [
                 P::WorkspaceRead,
                 P::MemberRead,
@@ -95,6 +95,17 @@ impl Role {
                 P::QuoteRead,
                 P::TaskRead,
                 P::TaskWrite,
+                P::ProjectRead,
+                P::ProjectWrite,
+                P::DocumentRead,
+                P::DocumentWrite,
+                P::InvoiceRead,
+                P::InvoiceWrite,
+                P::PaymentWrite,
+                P::ReportRead,
+                P::FinanceConfig,
+                P::InboxRead,
+                P::InboxWrite,
             ]
             .into(),
             Role::Agent => [
@@ -117,6 +128,14 @@ impl Role {
                 P::QuoteWrite,
                 P::TaskRead,
                 P::TaskWrite,
+                P::ProjectRead,
+                P::ProjectWrite,
+                P::DocumentRead,
+                P::DocumentWrite,
+                P::InvoiceRead,
+                P::InvoiceWrite,
+                P::InboxRead,
+                P::InboxWrite,
             ]
             .into(),
             Role::Viewer => [
@@ -131,9 +150,13 @@ impl Role {
                 P::BookingRead,
                 P::QuoteRead,
                 P::TaskRead,
+                P::ProjectRead,
+                P::DocumentRead,
+                P::InvoiceRead,
+                P::InboxRead,
             ]
             .into(),
-            Role::Talent => [P::WorkspaceRead].into(),
+            Role::Talent => [P::PortalUse].into(),
         }
     }
 }
@@ -214,6 +237,28 @@ permissions! {
     QuoteWrite => "quote:write",
     TaskRead => "task:read",
     TaskWrite => "task:write",
+    // Projects: tours, seasons, circuits, campaigns, with their dates, crew and costs.
+    ProjectRead => "project:read",
+    ProjectWrite => "project:write",
+    DocumentRead => "document:read",
+    DocumentWrite => "document:write",
+    InvoiceRead => "invoice:read",
+    // Drafting, issuing, sending, crediting and voiding invoices; settlements.
+    InvoiceWrite => "invoice:write",
+    // Recording payments, refunds and payouts.
+    PaymentWrite => "payment:write",
+    ReportRead => "report:read",
+    // Tax codes, invoice numbering, bank details and the invoicing model.
+    FinanceConfig => "finance:config",
+    // The unified inbox: reading threads, and replying, linking and
+    // resolving them. Connecting one's own mailbox needs `inbox:write`.
+    InboxRead => "inbox:read",
+    InboxWrite => "inbox:write",
+    // Seeing every connected account's health and disconnecting any of them.
+    IntegrationManage => "integration:manage",
+    // The talent portal: a talent member's own dates, availability,
+    // documents and money, narrowed to their own talent records.
+    PortalUse => "portal:use",
 }
 
 impl std::fmt::Display for Permission {

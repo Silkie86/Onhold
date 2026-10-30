@@ -27,8 +27,12 @@ use core_api::AppState;
 use core_api::services::automation::{JOB_DISPATCH, JOB_SYSTEM_MAIL};
 use core_api::services::bookings::{JOB_COMPLETE, JOB_EXPIRE_HOLD};
 use core_api::services::events::CHANNEL as EVENTS_CHANNEL;
+use core_api::services::invoices::JOB_OVERDUE;
 use core_api::services::mail::SYSTEM_TOPICS;
 use core_api::services::quotes::JOB_EXPIRE as JOB_EXPIRE_QUOTE;
+use core_api::services::{
+    accounting, calendar_push, inbox, integrations, sender_domains, talent_calendars,
+};
 use core_db::DbError;
 use core_db::jobs::{Claimed, LogLine, NewJob, RunRecord};
 use core_integrations::http::WebhookClient;
@@ -52,6 +56,11 @@ const PUBLISH_BATCH: i64 = 200;
 const DUE_BATCH: i64 = 200;
 /// Sign-in links and invitations go before everything else.
 const SYSTEM_MAIL_PRIORITY: i16 = 10;
+/// How long what Stripe sent is kept after it was handled.
+const STRIPE_PAYLOAD_RETENTION: chrono::Duration = chrono::Duration::days(90);
+/// How long sessions, sign-in links, invitations and calendar links are
+/// kept once they ended.
+const SIGN_IN_RETENTION: chrono::Duration = chrono::Duration::days(30);
 
 #[derive(Debug, Clone)]
 pub struct Settings {
@@ -78,6 +87,28 @@ pub struct Settings {
     pub upload_retention: chrono::Duration,
     /// Delay before retry number `attempt` (from 1).
     pub backoff: fn(i32) -> Duration,
+    /// Where to fetch reference exchange rates (the ECB feeds); `None`
+    /// turns fetching off, leaving manual rates only.
+    pub fx_rates: Option<FxFeeds>,
+    /// How often to look for new exchange rates (fetched once a day at most).
+    pub fx_every: Duration,
+}
+
+/// The exchange rate feeds: the day's rates, and a longer history for the
+/// first fetch or after a gap.
+#[derive(Debug, Clone)]
+pub struct FxFeeds {
+    pub daily: String,
+    pub history: String,
+}
+
+impl Default for FxFeeds {
+    fn default() -> Self {
+        Self {
+            daily: core_integrations::fx::ECB_DAILY.to_owned(),
+            history: core_integrations::fx::ECB_90_DAYS.to_owned(),
+        }
+    }
 }
 
 impl Default for Settings {
@@ -94,6 +125,8 @@ impl Default for Settings {
             job_retention: chrono::Duration::days(7),
             upload_retention: chrono::Duration::days(7),
             backoff: core_engines::schedule::retry_delay,
+            fx_rates: Some(FxFeeds::default()),
+            fx_every: Duration::from_secs(60 * 60),
         }
     }
 }
@@ -179,10 +212,18 @@ impl Worker {
             Ok(Err(_)) => Err(JobError::retry(
                 "stopped unexpectedly (a bug); see the server log",
             )),
-            Err(_) => Err(JobError::retry(format!(
-                "timed out after {} seconds",
-                self.settings.job_timeout.as_secs()
-            ))),
+            Err(_) => {
+                let message = format!(
+                    "timed out after {} seconds",
+                    self.settings.job_timeout.as_secs()
+                );
+                // The handler was cut off, so it could not clean up itself.
+                if job.attempt >= job.max_attempts {
+                    self.gave_up(job.workspace_id, &job.kind, &job.payload, &message)
+                        .await;
+                }
+                Err(JobError::retry(message))
+            }
         };
         if let Err(err) = self.finish(&job, started_at, &log, result).await {
             // The lease runs out and the job is retried.
@@ -251,8 +292,11 @@ impl Worker {
             return Ok(None);
         }
         let reclaimed = core_db::jobs::reclaim_expired(&mut tx).await?;
-        if reclaimed > 0 {
-            tracing::warn!(reclaimed, "returned jobs whose worker stopped to the queue");
+        if !reclaimed.is_empty() {
+            tracing::warn!(
+                reclaimed = reclaimed.len(),
+                "returned jobs whose worker stopped to the queue"
+            );
         }
         let now = Utc::now();
         let due = core_db::rules::due(&mut tx, now, DUE_BATCH).await?;
@@ -269,6 +313,15 @@ impl Worker {
         }
         let swept = self.sweep(&mut tx, now).await?;
         tx.commit().await?;
+        for job in reclaimed.iter().filter(|j| j.dead) {
+            self.gave_up(
+                job.workspace_id,
+                &job.kind,
+                &job.payload,
+                core_db::jobs::WORKER_STOPPED,
+            )
+            .await;
+        }
         Ok(Some(due.len() + swept))
     }
 
@@ -302,6 +355,16 @@ impl Worker {
             .await?;
             queued += 1;
         }
+        for i in core_db::invoices::overdue(tx, now, DUE_BATCH).await? {
+            let key = format!("{}@{}", i.id, i.due_date);
+            let payload = json!({ "invoice_id": i.id });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(i.workspace_id), JOB_OVERDUE, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
         for q in core_db::quotes::lapsed(tx, now, DUE_BATCH).await? {
             let key = format!("{}@{}", q.id, q.valid_until);
             let payload = json!({ "quote_id": q.id });
@@ -312,34 +375,222 @@ impl Worker {
             .await?;
             queued += 1;
         }
+        for m in core_db::integrations::due(tx, now, DUE_BATCH).await? {
+            let key = integrations::poll_key(m.id, m.at);
+            let payload = json!({ "integration_id": m.id, "at": m.at });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(m.workspace_id), integrations::JOB_POLL, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for d in core_db::sender_domains::due(tx, now, DUE_BATCH).await? {
+            let key = sender_domains::check_key(d.id, d.at);
+            let payload = json!({ "domain_id": d.id, "at": d.at });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(d.workspace_id), sender_domains::JOB_CHECK, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for c in core_db::talent_calendars::due(tx, now, DUE_BATCH).await? {
+            let key = talent_calendars::read_key(c.id, c.at);
+            let payload = json!({ "calendar_id": c.id, "at": c.at });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(c.workspace_id), talent_calendars::JOB_READ, &payload)
+                    .dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for c in core_db::talent_calendars::revokes_due(tx, DUE_BATCH).await? {
+            let key = format!("revoke:{}", c.id);
+            let payload = json!({ "calendar_id": c.id });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(c.workspace_id), talent_calendars::JOB_REVOKE, &payload)
+                    .dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for c in core_db::calendar_push::due(tx, now, DUE_BATCH).await? {
+            let key = calendar_push::full_key(c.id, c.at);
+            let payload = json!({ "push_id": c.id, "at": c.at });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(c.workspace_id), calendar_push::JOB_WRITE, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for c in core_db::calendar_push::revokes_due(tx, DUE_BATCH).await? {
+            let key = calendar_push::revoke_key(c.id, c.at);
+            let payload = json!({ "push_id": c.id });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(c.workspace_id), calendar_push::JOB_REVOKE, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for c in core_db::accounting::due(tx, DUE_BATCH).await? {
+            let key = accounting::sync_key(c.id, c.at);
+            let payload = json!({ "connection_id": c.id, "at": c.at });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(c.workspace_id), accounting::JOB_SYNC, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for c in core_db::accounting::revokes_due(tx, DUE_BATCH).await? {
+            let key = accounting::revoke_key(c.id, c.at);
+            let payload = json!({ "connection_id": c.id });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(c.workspace_id), accounting::JOB_REVOKE, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
+        for t in core_db::inbox::snooze_ended(tx, now, DUE_BATCH).await? {
+            let key = format!("{}@{}", t.id, t.at.to_rfc3339());
+            let payload = json!({ "thread_id": t.id, "at": t.at });
+            core_db::jobs::enqueue(
+                tx,
+                NewJob::new(Some(t.workspace_id), inbox::JOB_WAKE, &payload).dedupe(&key),
+            )
+            .await?;
+            queued += 1;
+        }
         Ok(queued)
     }
 
-    /// Deletes old events, finished jobs, stored idempotent responses and
-    /// uploads never run.
+    /// Deletes old events, finished jobs, stored idempotent responses,
+    /// uploads never run, delivery and rule logs, Stripe's payloads and
+    /// sign-ins that ended.
     pub async fn cleanup_once(&self) -> Result<(), DbError> {
         let now = Utc::now();
-        let mut tx = self.queue.begin().await?;
-        let events =
-            core_db::outbox::prune_published_before(&mut tx, now - self.settings.event_retention)
-                .await?;
-        let jobs =
-            core_db::jobs::delete_succeeded_before(&mut tx, now - self.settings.job_retention)
-                .await?;
-        let keys =
-            core_db::idempotency::delete_before(&mut tx, now - chrono::Duration::hours(24)).await?;
-        let uploads =
-            core_db::imports::delete_stale_uploads(&mut tx, now - self.settings.upload_retention)
-                .await?;
-        tx.commit().await?;
+        let logs_before = now - self.settings.event_retention;
+        // Each in its own transaction: one that fails (a lock or statement
+        // timeout) is tried again next time and holds up none of the others.
+        macro_rules! prune {
+            ($what:literal, |$c:ident| $body:expr) => {{
+                let done: Result<_, DbError> = async {
+                    let mut tx = self.queue.begin().await?;
+                    let $c: &mut sqlx::PgConnection = &mut tx;
+                    let n = $body.await?;
+                    tx.commit().await?;
+                    Ok(n)
+                }
+                .await;
+                done.unwrap_or_else(|err| {
+                    tracing::warn!(error = %err, what = $what, "clearing out old data failed");
+                    Default::default()
+                })
+            }};
+        }
+        let events = prune!("events", |c| core_db::outbox::prune_published_before(
+            c,
+            logs_before
+        ));
+        let jobs = prune!("jobs", |c| core_db::jobs::delete_succeeded_before(
+            c,
+            now - self.settings.job_retention
+        ));
+        // Dead jobs can be retried while their event is still kept.
+        let dead_jobs = prune!("dead jobs", |c| core_db::jobs::delete_finished_before(
+            c,
+            logs_before
+        ));
+        let deliveries = prune!("webhook deliveries", |c| {
+            core_db::housekeeping::delete_webhook_deliveries_before(c, logs_before)
+        });
+        let rule_runs = prune!("rule runs", |c| {
+            core_db::housekeeping::delete_skipped_rule_runs_before(c, logs_before)
+        });
+        let stripe_payloads = prune!("Stripe payloads", |c| {
+            core_db::housekeeping::forget_stripe_payloads_before(c, now - STRIPE_PAYLOAD_RETENTION)
+        });
+        let sign_ins = prune!("sign-ins", |c| {
+            core_db::housekeeping::forget_sign_ins_before(c, now - SIGN_IN_RETENTION)
+        });
+        let keys = prune!("idempotency keys", |c| core_db::idempotency::delete_before(
+            c,
+            now - chrono::Duration::hours(24)
+        ));
+        let uploads = prune!("uploads", |c| core_db::imports::delete_stale_uploads(
+            c,
+            now - self.settings.upload_retention
+        ));
+        // Files uploaded but never attached to anything.
+        let mut conn = self.queue.acquire().await?;
+        let files = match core_api::services::files::sweep_unattached(&self.app, &mut conn).await {
+            Ok(n) => n,
+            Err(err) => {
+                tracing::warn!(error = %err, "removing unattached files failed");
+                0
+            }
+        };
         tracing::info!(
             events,
             jobs,
+            dead_jobs,
+            deliveries,
+            rule_runs,
+            stripe_payloads,
+            sign_ins,
             idempotency_keys = keys,
             uploads,
+            files,
             "deleted old data"
         );
         Ok(())
+    }
+
+    /// Fetches reference exchange rates when today's are not stored yet
+    /// (the whole recent history after a gap). Returns how many days were
+    /// stored. Rates are published on working days, so most checks after
+    /// the first of the day find nothing new and cost one small request.
+    pub async fn fetch_rates_once(&self) -> Result<usize, DbError> {
+        let Some(feeds) = &self.settings.fx_rates else {
+            return Ok(0);
+        };
+        let mut conn = self.queue.acquire().await?;
+        let today = Utc::now().date_naive();
+        let latest = core_db::finance::latest_rate_day(&mut conn).await?;
+        if latest == Some(today) {
+            return Ok(0);
+        }
+        // The daily feed has one day: anything older than yesterday's
+        // means days may be missing, which the 90-day feed fills.
+        let gap = latest.is_none_or(|d| (today - d).num_days() > 1);
+        let url = if gap { &feeds.history } else { &feeds.daily };
+        let days = match core_integrations::fx::fetch_ecb(url).await {
+            Ok(days) => days,
+            Err(err) => {
+                tracing::warn!(error = %err, "fetching exchange rates failed");
+                return Ok(0);
+            }
+        };
+        // Every day in the feed, all or none, so a failure cannot leave
+        // older days missing behind newer ones.
+        let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+        let mut stored = 0;
+        for day in &days {
+            if core_db::finance::store_rates(&mut tx, day.date, &day.rates, "ecb").await? > 0 {
+                stored += 1;
+            }
+        }
+        tx.commit().await?;
+        if stored > 0 {
+            tracing::info!(days = stored, "stored exchange rates");
+        }
+        Ok(stored)
     }
 }
 
@@ -438,6 +689,7 @@ async fn runner(worker: Worker, notify: Arc<Notify>, shutdown: CancellationToken
 async fn scheduler(worker: Worker, shutdown: CancellationToken) {
     let mut schedule = tokio::time::interval(worker.settings.schedule_every);
     let mut cleanup = tokio::time::interval(worker.settings.cleanup_every);
+    let mut rates = tokio::time::interval(worker.settings.fx_every);
     loop {
         tokio::select! {
             () = shutdown.cancelled() => break,
@@ -449,6 +701,11 @@ async fn scheduler(worker: Worker, shutdown: CancellationToken) {
             _ = cleanup.tick() => {
                 if let Err(err) = worker.cleanup_once().await {
                     tracing::error!(error = %err, "cleanup failed");
+                }
+            }
+            _ = rates.tick() => {
+                if let Err(err) = worker.fetch_rates_once().await {
+                    tracing::error!(error = %err, "storing exchange rates failed");
                 }
             }
         }

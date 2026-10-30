@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT processed_at IS NULL AS \"p!\" FROM stripe_events\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "p!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "ba3b5c16c1201153764f9d1f13284fd1cec1ef48b813e2bac153ba5c2166994e"
+}

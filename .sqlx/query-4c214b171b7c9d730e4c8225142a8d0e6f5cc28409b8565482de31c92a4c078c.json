@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM organisation_items\n           WHERE workspace_id = app_workspace_id() AND organisation_id = $1 AND list = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4c214b171b7c9d730e4c8225142a8d0e6f5cc28409b8565482de31c92a4c078c"
+}

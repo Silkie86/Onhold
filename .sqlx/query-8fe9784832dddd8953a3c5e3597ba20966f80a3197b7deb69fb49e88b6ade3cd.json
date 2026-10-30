@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM calendar_busy WHERE workspace_id = app_workspace_id() AND calendar_id = ANY($1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "UuidArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8fe9784832dddd8953a3c5e3597ba20966f80a3197b7deb69fb49e88b6ade3cd"
+}

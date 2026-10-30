@@ -1,0 +1,14 @@
+# Lessons and tuition. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Lessons and tuition"
+description = "For lessons and tuition. Teachers are your roster and lessons your bookings: take enquiries, hold and confirm times, and send invoices, kept simple."
+perspective = "sells"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents"]
+extras = []
+[vocabulary.crm.talent]
+one = "Teacher"
+many = "Teachers"
+
+[vocabulary.bookings.booking]
+one = "Lesson"
+many = "Lessons"

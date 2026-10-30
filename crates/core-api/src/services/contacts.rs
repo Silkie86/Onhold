@@ -20,6 +20,7 @@ use crate::routes::nullable;
 pub const ENTITY: &str = "contact";
 pub const MAX_EMAILS: usize = 10;
 pub const MAX_PHONES: usize = 10;
+pub const MAX_LINKS: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
@@ -65,6 +66,11 @@ pub struct ContactView {
     pub phones: Vec<String>,
     /// The primary phone number, if any.
     pub phone: Option<String>,
+    /// The numbers with their country code (+44…), where it can be told
+    /// from the number or the organisation's country; as entered otherwise.
+    pub phones_international: Vec<String>,
+    /// Web pages and social profiles, as full addresses.
+    pub links: Vec<String>,
     /// Job title or role at the organisation.
     pub role: Option<String>,
     pub preferred_channel: Option<Channel>,
@@ -94,7 +100,19 @@ impl From<Contact> for ContactView {
             email: c.emails.first().cloned(),
             emails: c.emails,
             phone: c.phones.first().cloned(),
+            phones_international: c
+                .phones
+                .iter()
+                .map(|p| {
+                    core_engines::countries::international_phone(
+                        p,
+                        c.organisation_country.as_deref(),
+                    )
+                    .unwrap_or_else(|| p.clone())
+                })
+                .collect(),
             phones: c.phones,
+            links: c.links,
             role: c.role,
             preferred_channel: c.preferred_channel.as_deref().and_then(Channel::parse),
             email_opt_in: c.email_opt_in,
@@ -112,9 +130,15 @@ impl From<Contact> for ContactView {
     }
 }
 
-/// The JSON events, the audit log, rules and templates see.
+/// The JSON events, the audit log, rules and templates see. The
+/// international numbers are left out: they change with the organisation's
+/// country without the contact changing.
 pub fn to_json(v: &ContactView) -> Value {
-    serde_json::to_value(v).unwrap_or(Value::Null)
+    let mut json = serde_json::to_value(v).unwrap_or(Value::Null);
+    if let Some(o) = json.as_object_mut() {
+        o.remove("phones_international");
+    }
+    json
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -179,6 +203,9 @@ pub struct NewContact {
     pub notes: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Web pages and social profiles. A bare address gets `https://`.
+    #[serde(default)]
+    pub links: Vec<String>,
     /// Custom field values by key. Missing fields take their defaults.
     #[serde(default)]
     #[schema(value_type = Object)]
@@ -210,6 +237,8 @@ pub struct ContactPatch {
     pub notes: Option<Option<String>>,
     /// Replaces the tags.
     pub tags: Option<Vec<String>>,
+    /// Replaces the links.
+    pub links: Option<Vec<String>>,
     /// Only the keys sent change; `null` clears a value.
     #[schema(value_type = Option<Object>)]
     pub custom: Option<Map<String, Value>>,
@@ -229,6 +258,7 @@ pub(crate) struct Checked {
     notes: Option<String>,
     tags: Vec<String>,
     custom: Value,
+    links: Vec<String>,
 }
 
 impl Checked {
@@ -247,6 +277,7 @@ impl Checked {
             notes: self.notes.as_deref(),
             tags: &self.tags,
             custom: &self.custom,
+            links: &self.links,
         }
     }
 }
@@ -295,6 +326,44 @@ pub(crate) fn check_phones(check: &mut Check, phones: &[String]) -> Vec<String> 
     out
 }
 
+/// Full web addresses without repeats: `instagram.com/x` becomes
+/// `https://instagram.com/x`; anything that is not a web page is refused.
+pub(crate) fn check_links(check: &mut Check, links: &[String]) -> Vec<String> {
+    // Far too many is refused before anything is parsed or compared.
+    if links.len() > 2 * MAX_LINKS {
+        check.issue("links", format!("give at most {MAX_LINKS} links"));
+        return Vec::new();
+    }
+    let mut out: Vec<String> = Vec::new();
+    for l in links {
+        let l = l.trim();
+        if l.is_empty() {
+            continue;
+        }
+        let full = if l.contains("://") {
+            l.to_owned()
+        } else {
+            format!("https://{}", l.trim_start_matches('/'))
+        };
+        let ok = full.len() <= 500
+            && url::Url::parse(&full).is_ok_and(|u| {
+                matches!(u.scheme(), "http" | "https")
+                    && u.host_str().is_some_and(|h| h.contains('.'))
+            });
+        if !ok {
+            check.issue("links", format!("`{l}` is not a web address"));
+            continue;
+        }
+        if !out.contains(&full) {
+            out.push(full);
+        }
+    }
+    if out.len() > MAX_LINKS {
+        check.issue("links", format!("give at most {MAX_LINKS} links"));
+    }
+    out
+}
+
 pub(crate) fn phone_keys(phones: &[String]) -> Vec<String> {
     let mut keys: Vec<String> = Vec::new();
     for k in phones.iter().filter_map(|p| phone_key(p)) {
@@ -335,6 +404,7 @@ pub(crate) fn check_new(new: &NewContact, defs: &[FieldDef]) -> (Checked, Check)
         notes: check.long("notes", new.notes.as_deref(), 20_000),
         tags: check.tags(&new.tags),
         custom: Value::Object(check.custom(defs, &Map::new(), &new.custom, Mode::Create)),
+        links: check_links(&mut check, &new.links),
     };
     (checked, check)
 }
@@ -450,6 +520,10 @@ pub(crate) async fn update_in_tx(
             None => current.tags.clone(),
         },
         custom: Value::Object(custom),
+        links: match &p.links {
+            Some(l) => check_links(&mut check, l),
+            None => current.links.clone(),
+        },
     };
     if checked.organisation_id != current.organisation_id {
         check_organisation(tx, &mut check, checked.organisation_id).await?;
@@ -467,6 +541,7 @@ pub(crate) async fn update_in_tx(
         && checked.whatsapp_opt_in == current.whatsapp_opt_in
         && checked.notes == current.notes
         && checked.tags == current.tags
+        && checked.links == current.links
         && checked.custom == current.custom;
     if unchanged {
         return Ok(before);
@@ -493,12 +568,17 @@ pub(crate) async fn update_in_tx(
 pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::ContactWrite)?;
     let mut tx = begin(state, ctx).await?;
-    delete_in_tx(&mut tx, ctx, id).await?;
+    delete_in_tx(&mut tx, ctx, id, None).await?;
     tx.commit().await?;
     Ok(())
 }
 
-pub(crate) async fn delete_in_tx(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
+pub(crate) async fn delete_in_tx(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    id: Uuid,
+    event_extra: Option<Value>,
+) -> ApiResult<()> {
     let before = load(tx, id).await?.ok_or(ApiError::NotFound)?;
     core_db::contacts::soft_delete(tx, id, ctx.user_id()).await?;
     record(
@@ -510,7 +590,7 @@ pub(crate) async fn delete_in_tx(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<
             object_id: Some(id),
             before: Some(to_json(&before)),
             after: None,
-            event_extra: None,
+            event_extra,
         },
     )
     .await?;

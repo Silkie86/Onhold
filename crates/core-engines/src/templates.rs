@@ -1,5 +1,6 @@
 //! Templates: Jinja (`minijinja`) for email subjects and bodies, SMS,
-//! WhatsApp and in-app notifications.
+//! WhatsApp, in-app notifications and documents (contracts, invoices…,
+//! printed to PDF; see [`crate::documents`]).
 //!
 //! Rendering is sandboxed: no filesystem, no network, a fuel budget so a
 //! runaway loop stops, and a cap on output size. HTML bodies are
@@ -14,6 +15,8 @@
 //!   the workspace timezone; optional strftime format and timezone,
 //!   `{{ x | datetime("%H:%M", "America/New_York") }}`.
 //! - `address`: an address object on one line.
+//! - `percent`: hundredths of a percent as a percentage, `{{ 1550 | percent }}`
+//!   → `15.5%`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -39,6 +42,8 @@ pub enum Kind {
     Notification,
     /// A fragment other templates include, such as a signature.
     Partial,
+    /// A printed document: the subject is its title, the body its HTML.
+    Document,
 }
 
 impl Kind {
@@ -49,6 +54,7 @@ impl Kind {
             Kind::Whatsapp => "whatsapp",
             Kind::Notification => "notification",
             Kind::Partial => "partial",
+            Kind::Document => "document",
         }
     }
 
@@ -58,11 +64,16 @@ impl Kind {
 
     /// Whether the body is HTML (and so auto-escaped).
     pub fn is_html(self) -> bool {
-        matches!(self, Kind::Email | Kind::Partial)
+        matches!(self, Kind::Email | Kind::Partial | Kind::Document)
     }
 
+    /// A WhatsApp template's subject names the template approved in
+    /// WhatsApp Manager that it fills in.
     pub fn has_subject(self) -> bool {
-        matches!(self, Kind::Email | Kind::Notification)
+        matches!(
+            self,
+            Kind::Email | Kind::Notification | Kind::Document | Kind::Whatsapp
+        )
     }
 }
 
@@ -201,6 +212,14 @@ fn environment(
         }
     });
     env.set_loader(move |name| Ok(partials.get(name).cloned()));
+    // A field with no value prints nothing, not "none".
+    env.set_formatter(|out, state, value| {
+        if value.is_none() {
+            Ok(())
+        } else {
+            minijinja::escape_formatter(out, state, value)
+        }
+    });
 
     let locale = opts.locale.clone();
     env.add_filter(
@@ -257,7 +276,25 @@ fn environment(
             .collect::<Vec<_>>()
             .join(", ")
     });
+    env.add_filter("percent", |value: JValue| -> String {
+        match value.as_i64() {
+            Some(bps) => percent(bps),
+            None => String::new(),
+        }
+    });
     env
+}
+
+/// `1550` hundredths of a percent as `15.5%`.
+pub fn percent(bps: i64) -> String {
+    let sign = if bps < 0 { "-" } else { "" };
+    let (whole, frac) = (bps.unsigned_abs() / 100, bps.unsigned_abs() % 100);
+    if frac == 0 {
+        format!("{sign}{whole}%")
+    } else {
+        let digits = format!("{frac:02}");
+        format!("{sign}{whole}.{}%", digits.trim_end_matches('0'))
+    }
 }
 
 /// Checks a template's syntax without rendering it.
@@ -498,6 +535,18 @@ mod tests {
         )
         .expect("chainable undefined");
         assert_eq!(out.body, "[]");
+        let mut with_null = ctx();
+        with_null["thing"]["custom"]["empty"] = Value::Null;
+        let out = render(
+            Kind::Email,
+            None,
+            "[{{ thing.custom.empty }}]",
+            BTreeMap::new(),
+            &with_null,
+            &opts(),
+        )
+        .expect("renders");
+        assert_eq!(out.body, "[]", "a field with no value prints nothing");
         let missing = missing_variables(
             Kind::Email,
             Some("{{ thing.name }}"),

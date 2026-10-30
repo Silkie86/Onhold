@@ -28,7 +28,8 @@ pub enum Perspective {
     Both,
 }
 
-/// The switchable feature areas a workspace can enable.
+/// The switchable feature areas a workspace can enable. Switching one off
+/// hides it; nothing in it is deleted.
 pub const MODULES: &[&str] = &[
     "crm",
     "bookings",
@@ -37,7 +38,15 @@ pub const MODULES: &[&str] = &[
     "documents",
     "events",
     "portal",
+    "finance",
+    "pitching",
 ];
+
+/// Finer switches inside the modules, so a one-person setup stays simple:
+/// `team` (several people: assigning work to each other), `commission`
+/// (taking a cut and paying talent their share) and `advanced` (custom
+/// fields, pipelines and imports in the menu).
+pub const EXTRAS: &[&str] = &["team", "commission", "advanced"];
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{field}: {message}")]
@@ -145,6 +154,19 @@ pub fn validate_modules(modules: &[String]) -> Result<()> {
     }
 }
 
+pub fn validate_extras(extras: &[String]) -> Result<()> {
+    match extras.iter().find(|m| !EXTRAS.contains(&m.as_str())) {
+        Some(unknown) => Err(ValidationError::new(
+            "extras",
+            format!(
+                "unknown extra `{unknown}`; known extras are {}",
+                EXTRAS.join(", ")
+            ),
+        )),
+        None => Ok(()),
+    }
+}
+
 /// Active ISO 4217 codes (2026).
 const ISO_4217: &[&str] = &[
     "AED", "AFN", "ALL", "AMD", "AOA", "ARS", "AUD", "AWG", "AZN", "BAM", "BBD", "BDT", "BHD",
@@ -230,5 +252,7 @@ mod tests {
     fn modules_must_be_known() {
         assert!(validate_modules(&["crm".into(), "portal".into()]).is_ok());
         assert!(validate_modules(&["crm".into(), "ticketing".into()]).is_err());
+        assert!(validate_extras(&["team".into()]).is_ok());
+        assert!(validate_extras(&["crm".into()]).is_err());
     }
 }

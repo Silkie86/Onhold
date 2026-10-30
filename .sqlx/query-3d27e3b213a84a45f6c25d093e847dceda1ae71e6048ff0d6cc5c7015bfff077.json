@@ -1,0 +1,132 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "(SELECT a.id AS \"id!\", a.talent_id AS \"talent_id!\", t.name AS \"talent_name!\",\n                  a.kind AS \"kind!: AvailabilityKind\", a.starts_at AS \"starts_at!\", a.ends_at AS \"ends_at!\",\n                  a.all_day AS \"all_day!\", a.source AS \"source!\", a.note, a.version AS \"version!\",\n                  a.created_at AS \"created_at!\", a.updated_at AS \"updated_at!\"\n           FROM availability a JOIN talent t ON t.id = a.talent_id\n           WHERE a.workspace_id = app_workspace_id() AND a.deleted_at IS NULL\n             AND (cardinality($1::uuid[]) = 0 OR a.talent_id = ANY($1))\n             AND tstzrange(a.starts_at, a.ends_at, '[)') && tstzrange($2, $3, '[)')\n             AND (cardinality($4::availability_kind[]) = 0 OR a.kind = ANY($4))\n           ORDER BY a.starts_at, t.name, a.id\n           LIMIT 5001)\n           UNION ALL\n           -- Busy times from the talent's own calendars, named by whose\n           -- calendar they come from.\n           (SELECT b.id, b.talent_id, t.name, CASE WHEN b.tentative THEN 'tentative' ELSE 'unavailable' END::availability_kind,\n                  b.starts_at, b.ends_at, false, 'external', 'Busy in their own calendar (' || coalesce(c.person, c.account) || ')', 1::bigint,\n                  c.connected_at, coalesce(c.last_synced_at, c.connected_at)\n           FROM calendar_busy b JOIN talent t ON t.id = b.talent_id\n                JOIN talent_calendars c ON c.id = b.calendar_id\n           WHERE b.workspace_id = app_workspace_id()\n             AND (cardinality($1::uuid[]) = 0 OR b.talent_id = ANY($1))\n             AND tstzrange(b.starts_at, b.ends_at, '[)') && tstzrange($2, $3, '[)')\n             AND (cardinality($4::availability_kind[]) = 0\n                  OR (CASE WHEN b.tentative THEN 'tentative' ELSE 'unavailable' END)::availability_kind = ANY($4))\n           ORDER BY b.starts_at, t.name, b.id\n           LIMIT 5000)\n           ORDER BY 5, 3, 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "talent_id!",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "talent_name!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "kind!: AvailabilityKind",
+        "type_info": {
+          "Custom": {
+            "name": "availability_kind",
+            "kind": {
+              "Enum": [
+                "unavailable",
+                "tentative",
+                "available_only"
+              ]
+            }
+          }
+        },
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "starts_at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "ends_at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 6,
+        "name": "all_day!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 7,
+        "name": "source!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 8,
+        "name": "note",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 9,
+        "name": "version!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 11,
+        "name": "updated_at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "Timestamptz",
+        "Timestamptz",
+        {
+          "Custom": {
+            "name": "availability_kind[]",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "availability_kind",
+                  "kind": {
+                    "Enum": [
+                      "unavailable",
+                      "tentative",
+                      "available_only"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "3d27e3b213a84a45f6c25d093e847dceda1ae71e6048ff0d6cc5c7015bfff077"
+}

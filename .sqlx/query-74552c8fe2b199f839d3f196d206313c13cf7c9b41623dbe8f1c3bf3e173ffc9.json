@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE threads SET integration_id = $2, external_id = coalesce(external_id, $3)\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND integration_id IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "74552c8fe2b199f839d3f196d206313c13cf7c9b41623dbe8f1c3bf3e173ffc9"
+}

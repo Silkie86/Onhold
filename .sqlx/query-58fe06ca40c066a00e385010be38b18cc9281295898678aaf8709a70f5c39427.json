@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT name, commission_bps FROM talent WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "commission_bps",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "commission_bps"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "58fe06ca40c066a00e385010be38b18cc9281295898678aaf8709a70f5c39427"
+}

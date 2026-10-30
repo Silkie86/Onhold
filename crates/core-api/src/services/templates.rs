@@ -18,8 +18,12 @@ use crate::error::{ApiError, ApiResult};
 
 /// Keys under `system.` belong to platform mail; a workspace may override
 /// these ones with its own wording.
-pub const OVERRIDABLE_SYSTEM_KEYS: &[&str] =
-    &[super::mail::SYSTEM_INVITATION, super::mail::SYSTEM_QUOTE];
+pub const OVERRIDABLE_SYSTEM_KEYS: &[&str] = &[
+    super::mail::SYSTEM_INVITATION,
+    super::mail::SYSTEM_QUOTE,
+    super::mail::SYSTEM_INVOICE,
+    super::mail::SYSTEM_SIGNATURE,
+];
 
 fn check_key(key: &str) -> ApiResult<()> {
     let ok = !key.is_empty()
@@ -113,6 +117,20 @@ pub struct New {
 
 pub async fn create(state: &AppState, ctx: &Ctx, new: New) -> ApiResult<Template> {
     ctx.authorize(Permission::ConfigWrite)?;
+    let mut tx = begin(state, ctx).await?;
+    let t = create_in(state, &mut tx, ctx, new).await?;
+    tx.commit().await?;
+    Ok(t)
+}
+
+/// Checks and saves a new template inside the caller's transaction
+/// (permission already checked).
+pub(crate) async fn create_in(
+    state: &AppState,
+    tx: &mut Tx,
+    ctx: &Ctx,
+    new: New,
+) -> ApiResult<Template> {
     check_key(&new.key)?;
     let locale = new.locale.unwrap_or_else(|| "en".into());
     core_domain::workspace::validate_locale(&locale)?;
@@ -125,11 +143,10 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: New) -> ApiResult<Template
             "system mail templates are emails",
         ));
     }
-
-    let mut tx = begin(state, ctx).await?;
+    super::mail::check_link_use(state, tx, &new.key, new.subject.as_deref(), &new.body).await?;
     let id = core_domain::ids::new_id();
     let inserted = core_db::templates::insert(
-        &mut tx,
+        tx,
         id,
         new.kind.as_str(),
         &new.key,
@@ -153,11 +170,11 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: New) -> ApiResult<Template
             err.into()
         });
     }
-    let t = core_db::templates::get(&mut tx, id)
+    let t = core_db::templates::get(tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     record(
-        &mut tx,
+        tx,
         ctx,
         Change {
             topic: "template.created",
@@ -169,7 +186,6 @@ pub async fn create(state: &AppState, ctx: &Ctx, new: New) -> ApiResult<Template
         },
     )
     .await?;
-    tx.commit().await?;
     Ok(t)
 }
 
@@ -205,6 +221,7 @@ pub async fn update(
         2000,
     )?;
     check_source(kind, subject.as_deref(), &body)?;
+    super::mail::check_link_use(state, &mut tx, &before.key, subject.as_deref(), &body).await?;
     if !core_db::templates::update(
         &mut tx,
         id,

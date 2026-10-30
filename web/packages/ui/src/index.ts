@@ -10,6 +10,7 @@ export {
   defaultColumns,
   defaultTableState,
   stateFromView,
+  useDebounced,
   viewConfig,
 } from "./components/data-table.tsx";
 export { Dialog } from "./components/dialog.tsx";
@@ -22,8 +23,30 @@ export {
   formBody,
 } from "./components/entity-form.tsx";
 export { Checkbox, Input, Label, NativeSelect, Textarea } from "./components/inputs.tsx";
+export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./components/popover.tsx";
 export { Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "./components/menu.tsx";
-export { Alert, Badge, Card, EmptyState, Spinner } from "./components/misc.tsx";
+export { Alert, Badge, Card, CopyButton, EmptyState, Spinner, StatusDot } from "./components/misc.tsx";
 export { Timeline, type TimelineEntry, relativeTime } from "./components/timeline.tsx";
 export * from "./format.ts";
-export { type Branding, type Theme, applyBranding, applyTheme, cn } from "./lib.ts";
+export {
+  type Branding,
+  type Theme,
+  THEME_FONTS,
+  THEME_TOKENS,
+  type BrandTheme,
+  type ThemeFont,
+  type ThemeToken,
+  applyBrandColour,
+  applyBrandTheme,
+  contrastRatio,
+  readTheme,
+  applyBranding,
+  applyTheme,
+  brandColours,
+  darkBrandColour,
+  clearBranding,
+  cn,
+  hexColour,
+  logoSource,
+  readBranding,
+} from "./lib.ts";

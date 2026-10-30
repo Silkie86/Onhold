@@ -21,6 +21,14 @@ pub struct Workspace {
     pub default_timezone: String,
     pub locale: String,
     pub enabled_modules: Vec<String>,
+    pub presets: Vec<String>,
+    pub extras: Vec<String>,
+    pub vocabulary: Value,
+    /// The setup form's answers; `None` until it is first sent.
+    pub setup: Option<Value>,
+    pub setup_at: Option<DateTime<Utc>>,
+    /// What OnHold's team hid: `nav:<path>`, `section:<key>`, `field:<entity>.<key>`.
+    pub hidden: Vec<String>,
     pub branding: Value,
     pub billing_contact: Value,
     pub plugin_slug: Option<String>,
@@ -37,9 +45,28 @@ pub async fn get(conn: &mut PgConnection, id: WorkspaceId) -> Result<Option<Work
         Workspace,
         r#"SELECT id AS "id: WorkspaceId", slug, name, plan, status AS "status: WorkspaceStatus",
                   perspective AS "perspective: Perspective", country, default_currency, default_timezone,
-                  locale, enabled_modules, branding, billing_contact, plugin_slug, require_staff_2fa,
+                  locale, enabled_modules, presets, extras, vocabulary, setup, setup_at, hidden,
+                  branding, billing_contact, plugin_slug, require_staff_2fa,
                   hold_days, version, created_at, updated_at
            FROM workspaces WHERE id = $1"#,
+        id.0
+    )
+    .fetch_optional(conn)
+    .await?)
+}
+
+/// What shapes the app's forms and labels: extras, hidden parts and words.
+pub struct Shape {
+    pub enabled_modules: Vec<String>,
+    pub extras: Vec<String>,
+    pub hidden: Vec<String>,
+    pub vocabulary: serde_json::Value,
+}
+
+pub async fn shape(conn: &mut PgConnection, id: WorkspaceId) -> Result<Option<Shape>> {
+    Ok(sqlx::query_as!(
+        Shape,
+        "SELECT enabled_modules, extras, hidden, vocabulary FROM workspaces WHERE id = $1",
         id.0
     )
     .fetch_optional(conn)
@@ -57,6 +84,9 @@ pub struct NewWorkspace<'a> {
     pub default_timezone: &'a str,
     pub locale: &'a str,
     pub enabled_modules: &'a [String],
+    pub presets: &'a [String],
+    pub extras: &'a [String],
+    pub vocabulary: &'a Value,
     pub plugin_slug: Option<&'a str>,
     pub created_by: Option<UserId>,
 }
@@ -66,8 +96,9 @@ pub struct NewWorkspace<'a> {
 pub async fn insert(conn: &mut PgConnection, new: NewWorkspace<'_>) -> Result<()> {
     sqlx::query!(
         r#"INSERT INTO workspaces (id, slug, name, plan, perspective, country, default_currency,
-                                   default_timezone, locale, enabled_modules, plugin_slug, created_by, updated_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)"#,
+                                   default_timezone, locale, enabled_modules, plugin_slug, created_by, updated_by,
+                                   presets, extras, vocabulary)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13, $14, $15)"#,
         new.id.0,
         new.slug,
         new.name,
@@ -79,7 +110,10 @@ pub async fn insert(conn: &mut PgConnection, new: NewWorkspace<'_>) -> Result<()
         new.locale,
         new.enabled_modules,
         new.plugin_slug,
-        new.created_by.map(|u| u.0)
+        new.created_by.map(|u| u.0),
+        new.presets,
+        new.extras,
+        new.vocabulary
     )
     .execute(&mut *conn)
     .await?;
@@ -147,6 +181,64 @@ pub async fn update_settings(
     Ok(done.rows_affected() == 1)
 }
 
+/// What the setup form set up, with its answers.
+pub struct Setup<'a> {
+    pub perspective: Perspective,
+    pub presets: &'a [String],
+    pub enabled_modules: &'a [String],
+    pub extras: &'a [String],
+    pub vocabulary: &'a Value,
+    pub answers: &'a Value,
+}
+
+/// Returns false when `expected_version` no longer matches.
+pub async fn apply_setup(
+    conn: &mut PgConnection,
+    id: WorkspaceId,
+    s: Setup<'_>,
+    expected_version: i64,
+    by: Option<UserId>,
+) -> Result<bool> {
+    let done = sqlx::query!(
+        r#"UPDATE workspaces
+           SET perspective = $2, presets = $3, enabled_modules = $4, extras = $5, vocabulary = $6,
+               setup = $7, setup_at = now(), updated_by = $8
+           WHERE id = $1 AND version = $9"#,
+        id.0,
+        s.perspective as Perspective,
+        s.presets,
+        s.enabled_modules,
+        s.extras,
+        s.vocabulary,
+        s.answers,
+        by.map(|u| u.0),
+        expected_version
+    )
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
+
+/// Returns false when `expected_version` no longer matches.
+pub async fn set_hidden(
+    conn: &mut PgConnection,
+    id: WorkspaceId,
+    hidden: &[String],
+    expected_version: i64,
+    by: Option<UserId>,
+) -> Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE workspaces SET hidden = $2, updated_by = $3 WHERE id = $1 AND version = $4",
+        id.0,
+        hidden,
+        by.map(|u| u.0),
+        expected_version
+    )
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
+
 pub async fn set_status(
     conn: &mut PgConnection,
     id: WorkspaceId,
@@ -185,6 +277,13 @@ pub struct AdminListing {
     pub status: WorkspaceStatus,
     pub created_at: DateTime<Utc>,
     pub member_count: i64,
+    pub presets: Vec<String>,
+    pub enabled_modules: Vec<String>,
+    pub extras: Vec<String>,
+    pub setup: Option<Value>,
+    pub setup_at: Option<DateTime<Utc>>,
+    /// Comments from the setup form not yet marked done.
+    pub open_requests: i64,
 }
 
 /// Every workspace. The database raises unless the user in context is a superadmin.
@@ -193,7 +292,9 @@ pub async fn admin_list(conn: &mut PgConnection) -> Result<Vec<AdminListing>> {
         AdminListing,
         r#"SELECT id AS "id!: WorkspaceId", slug AS "slug!", name AS "name!", plan AS "plan!",
                   status AS "status!: WorkspaceStatus", created_at AS "created_at!",
-                  member_count AS "member_count!"
+                  member_count AS "member_count!", presets AS "presets!",
+                  enabled_modules AS "enabled_modules!", extras AS "extras!", setup, setup_at,
+                  open_requests AS "open_requests!"
            FROM admin_list_workspaces()"#
     )
     .fetch_all(conn)

@@ -37,6 +37,7 @@ import { BookingCard, NewBookingDialog, RecordTimeline } from "./bookings.tsx";
 import { Loading, OfflineNote, PageError, failureIssues, useSchema, useWorkspaceCurrency } from "./crm.tsx";
 import { RelationPicker, TalentPicker } from "./pickers.tsx";
 import { RelatedTasks } from "./tasks.tsx";
+import { RelatedConversations } from "./inbox.tsx";
 
 /** The stages before the workspace's pipeline exists (it is made with the first enquiry). */
 const DEFAULT_STAGES = [
@@ -404,6 +405,7 @@ export function EnquiryPage() {
         </section>
         <section aria-label="Tasks and activity" className="flex flex-col gap-6">
           <RelatedTasks entity="enquiry" id={id} />
+          <RelatedConversations filter={{ enquiry_id: id }} />
           <RecordTimeline path="enquiries" id={id} schema={schema.data} offline={offline} />
         </section>
       </div>

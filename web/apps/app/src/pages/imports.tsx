@@ -1,18 +1,102 @@
-// Bringing records in from a spreadsheet: pick a file, match its columns to
-// fields, check what would happen, then let the worker do it.
+// Bringing records in from a spreadsheet, or from the export of the app a
+// workspace is moving from: pick a file, match its columns to fields (done
+// for you for exports we recognise), check what would happen and correct
+// the rows at fault, then let the worker do it.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { Schemas } from "@onhold/api-client";
 import { Alert, Badge, Button, Card, Checkbox, Input, Label, NativeSelect, Spinner, relativeTime } from "@onhold/ui";
 import { FileUp, Plus } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { ENTITIES, type EntityKey, api, ok } from "../api.ts";
 
 type Preview = Schemas["ImportPreview"];
 type DryRun = Schemas["DryRunResult"];
 type ImportView = Schemas["ImportView"];
 type Options = Schemas["ImportOptions"];
+type ImportEntity = EntityKey | "auto";
+
+/** Reads an uploaded file's text whatever it was saved as: UTF-8, UTF-16
+ * (Excel's "Unicode text") or Windows-1252 (older Excel and Outlook
+ * exports). A UTF-8 file with the odd stray byte stays UTF-8. */
+export function decodeFile(bytes: Uint8Array): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder("utf-16le").decode(bytes);
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes);
+  const utf8 = new TextDecoder("utf-8").decode(bytes);
+  let bad = 0;
+  let good = 0;
+  for (const c of utf8) {
+    if (c === "\uFFFD") bad++;
+    else if (c.charCodeAt(0) > 0x7f) good++;
+  }
+  // Mostly well-formed UTF-8 is UTF-8; otherwise the bytes are Windows-1252.
+  return bad === 0 || good > bad ? utf8 : new TextDecoder("windows-1252").decode(bytes);
+}
+
+const HEAVY_CARD_LINE = /^(?:[\w-]+\.)?(?:PHOTO|LOGO|SOUND|KEY)[;:]/i;
+
+/** Takes photos and other attachments out of contact cards, which can make
+ * an address book many times larger than its text and are not imported. */
+export function stripCardAttachments(text: string): string {
+  if (!/^\s*BEGIN:VCARD/i.test(text.replace(/^\uFEFF/, ""))) return text;
+  const out: string[] = [];
+  let dropping = false;
+  // A vCard 2.1 quoted-printable line ending in `=` carries on in the next
+  // line, whatever that starts with.
+  let carriesOn = false;
+  let head = "";
+  for (const line of text.split(/\r?\n/)) {
+    const continued = carriesOn || line.startsWith(" ") || line.startsWith("\t");
+    if (!continued) {
+      dropping = HEAVY_CARD_LINE.test(line);
+      head = line.split(":")[0] ?? "";
+    }
+    carriesOn = /QUOTED-PRINTABLE/i.test(head) && line.endsWith("=");
+    if (!dropping) out.push(line);
+  }
+  return out.join("\n");
+}
+
+/** Whether the bytes are an Excel (.xlsx) workbook rather than text. */
+export function isWorkbook(bytes: Uint8Array): boolean {
+  return bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
+}
+
+/** Spreadsheet files read here only once saved as .xlsx or CSV: .xlsb,
+ * OpenDocument, Numbers and old Excel (.xls, often a web page in disguise). */
+export function needsResaving(name: string, bytes: Uint8Array): boolean {
+  return /\.(xlsb|ods|numbers)$/i.test(name) || (/\.xls$/i.test(name) && !isWorkbook(bytes));
+}
+
+function base64(bytes: Uint8Array): string {
+  let text = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(text);
+}
+
+/** A row as the person can find it: in its own sheet when several sheets
+ * were read together, else by its row in the file. */
+export function rowLabel(r: { row: number; at?: string | null }): string {
+  return r.at ?? `Row ${r.row}`;
+}
+
+/** What became of a workbook's sheets, in a sentence, or nothing for a
+ * file with one sheet. */
+export function sheetsSummary(sheets: Schemas["ImportSheet"][]): string | null {
+  if (sheets.length < 2) return null;
+  const rows = (n: number) => `${n} ${n === 1 ? "row" : "rows"}`;
+  const read = sheets.filter((s) => s.included);
+  const left = sheets.filter((s) => !s.included);
+  let text = `Read ${read.length} ${read.length === 1 ? "sheet" : "sheets"}: ${read.map((s) => `${s.name} (${rows(s.rows)})`).join(", ")}.`;
+  if (read.length > 1)
+    text += " Each row's sheet is in the Sheet column, which can go into Region, and its row there in the Sheet row column.";
+  if (left.length > 0) text += ` Left out, as their columns are different: ${left.map((s) => s.name).join(", ")}.`;
+  return text;
+}
+
+/** Corrections made while checking, by `row:column`. */
+type Edits = Record<string, string>;
 
 const STATUS: Record<string, string> = {
   uploaded: "Not run",
@@ -20,30 +104,76 @@ const STATUS: Record<string, string> = {
   running: "Importing",
   done: "Done",
   failed: "Failed",
+  undoing: "Undoing",
+  undone: "Undone",
 };
+
+/** Whether a finished import can be undone: it noted records it created
+ * that are left to undo (imports from before undoing existed noted none). */
+export function canUndo(i: Pick<ImportView, "status" | "to_undo">): boolean {
+  return (i.status === "done" || i.status === "failed") && i.to_undo > 0;
+}
+
+/** Follows one undo until it ends, then refreshes what it changed. */
+function UndoWatch({ id }: { id: string }) {
+  const qc = useQueryClient();
+  const view = useQuery({
+    queryKey: ["import", id],
+    queryFn: () => ok(api.GET("/api/v1/imports/{id}", { params: { path: { id } } })),
+    refetchInterval: (q) => (q.state.data && q.state.data.status !== "undoing" ? false : 2000),
+  });
+  const status = view.data?.status;
+  useEffect(() => {
+    if (!status || status === "undoing") return;
+    void qc.invalidateQueries({ queryKey: ["imports"] });
+    void qc.invalidateQueries({ queryKey: ["list"] });
+    void qc.invalidateQueries({ queryKey: ["tags"] });
+  }, [status, qc]);
+  return null;
+}
 
 export function ImportsPage() {
   const [wizard, setWizard] = useState(false);
+  const qc = useQueryClient();
   const imports = useQuery({ queryKey: ["imports"], queryFn: () => ok(api.GET("/api/v1/imports")) });
+  const [undoError, setUndoError] = useState<string | null>(null);
+  const undo = async (i: ImportView) => {
+    const what = `${i.to_undo} ${i.to_undo === 1 ? "record" : "records"}`;
+    if (
+      !window.confirm(
+        `Undo ${i.filename ?? "this import"}? The ${what} it created are removed, except any changed since or now in use. What it updated stays as it is.`,
+      )
+    )
+      return;
+    setUndoError(null);
+    try {
+      await ok(api.POST("/api/v1/imports/{id}/undo", { params: { path: { id: i.id } } }));
+    } catch (e) {
+      setUndoError(e instanceof Error ? e.message : String(e));
+    }
+    void qc.invalidateQueries({ queryKey: ["imports"] });
+  };
   if (wizard) return <ImportWizard onDone={() => setWizard(false)} />;
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4 sm:p-6">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Imports</h1>
         <Button onClick={() => setWizard(true)}>
-          <Plus /> Import a spreadsheet
+          <Plus /> Import
         </Button>
       </div>
       {imports.isPending && <Spinner />}
+      {undoError && <Alert>{undoError}</Alert>}
       {imports.data?.length === 0 && (
         <Card className="flex flex-col items-center gap-3 p-8 text-center">
           <FileUp className="size-8 text-muted-foreground" />
-          <p className="font-medium">Bring in contacts, organisations or talent from a spreadsheet</p>
+          <p className="font-medium">Bring in your talent, contacts and organisations</p>
           <p className="max-w-md text-sm text-muted-foreground">
-            Save it as CSV from Excel, Numbers or Google Sheets. You will match its columns to fields and see what will happen before
-            anything is saved.
+            Moving from another app? Upload its export as it is: we recognise Google Contacts, Outlook, Apple and iCloud contact cards,
+            HubSpot, Salesforce, Pipedrive, Mailchimp and LinkedIn, and match any other spreadsheet's columns for you. You see what will
+            happen, and can correct rows, before anything is saved.
           </p>
-          <Button onClick={() => setWizard(true)}>Import a spreadsheet</Button>
+          <Button onClick={() => setWizard(true)}>Import</Button>
         </Card>
       )}
       {imports.data && imports.data.length > 0 && (
@@ -58,6 +188,9 @@ export function ImportsPage() {
                 <th className="px-3 py-2">Updated</th>
                 <th className="px-3 py-2">Failed</th>
                 <th className="px-3 py-2">When</th>
+                <th className="px-3 py-2">
+                  <span className="sr-only">Undo</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -67,11 +200,27 @@ export function ImportsPage() {
                   <td className="px-3 py-2 capitalize">{i.entity}</td>
                   <td className="px-3 py-2">
                     <Badge>{STATUS[i.status] ?? i.status}</Badge>
+                    {(i.status === "undoing" || i.status === "undone") && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {i.undone} removed{i.kept > 0 ? `, ${i.kept} kept (changed since or in use)` : ""}
+                      </p>
+                    )}
+                    {i.status === "undoing" && <UndoWatch id={i.id} />}
+                    {i.undo_error && i.status !== "undoing" && (
+                      <p className="mt-1 text-xs text-destructive">{i.undo_error}</p>
+                    )}
                   </td>
                   <td className="px-3 py-2">{i.created}</td>
                   <td className="px-3 py-2">{i.updated}</td>
                   <td className="px-3 py-2">{i.failed}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{relativeTime(i.created_at)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {canUndo(i) && (
+                      <Button size="sm" variant="ghost" onClick={() => void undo(i)} aria-label={`Undo ${i.filename ?? "import"}`}>
+                        Undo
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -98,7 +247,7 @@ function Steps({ step }: { step: number }) {
 function Frame({ step, children }: { step: number; children: ReactNode }) {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4 sm:p-6">
-      <h1 className="text-xl font-semibold">Import a spreadsheet</h1>
+      <h1 className="text-xl font-semibold">Import</h1>
       <Steps step={step} />
       {children}
     </div>
@@ -107,13 +256,15 @@ function Frame({ step, children }: { step: number; children: ReactNode }) {
 
 export function ImportWizard({ onDone }: { onDone: () => void }) {
   const qc = useQueryClient();
-  const [entity, setEntity] = useState<EntityKey>("contact");
+  const [entity, setEntity] = useState<ImportEntity>("auto");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [columns, setColumns] = useState<(string | null)[]>([]);
   const [options, setOptions] = useState<Options>({ on_match: "skip", create_organisations: true, run_rules: false, tags: [] });
   const [tagText, setTagText] = useState("");
   const [dry, setDry] = useState<DryRun | null>(null);
+  const [edits, setEdits] = useState<Edits>({});
+  const [skipRows, setSkipRows] = useState<number[]>([]);
   const [running, setRunning] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,8 +282,21 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
   };
   const plan = () => ({
     columns,
-    options: { ...options, tags: tagText.split(",").map((t) => t.trim()).filter(Boolean) },
+    options: {
+      ...options,
+      tags: tagText.split(",").map((t) => t.trim()).filter(Boolean),
+      edits: Object.entries(edits).map(([key, value]) => {
+        const [row, column] = key.split(":").map(Number);
+        return { row: row ?? 0, column: column ?? 0, value };
+      }),
+      skip_rows: skipRows,
+    },
   });
+  const check = () =>
+    attempt(async () => {
+      if (!preview) return;
+      setDry(await ok(api.POST("/api/v1/imports/{id}/dry-run", { params: { path: { id: preview.import.id } }, body: plan() })));
+    });
 
   const progress = useQuery({
     queryKey: ["import", running],
@@ -168,18 +332,52 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
             <Stat label="Skipped (already there)" value={dry.skip} />
             <Stat label="Rows with problems" value={dry.fail} tone={dry.fail > 0 ? "warn" : undefined} />
           </div>
+          {dry.new_contacts > 0 && (
+            <p className="text-sm">
+              {dry.new_contacts} new {dry.new_contacts === 1 ? "contact" : "contacts"}: the person each row names, added to their
+              organisation.
+            </p>
+          )}
           {dry.new_organisations.length > 0 && (
             <p className="text-sm">
               New organisations: {dry.new_organisations.slice(0, 10).join(", ")}
               {dry.new_organisations.length > 10 && ` and ${dry.new_organisations.length - 10} more`}
             </p>
           )}
-          {dry.issues.length > 0 && <Issues issues={dry.issues} />}
+          {dry.problem_rows.length > 0 || skipRows.length > 0 ? (
+            <ProblemRows
+              dry={dry}
+              headers={preview.import.headers}
+              columns={columns}
+              targets={preview.targets}
+              edits={edits}
+              onEdit={(row, column, value) => setEdits({ ...edits, [`${row}:${column}`]: value })}
+              skipRows={skipRows}
+              onSkip={(row, skip) => setSkipRows(skip ? [...skipRows, row] : skipRows.filter((r) => r !== row))}
+            />
+          ) : (
+            dry.issues.length > 0 && <Issues issues={dry.issues} />
+          )}
+          {dry.to_check.length > 0 && (
+            <ToCheck
+              rows={dry.to_check}
+              total={dry.to_check_total}
+              headers={preview.import.headers}
+              skipRows={skipRows}
+              onSkip={(row) => setSkipRows([...skipRows, row])}
+            />
+          )}
+          {dry.readings.length > 0 && <Readings readings={dry.readings} targets={preview.targets} />}
           {error && <Alert>{error}</Alert>}
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="ghost" onClick={() => setDry(null)}>
               Back
             </Button>
+            {(dry.fail > 0 || Object.keys(edits).length > 0 || skipRows.length > 0) && (
+              <Button variant="outline" disabled={busy} onClick={check}>
+                Check again
+              </Button>
+            )}
             <Button
               disabled={busy || dry.create + dry.update === 0}
               onClick={() =>
@@ -205,12 +403,30 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
     const used = new Map<string, number>();
     for (const c of columns) if (c) used.set(c, (used.get(c) ?? 0) + 1);
     const missing = targets.filter((t) => t.required && !used.has(t.key));
+    const holds = Object.values(ENTITIES).find((e) => e.entity === preview.import.entity);
+    const kind = holds?.label.toLowerCase() ?? preview.import.entity;
     return (
       <Frame step={1}>
-        <p className="text-sm text-muted-foreground">
-          {preview.import.filename} has {preview.import.row_count} rows. Choose the field each column goes into; we have guessed where we
-          could.
-        </p>
+        {preview.source ? (
+          <Alert tone="success">
+            This is a {preview.source.label} export of {kind}, so its columns are matched for you. Check them below and carry on.
+          </Alert>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {preview.import.filename} has {preview.import.row_count} rows of {kind}. Choose the field each column goes into; we have
+            matched what we could.
+          </p>
+        )}
+        {sheetsSummary(preview.sheets) && <Alert tone="info">{sheetsSummary(preview.sheets)}</Alert>}
+        {entity === "auto" && (
+          <p className="text-sm text-muted-foreground">
+            Not {kind}?{" "}
+            <button type="button" className="underline" onClick={() => setPreview(null)}>
+              Go back and choose what the file holds
+            </button>
+            .
+          </p>
+        )}
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full text-left text-sm">
             <thead className="bg-muted/50 text-xs text-muted-foreground">
@@ -266,7 +482,11 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
               <option value="create">Create a new record anyway</option>
             </NativeSelect>
             <p className="text-xs text-muted-foreground">
-              {entity === "contact" ? "Contacts match by email or phone number." : "Records match by name."}
+              {preview.import.entity === "contact"
+                ? "Contacts match by email or phone number, or by name at the same organisation."
+                : preview.import.entity === "organisation"
+                  ? "Organisations match by name; the person a row names, by email, phone number or name there."
+                  : "Records match by name."}
             </p>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -287,7 +507,7 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
             <Input id="import-tags" placeholder="e.g. imported, 2026 list" value={tagText} onChange={(e) => setTagText(e.target.value)} />
           </div>
           <div className="flex flex-col gap-2 text-sm">
-            {entity === "contact" && (
+            {preview.import.entity === "contact" && (
               <label className="flex items-center gap-2">
                 <Checkbox
                   checked={options.create_organisations ?? true}
@@ -308,14 +528,7 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
           <Button variant="ghost" onClick={() => setPreview(null)}>
             Back
           </Button>
-          <Button
-            disabled={busy || missing.length > 0}
-            onClick={() =>
-              attempt(async () => {
-                setDry(await ok(api.POST("/api/v1/imports/{id}/dry-run", { params: { path: { id: preview.import.id } }, body: plan() })));
-              })
-            }
-          >
+          <Button disabled={busy || missing.length > 0} onClick={check}>
             {busy && <Spinner />}
             Check
           </Button>
@@ -328,8 +541,9 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
     <Frame step={0}>
       <Card className="flex flex-col gap-4 p-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="import-entity">What does the spreadsheet hold?</Label>
-          <NativeSelect id="import-entity" value={entity} onChange={(e) => setEntity(e.target.value as EntityKey)}>
+          <Label htmlFor="import-entity">What does the file hold?</Label>
+          <NativeSelect id="import-entity" value={entity} onChange={(e) => setEntity(e.target.value as ImportEntity)}>
+            <option value="auto">Work it out from the file</option>
             {Object.values(ENTITIES).map((e) => (
               <option key={e.entity} value={e.entity}>
                 {e.label}
@@ -338,17 +552,21 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
           </NativeSelect>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="import-file">CSV file</Label>
+          <Label htmlFor="import-file">File</Label>
           <Input
             id="import-file"
             type="file"
-            accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values"
+            accept=".csv,.tsv,.txt,.vcf,.vcard,.xlsx,text/csv,text/tab-separated-values,text/vcard,text/x-vcard,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="py-1.5"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
           <p className="text-xs text-muted-foreground">
-            In Excel or Numbers choose File → Save As (or Export) → CSV UTF-8. In Google Sheets, File → Download → CSV. Up to 10 MB and
-            50,000 rows.
+            A CSV export from the app you are moving from, as it comes: Google Contacts, Outlook, HubSpot, Salesforce, Pipedrive,
+            Mailchimp, LinkedIn or a booking system. Excel files (.xlsx) work as they are (every sheet with the same columns is read,
+            with its name and each row's fill colour, so a pitching list split into regions and coloured by how things stand comes
+            across as it is), and so do
+            contact cards (.vcf) from Apple Contacts, iCloud or Android. Older .xls, Numbers or OpenDocument files: save them as .xlsx or
+            CSV first. Up to 10 MB (7 MB for Excel) and 50,000 rows.
           </p>
         </div>
         {error && <Alert>{error}</Alert>}
@@ -361,11 +579,26 @@ export function ImportWizard({ onDone }: { onDone: () => void }) {
             onClick={() =>
               attempt(async () => {
                 if (!file) return;
-                if (file.size > 10 * 1024 * 1024) throw new Error("The file is over 10 MB. Split it into smaller files.");
-                const csv = await file.text();
-                const p = await ok(api.POST("/api/v1/imports", { body: { entity, filename: file.name, csv } }));
+                if (file.size > 100 * 1024 * 1024) throw new Error("The file is over 100 MB. Split it into smaller files.");
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                if (needsResaving(file.name, bytes))
+                  throw new Error("Open this file in Excel, Numbers or Google Sheets and save it as .xlsx or CSV UTF-8, then upload that.");
+                let body: Schemas["NewImport"];
+                if (isWorkbook(bytes)) {
+                  if (bytes.length > 7 * 1024 * 1024) throw new Error("The spreadsheet is over 7 MB. Save it as CSV, or split it.");
+                  body = { entity, filename: file.name, workbook: base64(bytes) };
+                } else {
+                  const csv = stripCardAttachments(decodeFile(bytes));
+                  if (new TextEncoder().encode(csv).length > 10 * 1024 * 1024)
+                    throw new Error("The file is over 10 MB. Split it into smaller files.");
+                  body = { entity, filename: file.name, csv };
+                }
+                const p = await ok(api.POST("/api/v1/imports", { body }));
                 setPreview(p);
                 setColumns(p.suggested);
+                setDry(null);
+                setEdits({});
+                setSkipRows([]);
               })
             }
           >
@@ -387,6 +620,189 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "wa
   );
 }
 
+/** The rows at fault, with their cells to correct (the ones the problems
+ * are about, else every imported one) or the row to leave out. */
+function ProblemRows({
+  dry,
+  headers,
+  columns,
+  targets,
+  edits,
+  onEdit,
+  skipRows,
+  onSkip,
+}: {
+  dry: DryRun;
+  headers: string[];
+  columns: (string | null)[];
+  targets: Schemas["ImportTarget"][];
+  edits: Edits;
+  onEdit: (row: number, column: number, value: string) => void;
+  skipRows: number[];
+  onSkip: (row: number, skip: boolean) => void;
+}) {
+  const label = (key: string | null | undefined) => targets.find((t) => t.key === key)?.label ?? key;
+  // Rows left out no longer come back as problems, so they are listed here
+  // to be put back.
+  const shown = new Set(dry.problem_rows.map((p) => p.row));
+  const leftOut = skipRows.filter((r) => !shown.has(r));
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium">
+        {dry.fail === 0
+          ? "No rows have problems now."
+          : `${dry.fail} ${dry.fail === 1 ? "row needs" : "rows need"} a look. Correct them here and check again, or leave them out${
+              dry.fail > dry.problem_rows.length ? ` (the first ${dry.problem_rows.length} are shown)` : ""
+            }.`}
+      </p>
+      <ul className="flex max-h-[28rem] flex-col gap-2 overflow-y-auto">
+        {dry.problem_rows.map((p) => {
+          const issues = p.issues;
+          const fields = new Set(issues.map((i) => i.field).filter(Boolean));
+          let cols = columns.flatMap((c, i) => (c && fields.has(c) ? [i] : []));
+          if (cols.length === 0) cols = columns.flatMap((c, i) => (c ? [i] : []));
+          const skipped = skipRows.includes(p.row);
+          return (
+            <li key={p.row} className="flex flex-col gap-2 rounded-md border p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium">{rowLabel(p)}</span>
+                <label className="flex items-center gap-2 text-xs">
+                  <Checkbox checked={skipped} onChange={(e) => onSkip(p.row, e.target.checked)} />
+                  Leave this row out
+                </label>
+              </div>
+              <ul className="text-destructive">
+                {issues.map((i, n) => (
+                  <li key={`${i.field}-${n}`}>
+                    {i.field ? `${label(i.field)}: ` : ""}
+                    {i.message}
+                  </li>
+                ))}
+              </ul>
+              {!skipped && (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {cols.map((c) => {
+                    const id = `fix-${p.row}-${c}`;
+                    return (
+                      <div key={c} className="flex flex-col gap-1">
+                        <Label htmlFor={id} className="text-xs">
+                          {headers[c]} → {label(columns[c])}
+                        </Label>
+                        <Input
+                          id={id}
+                          value={edits[`${p.row}:${c}`] ?? p.cells[c] ?? ""}
+                          onChange={(e) => onEdit(p.row, c, e.target.value)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {leftOut.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Left out:</span>
+          {leftOut.map((row) => (
+            <Button key={row} size="sm" variant="outline" onClick={() => onSkip(row, false)} aria-label={`Put row ${row} back`}>
+              Row {row} ✕
+            </Button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Rows that import, but whose notes or gaps are worth a look first, to
+ * leave out if need be. */
+function ToCheck({
+  rows,
+  total,
+  headers,
+  skipRows,
+  onSkip,
+}: {
+  rows: Schemas["ProblemRow"][];
+  total: number;
+  headers: string[];
+  skipRows: number[];
+  onSkip: (row: number) => void;
+}) {
+  const shown = rows.filter((r) => !skipRows.includes(r.row));
+  if (shown.length === 0) return null;
+  const nameAt = headers.findIndex((h) => h.trim() !== "");
+  return (
+    <details className="rounded-md border p-3 text-sm" open={shown.length <= 10}>
+      <summary className="cursor-pointer font-medium">
+        {shown.length} {shown.length === 1 ? "row" : "rows"} to check (they import unless you leave them out)
+        {total > rows.length && `; the first ${rows.length} of ${total} are shown`}
+      </summary>
+      <ul className="mt-2 flex max-h-72 flex-col gap-2 overflow-y-auto">
+        {shown.map((r) => (
+          <li key={r.row} className="flex flex-wrap items-start justify-between gap-2 border-t pt-2 first:border-t-0 first:pt-0">
+            <div className="min-w-0">
+              <p className="font-medium">
+                {rowLabel(r)}
+                {r.cells[nameAt] ? `: ${r.cells[nameAt]}` : ""}
+              </p>
+              <ul className="text-muted-foreground">
+                {r.issues.map((i, n) => (
+                  <li key={`${i.field}-${n}`}>{i.message}</li>
+                ))}
+              </ul>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => onSkip(r.row)}>
+              Leave out
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+/** How values that needed reading were read: colours as statuses, sheet
+ * names as regions, countries however they were typed. */
+function Readings({ readings, targets }: { readings: Schemas["ValueReading"][]; targets: Schemas["ImportTarget"][] }) {
+  const label = (key: string) => targets.find((t) => t.key === key)?.label ?? key;
+  const unread = readings.filter((r) => r.read_as == null).length;
+  return (
+    <details className="rounded-md border p-3 text-sm" open={unread > 0}>
+      <summary className="cursor-pointer font-medium">
+        How values were read{unread > 0 ? ` (${unread} not read)` : ""}
+      </summary>
+      <div className="mt-2 max-h-72 overflow-auto">
+        <table className="w-full text-left">
+          <thead className="text-xs text-muted-foreground">
+            <tr>
+              <th className="py-1 pr-3">Field</th>
+              <th className="py-1 pr-3">In the sheet</th>
+              <th className="py-1 pr-3">Read as</th>
+              <th className="py-1">Rows</th>
+            </tr>
+          </thead>
+          <tbody>
+            {readings.map((r) => (
+              <tr key={`${r.field}:${r.text}`} className="border-t align-top">
+                <td className="py-1 pr-3">{label(r.field)}</td>
+                <td className="py-1 pr-3">{r.text}</td>
+                <td className="py-1 pr-3">
+                  {r.read_as ?? <span className="text-warning">Left out</span>}
+                  {r.hint && <p className="text-xs text-muted-foreground">{r.hint}</p>}
+                </td>
+                <td className="py-1">{r.rows}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
 function Issues({ issues }: { issues: Schemas["ImportIssue"][] }) {
   return (
     <details className="rounded-md border p-3 text-sm" open={issues.length <= 10}>
@@ -397,7 +813,7 @@ function Issues({ issues }: { issues: Schemas["ImportIssue"][] }) {
         {issues.map((i, n) => (
           // Several problems can share a row and field.
           <li key={`${i.row}-${i.field}-${n}`}>
-            Row {i.row}
+            {rowLabel(i)}
             {i.field ? `, ${i.field}` : ""}: {i.message}
           </li>
         ))}

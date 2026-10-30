@@ -1,0 +1,39 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id AS \"id!\", at AS \"at!\" FROM (\n               SELECT id, expires_on::timestamp AT TIME ZONE $1 + make_interval(mins => $2::int) AS at\n               FROM documents\n               WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL AND expires_on IS NOT NULL\n           ) t\n           WHERE at > $3 AND at <= $4\n           ORDER BY at, id\n           LIMIT $5",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "d66206d00ee77f110e681ed583d97b101842056c321bba9eef523082ce75a25c"
+}

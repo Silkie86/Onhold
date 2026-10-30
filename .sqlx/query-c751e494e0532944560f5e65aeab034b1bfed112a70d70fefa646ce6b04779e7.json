@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE thread_messages SET external_id = $2,\n               status = CASE WHEN direction = 'outbound' THEN 'sent' ELSE status END,\n               error = CASE WHEN direction = 'outbound' THEN NULL ELSE error END\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c751e494e0532944560f5e65aeab034b1bfed112a70d70fefa646ce6b04779e7"
+}

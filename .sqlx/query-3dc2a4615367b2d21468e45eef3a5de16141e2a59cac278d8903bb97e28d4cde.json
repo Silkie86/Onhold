@@ -1,0 +1,263 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT c.id, c.organisation_id, o.name AS \"organisation_name?\",\n                  o.country_code::text AS \"organisation_country?\", c.name, c.emails, c.phones, c.role,\n                  c.preferred_channel, c.email_opt_in, c.sms_opt_in, c.whatsapp_opt_in, c.notes, c.tags,\n                  c.custom, c.links, c.version, c.created_at, c.updated_at, c.created_by AS \"created_by: UserId\",\n                  c.updated_by AS \"updated_by: UserId\"\n           FROM contacts c LEFT JOIN organisations o ON o.id = c.organisation_id\n           WHERE c.workspace_id = app_workspace_id() AND c.id = $1 AND c.deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "organisation_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "organisation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "organisation_name?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "organisation_country?",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "emails",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "emails"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "phones",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "phones"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "role",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "role"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "preferred_channel",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "preferred_channel"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "email_opt_in",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "email_opt_in"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "sms_opt_in",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "sms_opt_in"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "whatsapp_opt_in",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "whatsapp_opt_in"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "tags",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "tags"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "custom",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "custom"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "links",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "links"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "updated_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "updated_by"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      null,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "3dc2a4615367b2d21468e45eef3a5de16141e2a59cac278d8903bb97e28d4cde"
+}

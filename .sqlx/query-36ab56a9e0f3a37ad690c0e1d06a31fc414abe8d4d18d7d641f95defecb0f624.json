@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT rate_date, per_eur::text AS \"per_eur!\" FROM fx_rates\n           WHERE currency = $1 AND rate_date <= $2 AND rate_date > $2 - 14\n           ORDER BY rate_date DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "rate_date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "fx_rates",
+            "name": "rate_date"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "per_eur!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bpchar",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "36ab56a9e0f3a37ad690c0e1d06a31fc414abe8d4d18d7d641f95defecb0f624"
+}

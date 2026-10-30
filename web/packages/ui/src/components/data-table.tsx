@@ -10,7 +10,7 @@ import { Button } from "./button.tsx";
 import { Dialog } from "./dialog.tsx";
 import { Checkbox, Input, Label, NativeSelect } from "./inputs.tsx";
 import { Menu, MenuCheckboxItem, MenuContent, MenuLabel, MenuTrigger } from "./menu.tsx";
-import { Alert, Badge, EmptyState, Spinner } from "./misc.tsx";
+import { Alert, Badge, EmptyState, Spinner, StatusDot } from "./misc.tsx";
 
 export interface TableState {
   q: string;
@@ -77,7 +77,7 @@ export function defaultColumns(schema: EntitySchema): string[] {
   return schema.fields.filter((f) => f.in_list).map((f) => f.key);
 }
 
-function useDebounced<T>(value: T, ms: number): T {
+export function useDebounced<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(value), ms);
@@ -102,7 +102,14 @@ function Cell({ field, row, locale }: { field: SchemaField; row: RecordJson; loc
     const name = row[`${field.key.slice(0, -3)}_name`];
     if (typeof name === "string") return <>{name}</>;
   }
-  if ((field.field_type === "email_list" || field.field_type === "phone_list") && Array.isArray(value)) {
+  if (field.field_type === "select" && typeof value === "string") {
+    const option = field.options.find((o) => o.value === value);
+    if (option?.colour) return <StatusDot colour={option.colour} label={option.label} />;
+  }
+  if (
+    (field.field_type === "email_list" || field.field_type === "phone_list" || field.field_type === "url_list") &&
+    Array.isArray(value)
+  ) {
     const [first, ...rest] = value as string[];
     return (
       <>

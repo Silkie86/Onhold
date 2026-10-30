@@ -27,6 +27,11 @@ pub struct Table {
 }
 
 fn detect_delimiter(text: &str) -> u8 {
+    first_line_delimiter(text).0
+}
+
+/// The separator the first line uses most, with how often it does.
+fn first_line_delimiter(text: &str) -> (u8, usize) {
     // Count candidates on the first line, outside quotes.
     let mut counts = [(b',', 0usize), (b';', 0), (b'\t', 0), (b'|', 0)];
     let mut quoted = false;
@@ -43,27 +48,80 @@ fn detect_delimiter(text: &str) -> u8 {
         }
     }
     // Ties go to the earlier (more common) separator.
-    counts
-        .iter()
-        .fold(
-            (b',', 0),
-            |best, &(d, n)| if n > best.1 { (d, n) } else { best },
-        )
-        .0
+    counts.iter().fold(
+        (b',', 0),
+        |best, &(d, n)| if n > best.1 { (d, n) } else { best },
+    )
 }
 
 /// Parses a CSV export. The separator (comma, semicolon, tab or pipe) is
-/// detected from the header row; a byte-order mark is ignored; blank rows
-/// are skipped; blank headers become `Column N` and repeated ones get a
-/// number.
+/// detected from the header row; a byte-order mark is ignored; notes some
+/// apps put above the header (a line or two with one cell, as LinkedIn
+/// does) are passed over; blank rows are skipped; blank headers become
+/// `Column N` and repeated ones get a number.
 pub fn parse_csv(text: &str) -> Result<Table, String> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-    let delimiter = detect_delimiter(text);
+    // Notes are rows of one cell with no separator at all; the header is
+    // the first row with separators after them. A first row with separators
+    // (even `Name,,`) is the header.
+    let scan_delimiter = text
+        .lines()
+        .take(10)
+        .map(first_line_delimiter)
+        .find(|(_, n)| *n > 0)
+        .map_or(b',', |(d, _)| d);
+    let reader = || {
+        csv::ReaderBuilder::new()
+            .delimiter(scan_delimiter)
+            .has_headers(false)
+            .flexible(true)
+            .from_reader(text.as_bytes())
+    };
+    let preamble = {
+        let mut skip = 0;
+        for (i, record) in reader().records().take(10).enumerate() {
+            match record {
+                Ok(r) if r.len() == 1 => {}
+                Ok(_) => {
+                    skip = i;
+                    break;
+                }
+                Err(_) => break,
+            }
+        }
+        skip
+    };
+    let (body, header_row) = if preamble == 0 {
+        (text, 1)
+    } else {
+        // Cut at the start of the header row, as the reader saw it.
+        let mut reader = reader();
+        let mut record = csv::StringRecord::new();
+        let mut offset = 0;
+        for _ in 0..preamble {
+            if !reader.read_record(&mut record).unwrap_or(false) {
+                break;
+            }
+            offset = usize::try_from(reader.position().byte()).unwrap_or(0);
+        }
+        let body = text.get(offset..).unwrap_or(text);
+        // Blank lines are rows in a spreadsheet, though the reader skips
+        // them, so they count towards where the header sits.
+        let blank_above = text
+            .get(..offset)
+            .unwrap_or("")
+            .lines()
+            .filter(|l| l.trim().is_empty())
+            .count()
+            + body.lines().take_while(|l| l.trim().is_empty()).count();
+        (body, preamble + blank_above + 1)
+    };
+    let delimiter = detect_delimiter(body);
     let mut reader = csv::ReaderBuilder::new()
         .delimiter(delimiter)
         .has_headers(false)
         .flexible(true)
-        .from_reader(text.as_bytes());
+        .from_reader(body.as_bytes());
     let mut records = reader.records();
     let header = match records.next() {
         Some(Ok(h)) => h,
@@ -90,10 +148,12 @@ pub fn parse_csv(text: &str) -> Result<Table, String> {
     if headers.iter().all(|h| h.starts_with("Column ")) {
         return Err("the first row should name the columns".into());
     }
+    // Spreadsheet row numbers count the notes above the header too.
+    let first = header_row + 1;
     let mut rows = Vec::new();
     let mut row_numbers = Vec::new();
     for (i, record) in records.enumerate() {
-        let record = record.map_err(|e| format!("row {} could not be read: {e}", i + 2))?;
+        let record = record.map_err(|e| format!("row {} could not be read: {e}", i + first))?;
         if record.iter().all(|c| c.trim().is_empty()) {
             continue;
         }
@@ -107,7 +167,7 @@ pub fn parse_csv(text: &str) -> Result<Table, String> {
             .collect();
         row.resize(headers.len(), String::new());
         rows.push(row);
-        row_numbers.push(i + 2);
+        row_numbers.push(i + first);
     }
     Ok(Table {
         headers,
@@ -130,29 +190,105 @@ pub struct Target {
     pub key: String,
     pub label: String,
     pub synonyms: Vec<String>,
+    /// Spellings that suggest it only when no other column does
+    /// (`Agency` names an organisation on a sheet without a `Venue`).
+    pub weak_synonyms: Vec<String>,
+    /// Several columns may feed it.
+    pub many: bool,
+}
+
+/// A header with its numbering taken out, so `E-mail 2 - Value` reads as
+/// `emailvalue` and `Phone 3` as `phone`.
+pub fn unnumbered_header(s: &str) -> String {
+    normalize_header(s)
+        .chars()
+        .filter(|c| !c.is_ascii_digit())
+        .collect()
 }
 
 /// The target each header most likely feeds, matching the key, the label
-/// or a synonym once punctuation and case are ignored.
+/// or a synonym once punctuation and case are ignored, then again with
+/// numbering ignored (`Email 2`), then a weak synonym for a field nothing
+/// else feeds. A field only one column may feed goes to the closest match,
+/// and among equals to the first column.
 pub fn suggest_mapping(headers: &[String], targets: &[Target]) -> Vec<Option<String>> {
-    headers
+    let strong = |h: &str| {
+        targets
+            .iter()
+            .find(|t| normalize_header(&t.key) == h || normalize_header(&t.label) == h)
+            .or_else(|| {
+                targets
+                    .iter()
+                    .find(|t| t.synonyms.iter().any(|s| normalize_header(s) == h))
+            })
+    };
+    let weak = |h: &str| {
+        targets
+            .iter()
+            .find(|t| t.weak_synonyms.iter().any(|s| normalize_header(s) == h))
+    };
+    // Each header's best match and how close it is: 0 as written, 1 with
+    // numbering ignored, 2 weak.
+    let matches: Vec<Option<(&Target, u8)>> = headers
         .iter()
         .map(|h| {
-            let h = normalize_header(h);
-            if h.is_empty() {
+            let exact = normalize_header(h);
+            if exact.is_empty() {
                 return None;
             }
-            targets
-                .iter()
-                .find(|t| normalize_header(&t.key) == h || normalize_header(&t.label) == h)
+            let bare = unnumbered_header(h);
+            let numbered = bare != exact && !bare.is_empty();
+            strong(&exact)
+                .map(|t| (t, 0))
+                .or_else(|| numbered.then(|| strong(&bare)).flatten().map(|t| (t, 1)))
                 .or_else(|| {
-                    targets
-                        .iter()
-                        .find(|t| t.synonyms.iter().any(|s| normalize_header(s) == h))
+                    weak(&exact)
+                        .or_else(|| numbered.then(|| weak(&bare)).flatten())
+                        .map(|t| (t, 2))
                 })
-                .map(|t| t.key.clone())
         })
-        .collect()
+        .collect();
+    let mut out: Vec<Option<String>> = vec![None; headers.len()];
+    let mut claimed: Vec<&str> = Vec::new();
+    for strength in 0..=2u8 {
+        for (i, m) in matches.iter().enumerate() {
+            let Some((t, s)) = m else { continue };
+            if *s != strength {
+                continue;
+            }
+            let taken = claimed.contains(&t.key.as_str());
+            // A weak match never joins a field a closer match feeds.
+            if taken && (!t.many || strength == 2) {
+                continue;
+            }
+            out[i] = Some(t.key.clone());
+            if strength < 2 {
+                claimed.push(&t.key);
+            }
+        }
+    }
+    out
+}
+
+/// Clears all but the first column feeding a field that takes one column.
+pub fn once_each(mut columns: Vec<Option<String>>, targets: &[Target]) -> Vec<Option<String>> {
+    let mut seen: Vec<String> = Vec::new();
+    for c in &mut columns {
+        let Some(key) = c else { continue };
+        let many = targets
+            .iter()
+            .find(|t| &t.key == key)
+            .is_some_and(|t| t.many);
+        if many {
+            continue;
+        }
+        if seen.contains(key) {
+            *c = None;
+        } else {
+            seen.push(key.clone());
+        }
+    }
+    columns
 }
 
 /// How to read day/month order in dates like `07/03/2027`.
@@ -350,6 +486,9 @@ pub fn parse_date(s: &str, order: DateOrder) -> Option<NaiveDate> {
 
 /// Reads a date and time: RFC 3339, or a date as [`parse_date`] reads it
 /// followed by `HH:MM` or `HH:MM:SS`, in `tz`. A bare date is midnight.
+/// A time skipped by a clock change moves on by an hour (where the clocks
+/// go forward at midnight, a bare date is the first moment of the day); a
+/// repeated one takes the first.
 pub fn parse_datetime(
     s: &str,
     order: DateOrder,
@@ -370,8 +509,13 @@ pub fn parse_datetime(
             .or_else(|_| NaiveTime::parse_from_str(t, "%H:%M"))
             .ok()?,
     };
-    tz.from_local_datetime(&NaiveDateTime::new(date, time))
+    let local = NaiveDateTime::new(date, time);
+    tz.from_local_datetime(&local)
         .earliest()
+        .or_else(|| {
+            tz.from_local_datetime(&(local + chrono::Duration::hours(1)))
+                .earliest()
+        })
         .map(|dt| dt.with_timezone(&Utc))
 }
 
@@ -384,8 +528,18 @@ pub fn parse_bool(s: &str) -> Option<bool> {
     }
 }
 
-/// Splits a cell holding several values: `a; b`, `a, b`, `a | b` or one per line.
+/// Splits a cell holding several values: `a; b`, `a, b`, `a | b`,
+/// `a ::: b` (as Google Contacts writes them) or one per line.
 pub fn split_list(s: &str) -> Vec<String> {
+    if s.contains(":::") {
+        return s
+            .split(":::")
+            .flat_map(|p| p.split('\n'))
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(str::to_owned)
+            .collect();
+    }
     let sep: &[char] = if s.contains(';') {
         &[';', '\n']
     } else if s.contains('|') {
@@ -398,6 +552,25 @@ pub fn split_list(s: &str) -> Vec<String> {
         .filter(|p| !p.is_empty())
         .map(str::to_owned)
         .collect()
+}
+
+/// A label or group from another app as a tag: Google's own groups
+/// (`* myContacts`, `* starred`) are dropped and the `* ` before its other
+/// built-in groups is taken off.
+pub fn clean_label(s: &str) -> Option<String> {
+    let s = s.trim();
+    // Mailchimp quotes each tag: `"Customer","VIP"`.
+    let s = s
+        .strip_prefix('"')
+        .and_then(|t| t.strip_suffix('"'))
+        .unwrap_or(s)
+        .trim();
+    let s = match s.strip_prefix("* ") {
+        Some(rest) if matches!(rest.trim(), "myContacts" | "starred") => return None,
+        Some(rest) => rest.trim(),
+        None => s,
+    };
+    (!s.is_empty()).then(|| s.to_owned())
 }
 
 /// Turns a cell into a custom field's value. Blank is `None` (no value).
@@ -483,10 +656,12 @@ mod tests {
                     SelectOption {
                         value: "jazz".into(),
                         label: "Jazz".into(),
+                        colour: None,
                     },
                     SelectOption {
                         value: "hip_hop".into(),
                         label: "Hip hop".into(),
+                        colour: None,
                     },
                 ],
                 ..Validation::default()
@@ -532,16 +707,22 @@ mod tests {
                 key: "name".into(),
                 label: "Name".into(),
                 synonyms: vec!["Full name".into()],
+                weak_synonyms: vec![],
+                many: true,
             },
             Target {
                 key: "emails".into(),
                 label: "Email".into(),
                 synonyms: vec!["E-mail address".into()],
+                weak_synonyms: vec![],
+                many: true,
             },
             Target {
                 key: "custom.genre".into(),
                 label: "Genre".into(),
                 synonyms: vec![],
+                weak_synonyms: vec!["style".into()],
+                many: false,
             },
         ];
         let headers: Vec<String> = ["FULL NAME", "e-mail address", "Genre", "Shoe size"]
@@ -556,6 +737,47 @@ mod tests {
                 None
             ]
         );
+        // Numbered columns find their field; a one-column field goes to the
+        // first column only.
+        let headers: Vec<String> = ["Email 2", "Genre", "genre"].map(String::from).to_vec();
+        assert_eq!(
+            suggest_mapping(&headers, &targets),
+            [Some("emails".into()), Some("custom.genre".into()), None]
+        );
+        // An exact match beats an earlier numbered one; a weak synonym only
+        // counts when nothing else feeds the field.
+        let headers: Vec<String> = ["Genre 2", "Genre", "Style"].map(String::from).to_vec();
+        assert_eq!(
+            suggest_mapping(&headers, &targets),
+            [None, Some("custom.genre".into()), None]
+        );
+        let headers: Vec<String> = ["Style", "Name"].map(String::from).to_vec();
+        assert_eq!(
+            suggest_mapping(&headers, &targets),
+            [Some("custom.genre".into()), Some("name".into())]
+        );
+    }
+
+    #[test]
+    fn notes_above_the_header_are_passed_over() {
+        let t = parse_csv("Notes:\n\"When exporting your connection data, you may notice...\"\n\nFirst Name,Last Name,Email Address\nAda,Okafor,ada@example.com\n")
+            .expect("parses");
+        assert_eq!(t.headers, ["First Name", "Last Name", "Email Address"]);
+        assert_eq!(t.rows, [["Ada", "Okafor", "ada@example.com"]]);
+        // As a spreadsheet shows it: notes, note, blank row, header, Ada.
+        assert_eq!(t.row_numbers, [5]);
+        // Semicolons too, though the notes have none.
+        let t = parse_csv("Notes:\nFirst;Last\nA;B\n").expect("semicolons");
+        assert_eq!(t.headers, ["First", "Last"]);
+        assert_eq!(t.row_numbers, [3]);
+        // A header naming one column of several is still the header.
+        let t = parse_csv("Name,,\nAda,ada@x.com,123\nBo,bo@x.com,456\n").expect("sparse header");
+        assert_eq!(t.headers, ["Name", "Column 2", "Column 3"]);
+        assert_eq!(t.rows.len(), 2);
+        // One-column files keep their first row as the header.
+        let t = parse_csv("Email\na@example.com\nb@example.com").expect("one column");
+        assert_eq!(t.headers, ["Email"]);
+        assert_eq!(t.rows.len(), 2);
     }
 
     #[test]
@@ -620,6 +842,21 @@ mod tests {
     }
 
     #[test]
+    fn times_skipped_by_a_clock_change_move_on() {
+        // Santiago's clocks go from 00:00 to 01:00 on 6 September 2026, so
+        // the day starts at 01:00 (-03:00).
+        let santiago = chrono_tz::America::Santiago;
+        let dt = parse_datetime("2026-09-06", DateOrder::Dmy, santiago).expect("a bare date");
+        assert_eq!(dt.to_rfc3339(), "2026-09-06T04:00:00+00:00");
+        let dt = parse_datetime("06/09/2026 00:30", DateOrder::Dmy, santiago).expect("in the gap");
+        assert_eq!(dt.to_rfc3339(), "2026-09-06T04:30:00+00:00");
+        // London's 01:30 on 29 March 2026 does not exist: 02:30 BST.
+        let london = chrono_tz::Europe::London;
+        let dt = parse_datetime("29/03/2026 01:30", DateOrder::Dmy, london).expect("in the gap");
+        assert_eq!(dt.to_rfc3339(), "2026-03-29T01:30:00+00:00");
+    }
+
+    #[test]
     fn cells_become_custom_values() {
         let r = reading();
         assert_eq!(coerce(&def(FieldType::Text), "  ", &r), Ok(None));
@@ -658,5 +895,10 @@ mod tests {
         assert_eq!(split_list("a, b"), ["a", "b"]);
         assert_eq!(split_list("a | b"), ["a", "b"]);
         assert_eq!(split_list("a\nb"), ["a", "b"]);
+        assert_eq!(split_list("a@x.com ::: b@y.com"), ["a@x.com", "b@y.com"]);
+        assert_eq!(clean_label("* myContacts"), None);
+        assert_eq!(clean_label("* friends").as_deref(), Some("friends"));
+        assert_eq!(clean_label(" VIP ").as_deref(), Some("VIP"));
+        assert_eq!(clean_label("\"Customer\"").as_deref(), Some("Customer"));
     }
 }

@@ -373,6 +373,61 @@ async fn an_invitation_can_be_accepted_by_signing_in_with_a_provider(pool: PgPoo
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_invitation_never_attaches_a_stranger_to_an_existing_account(pool: PgPool) {
+    let (app, mock) = app_with_oidc(pool).await;
+    app.workspace_with_owner("acme").await;
+    // Whoever holds an invitation for an address that already has an account...
+    let (beta, token) = app.create_workspace("beta", "owner@acme.test").await;
+
+    // ...cannot sign in to that account with their own identity.
+    for (provider, who) in [
+        ("microsoft", person("ms-evil", "evil@contoso.test", false)),
+        ("microsoft", person("ms-evil", "owner@acme.test", true)),
+        ("google", person("g-evil", "evil@gmail.test", true)),
+        ("google", person("g-evil", "owner@acme.test", false)),
+    ] {
+        let out = sign_in(
+            &app,
+            &mock,
+            provider,
+            &format!("?invitation={token}"),
+            None,
+            who,
+        )
+        .await;
+        assert_eq!(
+            (out.error().as_deref(), out.session.is_some()),
+            (Some("account_exists"), false),
+            "{provider}"
+        );
+    }
+    let linked: i64 = sqlx::query_scalar("SELECT count(*) FROM oidc_identities")
+        .fetch_one(&app.owner)
+        .await
+        .unwrap();
+    assert_eq!(linked, 0, "nothing was linked");
+
+    // A provider that vouches for that exact address may still use it.
+    let out = sign_in(
+        &app,
+        &mock,
+        "google",
+        &format!("?invitation={token}"),
+        None,
+        person("g-1", "Owner@Acme.test", true),
+    )
+    .await;
+    let client = out.session.expect("signed in").in_workspace(beta);
+    let me = app
+        .get("/api/v1/auth/me")
+        .signed_in(&client)
+        .send()
+        .await
+        .ok();
+    assert_eq!(me.body["workspaces"].as_array().unwrap().len(), 2);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn a_signed_in_user_can_link_a_provider(pool: PgPool) {
     let (app, mock) = app_with_oidc(pool).await;
     let (_, owner) = app.workspace_with_owner("acme").await;

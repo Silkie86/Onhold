@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE imports SET undone_count = undone_count + $2, kept_count = kept_count + $3\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f5f203f3b8175aa02f075586cd743e39692f2d49da7d0cedfa16b48980d01411"
+}

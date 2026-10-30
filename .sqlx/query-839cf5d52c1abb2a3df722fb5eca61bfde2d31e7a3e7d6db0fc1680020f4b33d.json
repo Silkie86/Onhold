@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE signature_requests SET status = 'cancelled'\n           WHERE workspace_id = app_workspace_id() AND document_id = $1 AND status = 'pending'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "839cf5d52c1abb2a3df722fb5eca61bfde2d31e7a3e7d6db0fc1680020f4b33d"
+}

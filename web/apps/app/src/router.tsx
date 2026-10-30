@@ -1,7 +1,8 @@
 // Every page and its address. Addresses the API puts in emails and
 // responses (`/sign-in`, `/auth/magic`, `/auth/mfa`, `/invitations/accept`,
 // `/link-app`, `/crm/<entity>/<id>`, `/quote/<token>`, `/bookings/<id>`,
-// `/enquiries/<id>`, `/tasks`) must keep working.
+// `/enquiries/<id>`, `/tasks`, `/invoice/<token>`, `/sign/<token>`,
+// `/finance/invoices/<id>`, `/documents/<id>`, `/portal`) must keep working.
 
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -18,8 +19,12 @@ import { CalendarPage, validateCalendarSearch } from "./pages/calendar.tsx";
 import { EntityListPage, EntityRecordPage, validateListSearch } from "./pages/crm.tsx";
 import { EnquiriesPage, EnquiryPage } from "./pages/enquiries.tsx";
 import { PublicQuotePage } from "./pages/quotes.tsx";
+import { FinanceSettingsPage, InvoicePage, InvoicesPage, PaymentsPage, PublicInvoicePage, ReportsPage } from "./pages/finance.tsx";
+import { DocumentPage, DocumentsPage, PdfImportsPage, PublicSigningPage } from "./pages/documents.tsx";
+import { ConnectCalendarPage, ConnectCalendarReturnPage } from "./pages/talent-calendars.tsx";
 import { TasksPage, validateTasksSearch } from "./pages/tasks.tsx";
 import { SyncPage } from "./pages/sync.tsx";
+import { InboxPage, validateInboxSearch } from "./pages/inbox.tsx";
 import { AppShell } from "./shell.tsx";
 
 const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
@@ -67,6 +72,15 @@ const publicQuote = createRoute({
   component: PublicQuotePage,
 });
 
+// The payer's page for an invoice, and a signer's for a document.
+const publicInvoice = createRoute({
+  getParentRoute: () => root,
+  path: "/invoice/$token",
+  validateSearch: (s: Record<string, unknown>): { paid?: string } => ({ paid: str(s.paid) }),
+  component: PublicInvoicePage,
+});
+const publicSigning = createRoute({ getParentRoute: () => root, path: "/sign/$token", component: PublicSigningPage });
+
 // Where people approve a desktop or mobile app's sign-in (the API's `verification_url`).
 const linkApp = createRoute({ getParentRoute: () => root, path: "/link-app", component: LinkAppPage });
 
@@ -101,6 +115,14 @@ const calendar = createRoute({
   component: CalendarPage,
 });
 const tasks = createRoute({ getParentRoute: () => app, path: "/tasks", validateSearch: validateTasksSearch, component: TasksPage });
+const projectsPage = () => import("./pages/projects.tsx");
+const projects = createRoute({ getParentRoute: () => app, path: "/projects", component: lazyRouteComponent(projectsPage, "ProjectsPage") });
+const project = createRoute({ getParentRoute: () => app, path: "/projects/$id", component: lazyRouteComponent(projectsPage, "ProjectPage") });
+const projectDay = createRoute({
+  getParentRoute: () => app,
+  path: "/projects/$id/days/$date",
+  component: lazyRouteComponent(projectsPage, "ProjectDayPage"),
+});
 const imports = createRoute({ getParentRoute: () => app, path: "/imports", component: lazyRouteComponent(() => import("./pages/imports.tsx"), "ImportsPage") });
 // Pages used now and then load when first opened.
 const settings = () => import("./pages/settings.tsx");
@@ -118,10 +140,201 @@ const pipelines = createRoute({
 const calendarSettings = createRoute({
   getParentRoute: () => app,
   path: "/settings/calendar",
+  // Google and Microsoft send the member back here with these.
+  validateSearch: (s: Record<string, unknown>): { code?: string; state?: string; error?: string; error_description?: string } => ({
+    code: str(s.code),
+    state: str(s.state),
+    error: str(s.error),
+    error_description: str(s.error_description),
+  }),
   component: lazyRouteComponent(() => import("./pages/calendar-settings.tsx"), "CalendarSettingsPage"),
 });
 
+const themeStudio = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/theme",
+  component: lazyRouteComponent(() => import("./pages/theme-studio.tsx"), "ThemeStudioPage"),
+});
+// Outside the app's frame: OnHold's team may belong to no workspace themselves.
+const operator = createRoute({
+  getParentRoute: () => root,
+  path: "/operator",
+  component: lazyRouteComponent(() => import("./pages/operator.tsx"), "OperatorPage"),
+});
+
+const streamline = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/streamline",
+  component: lazyRouteComponent(() => import("./pages/streamline.tsx"), "StreamlinePage"),
+});
+
+const setupSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/setup",
+  component: lazyRouteComponent(() => import("./pages/setup-settings.tsx"), "SetupSettingsPage"),
+});
+
+const brandingSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/branding",
+  component: lazyRouteComponent(() => import("./pages/branding-settings.tsx"), "BrandingSettingsPage"),
+});
+
+// A talent connecting their own calendar from the agency's link, and where
+// Google or Microsoft send them back to.
+const connectCalendar = createRoute({
+  getParentRoute: () => root,
+  path: "/connect-calendar/$token",
+  component: ConnectCalendarPage,
+});
+const connectCalendarReturn = createRoute({
+  getParentRoute: () => root,
+  path: "/connect-calendar",
+  validateSearch: (s: Record<string, unknown>): { code?: string; state?: string; error?: string } => ({
+    code: str(s.code),
+    state: str(s.state),
+    error: str(s.error),
+  }),
+  component: ConnectCalendarReturnPage,
+});
+
+const inbox = createRoute({ getParentRoute: () => app, path: "/inbox", validateSearch: validateInboxSearch, component: InboxPage });
+const emailSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/email",
+  // Google and Microsoft send the member back here with these.
+  validateSearch: (s: Record<string, unknown>): { code?: string; state?: string; error?: string; error_description?: string } => ({
+    code: str(s.code),
+    state: str(s.state),
+    error: str(s.error),
+    error_description: str(s.error_description),
+  }),
+  component: lazyRouteComponent(() => import("./pages/email-settings.tsx"), "EmailSettingsPage"),
+});
+
+const sendingDomain = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/email/domain",
+  // A DNS provider sends the owner back here after Domain Connect.
+  validateSearch: (s: Record<string, unknown>): { checked?: string; error?: string } => ({
+    checked: str(s.checked),
+    error: str(s.error),
+  }),
+  component: lazyRouteComponent(() => import("./pages/sending-domain.tsx"), "SendingDomainPage"),
+});
+
 const sync = createRoute({ getParentRoute: () => app, path: "/sync", component: SyncPage });
+
+// The talent portal: what an invited artist sees in place of the staff app.
+const portalPage = () => import("./pages/portal.tsx");
+const portalDates = createRoute({ getParentRoute: () => app, path: "/portal", component: lazyRouteComponent(portalPage, "PortalDatesPage") });
+const portalDate = createRoute({
+  getParentRoute: () => app,
+  path: "/portal/dates/$id",
+  component: lazyRouteComponent(portalPage, "PortalDatePage"),
+});
+const portalAvailability = createRoute({
+  getParentRoute: () => app,
+  path: "/portal/availability",
+  component: lazyRouteComponent(portalPage, "PortalAvailabilityPage"),
+});
+const portalDocuments = createRoute({
+  getParentRoute: () => app,
+  path: "/portal/documents",
+  component: lazyRouteComponent(portalPage, "PortalDocumentsPage"),
+});
+const portalMoney = createRoute({ getParentRoute: () => app, path: "/portal/money", component: lazyRouteComponent(portalPage, "PortalMoneyPage") });
+const portalMessages = createRoute({
+  getParentRoute: () => app,
+  path: "/portal/messages",
+  component: lazyRouteComponent(portalPage, "PortalMessagesPage"),
+});
+const portalProfile = createRoute({
+  getParentRoute: () => app,
+  path: "/portal/profile",
+  component: lazyRouteComponent(portalPage, "PortalProfilePage"),
+});
+const portalUnlock = createRoute({
+  getParentRoute: () => app,
+  path: "/portal/unlock",
+  component: lazyRouteComponent(portalPage, "PortalUnlockPage"),
+});
+const portalSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/portal",
+  component: lazyRouteComponent(() => import("./pages/portal-settings.tsx"), "PortalSettingsPage"),
+});
+
+const invoices = createRoute({ getParentRoute: () => app, path: "/finance/invoices", component: InvoicesPage });
+const invoice = createRoute({ getParentRoute: () => app, path: "/finance/invoices/$id", component: InvoicePage });
+const payments = createRoute({ getParentRoute: () => app, path: "/finance/payments", component: PaymentsPage });
+const reports = createRoute({ getParentRoute: () => app, path: "/finance/reports", component: ReportsPage });
+const documents = createRoute({ getParentRoute: () => app, path: "/documents", component: DocumentsPage });
+const pdfImports = createRoute({ getParentRoute: () => app, path: "/documents/imports", component: PdfImportsPage });
+const documentPage = createRoute({ getParentRoute: () => app, path: "/documents/$id", component: DocumentPage });
+const paymentsSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/payments",
+  // Stripe sends the admin back here with these.
+  validateSearch: (s: Record<string, unknown>): { code?: string; state?: string; error?: string; error_description?: string } => ({
+    code: str(s.code),
+    state: str(s.state),
+    error: str(s.error),
+    error_description: str(s.error_description),
+  }),
+  component: lazyRouteComponent(() => import("./pages/payments-settings.tsx"), "PaymentsSettingsPage"),
+});
+const accountingSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/accounting",
+  // Xero and QuickBooks send the person back here with these.
+  validateSearch: (
+    s: Record<string, unknown>,
+  ): { code?: string; state?: string; realmId?: string; error?: string; error_description?: string } => ({
+    code: str(s.code),
+    state: str(s.state),
+    realmId: str(s.realmId),
+    error: str(s.error),
+    error_description: str(s.error_description),
+  }),
+  component: lazyRouteComponent(() => import("./pages/accounting-settings.tsx"), "AccountingSettingsPage"),
+});
+const textsSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/texts",
+  component: lazyRouteComponent(() => import("./pages/texts-settings.tsx"), "TextsSettingsPage"),
+});
+const followUpsSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/follow-ups",
+  component: lazyRouteComponent(() => import("./pages/follow-ups-settings.tsx"), "FollowUpsSettingsPage"),
+});
+const pitchingSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/pitching",
+  component: lazyRouteComponent(() => import("./pages/pitching.tsx"), "PitchingSettingsPage"),
+});
+const pitchingList = createRoute({
+  getParentRoute: () => app,
+  path: "/pitching",
+  // What is pitched, as a pair.
+  validateSearch: (s: Record<string, unknown>): { kind?: "talent" | "project"; id?: string } => {
+    const kind = s.kind === "talent" || s.kind === "project" ? s.kind : undefined;
+    const id = str(s.id);
+    return kind && id ? { kind, id } : {};
+  },
+  component: lazyRouteComponent(() => import("./pages/pitch-list.tsx"), "PitchListPage"),
+});
+const pitchingFollowUps = createRoute({
+  getParentRoute: () => app,
+  path: "/pitching/follow-ups",
+  component: lazyRouteComponent(() => import("./pages/pitching.tsx"), "FollowUpsDuePage"),
+});
+const financeSettings = createRoute({
+  getParentRoute: () => app,
+  path: "/settings/finance",
+  component: FinanceSettingsPage,
+});
 
 const tree = root.addChildren([
   signIn,
@@ -129,14 +342,24 @@ const tree = root.addChildren([
   mfa,
   invitation,
   linkApp,
+  operator,
   publicQuote,
+  publicInvoice,
+  publicSigning,
+  connectCalendar,
+  connectCalendarReturn,
   app.addChildren([
     home,
+    inbox,
+    emailSettings,
     calendar,
     enquiries,
     enquiry,
     bookings,
     booking,
+    projects,
+    project,
+    projectDay,
     tasks,
     list,
     record,
@@ -144,7 +367,36 @@ const tree = root.addChildren([
     fields,
     pipelines,
     calendarSettings,
+    accountingSettings,
+    textsSettings,
+    followUpsSettings,
+    pitchingSettings,
+    pitchingList,
+    pitchingFollowUps,
+    sendingDomain,
+    brandingSettings,
+    setupSettings,
+    streamline,
+    themeStudio,
     sync,
+    portalDates,
+    portalDate,
+    portalAvailability,
+    portalDocuments,
+    portalMoney,
+    portalUnlock,
+    portalMessages,
+    portalProfile,
+    portalSettings,
+    invoices,
+    invoice,
+    payments,
+    reports,
+    documents,
+    pdfImports,
+    documentPage,
+    financeSettings,
+    paymentsSettings,
   ]),
 ]);
 

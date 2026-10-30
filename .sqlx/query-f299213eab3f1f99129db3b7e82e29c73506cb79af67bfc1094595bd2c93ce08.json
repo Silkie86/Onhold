@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounting_connections\n           SET next_sync_at = CASE WHEN coalesce(sync_lease_until > now(), false) THEN next_sync_at\n                                   ELSE now() END,\n               sync_again = sync_again OR coalesce(sync_lease_until > now(), false),\n               paid_checked_at = CASE WHEN $2 THEN NULL ELSE paid_checked_at END,\n               retry_before = CASE WHEN $2 THEN now() ELSE retry_before END\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL\n             AND status <> 'reconnect'\n           RETURNING next_sync_at AS \"at!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "next_sync_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "f299213eab3f1f99129db3b7e82e29c73506cb79af67bfc1094595bd2c93ce08"
+}

@@ -1,0 +1,14 @@
+# Studio or rehearsal space. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Studio or rehearsal space"
+description = "For a studio or rehearsal space. Your rooms are your roster: take session enquiries, hold and confirm times per room, send quotes and invoices, and share the diary with your team."
+perspective = "sells"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents"]
+extras = ["team"]
+[vocabulary.crm.talent]
+one = "Room"
+many = "Rooms"
+
+[vocabulary.bookings.booking]
+one = "Session"
+many = "Sessions"

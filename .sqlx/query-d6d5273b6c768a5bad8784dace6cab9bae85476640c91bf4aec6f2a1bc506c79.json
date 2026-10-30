@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE talent SET portal_user_id = NULL, updated_by = $2\n               WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d6d5273b6c768a5bad8784dace6cab9bae85476640c91bf4aec6f2a1bc506c79"
+}

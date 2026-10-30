@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO pitching_settings (workspace_id, settings, updated_by)\n           VALUES (app_workspace_id(), $1, $2)\n           ON CONFLICT (workspace_id) DO UPDATE SET settings = EXCLUDED.settings, updated_by = EXCLUDED.updated_by",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c7628acb450f55536b5ab9662b23ecf3ad7c2dfc0d46abc6e89e9ad4abfd37f9"
+}

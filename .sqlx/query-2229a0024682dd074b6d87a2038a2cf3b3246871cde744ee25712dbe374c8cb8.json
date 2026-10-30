@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounting_connections\n           SET disconnected_at = now(), next_sync_at = NULL, sync_lease_until = NULL,\n               sync_token = NULL, revoke_at = now(),\n               import_status = CASE WHEN import_status = 'running' THEN 'failed' ELSE import_status END,\n               import_error = CASE WHEN import_status = 'running' THEN 'disconnected part way'\n                                   ELSE import_error END\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2229a0024682dd074b6d87a2038a2cf3b3246871cde744ee25712dbe374c8cb8"
+}

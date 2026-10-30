@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO thread_message_files (id, workspace_id, message_id, file_id, filename, content_type, size_bytes)\n           SELECT $3, app_workspace_id(), $1, f.id, f.filename, f.content_type, f.size_bytes\n           FROM files f WHERE f.workspace_id = app_workspace_id() AND f.id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "22016bbfebef1a52652ed2bd571c6bbc783c6769a23319ec983a7059a3b6783e"
+}

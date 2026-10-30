@@ -1,0 +1,14 @@
+# Promoter or event organiser booking acts. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Promoter or event organiser"
+description = "For promoters and event organisers. Send offers to acts and their agents, track holds and confirmations, plan events as projects with budgets, and keep contracts and payments together."
+perspective = "buys"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "events"]
+extras = ["team"]
+[vocabulary.crm.talent]
+one = "Artist"
+many = "Artists"
+
+[vocabulary.bookings.enquiry]
+one = "Offer"
+many = "Offers"

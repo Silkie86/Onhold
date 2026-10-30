@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE documents SET current_version = current_version + 1, updated_by = coalesce($2, updated_by)\n           WHERE workspace_id = app_workspace_id() AND id = $1\n           RETURNING current_version",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "current_version",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "current_version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "79aba1569c56a77faec0b1bb388a4d54982710d78d4de5fa3d4a4bd0bd849eb6"
+}

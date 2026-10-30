@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id FROM accounting_connections\n           WHERE workspace_id = app_workspace_id() AND disconnected_at IS NULL\n             AND status <> 'reconnect' AND sales_account IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "accounting_connections",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2e3b19c217e7b138010f4ef0c6abfef21ab867ef5fd983be62f7c77d1801a14b"
+}

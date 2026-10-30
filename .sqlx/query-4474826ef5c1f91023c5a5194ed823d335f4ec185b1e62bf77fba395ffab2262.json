@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO calendar_busy (id, workspace_id, calendar_id, talent_id, starts_at, ends_at, tentative)\n           SELECT u.id, app_workspace_id(), $1, $2, u.starts_at, u.ends_at, u.tentative\n           FROM unnest($3::uuid[], $4::timestamptz[], $5::timestamptz[], $6::bool[])\n                AS u (id, starts_at, ends_at, tentative)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "UuidArray",
+        "TimestamptzArray",
+        "TimestamptzArray",
+        "BoolArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4474826ef5c1f91023c5a5194ed823d335f4ec185b1e62bf77fba395ffab2262"
+}

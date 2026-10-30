@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO fx_rates (rate_date, currency, per_eur, source)\n           SELECT $1, c, v::numeric, $4 FROM unnest($2::text[], $3::text[]) AS t (c, v)\n           ON CONFLICT (currency, rate_date) DO UPDATE SET per_eur = excluded.per_eur, fetched_at = now()\n           WHERE fx_rates.per_eur <> excluded.per_eur",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Date",
+        "TextArray",
+        "TextArray",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "25442f15ca572e2fbff3e6fb54a7e38e2ab6cf44039004666a475117a3204e9c"
+}

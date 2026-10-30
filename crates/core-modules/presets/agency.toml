@@ -1,0 +1,10 @@
+# Agency booking several artists. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Agency booking several artists"
+description = "For an agency booking several artists with a team of agents. Everything an agency needs: enquiries and holds for every artist on your roster, contracts and invoices, commission and what each artist is owed, assigning work to agents, and a free login where your artists see their dates."
+perspective = "sells"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "pitching", "portal"]
+extras = ["team", "commission", "advanced"]
+[vocabulary.crm.talent]
+one = "Artist"
+many = "Artists"

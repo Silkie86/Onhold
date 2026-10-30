@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM project_bookings WHERE workspace_id = app_workspace_id() AND project_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "72a22b73f5079496774bce06d6ac799ad8bd5e5fefdcc5d7c893a93f4c7dd1a9"
+}

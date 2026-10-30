@@ -71,12 +71,19 @@ impl FieldType {
     }
 }
 
+/// The colours a choice's dot can take, drawn from the theme so they read
+/// in light and dark.
+pub const COLOURS: &[&str] = &["green", "amber", "red", "grey", "blue", "purple"];
+
 /// One choice of a select or multi-select field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SelectOption {
     pub value: String,
     pub label: String,
+    /// A colour for the choice's dot: green, amber, red, grey, blue or purple.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
 }
 
 /// Type-specific rules. Only those that make sense for the type may be set.
@@ -241,6 +248,14 @@ pub fn check_definition(def: &FieldDef) -> Result<(), Issue> {
                 return Err(Issue::new(
                     format!("validation.options[{i}].value"),
                     format!("`{}` appears twice", o.value),
+                ));
+            }
+            if let Some(c) = &o.colour
+                && !COLOURS.contains(&c.as_str())
+            {
+                return Err(Issue::new(
+                    format!("validation.options[{i}].colour"),
+                    format!("use one of: {}", COLOURS.join(", ")),
                 ));
             }
         }
@@ -562,10 +577,12 @@ mod tests {
             SelectOption {
                 value: "a".into(),
                 label: "A".into(),
+                colour: None,
             },
             SelectOption {
                 value: "b".into(),
                 label: "B".into(),
+                colour: None,
             },
         ];
         let mut multi = select.clone();
@@ -663,6 +680,7 @@ mod tests {
         d.validation.options = vec![SelectOption {
             value: "a".into(),
             label: "A".into(),
+            colour: None,
         }];
         assert!(check_definition(&d).is_err(), "options on text");
         let s = def("s", FieldType::Select);

@@ -79,9 +79,9 @@ impl Harness {
         self.app.get(path).signed_in(who).send().await.ok().body
     }
 
-    /// Uploads `csv`, runs it with the suggested mapping and `options`, and
-    /// waits for the worker to finish it.
-    async fn import(&self, who: &Client, entity: &str, csv: &str, options: Value) -> Value {
+    /// Uploads `csv` and queues it with the suggested mapping and `options`.
+    /// Returns the import's path.
+    async fn queue_import(&self, who: &Client, entity: &str, csv: &str, options: Value) -> String {
         let upload = self
             .post(
                 who,
@@ -93,8 +93,15 @@ impl Harness {
         let plan = json!({ "columns": upload.body["suggested"], "options": options });
         self.post(who, &format!("/api/v1/imports/{id}/run"), plan)
             .await;
+        format!("/api/v1/imports/{id}")
+    }
+
+    /// Uploads `csv`, runs it with the suggested mapping and `options`, and
+    /// waits for the worker to finish it.
+    async fn import(&self, who: &Client, entity: &str, csv: &str, options: Value) -> Value {
+        let path = self.queue_import(who, entity, csv, options).await;
         self.drain().await;
-        self.get(who, &format!("/api/v1/imports/{id}")).await
+        self.get(who, &path).await
     }
 }
 
@@ -274,6 +281,105 @@ async fn long_imports_carry_on_in_fresh_jobs_and_skip_rules_unless_asked(pool: P
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_import_runs_with_what_its_member_may_still_do(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let agent = h.app.add_member(&owner, "agent@acme.test", "agent").await;
+    let csv = "Name,Company\nJo Smith,Blue Room\n";
+
+    // Agents lose organisation:write after queuing: the contact naming a
+    // new organisation is refused instead of creating it.
+    let path = h.queue_import(&agent, "contact", csv, json!({})).await;
+    sqlx::query(
+        "DELETE FROM role_permissions WHERE role = 'agent' AND permission = 'organisation:write'",
+    )
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    h.drain().await;
+    let import = h.get(&owner, &path).await;
+    assert_eq!(import["status"], "done", "{import}");
+    assert_eq!(import["failed"], 1, "{import}");
+    assert_eq!(h.get(&owner, "/api/v1/organisations").await["total"], 0);
+
+    // Demoted to viewer after queuing: the import does not run at all.
+    let path = h
+        .queue_import(
+            &agent,
+            "contact",
+            csv,
+            json!({ "create_organisations": false }),
+        )
+        .await;
+    let agent_id: String =
+        sqlx::query_scalar("SELECT id::text FROM users WHERE email = 'agent@acme.test'")
+            .fetch_one(&h.app.owner)
+            .await
+            .unwrap();
+    h.app
+        .patch(&format!("/api/v1/members/{agent_id}"))
+        .signed_in(&owner)
+        .json(json!({ "role": "viewer" }))
+        .send()
+        .await
+        .ok();
+    h.drain().await;
+    let import = h.get(&owner, &path).await;
+    assert_eq!(import["status"], "failed", "{import}");
+    assert_eq!(h.get(&owner, "/api/v1/contacts").await["total"], 0);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_import_whose_job_gives_up_is_marked_failed(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    h.drain().await;
+    let last_attempt = "UPDATE jobs SET attempts = max_attempts - 1 \
+                        WHERE kind = 'crm.import' AND status = 'queued'";
+
+    // Its last attempt times out.
+    let path = h
+        .queue_import(&owner, "talent", "Name\nAct One\n", json!({}))
+        .await;
+    sqlx::query(last_attempt)
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    let mut impatient = h.worker.clone();
+    impatient.settings.job_timeout = Duration::ZERO;
+    assert_eq!(impatient.run_jobs_once().await.unwrap(), 1);
+    let import = h.get(&owner, &path).await;
+    assert_eq!(import["status"], "failed", "{import}");
+    assert!(
+        import["error"].as_str().unwrap().contains("timed out"),
+        "{import}"
+    );
+
+    // Its worker stops during the last attempt.
+    let path = h
+        .queue_import(&owner, "talent", "Name\nAct Two\n", json!({}))
+        .await;
+    sqlx::query(last_attempt)
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    assert_eq!(h.worker.claim(10).await.unwrap().len(), 1);
+    sqlx::query(
+        "UPDATE jobs SET locked_until = now() - interval '1 second' WHERE status = 'running'",
+    )
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    h.worker.schedule_once().await.unwrap();
+    let import = h.get(&owner, &path).await;
+    assert_eq!(import["status"], "failed", "{import}");
+    assert!(
+        import["error"].as_str().unwrap().contains("worker stopped"),
+        "{import}"
+    );
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn rules_email_contacts_and_the_email_shows_on_their_timeline(pool: PgPool) {
     let h = harness(pool, Settings::default()).await;
     let (_, owner) = h.app.workspace_with_owner("acme").await;
@@ -292,6 +398,16 @@ async fn rules_email_contacts_and_the_email_shows_on_their_timeline(pool: PgPool
                 "actions": [{ "type": "send_email", "template": "hello", "to": { "field": "contact.email" } }] }),
     )
     .await;
+    // Rules sign with the workspace's signature, never a member's.
+    for (path, signature) in [("workspace", "The Acme team"), ("mine", "Sam")] {
+        h.app
+            .put(&format!("/api/v1/signatures/{path}"))
+            .signed_in(&owner)
+            .json(json!({ "signature": signature }))
+            .send()
+            .await
+            .ok();
+    }
     h.drain().await;
     let before = h.mailer.sent().len();
 
@@ -319,6 +435,13 @@ async fn rules_email_contacts_and_the_email_shows_on_their_timeline(pool: PgPool
     assert_eq!(sent.len(), before + 1);
     assert_eq!(sent.last().unwrap().to, "jo@example.com");
     assert_eq!(sent.last().unwrap().subject, "Hello Jo");
+    let text = &sent.last().unwrap().text;
+    assert!(text.ends_with("\n-- \nThe Acme team"), "{text}");
+    let html = sent.last().unwrap().html.clone().unwrap_or_default();
+    assert!(
+        html.contains("The Acme team") && !html.contains("Sam<"),
+        "{html}"
+    );
 
     for path in [
         format!("/api/v1/contacts/{jo}/timeline"),
@@ -335,6 +458,45 @@ async fn rules_email_contacts_and_the_email_shows_on_their_timeline(pool: PgPool
         assert_eq!(message["message"]["subject"], "Hello Jo");
         assert_eq!(message["message"]["status"], "sent");
     }
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_outlook_export_imports_with_its_corrections(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let csv = "Title,First Name,Middle Name,Last Name,Company,Job Title,Business Phone,Mobile Phone,E-mail Address,E-mail 2 Address,Categories\n\
+               Ms,Priya,,Patel,Harbour Arts,Programmer,020 7946 0000,07700 900111,priya@harbour.example,,Festivals;VIP\n\
+               Mr,Tom,,Lee,,,,,tom-at-nowhere,,\n\
+               Mx,Sam,,Oak,,,,,sam@oak.example,,\n";
+    let view = h
+        .import(
+            &owner,
+            "auto",
+            csv,
+            json!({
+                "edits": [{ "row": 3, "column": 8, "value": "tom@nowhere.example" }],
+                "skip_rows": [4],
+            }),
+        )
+        .await;
+    assert_eq!(view["status"], "done", "{view}");
+    assert_eq!(
+        (
+            view["created"].as_i64(),
+            view["skipped"].as_i64(),
+            view["failed"].as_i64()
+        ),
+        (Some(2), Some(1), Some(0)),
+        "{view}"
+    );
+    let list = h.get(&owner, "/api/v1/contacts?sort=name").await;
+    assert_eq!(names(&list["items"]), ["Priya Patel", "Tom Lee"]);
+    let priya = &list["items"][0];
+    // Outlook's Title (Ms) is not a role; both phones and the categories come across.
+    assert_eq!(priya["role"], "Programmer");
+    assert_eq!(priya["phones"].as_array().map(Vec::len), Some(2));
+    assert_eq!(priya["tags"], json!(["festivals", "vip"]));
+    assert_eq!(list["items"][1]["emails"], json!(["tom@nowhere.example"]));
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -371,4 +533,580 @@ async fn uploads_never_run_are_cleaned_up(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(left, [ids[1]]);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_pitching_workbook_imports_every_sheet_with_its_people(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let kemi = h
+        .post(&owner, "/api/v1/talent", json!({ "name": "DJ Kemi" }))
+        .await
+        .id("/id");
+
+    // Two sheets of venues with their bookers, rows coloured by how things
+    // stand, and a sheet of notes that is not a list.
+    let xlsx = include_bytes!("../../core-engines/tests/fixtures/pitching.xlsx");
+    let upload = h
+        .post(
+            &owner,
+            "/api/v1/imports",
+            json!({ "entity": "auto", "filename": "pitching.xlsx",
+                    "workbook": data_encoding::BASE64.encode(xlsx) }),
+        )
+        .await;
+    assert_eq!(
+        upload.body["import"]["entity"], "organisation",
+        "{}",
+        upload.body
+    );
+    assert_eq!(
+        upload.body["sheets"],
+        json!([
+            { "name": "UK & Ireland", "rows": 4, "included": true },
+            { "name": "Europe", "rows": 1, "included": true },
+            { "name": "Notes", "rows": 1, "included": false },
+        ])
+    );
+    assert_eq!(
+        upload.body["suggested"],
+        json!([
+            "name",
+            "address.city",
+            "address.country",
+            "contact.name",
+            "contact.emails",
+            "contact.phones",
+            "interested_in",
+            "follow_up_on",
+            "notes",
+            "region",
+            null,
+            "status"
+        ])
+    );
+    let id = upload.id("/import/id");
+    let plan = json!({ "columns": upload.body["suggested"] });
+
+    let dry = h
+        .post(
+            &owner,
+            &format!("/api/v1/imports/{id}/dry-run"),
+            plan.clone(),
+        )
+        .await;
+    let d = &dry.body;
+    // The Grand's second booker is added to it rather than a second Grand.
+    assert_eq!(
+        (&d["create"], &d["update"], &d["fail"], &d["new_contacts"]),
+        (&json!(4), &json!(1), &json!(0), &json!(4)),
+        "{d}"
+    );
+    // Rows are found again in their own sheets.
+    let places: Vec<&str> = d["to_check"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["at"].as_str().unwrap())
+        .collect();
+    assert_eq!(places, ["UK & Ireland, row 4", "UK & Ireland, row 5"]);
+    let to_check: Vec<(i64, String)> = d["to_check"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|r| {
+            r["issues"].as_array().unwrap().iter().map(|i| {
+                (
+                    i["row"].as_i64().unwrap(),
+                    i["field"].as_str().unwrap().to_owned(),
+                )
+            })
+        })
+        .collect();
+    assert_eq!(
+        to_check,
+        [
+            (4, "notes".to_owned()),
+            (4, "contact.name".to_owned()),
+            (5, "do_not_contact".to_owned()),
+        ]
+    );
+    let readings: Vec<(String, String, Value, i64)> = d["readings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            (
+                r["field"].as_str().unwrap().to_owned(),
+                r["text"].as_str().unwrap().to_owned(),
+                r["read_as"].clone(),
+                r["rows"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    let read = |field: &str, text: &str| {
+        readings
+            .iter()
+            .find(|r| r.0 == field && r.1 == text)
+            .map(|r| (r.2.clone(), r.3))
+    };
+    assert_eq!(read("region", "UK & Ireland"), Some((Value::Null, 4)));
+    assert_eq!(
+        read("region", "Europe"),
+        Some((json!("Europe (incl. UK)"), 1))
+    );
+    assert_eq!(
+        read("status", "green"),
+        Some((json!("Booked or worked with"), 2))
+    );
+    assert_eq!(
+        read("status", "amber"),
+        Some((json!("Talking or interested"), 1))
+    );
+    assert_eq!(read("status", "red"), Some((Value::Null, 1)));
+    assert_eq!(
+        read("address.country", "England"),
+        Some((json!("United Kingdom"), 1))
+    );
+    assert_eq!(
+        read("address.country", "Frnace"),
+        Some((json!("France (a near miss)"), 1))
+    );
+    assert_eq!(read("address.country", "Ireland"), None);
+    assert_eq!(read("interested_in", "Unknown Act"), Some((Value::Null, 1)));
+
+    h.post(&owner, &format!("/api/v1/imports/{id}/run"), plan)
+        .await;
+    h.drain().await;
+    let view = h.get(&owner, &format!("/api/v1/imports/{id}")).await;
+    assert_eq!(view["status"], "done", "{view}");
+    assert_eq!(
+        (
+            view["created"].as_i64(),
+            view["updated"].as_i64(),
+            view["failed"].as_i64()
+        ),
+        (Some(4), Some(1), Some(0)),
+        "{view}"
+    );
+
+    let orgs = h.get(&owner, "/api/v1/organisations?sort=name").await;
+    assert_eq!(
+        names(&orgs["items"]),
+        ["Le Club", "Owl Bar", "Plain Hall", "The Grand"]
+    );
+    let by_name = |n: &str| {
+        orgs["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["name"] == n)
+            .unwrap()
+            .clone()
+    };
+    let grand = by_name("The Grand");
+    assert_eq!(grand["status"], "booked");
+    assert_eq!(grand["country_code"], "GB");
+    // Europe, from its country: not pinned to the sheet's region.
+    assert_eq!(
+        (&grand["region"], &grand["region_picked"]),
+        (&json!("europe"), &json!(false)),
+        "{grand}"
+    );
+    assert_eq!(grand["follow_up_on"], "2027-03-01");
+    let grand = h
+        .get(
+            &owner,
+            &format!("/api/v1/organisations/{}", grand["id"].as_str().unwrap()),
+        )
+        .await;
+    assert_eq!(grand["interested_in"][0]["id"], json!(kemi));
+    assert_eq!(by_name("Owl Bar")["status"], "talking");
+    assert_eq!(by_name("Le Club")["country_code"], "FR");
+    assert_eq!(by_name("Le Club")["status"], Value::Null);
+    assert_eq!(by_name("Plain Hall")["do_not_contact"], true);
+
+    let people: Vec<(String, String)> = sqlx::query_as(
+        "SELECT c.name, o.name FROM contacts c JOIN organisations o ON o.id = c.organisation_id ORDER BY c.name COLLATE \"C\"",
+    )
+    .fetch_all(&h.app.owner)
+    .await
+    .unwrap();
+    let people: Vec<(&str, &str)> = people
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    assert_eq!(
+        people,
+        [
+            ("Jo Booker", "The Grand"),
+            ("Marie Roux", "Le Club"),
+            ("Sam Promo", "The Grand"),
+            ("owl@bar.test", "Owl Bar"),
+        ]
+    );
+
+    // The same sheet again finds everyone: nothing new, nobody twice.
+    let again = h
+        .post(
+            &owner,
+            "/api/v1/imports",
+            json!({ "entity": "organisation", "workbook": data_encoding::BASE64.encode(xlsx) }),
+        )
+        .await;
+    let id = again.id("/import/id");
+    let dry = h
+        .post(
+            &owner,
+            &format!("/api/v1/imports/{id}/dry-run"),
+            json!({ "columns": again.body["suggested"] }),
+        )
+        .await;
+    assert_eq!(
+        (
+            &dry.body["create"],
+            &dry.body["update"],
+            &dry.body["new_contacts"]
+        ),
+        (&json!(0), &json!(0), &json!(0)),
+        "{}",
+        dry.body
+    );
+
+    // Bookers by name at the place they work count as the same person in a
+    // contact import too.
+    let view = h
+        .import(
+            &owner,
+            "contact",
+            "Name,Company,Role\nSam Promo,The Grand,Promoter\n",
+            json!({ "on_match": "update" }),
+        )
+        .await;
+    assert_eq!(view["updated"], 1, "{view}");
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM contacts WHERE name = 'Sam Promo'")
+        .fetch_one(&h.app.owner)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+
+    // A contact field a list of venues cannot fill leaves the person out,
+    // never the venue.
+    let field = h
+        .post(
+            &owner,
+            "/api/v1/custom-fields",
+            json!({ "entity": "contact", "key": "source", "label": "Source", "field_type": "text", "required": true }),
+        )
+        .await;
+    assert!(field.status.is_success(), "{}", field.body);
+    let csv = "Venue,Territory,Booker,Email\nNew Hall,Europe,Ann New,ann@newhall.test\n";
+    let upload = h
+        .post(
+            &owner,
+            "/api/v1/imports",
+            json!({ "entity": "organisation", "csv": csv }),
+        )
+        .await;
+    let id = upload.id("/import/id");
+    let dry = h
+        .post(
+            &owner,
+            &format!("/api/v1/imports/{id}/dry-run"),
+            json!({ "columns": upload.body["suggested"] }),
+        )
+        .await;
+    assert_eq!(
+        (
+            &dry.body["create"],
+            &dry.body["fail"],
+            &dry.body["new_contacts"]
+        ),
+        (&json!(1), &json!(0), &json!(0)),
+        "{}",
+        dry.body
+    );
+    assert!(
+        dry.body["to_check"][0]["issues"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("source is required"),
+        "{}",
+        dry.body
+    );
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_import_can_be_undone_keeping_what_changed_since(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    h.post(
+        &owner,
+        "/api/v1/contacts",
+        json!({ "name": "Already Here", "emails": ["here@example.com"] }),
+    )
+    .await;
+    let csv = "Name,Email,Company\n\
+               Ann Lee,ann@example.com,Blue Room\n\
+               Ben Ode,ben@example.com,Red Room\n\
+               Cy Moss,cy@example.com,Red Room\n\
+               Already Here,here@example.com,\n";
+    let path = h
+        .queue_import(&owner, "contact", csv, json!({ "on_match": "update" }))
+        .await;
+    let id = path.rsplit('/').next().unwrap().to_owned();
+    // Not finished yet: nothing to undo.
+    let early = h
+        .app
+        .post(&format!("{path}/undo"))
+        .signed_in(&owner)
+        .send()
+        .await;
+    assert_eq!(
+        early.status,
+        axum::http::StatusCode::CONFLICT,
+        "{}",
+        early.body
+    );
+    h.drain().await;
+    let view = h.get(&owner, &path).await;
+    assert_eq!(
+        (view["created"].as_i64(), view["updated"].as_i64()),
+        (Some(3), Some(1)),
+        "{view}"
+    );
+
+    // Cy is edited after the import, so Cy and the Red Room stay.
+    let list = h.get(&owner, "/api/v1/contacts?sort=name").await;
+    let cy = list["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "Cy Moss")
+        .unwrap()
+        .clone();
+    let res = h
+        .app
+        .patch(&format!("/api/v1/contacts/{}", cy["id"].as_str().unwrap()))
+        .signed_in(&owner)
+        .header("If-Match", &cy["version"].to_string())
+        .json(json!({ "role": "Booker" }))
+        .send()
+        .await;
+    assert!(res.status.is_success(), "{}", res.body);
+
+    let undo = h.post(&owner, &format!("{path}/undo"), json!({})).await;
+    assert_eq!(undo.body["status"], "undoing");
+    h.drain().await;
+    let view = h.get(&owner, &path).await;
+    assert_eq!(view["status"], "undone", "{view}");
+    // Ann, Ben and the Blue Room go; Cy and the Red Room are kept.
+    assert_eq!(
+        (view["undone"].as_i64(), view["kept"].as_i64()),
+        (Some(3), Some(2)),
+        "{view}"
+    );
+    let list = h.get(&owner, "/api/v1/contacts?sort=name").await;
+    assert_eq!(names(&list["items"]), ["Already Here", "Cy Moss"]);
+    let orgs = h.get(&owner, "/api/v1/organisations?sort=name").await;
+    assert_eq!(names(&orgs["items"]), ["Red Room"]);
+    let left: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM import_records WHERE import_id = $1::uuid")
+            .bind(&id)
+            .fetch_one(&h.app.owner)
+            .await
+            .unwrap();
+    assert_eq!(left, 0);
+
+    // Once is enough.
+    let again = h
+        .app
+        .post(&format!("{path}/undo"))
+        .signed_in(&owner)
+        .send()
+        .await;
+    assert_eq!(again.status, axum::http::StatusCode::CONFLICT);
+}
+
+/// The id of the record named `name` in a list.
+fn id_named(list: &Value, name: &str) -> String {
+    list["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"] == name)
+        .unwrap_or_else(|| panic!("no {name} in {list}"))["id"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn undoing_keeps_venues_in_use_and_their_people(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let csv = "Venue,Booker,Email\n\
+               A Hall,Ann A,ann@a.test\n\
+               B Hall,Ben B,ben@b.test\n\
+               C Hall,Cy C,cy@c.test\n\
+               D Hall,Di D,di@d.test\n";
+    let path = h.queue_import(&owner, "organisation", csv, json!({})).await;
+    h.drain().await;
+    let view = h.get(&owner, &path).await;
+    assert_eq!(view["to_undo"], 8, "{view}");
+    let orgs = h.get(&owner, "/api/v1/organisations?sort=name").await;
+
+    // A Hall is an enquiry's venue.
+    let enquiry = h
+        .post(
+            &owner,
+            "/api/v1/enquiries",
+            json!({ "title": "Gig", "venue_id": id_named(&orgs, "A Hall") }),
+        )
+        .await;
+    assert!(enquiry.status.is_success(), "{}", enquiry.body);
+    // B Hall is changed since; its booker is not.
+    let b = id_named(&orgs, "B Hall");
+    let current = h.get(&owner, &format!("/api/v1/organisations/{b}")).await;
+    let res = h
+        .app
+        .patch(&format!("/api/v1/organisations/{b}"))
+        .signed_in(&owner)
+        .header("If-Match", &current["version"].to_string())
+        .json(json!({ "notes": "Called them" }))
+        .send()
+        .await;
+    assert!(res.status.is_success(), "{}", res.body);
+    // C Hall has a task.
+    let task = h
+        .post(
+            &owner,
+            "/api/v1/tasks",
+            json!({ "title": "Chase", "related_entity": "organisation",
+                    "related_id": id_named(&orgs, "C Hall") }),
+        )
+        .await;
+    assert!(task.status.is_success(), "{}", task.body);
+
+    let undo = h.post(&owner, &format!("{path}/undo"), json!({})).await;
+    assert_eq!(undo.body["status"], "undoing", "{}", undo.body);
+    h.drain().await;
+    let view = h.get(&owner, &path).await;
+    assert_eq!(view["status"], "undone", "{view}");
+    // Only D Hall and Di go; the others' bookers stay with them.
+    assert_eq!(
+        (view["undone"].as_i64(), view["kept"].as_i64()),
+        (Some(2), Some(6)),
+        "{view}"
+    );
+    let orgs = h.get(&owner, "/api/v1/organisations?sort=name").await;
+    assert_eq!(names(&orgs["items"]), ["A Hall", "B Hall", "C Hall"]);
+    let people = h.get(&owner, "/api/v1/contacts?sort=name").await;
+    assert_eq!(names(&people["items"]), ["Ann A", "Ben B", "Cy C"]);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn an_undo_that_gives_up_can_be_tried_again(pool: PgPool) {
+    let h = harness(pool, Settings::default()).await;
+    let (_, owner) = h.app.workspace_with_owner("acme").await;
+    let rule = h
+        .post(
+            &owner,
+            "/api/v1/rules",
+            json!({ "name": "Gone", "trigger": { "kind": "event", "topic": "talent.deleted" },
+                    "actions": [{ "type": "create_task", "title": "Talent removed" }] }),
+        )
+        .await
+        .id("/id");
+    let path = h
+        .queue_import(&owner, "talent", "Name\nAct One\nAct Two\n", json!({}))
+        .await;
+    h.drain().await;
+    let id = path.rsplit('/').next().unwrap().to_owned();
+    // An import that stopped partway, having made these two.
+    sqlx::query("UPDATE imports SET status = 'failed', error = 'it stopped' WHERE id = $1::uuid")
+        .bind(&id)
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+
+    // The undo's last attempt times out: the import is as it was.
+    let undo = h.post(&owner, &format!("{path}/undo"), json!({})).await;
+    assert_eq!(undo.body["status"], "undoing", "{}", undo.body);
+    sqlx::query(
+        "UPDATE jobs SET attempts = max_attempts - 1 \
+         WHERE kind = 'crm.import_undo' AND status = 'queued'",
+    )
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    let mut impatient = h.worker.clone();
+    impatient.settings.job_timeout = Duration::ZERO;
+    assert_eq!(impatient.run_jobs_once().await.unwrap(), 1);
+    let view = h.get(&owner, &path).await;
+    assert_eq!(
+        (&view["status"], &view["error"]),
+        (&json!("failed"), &json!("it stopped")),
+        "{view}"
+    );
+    assert!(
+        view["undo_error"].as_str().unwrap().contains("timed out"),
+        "{view}"
+    );
+    assert_eq!(view["to_undo"], 2, "{view}");
+
+    // Tried again, it runs.
+    let undo = h.post(&owner, &format!("{path}/undo"), json!({})).await;
+    assert_eq!(undo.body["status"], "undoing", "{}", undo.body);
+    h.drain().await;
+    let view = h.get(&owner, &path).await;
+    assert_eq!(
+        (
+            &view["status"],
+            &view["undone"],
+            &view["error"],
+            &view["undo_error"]
+        ),
+        (
+            &json!("undone"),
+            &json!(2),
+            &json!("it stopped"),
+            &Value::Null
+        ),
+        "{view}"
+    );
+    assert_eq!(h.get(&owner, "/api/v1/talent").await["total"], 0);
+    // Rules leave the removals alone, as they did the import.
+    let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM rule_runs WHERE rule_id = $1")
+        .bind(rule)
+        .fetch_one(&h.app.owner)
+        .await
+        .unwrap();
+    assert_eq!(runs, 0);
+
+    // An import that noted nothing it made, like those from before undoing
+    // existed, has nothing to undo.
+    let path = h
+        .queue_import(&owner, "talent", "Name\nAct Three\n", json!({}))
+        .await;
+    h.drain().await;
+    sqlx::query("DELETE FROM import_records")
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    let view = h.get(&owner, &path).await;
+    assert_eq!(view["to_undo"], 0, "{view}");
+    let undo = h
+        .app
+        .post(&format!("{path}/undo"))
+        .signed_in(&owner)
+        .send()
+        .await;
+    assert_eq!(
+        undo.status,
+        axum::http::StatusCode::CONFLICT,
+        "{}",
+        undo.body
+    );
+    assert_eq!(h.get(&owner, "/api/v1/talent").await["total"], 1);
 }

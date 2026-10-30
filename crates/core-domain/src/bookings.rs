@@ -2,40 +2,6 @@
 //! are allowed, the kinds of availability, a quote's status, and quote line
 //! totals.
 
-use serde::{Deserialize, Serialize};
-
-macro_rules! db_enum {
-    ($(#[$meta:meta])* $name:ident, $pg:literal, [$($variant:ident => $s:literal),+ $(,)?]) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type, utoipa::ToSchema)]
-        #[sqlx(type_name = $pg, rename_all = "snake_case")]
-        #[serde(rename_all = "snake_case")]
-        pub enum $name {
-            $($variant,)+
-        }
-
-        impl $name {
-            pub const ALL: &'static [$name] = &[$($name::$variant,)+];
-
-            pub fn as_str(self) -> &'static str {
-                match self {
-                    $($name::$variant => $s,)+
-                }
-            }
-
-            pub fn parse(s: &str) -> Option<Self> {
-                Self::ALL.iter().copied().find(|v| v.as_str() == s.trim())
-            }
-        }
-
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-    };
-}
-
 db_enum!(
     /// Where a booking stands. A hold pencils the date in; pending means the
     /// buyer has accepted and the paperwork (contract, deposit) is under way;

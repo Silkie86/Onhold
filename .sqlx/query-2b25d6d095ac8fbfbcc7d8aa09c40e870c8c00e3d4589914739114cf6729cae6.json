@@ -1,0 +1,283 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT p.id, p.kind, p.amount_minor, p.currency, p.method, p.paid_on, p.reference,\n                  p.organisation_id, o.name AS \"organisation_name?\", p.talent_id, t.name AS \"talent_name?\",\n                  p.booking_id, p.refund_of, p.settlement_id, p.allocated_minor, p.notes, p.voided_at,\n                  p.void_reason, p.version, p.created_at, p.created_by AS \"created_by: UserId\",\n                  count(*) OVER () AS \"total!\"\n           FROM payments p\n           LEFT JOIN organisations o ON o.id = p.organisation_id\n           LEFT JOIN talent t ON t.id = p.talent_id\n           WHERE p.workspace_id = app_workspace_id()\n             AND ($1::text IS NULL OR p.kind = $1)\n             AND ($2::uuid IS NULL OR p.booking_id = $2)\n             AND ($3::uuid IS NULL OR p.organisation_id = $3)\n             AND ($4::uuid IS NULL OR p.talent_id = $4)\n             AND ($5::uuid IS NULL OR EXISTS (SELECT 1 FROM payment_allocations a\n                  WHERE a.payment_id = p.id AND a.invoice_id = $5 AND a.removed_at IS NULL))\n             AND ($6::date IS NULL OR p.paid_on >= $6)\n             AND ($7::date IS NULL OR p.paid_on <= $7)\n           ORDER BY p.paid_on DESC, p.created_at DESC\n           OFFSET $8 LIMIT $9",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "amount_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "amount_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "currency",
+        "type_info": "Bpchar",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "method",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "method"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "paid_on",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "paid_on"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "reference",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "reference"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "organisation_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "organisation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "organisation_name?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "organisations",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "talent_id"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "talent_name?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "talent",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "booking_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "booking_id"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "refund_of",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "refund_of"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "settlement_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "settlement_id"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "allocated_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "allocated_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "notes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "voided_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "voided_at"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "void_reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "void_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "total!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Date",
+        "Date",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      null
+    ]
+  },
+  "hash": "2b25d6d095ac8fbfbcc7d8aa09c40e870c8c00e3d4589914739114cf6729cae6"
+}

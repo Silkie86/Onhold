@@ -1,0 +1,113 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT a.id, a.payment_id, a.invoice_id, i.reference AS \"invoice_reference?\", a.amount_minor,\n                  p.paid_on, p.method, a.created_at\n           FROM payment_allocations a\n           JOIN payments p ON p.id = a.payment_id\n           JOIN invoices i ON i.id = a.invoice_id\n           WHERE a.workspace_id = app_workspace_id() AND a.removed_at IS NULL\n             AND ($1::uuid IS NULL OR a.payment_id = $1) AND ($2::uuid IS NULL OR a.invoice_id = $2)\n           ORDER BY a.created_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payment_allocations",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "payment_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payment_allocations",
+            "name": "payment_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "invoice_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payment_allocations",
+            "name": "invoice_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "invoice_reference?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "reference"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "amount_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "payment_allocations",
+            "name": "amount_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "paid_on",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "paid_on"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "method",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "method"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "payment_allocations",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c45b52d648b49fa751e2b03385d6e9312f8c2d5a28a4afe500658d9c82e67366"
+}

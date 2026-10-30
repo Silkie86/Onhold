@@ -1,0 +1,323 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT p.id, p.organisation_id, p.contact_id, c.name AS \"contact_name?\", p.kind, p.type_key,\n                  p.channel, p.talent_id, p.project_id, coalesce(t.name, pr.name) AS item_name, p.note,\n                  p.happened_at, p.source, p.template_key, p.message_id, m.thread_id AS \"thread_id?\",\n                  m.status AS \"message_status?\", p.answered_at, p.answer_message_id,\n                  am.thread_id AS \"answer_thread_id?\", at.channel AS \"answer_channel?\", p.version, p.created_at, p.updated_at,\n                  p.created_by AS \"created_by: UserId\", p.updated_by AS \"updated_by: UserId\"\n           FROM pitch_log p\n           LEFT JOIN contacts c ON c.workspace_id = p.workspace_id AND c.id = p.contact_id AND c.deleted_at IS NULL\n           LEFT JOIN talent t ON t.workspace_id = p.workspace_id AND t.id = p.talent_id AND t.deleted_at IS NULL\n           LEFT JOIN projects pr ON pr.workspace_id = p.workspace_id AND pr.id = p.project_id\n                                AND pr.deleted_at IS NULL\n           LEFT JOIN thread_messages m ON m.workspace_id = p.workspace_id AND m.id = p.message_id\n           LEFT JOIN thread_messages am ON am.workspace_id = p.workspace_id AND am.id = p.answer_message_id\n           LEFT JOIN threads at ON at.workspace_id = am.workspace_id AND at.id = am.thread_id\n           WHERE p.workspace_id = app_workspace_id() AND p.id = $1 AND p.deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "organisation_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "organisation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "contact_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "contact_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "contact_name?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "contacts",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "type_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "type_key"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "channel",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "channel"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "talent_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "talent_id"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "project_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "item_name",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 10,
+        "name": "note",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "note"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "happened_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "happened_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "source",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "template_key",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "template_key"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "message_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "message_id"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "thread_id?",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "thread_id"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "message_status?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "answered_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "answered_at"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "answer_message_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "answer_message_id"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "answer_thread_id?",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "thread_id"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "answer_channel?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "threads",
+            "name": "channel"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "updated_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "pitch_log",
+            "name": "updated_by"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      null,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "959b896650e4019e3612f60d0dc7c12d889955635af06fad2298928ecf0f4754"
+}

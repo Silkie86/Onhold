@@ -59,7 +59,12 @@ import {
 import { Loading, OfflineNote, PageError, failureIssues, useSchema, useWorkspaceCurrency } from "./crm.tsx";
 import { RelationPicker, TalentPicker } from "./pickers.tsx";
 import { QuotesPanel } from "./quotes.tsx";
+import { BookingFinancePanel } from "./finance.tsx";
+import { useSetup } from "../setup.ts";
+import { BookingDocumentsPanel } from "./documents.tsx";
 import { RelatedTasks } from "./tasks.tsx";
+import { RelatedConversations } from "./inbox.tsx";
+import { BookingMoneyPanel, BookingTravelPanel } from "./travel.tsx";
 
 type Money = Schemas["Money"];
 
@@ -254,21 +259,32 @@ export function ClashList({ report }: { report: ClashReport | undefined }) {
     <Alert tone={report.blocking ? "error" : "info"}>
       <p className="flex items-center gap-2 font-medium">
         <AlertTriangle className="size-4 shrink-0" />
-        {report.blocking ? "This would double-book someone." : "Something else is pencilled in at this time."}
+        {report.blocking
+          ? "This would double-book someone."
+          : report.clashes.every((c) => c.kind === "elsewhere")
+            ? "Someone is busy elsewhere at this time. Check with them before confirming."
+            : "Something else is pencilled in at this time."}
       </p>
       <ul className="mt-1 list-disc pl-5">
         {report.clashes.map((c, i) => (
           <li key={`${c.booking_id ?? c.availability_id}-${c.talent_id}-${i}`}>
             {c.talent_name}:{" "}
-            {c.booking_id ? (
-              <Link to="/bookings/$id" params={{ id: c.booking_id }} className="underline">
-                {c.title ?? "a booking"}
-              </Link>
+            {c.kind === "elsewhere" ? (
+              <>busy elsewhere, booked or pencilled in with another agency or workspace of theirs; check with them</>
             ) : (
-              (c.title ?? "marked")
+              <>
+                {c.booking_id ? (
+                  <Link to="/bookings/$id" params={{ id: c.booking_id }} className="underline">
+                    {c.title ?? "a booking"}
+                  </Link>
+                ) : (
+                  (c.title ?? "marked")
+                )}{" "}
+                ({c.kind === "booking" ? STATUS_LABEL[c.status as BookingStatus] ?? c.status : c.status}
+                {c.blocking ? "" : ", a warning only"})
+              </>
             )}{" "}
-            ({c.kind === "booking" ? STATUS_LABEL[c.status as BookingStatus] ?? c.status : c.status}
-            {c.blocking ? "" : ", a warning only"}) — {formatWhen(c.starts_at, c.ends_at, false)}
+            — {formatWhen(c.starts_at, c.ends_at, false)}
           </li>
         ))}
       </ul>
@@ -538,6 +554,9 @@ function StatusActions({ booking: b, onChanged }: { booking: Booking; onChanged:
 
 export function BookingPage() {
   const { id } = useParams({ from: "/app/bookings/$id" });
+  // Quotes and invoices show where the workspace uses them.
+  const setup = useSetup();
+  const finance = setup.has("finance");
   const qc = useQueryClient();
   const navigate = useNavigate();
   const sync = useOffline();
@@ -585,6 +604,15 @@ export function BookingPage() {
     changed(result.record as unknown as Booking | null, result.queued);
     return result;
   };
+
+  // Travel and the money check: beside the details on a wide screen, above
+  // them on a phone, where they are what people open a booking for.
+  const trip = (
+    <>
+      {setup.shows("section:booking.travel") && <BookingTravelPanel booking={b} />}
+      {setup.shows("section:booking.money") && <BookingMoneyPanel booking={b} />}
+    </>
+  );
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 p-4 sm:p-6">
@@ -659,6 +687,7 @@ export function BookingPage() {
       {error && <Alert>{error}</Alert>}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section className="flex flex-col gap-6" aria-label="Details">
+          <div className="flex flex-col gap-6 lg:hidden">{trip}</div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="booking-talent-edit">Talent</Label>
             <TalentPicker
@@ -697,10 +726,18 @@ export function BookingPage() {
               }
             }}
           />
-          <QuotesPanel booking={b} onBookingChanged={() => void booking.refetch()} />
+          {finance && (
+            <>
+              {setup.shows("section:booking.quotes") && <QuotesPanel booking={b} onBookingChanged={() => void booking.refetch()} />}
+              {setup.shows("section:booking.finance") && <BookingFinancePanel booking={b} />}
+            </>
+          )}
+          {setup.has("documents") && setup.shows("section:booking.documents") && <BookingDocumentsPanel booking={b} />}
         </section>
-        <section aria-label="Tasks and activity" className="flex flex-col gap-6">
+        <section aria-label="Travel, tasks and activity" className="flex flex-col gap-6">
+          <div className="hidden flex-col gap-6 lg:flex">{trip}</div>
           <RelatedTasks entity="booking" id={id} />
+          <RelatedConversations filter={{ booking_id: id }} />
           <RecordTimeline path="bookings" id={id} schema={schema.data} offline={offline} />
         </section>
       </div>

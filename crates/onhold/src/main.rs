@@ -88,7 +88,7 @@ enum AdminCommand {
     },
     /// Workspaces.
     #[command(subcommand)]
-    Workspace(WorkspaceCommand),
+    Workspace(Box<WorkspaceCommand>),
     /// Platform operator rights. The user must have signed in at least once.
     #[command(subcommand)]
     Superadmin(SuperadminCommand),
@@ -119,6 +119,10 @@ enum WorkspaceCommand {
         plan: Option<String>,
         #[arg(long)]
         plugin_slug: Option<String>,
+        /// Presets to combine, e.g. `agency,manager` or `solo,promoter`.
+        /// Without any, every module is on until the owner's setup form trims it.
+        #[arg(long, value_delimiter = ',')]
+        preset: Vec<String>,
     },
 }
 
@@ -184,6 +188,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::Serve { bind, worker } => {
             let config = cli.api.build(true)?;
+            let mailer = worker.mailer(&config.public_base_url)?;
             let webhooks =
                 core_integrations::http::WebhookClient::new(config.webhooks_allow_private)
                     .map_err(|e| anyhow::anyhow!("webhook client: {e}"))?;
@@ -191,7 +196,7 @@ async fn main() -> anyhow::Result<()> {
             let worker = core_worker::Worker {
                 app: state.clone(),
                 queue: core_db::connect_worker(&pool_config)?,
-                mailer: worker.mailer()?,
+                mailer,
                 webhooks,
                 settings: worker.settings()?,
             };
@@ -204,6 +209,7 @@ async fn main() -> anyhow::Result<()> {
             worker,
         } => {
             let config = cli.api.build(true)?;
+            let mailer = worker.mailer(&config.public_base_url)?;
             let webhooks =
                 core_integrations::http::WebhookClient::new(config.webhooks_allow_private)
                     .map_err(|e| anyhow::anyhow!("webhook client: {e}"))?;
@@ -211,7 +217,7 @@ async fn main() -> anyhow::Result<()> {
             let worker = core_worker::Worker {
                 app: core_api::AppState::new(db.clone(), config)?,
                 queue: core_db::connect_worker(&pool_config)?,
-                mailer: worker.mailer()?,
+                mailer,
                 webhooks,
                 settings: worker.settings()?,
             };
@@ -221,17 +227,19 @@ async fn main() -> anyhow::Result<()> {
             probes?;
         }
         Command::Migrate => core_db::migrate(&core_db::connect_owner(&pool_config)?).await?,
-        Command::Admin(AdminCommand::Workspace(WorkspaceCommand::Create {
-            slug,
-            name,
-            country,
-            currency,
-            timezone,
-            owner_email,
-            locale,
-            plan,
-            plugin_slug,
-        })) => {
+        Command::Admin(AdminCommand::Workspace(cmd)) => {
+            let WorkspaceCommand::Create {
+                slug,
+                name,
+                country,
+                currency,
+                timezone,
+                owner_email,
+                locale,
+                plan,
+                plugin_slug,
+                preset,
+            } = *cmd;
             let state = core_api::AppState::new(
                 core_db::connect_app(&pool_config)?,
                 cli.api.build(false)?,
@@ -251,6 +259,7 @@ async fn main() -> anyhow::Result<()> {
                     perspective: None,
                     plugin_slug,
                     owner_email,
+                    presets: preset,
                 },
             )
             .await

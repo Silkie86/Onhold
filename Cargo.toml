@@ -36,6 +36,7 @@ axum = "0.8"
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = { version = "1", default-features = false, features = ["parse", "serde"] }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "uuid", "chrono", "json", "ipnet"] }
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "time"] }
@@ -51,7 +52,10 @@ argon2 = "0.6"
 axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
 chrono-tz = "0.10"
+rrule = "0.14"
 csv = "1"
+calamine = { version = "0.37", default-features = false, features = ["dates"] }
+quick-xml = { version = "0.42", default-features = false }
 data-encoding = "2"
 dotenvy = "0.15"
 getrandom = "0.4"
@@ -73,7 +77,15 @@ lettre = { version = "0.11", default-features = false, features = ["builder", "s
 minijinja = { version = "3", default-features = false, features = ["builtins", "serde", "json", "fuel", "debug", "macros", "multi_template", "adjacent_loop_items", "loop_controls", "std_collections", "urlencode", "preserve_order"] }
 proptest = "1"
 regex = "1"
+ring = "0.17"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+ammonia = "4"
+async-imap = { version = "0.12", default-features = false, features = ["runtime-tokio"] }
+mail-parser = { version = "1", features = ["full_encoding"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+webpki-roots = "1"
 
 # Checks the compiler runs on every build. CI turns every warning into an
 # error, so nothing here reaches main unfixed.
@@ -109,7 +121,6 @@ implicit_clone = "warn"
 cloned_instead_of_copied = "warn"
 redundant_clone = "warn"
 needless_collect = "warn"
-format_collect = "warn"
 unnecessary_box_returns = "warn"
 # Clearer code.
 manual_let_else = "warn"

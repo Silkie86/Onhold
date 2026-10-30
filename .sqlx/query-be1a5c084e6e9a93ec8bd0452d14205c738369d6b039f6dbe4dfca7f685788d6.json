@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id AS \"id!\", at AS \"at!\" FROM (\n               SELECT e.id,\n                      CASE $1\n                          WHEN 'created_at' THEN e.created_at\n                          WHEN 'stage_entered_at' THEN e.stage_entered_at\n                          ELSE e.starts_on::timestamp AT TIME ZONE $2\n                      END + make_interval(mins => $3::int) AS at\n               FROM enquiries e\n               LEFT JOIN pipeline_stages s ON s.id = e.stage_id\n               WHERE e.workspace_id = app_workspace_id() AND e.deleted_at IS NULL\n                 AND coalesce(s.outcome, 'open') = 'open'\n           ) t\n           WHERE at > $4 AND at <= $5\n           ORDER BY at, id\n           LIMIT $6",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "enquiries",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "be1a5c084e6e9a93ec8bd0452d14205c738369d6b039f6dbe4dfca7f685788d6"
+}

@@ -27,12 +27,12 @@ test("import, find, add a field, see it in the form and the table", async ({ pag
 
   // 1. Import a spreadsheet.
   await go("Imports");
-  await page.getByRole("button", { name: "Import a spreadsheet" }).first().click();
-  await page.getByLabel("What does the spreadsheet hold?").selectOption("contact");
-  await page.getByLabel("CSV file").setInputFiles({ name: "people.csv", mimeType: "text/csv", buffer: Buffer.from(CSV) });
+  await page.getByRole("button", { name: "Import", exact: true }).first().click();
+  await page.getByLabel("What does the file hold?").selectOption("contact");
+  await page.getByLabel("File", { exact: true }).setInputFiles({ name: "people.csv", mimeType: "text/csv", buffer: Buffer.from(CSV) });
   await page.getByRole("button", { name: "Next" }).click();
   await expect(page.getByLabel("Field for Company")).toHaveValue("organisation");
-  await page.getByRole("button", { name: "Check" }).click();
+  await page.getByRole("button", { name: "Check", exact: true }).click();
   await expect(page.getByText("New records")).toBeVisible();
   await page.getByRole("button", { name: "Import 3 records" }).click();
   await expect(page.getByText("Created", { exact: true })).toBeVisible({ timeout: 30_000 });

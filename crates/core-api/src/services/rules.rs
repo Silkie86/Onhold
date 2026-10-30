@@ -25,22 +25,42 @@ pub(crate) struct Catalog {
     thing_dates: Vec<String>,
     booking_dates: Vec<String>,
     email_templates: HashSet<String>,
+    /// `(kind, key)` of the SMS and WhatsApp templates.
+    text_templates: HashSet<(String, String)>,
 }
 
 /// A booking's own dates a date-offset rule can count from.
 pub const BOOKING_DATES: &[&str] = &["starts_at", "ends_at", "hold_expires_at"];
+/// An invoice's dates a rule can count from (only open invoices are found).
+pub const INVOICE_DATES: &[&str] = &["due_date", "issue_date"];
+/// A document's date a rule can count from.
+pub const DOCUMENT_DATES: &[&str] = &["expires_on"];
+/// An enquiry's dates a rule can count from (only open enquiries are found).
+pub const ENQUIRY_DATES: &[&str] = &["created_at", "stage_entered_at", "starts_on"];
+/// A quote's dates a rule can count from (only quotes sent and not yet
+/// decided are found).
+pub const QUOTE_DATES: &[&str] = &["sent_at", "valid_until"];
 
 impl engine::Catalog for Catalog {
     fn date_fields(&self, entity: &str) -> Option<Vec<String>> {
         match entity {
             "thing" => Some(self.thing_dates.clone()),
             "booking" => Some(self.booking_dates.clone()),
+            "invoice" => Some(INVOICE_DATES.iter().map(|d| (*d).to_owned()).collect()),
+            "document" => Some(DOCUMENT_DATES.iter().map(|d| (*d).to_owned()).collect()),
+            "enquiry" => Some(ENQUIRY_DATES.iter().map(|d| (*d).to_owned()).collect()),
+            "quote" => Some(QUOTE_DATES.iter().map(|d| (*d).to_owned()).collect()),
             _ => None,
         }
     }
 
     fn template_exists(&self, key: &str) -> bool {
         self.email_templates.contains(key)
+    }
+
+    fn text_template_exists(&self, kind: &str, key: &str) -> bool {
+        self.text_templates
+            .contains(&(kind.to_owned(), key.to_owned()))
     }
 
     fn is_valid_timezone(&self, tz: &str) -> bool {
@@ -73,10 +93,17 @@ pub(crate) async fn catalog(tx: &mut Tx) -> ApiResult<Catalog> {
         .into_iter()
         .map(|t| t.key)
         .collect();
+    let mut text_templates = HashSet::new();
+    for kind in ["sms", "whatsapp"] {
+        for t in core_db::templates::list(tx, Some(kind)).await? {
+            text_templates.insert((kind.to_owned(), t.key));
+        }
+    }
     Ok(Catalog {
         thing_dates,
         booking_dates,
         email_templates,
+        text_templates,
     })
 }
 
@@ -202,7 +229,60 @@ async fn check_references(tx: &mut Tx, def: &RuleDef) -> ApiResult<()> {
                     ));
                 }
             }
-            Action::SendEmail { .. } | Action::CreateTask { .. } => {}
+            Action::CreateInvoice { .. } | Action::SetBookingStatus { .. }
+                if entity != super::bookings::ENTITY =>
+            {
+                return Err(ApiError::invalid(
+                    format!("actions[{i}]"),
+                    "this action works on bookings; trigger the rule from a booking",
+                ));
+            }
+            Action::SetBookingStatus { status } => {
+                if core_domain::BookingStatus::parse(status).is_none() {
+                    return Err(ApiError::invalid(
+                        format!("actions[{i}].status"),
+                        format!("`{status}` is not a booking status"),
+                    ));
+                }
+            }
+            Action::GenerateDocument { template } => {
+                if !super::documents::RELATED.contains(&entity.as_str())
+                    || entity == super::invoices::ENTITY
+                {
+                    return Err(ApiError::invalid(
+                        format!("actions[{i}]"),
+                        "documents are made from a booking, enquiry, talent, organisation or contact",
+                    ));
+                }
+                let saved = core_db::templates::list(
+                    tx,
+                    Some(core_engines::templates::Kind::Document.as_str()),
+                )
+                .await?
+                .into_iter()
+                .any(|t| t.key == *template);
+                if !saved && core_engines::documents::built_in(template).is_none() {
+                    return Err(ApiError::invalid(
+                        format!("actions[{i}].template"),
+                        format!("there is no document template `{template}`"),
+                    ));
+                }
+            }
+            Action::SendSms { to: None, .. } | Action::SendWhatsapp { to: None, .. }
+                if engine::default_contact_path(&entity).is_none() =>
+            {
+                return Err(ApiError::invalid(
+                    format!("actions[{i}].to"),
+                    format!(
+                        "{entity} records are with no one contact; say where the contact's id is"
+                    ),
+                ));
+            }
+            Action::SendEmail { .. }
+            | Action::CreateTask { .. }
+            | Action::CreateInvoice { .. }
+            | Action::SendSms { .. }
+            | Action::SendWhatsapp { .. } => {}
         }
     }
     Ok(())
@@ -327,13 +407,20 @@ pub async fn get(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<Rule> {
 pub async fn create(state: &AppState, ctx: &Ctx, input: Input) -> ApiResult<Rule> {
     ctx.authorize(Permission::ConfigWrite)?;
     let mut tx = begin(state, ctx).await?;
+    let rule = create_in(&mut tx, ctx, &input).await?;
+    tx.commit().await?;
+    Ok(rule)
+}
+
+/// Saves a new rule inside the caller's transaction (permission already checked).
+pub(crate) async fn create_in(tx: &mut Tx, ctx: &Ctx, input: &Input) -> ApiResult<Rule> {
     let id = core_domain::ids::new_id();
-    save(&mut tx, ctx, id, &input, None, None).await?;
-    let rule = core_db::rules::get(&mut tx, id)
+    save(tx, ctx, id, input, None, None).await?;
+    let rule = core_db::rules::get(tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     record(
-        &mut tx,
+        tx,
         ctx,
         Change {
             topic: "rule.created",
@@ -345,7 +432,6 @@ pub async fn create(state: &AppState, ctx: &Ctx, input: Input) -> ApiResult<Rule
         },
     )
     .await?;
-    tx.commit().await?;
     Ok(rule)
 }
 
@@ -408,12 +494,19 @@ pub async fn update(
 pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::ConfigWrite)?;
     let mut tx = begin(state, ctx).await?;
-    let before = core_db::rules::get(&mut tx, id)
+    delete_in(&mut tx, ctx, id).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Deletes a rule inside the caller's transaction (permission already checked).
+pub(crate) async fn delete_in(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
+    let before = core_db::rules::get(tx, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    core_db::rules::soft_delete(&mut tx, id, ctx.user_id()).await?;
+    core_db::rules::soft_delete(tx, id, ctx.user_id()).await?;
     record(
-        &mut tx,
+        tx,
         ctx,
         Change {
             topic: "rule.deleted",
@@ -425,7 +518,6 @@ pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
         },
     )
     .await?;
-    tx.commit().await?;
     Ok(())
 }
 

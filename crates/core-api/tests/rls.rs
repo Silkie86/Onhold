@@ -60,7 +60,24 @@ async fn the_app_role_cannot_bypass_policies(pool: PgPool) {
     .unwrap();
     // Link rows (which talent an enquiry or booking is for) are replaced
     // when the list changes; the parent's audit entry keeps the history.
-    let links = ["enquiry_talent", "booking_talent"];
+    // Busy times copied from a talent's own calendar are replaced as the
+    // calendar changes; the calendar's row keeps the history. Which event
+    // stands for which booking in a member's own calendar goes with the
+    // event; the connection's row keeps the history. Which project a date
+    // belongs to is a link; the project's audit entry keeps the history.
+    // An organisation's interested-in and potential-match lists are
+    // replaced as a whole; the organisation's audit entry keeps the history.
+    // What an import created is crossed off as the import is undone; the
+    // records' own audit entries keep the history.
+    let links = [
+        "enquiry_talent",
+        "booking_talent",
+        "calendar_busy",
+        "calendar_push_events",
+        "project_bookings",
+        "organisation_items",
+        "import_records",
+    ];
     let deletable: Vec<&String> = deletable
         .iter()
         .filter(|t| !links.contains(&t.as_str()))
@@ -257,7 +274,10 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
     assert_eq!(user, "onhold_worker");
 
     // The queue tables, plus the few columns scheduling, cleanup and the
-    // bookings sweep (holds lapsing, bookings ending, quotes expiring) need.
+    // bookings sweep (holds lapsing, bookings ending, quotes expiring),
+    // invoices falling overdue, file cleanup, exchange rates, mailboxes due
+    // to be read, snoozed conversations coming back and clearing out old
+    // delivery and rule logs need.
     let queue = [
         "bookings",
         "quotes",
@@ -269,6 +289,17 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "workspaces",
         "idempotency_keys",
         "imports",
+        "files",
+        "invoices",
+        "fx_rates",
+        "integrations",
+        "threads",
+        "sender_domains",
+        "talent_calendars",
+        "calendar_pushes",
+        "accounting_connections",
+        "webhook_deliveries",
+        "rule_runs",
     ];
     for table in tables(&app.owner).await {
         let read =
@@ -293,6 +324,34 @@ async fn the_worker_role_sees_only_the_queue(pool: PgPool) {
         "SELECT fee_minor FROM bookings",
         "UPDATE bookings SET status = 'expired'",
         "SELECT line_items FROM quotes",
+        "SELECT text_content FROM files",
+        "SELECT secret FROM integrations",
+        "SELECT mail_cursor FROM integrations",
+        "SELECT account FROM integrations",
+        "UPDATE integrations SET next_poll_at = now()",
+        "SELECT subject FROM threads",
+        "SELECT participants FROM threads",
+        "UPDATE threads SET status = 'open'",
+        "SELECT domain FROM sender_domains",
+        "SELECT provider_id FROM sender_domains",
+        "UPDATE sender_domains SET next_check_at = now()",
+        "SELECT secret FROM talent_calendars",
+        "SELECT account FROM talent_calendars",
+        "UPDATE talent_calendars SET next_poll_at = now()",
+        "SELECT starts_at FROM calendar_busy",
+        "SELECT secret FROM calendar_pushes",
+        "SELECT account FROM calendar_pushes",
+        "SELECT remote_calendar FROM calendar_pushes",
+        "UPDATE calendar_pushes SET next_sync_at = now()",
+        "SELECT remote_id FROM calendar_push_events",
+        "SELECT secret FROM accounting_connections",
+        "SELECT tenant_name FROM accounting_connections",
+        "UPDATE accounting_connections SET next_sync_at = now()",
+        "SELECT remote_id FROM accounting_links",
+        "SELECT total_minor FROM invoices",
+        "UPDATE invoices SET status = 'paid'",
+        "SELECT response_excerpt FROM webhook_deliveries",
+        "SELECT reason FROM rule_runs",
     ] {
         let err = sqlx::query(query).fetch_all(&worker).await.unwrap_err();
         assert!(

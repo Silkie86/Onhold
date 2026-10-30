@@ -17,8 +17,8 @@ import {
   MoneyInput,
   Spinner,
   Textarea,
-  applyBranding,
-  type Branding,
+  applyBrandTheme,
+  readBranding,
   cn,
   formatMoney,
 } from "@onhold/ui";
@@ -44,9 +44,9 @@ const QUOTE_LABEL: Record<QuoteStatus, string> = {
 };
 
 const QUOTE_STYLE: Partial<Record<QuoteStatus, string>> = {
-  sent: "border-sky-500 text-sky-800 dark:text-sky-300",
-  viewed: "border-sky-500 bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200",
-  accepted: "border-emerald-600 bg-emerald-600 text-white",
+  sent: "border-info text-info",
+  viewed: "border-info bg-info/10 text-info",
+  accepted: "border-success bg-success text-success-foreground",
   declined: "border-destructive text-destructive",
 };
 
@@ -264,6 +264,28 @@ interface LineDraft {
   description: string;
   quantity: string;
   unit_minor: number | null;
+  /** Which talent the line pays for, kept as it was: saving replaces every line. */
+  talent_id?: string | null;
+}
+
+/** The editor's lines, from the quote's. */
+export function lineDrafts(lines: Schemas["Line"][]): LineDraft[] {
+  return lines.map((l) => ({
+    description: l.description,
+    quantity: String(l.quantity),
+    unit_minor: l.unit_minor,
+    talent_id: l.talent_id ?? null,
+  }));
+}
+
+/** The editor's lines, as the server takes them. */
+export function lineInputs(lines: LineDraft[]): Schemas["LineInput"][] {
+  return lines.map((l) => ({
+    description: l.description,
+    quantity: Number(l.quantity) || 0,
+    unit_minor: l.unit_minor ?? 0,
+    talent_id: l.talent_id ?? null,
+  }));
 }
 
 /** Totals as the server works them out: quantity × unit, rounded to the minor unit. */
@@ -274,9 +296,7 @@ export function lineAmount(quantity: number, unitMinor: number): number {
 function QuoteEditor({ quote, onClose, onSaved }: { quote: Quote; onClose: () => void; onSaved: (q: Quote) => void }) {
   const currency = useWorkspaceCurrency();
   const code = quote.currency || currency;
-  const [lines, setLines] = useState<LineDraft[]>(
-    quote.line_items.map((l) => ({ description: l.description, quantity: String(l.quantity), unit_minor: l.unit_minor })),
-  );
+  const [lines, setLines] = useState<LineDraft[]>(lineDrafts(quote.line_items));
   const [validUntil, setValidUntil] = useState(quote.valid_until ?? "");
   const [message, setMessage] = useState(quote.message ?? "");
   const [terms, setTerms] = useState(quote.terms ?? "");
@@ -300,11 +320,7 @@ function QuoteEditor({ quote, onClose, onSaved }: { quote: Quote; onClose: () =>
                 params: { path: { id: quote.id } },
                 headers: { "If-Match": `"${quote.version}"` },
                 body: {
-                  line_items: lines.map((l) => ({
-                    description: l.description,
-                    quantity: Number(l.quantity) || 0,
-                    unit_minor: l.unit_minor ?? 0,
-                  })),
+                  line_items: lineInputs(lines),
                   valid_until: validUntil || null,
                   message: message || null,
                   terms: terms || null,
@@ -452,8 +468,7 @@ export function PublicQuotePage() {
   });
   const [answer, setAnswer] = useState<"accept" | "decline" | null>(null);
   useEffect(() => {
-    const b = quote.data?.branding as { colours?: Branding; name?: string } | undefined;
-    if (b?.colours) applyBranding(b.colours);
+    if (quote.data) applyBrandTheme(readBranding(quote.data.branding));
     if (quote.data) document.title = `Quote ${quote.data.reference} · ${quote.data.workspace_name}`;
   }, [quote.data]);
 
@@ -476,11 +491,11 @@ export function PublicQuotePage() {
     );
   }
   const q = quote.data;
-  const logo = (q.branding as { logo_url?: string } | null)?.logo_url;
+  const logo = readBranding(q.branding).logo;
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 p-4 sm:p-8">
       <header className="flex items-center gap-3">
-        {logo && <img src={logo} alt="" className="size-10 rounded object-contain" />}
+        {logo && <img src={logo} alt="" className="h-10 w-auto max-w-40 rounded object-contain brand-logo" />}
         <div>
           <p className="text-sm text-muted-foreground">{q.workspace_name}</p>
           <h1 className="text-2xl font-semibold">Quote {q.reference}</h1>

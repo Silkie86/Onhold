@@ -148,6 +148,25 @@ pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<Talent>> {
 }
 
 /// The same row, locked for an update in this transaction.
+/// A talent's name and commission rate, deleted or not: bookings keep the
+/// talent they were made with.
+pub async fn commission(conn: &mut PgConnection, id: Uuid) -> Result<Option<Commission>> {
+    Ok(sqlx::query_as!(
+        Commission,
+        r#"SELECT name, commission_bps FROM talent WHERE workspace_id = app_workspace_id() AND id = $1"#,
+        id
+    )
+    .fetch_optional(conn)
+    .await?)
+}
+
+/// See [`commission`].
+#[derive(Debug, Clone)]
+pub struct Commission {
+    pub name: String,
+    pub commission_bps: Option<i32>,
+}
+
 pub async fn get_for_update(conn: &mut PgConnection, id: Uuid) -> Result<Option<Talent>> {
     Ok(sqlx::query_as!(
         Talent,

@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE sender_domains\n           SET status = $2, records = $3, dmarc = $4, zone = $5, dns_provider = $6, next_check_at = $7,\n               checked_at = now(), verified_at = CASE WHEN $2 = 'verified' THEN now() ELSE verified_at END\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND removed_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Jsonb",
+        "Bool",
+        "Text",
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0e622c80fd4985b62009fc68d049b82dcc099ed35eaddcad382ae2f66cc33e6d"
+}

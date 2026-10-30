@@ -492,6 +492,132 @@ async fn too_many_wrong_codes_kill_the_pending_session(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn wrong_codes_lock_the_account_however_often_the_password_is_given(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let (secret, _) = enable_totp(&app, &owner).await;
+    let wrong = || {
+        let code = (totp_code(&secret, 0).parse::<u32>().unwrap() + 500_000) % 1_000_000;
+        format!("{code:06}")
+    };
+    // Opened before the guessing starts, to try the right code afterwards.
+    let spare = Client::from_login(&app.login("owner@acme.test", PASSWORD).await.ok());
+
+    let mut guesses = 0;
+    while guesses < app.state.config.max_login_failures {
+        // Signing in again with the right password gives a fresh session,
+        // but not a fresh allowance of guesses.
+        let pending = Client::from_login(&app.login("owner@acme.test", PASSWORD).await.ok());
+        for _ in 0..app.state.config.max_mfa_failures {
+            let res = app
+                .post("/api/v1/auth/mfa/verify")
+                .signed_in(&pending)
+                .json(json!({ "code": wrong() }))
+                .send()
+                .await;
+            assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{}", res.body);
+            guesses += 1;
+        }
+    }
+    app.login("owner@acme.test", PASSWORD)
+        .await
+        .expect(StatusCode::UNAUTHORIZED, "invalid_credentials");
+    app.post("/api/v1/auth/mfa/verify")
+        .signed_in(&spare)
+        .json(json!({ "code": totp_code(&secret, 0) }))
+        .send()
+        .await
+        .expect(StatusCode::UNAUTHORIZED, "session_expired");
+
+    // Once the lockout passes, a full sign-in clears the count.
+    sqlx::query("UPDATE users SET locked_until = now() - interval '1 second'")
+        .execute(&app.owner)
+        .await
+        .unwrap();
+    let pending = Client::from_login(&app.login("owner@acme.test", PASSWORD).await.ok());
+    let res = app
+        .post("/api/v1/auth/mfa/verify")
+        .signed_in(&pending)
+        .json(json!({ "code": totp_code(&secret, 0) }))
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.body);
+    let count: i32 = sqlx::query_scalar("SELECT failed_login_count FROM users")
+        .fetch_one(&app.owner)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn guesses_sent_all_at_once_still_stop_at_the_lockout(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let (secret, _) = enable_totp(&app, &owner).await;
+    let code = (totp_code(&secret, 0).parse::<u32>().unwrap() + 500_000) % 1_000_000;
+    let wrong = json!({ "code": format!("{code:06}") });
+    let max = app.state.config.max_login_failures;
+    let mut sessions = vec![];
+    for _ in 0..max * 2 {
+        sessions.push(Client::from_login(
+            &app.login("owner@acme.test", PASSWORD).await.ok(),
+        ));
+    }
+    futures_util::future::join_all(sessions.iter().map(|s| {
+        app.post("/api/v1/auth/mfa/verify")
+            .signed_in(s)
+            .json(wrong.clone())
+            .send()
+    }))
+    .await;
+    let count: i32 = sqlx::query_scalar("SELECT failed_login_count FROM users")
+        .fetch_one(&app.owner)
+        .await
+        .unwrap();
+    assert_eq!(count, max, "no guess is judged once the account is locked");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn the_cookie_lasts_the_full_session_once_the_code_is_given(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let (secret, _) = enable_totp(&app, &owner).await;
+    let max_age = |res: &common::Resp| -> (String, i64) {
+        let cookie = res
+            .headers
+            .get_all("set-cookie")
+            .iter()
+            .map(|v| v.to_str().unwrap())
+            .find(|v| v.starts_with("onhold_session="))
+            .expect("session cookie")
+            .to_owned();
+        let secs = cookie
+            .split(';')
+            .find_map(|p| p.trim().strip_prefix("Max-Age="))
+            .unwrap()
+            .parse()
+            .unwrap();
+        (cookie.split(';').next().unwrap().to_owned(), secs)
+    };
+
+    let res = app.login("owner@acme.test", PASSWORD).await.ok();
+    let (token, pending_age) = max_age(&res);
+    assert!(pending_age <= 600, "{pending_age}");
+    let pending = Client::from_login(&res);
+    let res = app
+        .post("/api/v1/auth/mfa/verify")
+        .signed_in(&pending)
+        .json(json!({ "code": totp_code(&secret, 0) }))
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.body);
+    let (same, age) = max_age(&res);
+    assert_eq!(same, token, "the same session");
+    let ttl = i64::try_from(app.state.config.session_ttl.as_secs()).unwrap();
+    assert!(age > ttl - 60 && age <= ttl, "{age}");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn totp_can_be_turned_off_with_a_code(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let (_, owner) = app.workspace_with_owner("acme").await;

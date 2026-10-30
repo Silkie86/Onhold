@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT stripe_event_workspace($1, $2, $3, $4) AS \"w: WorkspaceId\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "w: WorkspaceId",
+        "type_info": "Uuid",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "19e9c52e6ca521785e0e507f927f293f7cabc3448641b4e1dc7049efb7ff8887"
+}

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO stripe_checkout_sessions (workspace_id, id, account_id, invoice_id)\n           VALUES (app_workspace_id(), $1, $2, $3) ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "04bffa1d05909d486f68d91404a42145ceb9dac7aa67005cbd935ab8fe37f38d"
+}

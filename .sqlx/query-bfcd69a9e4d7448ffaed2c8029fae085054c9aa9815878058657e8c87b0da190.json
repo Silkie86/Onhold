@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO accounting_links (id, workspace_id, connection_id, kind, local_id, state, status, amount_minor)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, 'sending', 'synced', $5)\n           ON CONFLICT (connection_id, kind, local_id)\n           DO UPDATE SET remote_id = NULL, state = 'sending', status = 'synced', error = NULL,\n                         amount_minor = EXCLUDED.amount_minor",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bfcd69a9e4d7448ffaed2c8029fae085054c9aa9815878058657e8c87b0da190"
+}

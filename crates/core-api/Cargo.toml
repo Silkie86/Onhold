@@ -8,19 +8,25 @@ license.workspace = true
 
 [dependencies]
 argon2.workspace = true
+async-trait.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
 chrono.workspace = true
 core-db.workspace = true
 core-domain.workspace = true
 core-engines.workspace = true
+core-pdf.workspace = true
 core-integrations.workspace = true
+core-modules.workspace = true
 chrono-tz.workspace = true
 futures-util.workspace = true
 csv.workspace = true
 data-encoding.workspace = true
 http-body-util.workspace = true
 openidconnect.workspace = true
+reqwest.workspace = true
+ammonia.workspace = true
+html2text.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -37,10 +43,13 @@ url.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 uuid.workspace = true
+zip.workspace = true
 
 [dev-dependencies]
 # A throwaway signing key for the mock identity provider in tests/oidc.rs.
 rsa = { version = "0.9", features = ["getrandom", "pem"] }
+# Captures log output in tests/logs.rs.
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

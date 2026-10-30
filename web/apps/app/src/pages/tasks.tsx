@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Alert, Button, Checkbox, Dialog, type FieldIssue, Input, Label, NativeSelect, Spinner, Textarea, cn } from "@onhold/ui";
 import { Plus } from "lucide-react";
 import { useState } from "react";
+import { useSetup } from "../setup.ts";
 import { createRecord, fetchMembers, fetchTasks, updateRecord, useOffline, useSyncStatus } from "../data.ts";
 import { useSession } from "../session.tsx";
 import { type Task, fromLocalInput } from "../work.ts";
@@ -12,6 +13,7 @@ import { OfflineNote, failureIssues } from "./crm.tsx";
 
 const RELATED_PATH: Record<string, string> = {
   booking: "/bookings/$id",
+  project: "/projects/$id",
   enquiry: "/enquiries/$id",
   contact: "/crm/contacts/$id",
   organisation: "/crm/organisations/$id",
@@ -87,6 +89,9 @@ function NewTaskDialog({
 }) {
   const sync = useOffline();
   const members = useMembers();
+  // Only a team hands work to each other.
+  const setup = useSetup();
+  const team = setup.hasExtra("team") && setup.shows("section:tasks.assign");
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [dueAt, setDueAt] = useState("");
@@ -123,15 +128,19 @@ function NewTaskDialog({
         <Input id="task-title" required value={title} onChange={(e) => setTitle(e.target.value)} />
         <Label htmlFor="task-due">Due</Label>
         <Input id="task-due" type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
-        <Label htmlFor="task-assignee">For</Label>
-        <NativeSelect id="task-assignee" value={assignee} onChange={(e) => setAssignee(e.target.value)}>
-          <option value="">Anyone</option>
-          {members.data?.map((m) => (
-            <option key={m.user_id} value={m.user_id}>
-              {m.name}
-            </option>
-          ))}
-        </NativeSelect>
+        {team && (
+          <>
+            <Label htmlFor="task-assignee">For</Label>
+            <NativeSelect id="task-assignee" value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+              <option value="">Anyone</option>
+              {members.data?.map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {m.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </>
+        )}
         <Label htmlFor="task-notes">Notes</Label>
         <Textarea id="task-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
         {issues.map((i) => (
@@ -202,6 +211,8 @@ export function TasksPage() {
   const syncStatus = useSyncStatus();
   const { me } = useSession();
   const [adding, setAdding] = useState(false);
+  const setup = useSetup();
+  const team = setup.hasExtra("team") && setup.shows("section:tasks.assign");
   const status = search.status ?? "open";
   const tasks = useQuery({
     queryKey: ["tasks", "page", status, !!search.mine],
@@ -228,6 +239,7 @@ export function TasksPage() {
           <option value="done">Done</option>
           <option value="all">Everything</option>
         </NativeSelect>
+        {team && (
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={!!search.mine}
@@ -235,6 +247,7 @@ export function TasksPage() {
           />
           Only mine
         </label>
+        )}
         <Button onClick={() => setAdding(true)}>
           <Plus /> New task
         </Button>

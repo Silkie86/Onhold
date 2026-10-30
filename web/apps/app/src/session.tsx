@@ -3,8 +3,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext } from "react";
 import { ApiFailure, type Me, api, currentWorkspace, ok, setCsrfToken, setWorkspace } from "./api.ts";
+import { forgetBranding } from "./branding.ts";
 import { outbox, wipe, wipeAllButQueue } from "./offline/store.ts";
-import { isNetworkError } from "./offline/sync.ts";
+import { isNetworkError, stopEverySync } from "./offline/sync.ts";
 import { IS_APP, KEEPS_OFFLINE_COPY, appToken, saveAppToken } from "./platform.ts";
 
 // The apps and the installed website remember who was signed in, so they can open offline.
@@ -28,6 +29,19 @@ function remember(me: Me | null) {
   }
 }
 
+/**
+ * Signed out in an ordinary browser tab, which keeps nothing itself: the
+ * website installed on this same computer shares its storage, and its copy
+ * (and any email kept) goes too, so it cannot open offline as the person
+ * who signed out. Not waited for, since an open installed window holds the
+ * database; its unsent changes stay, as when a session expires.
+ */
+function forgetInstalledCopy() {
+  if (IS_APP || !rememberedMe()) return;
+  remember(null);
+  void wipeAllButQueue().catch(() => undefined);
+}
+
 export const meQuery = {
   queryKey: ["me"],
   queryFn: async (): Promise<Me | null> => {
@@ -35,6 +49,23 @@ export const meQuery = {
     try {
       const me = await ok(api.GET("/api/v1/auth/me"));
       setCsrfToken(me.session.csrf_token);
+      const visit = me.impersonation;
+      if (visit) {
+        // OnHold's team visiting a client's workspace: it is the one shown,
+        // with every permission, for as long as the visit lasts. Nothing of
+        // it is kept on the device.
+        setWorkspace(visit.workspace_id);
+        const w = await ok(api.GET("/api/v1/workspace")).catch(() => null);
+        const visited = {
+          id: visit.workspace_id,
+          slug: w?.slug ?? "",
+          name: w?.name ?? "Client workspace",
+          status: w?.status ?? "active",
+          role: "owner" as const,
+          apps_allowed: true,
+        };
+        return { ...me, workspaces: [visited, ...me.workspaces.filter((x) => x.id !== visit.workspace_id)] };
+      }
       const ids = me.workspaces.map((w) => w.id);
       const stored = currentWorkspace();
       if (!stored || !ids.includes(stored)) setWorkspace(ids[0]);
@@ -44,12 +75,13 @@ export const meQuery = {
       if (e instanceof ApiFailure && e.status === 401) {
         setCsrfToken(undefined);
         if (IS_APP) await saveAppToken(null);
+        forgetBranding();
         if (KEEPS_OFFLINE_COPY) {
           // Expired, or signed out from another device: the workspace's data
           // leaves this one. Unsent changes wait for the same person's next sign-in.
           remember(null);
           await wipeAllButQueue().catch(() => undefined);
-        }
+        } else forgetInstalledCopy();
         return null;
       }
       if (KEEPS_OFFLINE_COPY && isNetworkError(e)) {
@@ -68,6 +100,22 @@ export const meQuery = {
 
 export function useMe() {
   return useQuery(meQuery);
+}
+
+/**
+ * The workspaces whose copy the device may keep: those the person works in
+ * as staff, and in the apps only those whose plan includes them.
+ */
+export function keptWorkspaces(workspaces: Me["workspaces"], isApp = IS_APP): string[] {
+  return workspaces.filter((w) => w.role !== "talent" && (!isApp || w.apps_allowed)).map((w) => w.id);
+}
+
+/**
+ * The same for a session, or null while the session cannot say: until the
+ * second sign-in step is done, the server lists no workspaces at all.
+ */
+export function keptForSession(me: Me, isApp = IS_APP): string[] | null {
+  return me.session.mfa_verified ? keptWorkspaces(me.workspaces, isApp) : null;
 }
 
 export interface Session {
@@ -99,18 +147,26 @@ export function useSessionActions(me: Me) {
     },
     signOut: async () => {
       if (KEEPS_OFFLINE_COPY) {
-        const waiting = (await Promise.all(me.workspaces.map((w) => outbox(w.id)))).flat().length;
+        const queues = await Promise.all(me.workspaces.map((w) => outbox(w.id))).catch(() => []);
+        const waiting = queues.flat().length;
         const unsent = `${waiting} ${waiting === 1 ? "change has" : "changes have"} not been sent yet and will be lost.`;
         if (waiting > 0 && !window.confirm(`${unsent} Sign out anyway?`)) return;
+        // Nothing still running may write to the device once its copy is deleted.
+        stopEverySync();
       }
       await api.POST("/api/v1/auth/logout").catch(() => undefined);
       setCsrfToken(undefined);
       if (IS_APP) await saveAppToken(null);
+      forgetBranding();
       if (KEEPS_OFFLINE_COPY) {
         remember(null);
         // Nothing of the workspace stays on the device.
-        await wipe();
-      }
+        await wipe(true).catch(() =>
+          window.alert(
+            "You are signed out, but OnHold could not yet remove its copy from this device, as another OnHold window has it open. Close every OnHold window to finish.",
+          ),
+        );
+      } else forgetInstalledCopy();
       qc.clear();
       window.location.assign("/sign-in");
     },

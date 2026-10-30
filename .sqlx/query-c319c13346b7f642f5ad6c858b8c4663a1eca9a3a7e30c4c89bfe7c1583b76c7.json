@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT i.id FROM invoices i\n           LEFT JOIN accounting_links l\n             ON l.connection_id = $1 AND l.kind = 'invoice' AND l.local_id = i.id\n           WHERE i.workspace_id = app_workspace_id() AND i.issuer_kind = 'workspace'\n             AND NOT i.historical AND i.status <> 'draft' AND i.deleted_at IS NULL\n             AND i.issue_date >= $2\n             AND (l.id IS NULL\n                  OR (l.status = 'failed' AND (l.updated_at < $3 OR i.updated_at > l.updated_at))\n                  OR (l.status = 'synced'\n                      AND l.state IS DISTINCT FROM CASE WHEN i.status = 'void' THEN 'void' ELSE 'issued' END))\n           ORDER BY (l.status IS NOT DISTINCT FROM 'failed'), (i.kind = 'credit_note'), i.issue_date,\n                    i.created_at, i.id\n           LIMIT $4",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Date",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c319c13346b7f642f5ad6c858b8c4663a1eca9a3a7e30c4c89bfe7c1583b76c7"
+}

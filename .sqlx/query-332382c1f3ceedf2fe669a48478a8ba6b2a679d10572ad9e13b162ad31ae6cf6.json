@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT local_part || '@' || domain AS \"address!\" FROM sender_domains\n           WHERE workspace_id = app_workspace_id() AND in_use AND status = 'verified' AND removed_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "address!",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "332382c1f3ceedf2fe669a48478a8ba6b2a679d10572ad9e13b162ad31ae6cf6"
+}

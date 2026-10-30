@@ -5,8 +5,8 @@ use chrono::{Duration as ChronoDuration, Utc};
 use core_db::Tx;
 use core_domain::authz::RequestMeta;
 use core_domain::crypto::{hash_token, new_token};
-use core_domain::{Actor, Ctx, Role, UserId, WorkspaceId};
-use serde_json::json;
+use core_domain::{Actor, Ctx, Permission, Role, UserId, WorkspaceId};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::AppState;
@@ -85,6 +85,19 @@ pub async fn issue_session(
     })
 }
 
+/// Clears the failed sign-in count once a session is fully signed in. A
+/// session still waiting for its second factor leaves it alone, so wrong
+/// codes keep counting towards the lockout across fresh sign-ins.
+pub(crate) async fn reset_failures_if_signed_in(
+    tx: &mut Tx,
+    issued: &IssuedSession,
+) -> ApiResult<()> {
+    if !issued.mfa_required {
+        core_db::users::reset_login_failures(tx, issued.user_id).await?;
+    }
+    Ok(())
+}
+
 pub async fn login(
     state: &AppState,
     email: &str,
@@ -115,8 +128,8 @@ pub async fn login(
         tracing::info!(user_id = %found.user_id, locked, "sign-in failed");
         return Err(invalid_credentials());
     }
-    core_db::users::reset_login_failures(&mut tx, found.user_id).await?;
     let issued = issue_session(state, &mut tx, found.user_id, "password", meta).await?;
+    reset_failures_if_signed_in(&mut tx, &issued).await?;
     tx.commit().await?;
     tracing::info!(user_id = %found.user_id, "signed in with password");
     Ok(issued)
@@ -129,17 +142,27 @@ pub async fn logout(state: &AppState, session: &Session) -> ApiResult<()> {
     Ok(())
 }
 
-/// Finishes sign-in with a TOTP code or a recovery code.
+/// Finishes sign-in with a TOTP code or a recovery code. Returns when the
+/// session now expires.
 pub async fn verify_mfa(
     state: &AppState,
     session: &Session,
     code: Option<&str>,
     recovery_code: Option<&str>,
-) -> ApiResult<()> {
+) -> ApiResult<chrono::DateTime<Utc>> {
     if session.mfa_verified {
-        return Ok(());
+        return Ok(session.expires_at);
     }
     let mut tx = core_db::begin(&state.db, None, Some(session.user_id)).await?;
+    let too_many =
+        || ApiError::unauthorized("session_expired", "too many wrong codes; sign in again");
+    // Wrong codes also count against the account, so signing in again does
+    // not buy more guesses; a locked account takes no codes at all.
+    if core_db::users::is_locked(&mut tx, session.user_id).await? {
+        core_db::sessions::revoke(&mut tx, session.id).await?;
+        tx.commit().await?;
+        return Err(too_many());
+    }
     let ok = match (code, recovery_code) {
         (Some(code), _) => check_current_totp(state, &mut tx, session.user_id, code).await?,
         (None, Some(recovery)) => {
@@ -164,17 +187,30 @@ pub async fn verify_mfa(
             state.config.max_mfa_failures,
         )
         .await?;
+        core_db::users::record_login_failure(
+            &mut tx,
+            session.user_id,
+            state.config.max_login_failures,
+            state.config.lockout.as_secs_f64(),
+        )
+        .await?;
+        let locked = core_db::users::is_locked(&mut tx, session.user_id).await?;
+        if locked {
+            core_db::sessions::revoke(&mut tx, session.id).await?;
+        }
         tx.commit().await?;
-        return Err(if still_usable {
+        tracing::info!(user_id = %session.user_id, locked, "wrong second-factor code");
+        return Err(if still_usable && !locked {
             ApiError::unauthorized("invalid_code", "that code is not valid")
         } else {
-            ApiError::unauthorized("session_expired", "too many wrong codes; sign in again")
+            too_many()
         });
     }
     let expires_at = Utc::now() + to_chrono(state.config.session_ttl);
     core_db::sessions::mark_mfa_verified(&mut tx, session.id, expires_at).await?;
+    core_db::users::reset_login_failures(&mut tx, session.user_id).await?;
     tx.commit().await?;
-    Ok(())
+    Ok(expires_at)
 }
 
 /// Checks a code against the user's active TOTP secret, rejecting replays.
@@ -381,8 +417,8 @@ pub async fn consume_magic_link(
         return Err(invalid());
     }
     core_db::users::mark_email_verified(&mut tx, link.user_id).await?;
-    core_db::users::reset_login_failures(&mut tx, link.user_id).await?;
     let issued = issue_session(state, &mut tx, link.user_id, "magic_link", meta).await?;
+    reset_failures_if_signed_in(&mut tx, &issued).await?;
     tx.commit().await?;
     Ok(issued)
 }
@@ -413,6 +449,8 @@ pub struct InvitationPreview {
     pub workspace_name: String,
     pub email: String,
     pub role: Role,
+    /// The workspace's look (logo, colour, theme), so the page is theirs.
+    pub branding: Value,
 }
 
 pub async fn preview_invitation(state: &AppState, token: &str) -> ApiResult<InvitationPreview> {
@@ -420,11 +458,21 @@ pub async fn preview_invitation(state: &AppState, token: &str) -> ApiResult<Invi
     let inv = core_db::auth::find_invitation(&mut tx, &hash_token(token))
         .await?
         .ok_or_else(invitation_invalid)?;
+    core_db::set_context(&mut tx, Some(inv.workspace_id), None).await?;
+    let b = core_db::workspaces::get(&mut tx, inv.workspace_id)
+        .await?
+        .map(|w| w.branding)
+        .unwrap_or_default();
     tx.commit().await?;
+    let branding = ["logo", "primary_color", "theme"]
+        .into_iter()
+        .filter_map(|k| Some((k.to_owned(), b.get(k)?.clone())))
+        .collect::<serde_json::Map<_, _>>();
     Ok(InvitationPreview {
         workspace_name: inv.workspace_name,
         email: inv.email,
         role: inv.role,
+        branding: Value::Object(branding),
     })
 }
 
@@ -546,7 +594,21 @@ pub async fn join_from_invitation(
         permissions: Default::default(),
         meta: meta.clone(),
     };
-    if core_db::members::role_of(tx, user).await?.is_none() {
+    let existing = core_db::members::role_of(tx, user).await?;
+    let talent_id = core_db::portal::invitation_talent(tx, inv.invitation_id).await?;
+    // Someone already here in a role with no portal would gain a link that
+    // leads nowhere.
+    if let (Some(role), Some(_)) = (existing, talent_id)
+        && !core_db::workspaces::role_permissions(tx, role)
+            .await?
+            .contains(&Permission::PortalUse)
+    {
+        return Err(ApiError::conflict(
+            "already_member",
+            "you are already in this workspace in a role without the talent portal; ask them to change your role",
+        ));
+    }
+    if existing.is_none() {
         let membership =
             core_db::members::insert(tx, inv.workspace_id, user, inv.role, Some(user)).await?;
         record(
@@ -558,6 +620,28 @@ pub async fn join_from_invitation(
                 object_id: Some(user.0),
                 before: None,
                 after: Some(json!({ "user_id": user, "role": inv.role, "membership_id": membership, "via": "invitation", "invitation_id": inv.invitation_id })),
+                event_extra: None,
+            },
+        )
+        .await?;
+    }
+    // A portal invitation opens its talent record for this person.
+    if let Some(talent_id) = talent_id {
+        if !core_db::portal::link_talent(tx, talent_id, user).await? {
+            return Err(ApiError::conflict(
+                "talent_taken",
+                "this talent's portal is already open for someone else; ask for a new invitation",
+            ));
+        }
+        record(
+            tx,
+            &ctx,
+            Change {
+                topic: "talent.portal_linked",
+                resource: "talent",
+                object_id: Some(talent_id),
+                before: None,
+                after: Some(json!({ "portal_user_id": user })),
                 event_extra: None,
             },
         )

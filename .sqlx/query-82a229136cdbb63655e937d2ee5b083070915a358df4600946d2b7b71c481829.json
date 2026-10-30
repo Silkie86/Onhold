@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE import_records r\n           SET version = coalesce(\n               (SELECT version FROM talent WHERE r.entity = 'talent' AND id = r.record_id),\n               (SELECT version FROM organisations WHERE r.entity = 'organisation' AND id = r.record_id),\n               (SELECT version FROM contacts WHERE r.entity = 'contact' AND id = r.record_id),\n               r.version)\n           WHERE r.workspace_id = app_workspace_id() AND r.import_id = $1 AND r.record_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "82a229136cdbb63655e937d2ee5b083070915a358df4600946d2b7b71c481829"
+}

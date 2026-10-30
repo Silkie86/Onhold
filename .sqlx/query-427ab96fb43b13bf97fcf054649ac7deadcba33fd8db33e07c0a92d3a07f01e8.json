@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE thread_messages\n           SET status = $2, external_id = coalesce(external_id, $3), error = left($4, 1000),\n               sent_at = CASE WHEN $2 = 'sent' THEN now() ELSE sent_at END\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "427ab96fb43b13bf97fcf054649ac7deadcba33fd8db33e07c0a92d3a07f01e8"
+}

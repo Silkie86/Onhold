@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM import_records\n           WHERE workspace_id = app_workspace_id() AND import_id = $1 AND record_id = ANY($2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "105033265f5d1fbecef5962a140050068d6fec347425774fed3ccf9f7a244f73"
+}

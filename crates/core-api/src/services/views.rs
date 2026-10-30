@@ -187,6 +187,8 @@ pub enum SchemaFieldType {
     PhoneList,
     /// A list of postal addresses.
     AddressList,
+    /// A list of web addresses.
+    UrlList,
     /// An ISO 4217 code.
     Currency,
 }
@@ -303,6 +305,7 @@ fn option(value: &str, label: &str) -> SelectOption {
     SelectOption {
         value: value.into(),
         label: label.into(),
+        colour: None,
     }
 }
 
@@ -384,6 +387,41 @@ fn core_fields(entity: &str) -> Vec<(Core<'static>, Vec<SelectOption>, Option<&'
                 core("contact_count", "Contacts", T::Number)
                     .listed()
                     .sorted(),
+                vec![],
+                None,
+            ),
+            (
+                core("relationship", "Client or prospect", T::Select)
+                    .listed()
+                    .sorted(),
+                vec![option("client", "Client"), option("prospect", "Prospect")],
+                None,
+            ),
+            // Options from the workspace's pitching settings.
+            (
+                core("status", "Status", T::Select).listed().sorted(),
+                vec![],
+                None,
+            ),
+            (core("city", "City", T::Text).sorted(), vec![], None),
+            (
+                core("country", "Country", T::Text).listed().sorted(),
+                vec![],
+                None,
+            ),
+            (core("region", "Region", T::Select).listed(), vec![], None),
+            (
+                core("follow_up_on", "Follow up on", T::Date).sorted(),
+                vec![],
+                None,
+            ),
+            (
+                core("do_not_contact", "Do not contact", T::Boolean),
+                vec![],
+                None,
+            ),
+            (
+                core("buys_from_others", "Buys from others", T::Tags),
                 vec![],
                 None,
             ),
@@ -520,15 +558,16 @@ fn core_fields(entity: &str) -> Vec<(Core<'static>, Vec<SelectOption>, Option<&'
                 None,
             ),
             (
-                core("sms_opt_in", "SMS marketing", T::Boolean),
+                core("sms_opt_in", "Agreed to texts", T::Boolean),
                 vec![],
                 None,
             ),
             (
-                core("whatsapp_opt_in", "WhatsApp marketing", T::Boolean),
+                core("whatsapp_opt_in", "Agreed to WhatsApp", T::Boolean),
                 vec![],
                 None,
             ),
+            (core("links", "Links", T::UrlList), vec![], None),
             (core("tags", "Tags", T::Tags).listed(), vec![], None),
             (core("notes", "Notes", T::LongText), vec![], None),
         ],
@@ -545,8 +584,62 @@ fn write_permission(entity: &str) -> Permission {
     }
 }
 
-/// An entity's fields, core and custom, as forms and lists draw them.
+/// An entity's fields, core and custom, as forms and lists draw them:
+/// without the ones OnHold's team hid for the workspace, nor commission
+/// where it takes none. Hiding a field never drops a required one.
 pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<EntitySchema> {
+    authorize_read(ctx, entity)?;
+    let mut tx = begin(state, ctx).await?;
+    let mut schema = full_schema_in(&mut tx, ctx, entity).await?;
+    let w = core_db::workspaces::shape(&mut tx, ctx.workspace_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    tx.commit().await?;
+    let commission = w.extras.iter().any(|e| e == "commission");
+    let pitching = w
+        .enabled_modules
+        .iter()
+        .any(|m| m == super::pitching::MODULE);
+    schema.fields.retain(|f| {
+        let hidden = w.hidden.contains(&format!("field:{entity}.{}", f.key))
+            || (f.key == "commission_percent" && !commission)
+            || (entity == "organisation"
+                && !pitching
+                && matches!(
+                    f.key.as_str(),
+                    "status" | "follow_up_on" | "buys_from_others"
+                ));
+        f.required || !hidden
+    });
+    // Named in the workspace's own words ("DJs", "Gigs", "Offers").
+    let term = match entity {
+        "talent" => Some(("crm", "talent")),
+        "enquiry" => Some(("bookings", "enquiry")),
+        "booking" => Some(("bookings", "booking")),
+        _ => None,
+    };
+    if let Some((module, term)) = term {
+        let word = |n: &str| {
+            w.vocabulary
+                .pointer(&format!("/{module}/{term}/{n}"))
+                .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_owned)
+        };
+        if let (Some(one), Some(many)) = (word("one"), word("many")) {
+            schema.label = one;
+            schema.label_plural = many;
+        }
+    }
+    Ok(schema)
+}
+
+/// Every field of an entity, hidden or not, read in the caller's transaction.
+pub async fn full_schema_in(
+    tx: &mut core_db::Tx,
+    ctx: &Ctx,
+    entity: &str,
+) -> ApiResult<EntitySchema> {
     authorize_read(ctx, entity)?;
     let (label, plural) = match entity {
         "talent" => ("Talent", "Talent"),
@@ -564,7 +657,9 @@ pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<Enti
             core: true,
             required: c.required,
             // A booking's status moves through its own actions, not the form.
-            read_only: c.key == "contact_count" || (entity == "booking" && c.key == "status"),
+            read_only: c.key == "contact_count"
+                || (entity == "organisation" && matches!(c.key, "country" | "city"))
+                || (entity == "booking" && c.key == "status"),
             in_list: c.in_list,
             sort: if c.sortable {
                 sort_key(entity, c.key)
@@ -581,9 +676,37 @@ pub async fn schema(state: &AppState, ctx: &Ctx, entity: &str) -> ApiResult<Enti
             validation: None,
         })
         .collect();
-    let mut tx = begin(state, ctx).await?;
-    let defs = core_db::fields::list(&mut tx, Some(entity), false).await?;
-    tx.commit().await?;
+    if entity == "organisation" {
+        let (settings, _) = super::pitching::settings_in(tx).await?;
+        for f in &mut fields {
+            match f.key.as_str() {
+                "status" => {
+                    f.options = settings
+                        .statuses
+                        .iter()
+                        .map(|s| SelectOption {
+                            value: s.key.clone(),
+                            label: s.label.clone(),
+                            colour: Some(s.colour.as_str().to_owned()),
+                        })
+                        .collect();
+                }
+                "region" => {
+                    f.options = settings
+                        .regions
+                        .iter()
+                        .map(|r| option(&r.key, &r.name))
+                        .collect();
+                    f.help_text = Some("Taken from the country unless you pick one.".into());
+                }
+                "country" => {
+                    f.help_text = Some("Read from the first address.".into());
+                }
+                _ => {}
+            }
+        }
+    }
+    let defs = core_db::fields::list(tx, Some(entity), false).await?;
     for d in defs {
         let Some(def) = super::fields::to_engine(&d) else {
             continue;
@@ -628,6 +751,8 @@ fn sort_key(entity: &str, key: &str) -> Option<String> {
         ("contact", "organisation_id") => "organisation",
         ("contact", "emails") => "email",
         ("contact", "phones") => "phone",
+        ("organisation", "status") => "status_key",
+        ("organisation", "country") => "country_code",
         (_, k) => k,
     };
     let sorts = match entity {

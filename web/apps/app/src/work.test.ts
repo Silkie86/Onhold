@@ -1,5 +1,18 @@
-import { addDays, dayKey, daysBetween, formatWhen, monthGrid, nextStatuses, onDay, parseDayKey, shiftByDays, startOfWeek } from "./work.ts";
-import { lineAmount } from "./pages/quotes.tsx";
+import {
+  addDays,
+  dayKey,
+  daysBetween,
+  formatWhen,
+  fromZonedInput,
+  monthGrid,
+  nextStatuses,
+  onDay,
+  parseDayKey,
+  shiftByDays,
+  startOfWeek,
+  toZonedInput,
+} from "./work.ts";
+import { lineAmount, lineDrafts, lineInputs } from "./pages/quotes.tsx";
 import { validateCalendarSearch, viewRange } from "./pages/calendar.tsx";
 
 test("a month view is six whole weeks starting on a Monday", () => {
@@ -65,6 +78,20 @@ test("quote lines total as the server does", () => {
   expect(lineAmount(1.5, 333)).toBe(500);
 });
 
+test("saving a quote's lines keeps the talent each one is for", () => {
+  const talent = "0190a3c4-0000-7000-8000-000000000001";
+  const saved = lineInputs(
+    lineDrafts([
+      { description: "Fee: The Midnight Owls", quantity: 1, unit_minor: 200_000, amount_minor: 200_000, talent_id: talent },
+      { description: "Travel", quantity: 2, unit_minor: 15_000, amount_minor: 30_000 },
+    ]),
+  );
+  expect(saved).toEqual([
+    { description: "Fee: The Midnight Owls", quantity: 1, unit_minor: 200_000, talent_id: talent },
+    { description: "Travel", quantity: 2, unit_minor: 15_000, talent_id: null },
+  ]);
+});
+
 test("calendar addresses and ranges", () => {
   expect(validateCalendarSearch({ view: "week", date: "2031-06-01", talent: "", junk: 1 })).toEqual({
     view: "week",
@@ -76,4 +103,15 @@ test("calendar addresses and ranges", () => {
   expect(dayKey(week.from)).toBe("2031-06-02");
   expect(dayKey(week.to)).toBe("2031-06-09");
   expect(week.days).toHaveLength(7);
+});
+
+describe("times in a place's own zone", () => {
+  it("reads and writes the clock of the zone, not the browser's", () => {
+    // 06:10 UTC in June is 07:10 in London and 08:10 in Barcelona.
+    expect(toZonedInput("2031-06-14T06:10:00Z", "Europe/London")).toBe("2031-06-14T07:10");
+    expect(toZonedInput("2031-06-14T06:10:00Z", "Europe/Madrid")).toBe("2031-06-14T08:10");
+    expect(fromZonedInput("2031-06-14T10:25", "Europe/Madrid")).toBe("2031-06-14T08:25:00.000Z");
+    expect(fromZonedInput("2031-01-14T10:25", "America/New_York")).toBe("2031-01-14T15:25:00.000Z");
+    expect(fromZonedInput("", "UTC")).toBeNull();
+  });
 });

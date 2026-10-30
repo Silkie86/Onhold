@@ -5,7 +5,7 @@
 
 import type { RecordJson } from "@onhold/ui";
 import { createContext, useContext, useEffect, useState } from "react";
-import { ApiFailure, type EntitySchema, ENTITIES, RECORD_PATHS, api, ok } from "./api.ts";
+import { ApiFailure, type EntitySchema, ENTITIES, RECORD_PATHS, api, currentWorkspace, ok } from "./api.ts";
 import type { Schemas } from "@onhold/api-client";
 import { type ListParams, type Page, localList, localTags, matches, sortRecords } from "./offline/query.ts";
 import {
@@ -33,6 +33,7 @@ import {
   putRecords,
   setMeta,
 } from "./offline/store.ts";
+import type { KeptDetail, ThreadParams } from "./offline/mail.ts";
 import { type OfflineSync, type SyncStatus, isNetworkError } from "./offline/sync.ts";
 
 export const OfflineContext = createContext<OfflineSync | null>(null);
@@ -57,6 +58,8 @@ export function useSyncStatus(): SyncStatus | null {
 export interface Fetched<T> {
   data: T;
   offline: boolean;
+  /** The device's copy, shown because changes to it are still waiting to be sent. */
+  queued?: boolean;
 }
 
 /** Thrown when the app is offline and the device has no copy to show. */
@@ -91,11 +94,14 @@ async function serverOrDevice<T>(
   device: () => Promise<T | undefined>,
   remember?: (data: T) => Promise<void>,
 ): Promise<Fetched<T>> {
-  if (!sync) return { data: await server(), offline: false };
+  // Just after a switch the app asks for the new workspace while the engine
+  // is still the old one's: the answer is not that workspace's, so it is
+  // neither kept in its copy nor answered from it.
+  if (!sync || sync.ws !== currentWorkspace()) return { data: await server(), offline: false };
   if (navigator.onLine) {
     try {
       const data = await withTimeout(server());
-      if (remember) await remember(data).catch(() => undefined);
+      if (remember && sync.ws === currentWorkspace()) await remember(data).catch(() => undefined);
       return { data, offline: false };
     } catch (e) {
       if (!isNetworkError(e)) throw e;
@@ -104,6 +110,17 @@ async function serverOrDevice<T>(
   const data = await device();
   if (data === undefined) throw new NotOnDevice();
   return { data, offline: true };
+}
+
+/**
+ * Keeps what the server just showed, the freshest copy there is, except
+ * records with changes still waiting to be sent: those keep the device's
+ * copy, with the changes on it, as a full download does.
+ */
+async function keepServerCopy(sync: OfflineSync | null, entity: StoredEntity, records: RecordJson[]): Promise<void> {
+  if (!sync) return;
+  const queued = new Set((await sync.queued()).map((q) => q.id));
+  await putRecords(sync.ws, entity, records.filter((r) => !queued.has(r.id)));
 }
 
 const P = (entity: StoredEntity) => `/api/v1/${RECORD_PATHS[entity]}` as "/api/v1/contacts";
@@ -137,10 +154,7 @@ export function fetchList(sync: OfflineSync | null, entity: EntityName, params: 
         }),
       )) as unknown as Page,
     async () => (sync?.current.ready ? localList(await allRecords(sync.ws, entity), params) : undefined),
-    // What the server just showed is the freshest copy there is.
-    async (page) => {
-      if (sync) await putRecords(sync.ws, entity, page.items);
-    },
+    (page) => keepServerCopy(sync, entity, page.items),
   );
 }
 
@@ -148,15 +162,13 @@ export async function fetchRecord(sync: OfflineSync | null, entity: StoredEntity
   if (sync && (isLocalId(id) || (await sync.hasQueued(id)))) {
     // Changes are still waiting to be sent: the device's copy is the one to show.
     const local = await getRecord(sync.ws, entity, id);
-    if (local) return { data: local, offline: !navigator.onLine };
+    if (local) return { data: local, offline: !navigator.onLine, queued: true };
   }
   return serverOrDevice(
     sync,
     async () => (await ok(api.GET(PI(entity), { params: { path: { id } } }))) as unknown as RecordJson,
     () => (sync ? getRecord(sync.ws, entity, id) : Promise.resolve(undefined)),
-    async (r) => {
-      if (sync) await putRecords(sync.ws, entity, [r]);
-    },
+    (r) => keepServerCopy(sync, entity, [r]),
   );
 }
 
@@ -210,6 +222,65 @@ export function fetchWorkspace(sync: OfflineSync | null): Promise<Fetched<Schema
   );
 }
 
+// Email ------------------------------------------------------------------------------------
+
+/** Conversations: from the server, or offline from the recent email the device keeps, if it keeps any. */
+export function fetchThreads(sync: OfflineSync | null, params: ThreadParams): Promise<Fetched<Schemas["ThreadPage"]>> {
+  return serverOrDevice(
+    sync,
+    () => ok(api.GET("/api/v1/inbox/threads", { params: { query: params } })),
+    async () => sync?.mail.list(params),
+  );
+}
+
+export function fetchThread(sync: OfflineSync | null, id: string): Promise<Fetched<KeptDetail>> {
+  return serverOrDevice<KeptDetail>(
+    sync,
+    () => ok(api.GET("/api/v1/inbox/threads/{id}", { params: { path: { id } } })),
+    async () => sync?.mail.read(id),
+    async (d) => {
+      if (sync) await sync.mail.remember(d);
+    },
+  );
+}
+
+/**
+ * Sends a reply, or with no connection queues it on the device to go when
+ * there is one. A reply to a conversation that already has one waiting
+ * queues behind it, so they arrive in order.
+ */
+export async function sendReply(
+  sync: OfflineSync | null,
+  threadId: string,
+  body: string,
+  label: string,
+  /** Who the writer saw it would go to; a reply that waits is sent to them. */
+  to: string[],
+): Promise<{ queued: boolean }> {
+  const send = (headers: Record<string, string>) =>
+    ok(api.POST("/api/v1/inbox/threads/{id}/reply", { params: { path: { id: threadId } }, headers, body: { body } }));
+  if (!sync) {
+    await send({});
+    return { queued: false };
+  }
+  const key = crypto.randomUUID();
+  let sent = false;
+  if (navigator.onLine && !(await sync.hasQueued(threadId))) {
+    sent = true;
+    try {
+      await withTimeout(send({ "Idempotency-Key": key }));
+      return { queued: false };
+    } catch (e) {
+      if (!isNetworkError(e)) throw e;
+      // It may have arrived: it goes again with the same key, which the server recognises.
+    }
+  }
+  // Sent once already, it goes again exactly as it was; otherwise it names
+  // who it is for, as the conversation may have moved on by the time it goes.
+  await sync.queueReply(threadId, sent || to.length === 0 ? { body } : { body, to }, label, key, sent);
+  return { queued: true };
+}
+
 // Changes -----------------------------------------------------------------------------------
 
 /** The outcome of a change: the record as it now reads, and whether it is waiting to be sent. */
@@ -235,8 +306,10 @@ async function sendOrQueue(
 ): Promise<Saved> {
   if (!sync) return { record: await send({}), queued: false };
   const key = crypto.randomUUID();
+  let sent = false;
   // A link to a record made offline is sent once that record has its real id.
   if (!(await willQueue(sync, id)) && !linksToLocal(body)) {
+    sent = true;
     try {
       const record = await withTimeout(send({ "Idempotency-Key": key }));
       if (record) await putRecords(sync.ws, entity, [record]);
@@ -244,10 +317,11 @@ async function sendOrQueue(
       return { record, queued: false };
     } catch (e) {
       if (!isNetworkError(e)) throw e;
-      // It may or may not have arrived: the same key makes sending it again safe.
+      // It may or may not have arrived: the same key makes sending it again
+      // safe, as long as nothing is folded into it meanwhile.
     }
   }
-  return { record: await sync.queue(entity, op, id, body, version, key), queued: true };
+  return { record: await sync.queue(entity, op, id, body, version, key, sent), queued: true };
 }
 
 export function createRecord(sync: OfflineSync | null, entity: StoredEntity, body: Record<string, unknown>): Promise<Saved> {
@@ -323,9 +397,8 @@ async function readWork<T>(
   }
   return serverOrDevice(sync, server, device, remember);
 }
-const remember = (sync: OfflineSync | null, entity: StoredEntity) => async (page: { items: unknown[] }) => {
-  if (sync) await putRecords(sync.ws, entity, page.items as RecordJson[]);
-};
+const remember = (sync: OfflineSync | null, entity: StoredEntity) => (page: { items: unknown[] }) =>
+  keepServerCopy(sync, entity, page.items as RecordJson[]);
 
 export function fetchEnquiries(sync: OfflineSync | null, p: EnquiryParams): Promise<Fetched<EnquiryPage>> {
   return serverOrDevice(
@@ -401,9 +474,7 @@ export function fetchCalendar(
             p,
           ) as unknown as CalendarView)
         : undefined,
-    async (cal) => {
-      if (sync) await putRecords(sync.ws, "booking", cal.bookings as unknown as RecordJson[]);
-    },
+    (cal) => keepServerCopy(sync, "booking", cal.bookings as unknown as RecordJson[]),
   );
 }
 
@@ -539,5 +610,19 @@ export function fetchQuotes(sync: OfflineSync | null, bookingId: string): Promis
     () => ok(api.GET("/api/v1/bookings/{id}/quotes", { params: { path: { id: bookingId } } })),
     async () => (await getMeta<Schemas["QuotePage"]>(`${sync?.ws}:quotes:${bookingId}`)) ?? (ready(sync) ? none : undefined),
     (q) => setMeta(`${sync?.ws}:quotes:${bookingId}`, q),
+  );
+}
+
+/**
+ * A server read kept on the device as last seen (invoices, payments,
+ * documents): offline, that copy is shown read-only; with none, it is
+ * `NotOnDevice`.
+ */
+export function fetchSaved<T>(sync: OfflineSync | null, key: string, server: () => Promise<T>): Promise<Fetched<T>> {
+  return serverOrDevice(
+    sync,
+    server,
+    () => getMeta<T>(`${sync?.ws}:${key}`),
+    (data) => setMeta(`${sync?.ws}:${key}`, data),
   );
 }

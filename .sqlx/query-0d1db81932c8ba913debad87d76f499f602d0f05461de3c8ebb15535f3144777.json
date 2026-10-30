@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT t.name AS \"name!\", t.tags AS \"tags!\" FROM talent t\n           WHERE t.workspace_id = app_workspace_id() AND t.id = $1 AND t.deleted_at IS NULL\n           UNION ALL\n           SELECT p.name, p.tags FROM projects p\n           WHERE p.workspace_id = app_workspace_id() AND p.id = $2 AND p.deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "tags!",
+        "type_info": "TextArray",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "0d1db81932c8ba913debad87d76f499f602d0f05461de3c8ebb15535f3144777"
+}

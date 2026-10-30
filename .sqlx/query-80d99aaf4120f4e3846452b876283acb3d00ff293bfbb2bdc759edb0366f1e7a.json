@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO stripe_accounts\n               (workspace_id, account_id, livemode, charges_enabled, details_submitted,\n                default_currency, display_name, connected_by)\n           VALUES (app_workspace_id(), $1, $2, $3, $4, $5, $6, $7)\n           ON CONFLICT (workspace_id, account_id) DO UPDATE SET\n               livemode = EXCLUDED.livemode, charges_enabled = EXCLUDED.charges_enabled,\n               details_submitted = EXCLUDED.details_submitted,\n               default_currency = EXCLUDED.default_currency,\n               display_name = EXCLUDED.display_name, connected_by = EXCLUDED.connected_by,\n               connected_at = now(), state_at = now(), disconnected_at = NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Bpchar",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "80d99aaf4120f4e3846452b876283acb3d00ff293bfbb2bdc759edb0366f1e7a"
+}

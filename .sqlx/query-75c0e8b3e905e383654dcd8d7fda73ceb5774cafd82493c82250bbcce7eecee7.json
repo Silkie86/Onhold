@@ -1,0 +1,66 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT i.id, count(*) OVER () AS \"total!\" FROM invoices i\n           WHERE i.workspace_id = app_workspace_id() AND i.deleted_at IS NULL\n             AND (cardinality($1::invoice_status[]) = 0 OR i.status = ANY($1))\n             AND ($2::text IS NULL OR i.kind = $2)\n             AND ($3::uuid IS NULL OR i.booking_id = $3)\n             AND ($4::uuid IS NULL OR i.payer_organisation_id = $4)\n             AND ($5::uuid IS NULL OR i.issuer_talent_id = $5 OR i.payer_talent_id = $5\n                  OR EXISTS (SELECT 1 FROM booking_talent bt WHERE bt.booking_id = i.booking_id AND bt.talent_id = $5))\n             AND ($6::text IS NULL OR i.search_text LIKE $6)\n             AND ($7::date IS NULL OR i.issue_date >= $7)\n             AND ($8::date IS NULL OR i.issue_date <= $8)\n           ORDER BY coalesce(i.issue_date, i.created_at::date) DESC, i.number DESC NULLS FIRST, i.created_at DESC\n           OFFSET $9 LIMIT $10",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "total!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "invoice_status[]",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "invoice_status",
+                  "kind": {
+                    "Enum": [
+                      "draft",
+                      "issued",
+                      "part_paid",
+                      "paid",
+                      "overdue",
+                      "credited",
+                      "void"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Date",
+        "Date",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "75c0e8b3e905e383654dcd8d7fda73ceb5774cafd82493c82250bbcce7eecee7"
+}

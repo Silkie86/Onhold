@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (\n               SELECT 1 FROM integrations\n               WHERE workspace_id = app_workspace_id() AND id = $1 AND disconnected_at IS NULL\n               FOR SHARE\n           ) AS \"live!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "live!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "48ab2aef1c14df4b6ed6064145f928d269462ba60134c2773a3dee4a3c44188d"
+}

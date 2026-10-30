@@ -202,6 +202,29 @@ pub async fn get(conn: &mut PgConnection, id: Uuid) -> Result<Option<Booking>> {
     .await?)
 }
 
+/// Several bookings at once, in date order; missing and deleted ones are
+/// left out.
+pub async fn get_many(conn: &mut PgConnection, ids: &[Uuid]) -> Result<Vec<Booking>> {
+    Ok(sqlx::query_as!(
+        Booking,
+        r#"SELECT b.id, b.enquiry_id, b.title, b.status AS "status: BookingStatus", b.status_changed_at,
+                  b.organisation_id,
+                  (SELECT name FROM organisations o WHERE o.id = b.organisation_id) AS organisation_name,
+                  b.contact_id, (SELECT name FROM contacts c WHERE c.id = b.contact_id) AS contact_name,
+                  b.venue_id, (SELECT name FROM organisations o WHERE o.id = b.venue_id) AS venue_name,
+                  b.venue_text, b.timezone, b.starts_at, b.ends_at, b.all_day, b.schedule, b.hold_expires_at,
+                  b.fee_minor, b.fee_currency, b.deposit_bps, b.cancel_reason, b.clash_override,
+                  b.override_reason, b.override_by, b.notes, b.tags, b.custom, b.version, b.created_at,
+                  b.updated_at, b.created_by AS "created_by: UserId", b.updated_by AS "updated_by: UserId"
+           FROM bookings b
+           WHERE b.workspace_id = app_workspace_id() AND b.id = ANY($1) AND b.deleted_at IS NULL
+           ORDER BY b.starts_at, b.id"#,
+        ids
+    )
+    .fetch_all(conn)
+    .await?)
+}
+
 /// Locks the row for an update in this transaction; returns its version.
 pub async fn lock(conn: &mut PgConnection, id: Uuid) -> Result<Option<i64>> {
     Ok(sqlx::query_scalar!(
@@ -609,6 +632,20 @@ pub async fn set_override(
            WHERE workspace_id = app_workspace_id() AND id = $1"#,
         id,
         reason,
+        by.map(|u| u.0)
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Ends an override, so the booking is firm again if it is confirmed.
+pub async fn clear_override(conn: &mut PgConnection, id: Uuid, by: Option<UserId>) -> Result<()> {
+    sqlx::query!(
+        r#"UPDATE bookings SET clash_override = false, override_reason = NULL, override_by = NULL,
+                  updated_by = $2
+           WHERE workspace_id = app_workspace_id() AND id = $1"#,
+        id,
         by.map(|u| u.0)
     )
     .execute(conn)

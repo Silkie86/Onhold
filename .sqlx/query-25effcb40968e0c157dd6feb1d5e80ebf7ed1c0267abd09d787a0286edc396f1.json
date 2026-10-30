@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT messaging_channel_id FROM thread_messages\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "messaging_channel_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "thread_messages",
+            "name": "messaging_channel_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "25effcb40968e0c157dd6feb1d5e80ebf7ed1c0267abd09d787a0286edc396f1"
+}

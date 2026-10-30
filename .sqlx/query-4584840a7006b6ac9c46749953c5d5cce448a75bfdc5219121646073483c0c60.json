@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO threads (id, workspace_id, integration_id, external_id, subject, contact_id, organisation_id,\n                                enquiry_id, booking_id, assigned_to, unread, last_message_at, created_at)\n           VALUES ($1, app_workspace_id(), $2, $3, left($4, 1000), $5, $6, $7, $8, $9, $10, $11, now())",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Bool",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4584840a7006b6ac9c46749953c5d5cce448a75bfdc5219121646073483c0c60"
+}

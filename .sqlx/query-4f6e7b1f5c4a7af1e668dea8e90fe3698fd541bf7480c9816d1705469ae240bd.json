@@ -1,0 +1,101 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH RECURSIVE\n           -- Each workspace with queued jobs, found by skipping through\n           -- jobs_ready_workspace rather than reading every queued job.\n           spaces AS (\n               (SELECT workspace_id AS ws FROM jobs\n                WHERE status = 'queued' AND workspace_id IS NOT NULL\n                ORDER BY workspace_id LIMIT 1)\n               UNION ALL\n               SELECT (SELECT j.workspace_id FROM jobs j\n                       WHERE j.status = 'queued' AND j.workspace_id > s.ws\n                       ORDER BY j.workspace_id LIMIT 1)\n               FROM spaces s WHERE s.ws IS NOT NULL\n           ),\n           -- At most `limit` of each workspace's next jobs: no more of\n           -- any one can be taken.\n           candidates AS (\n               SELECT c.* FROM spaces s CROSS JOIN LATERAL (\n                   SELECT q.id, q.workspace_id, q.priority, q.run_at FROM jobs q\n                   WHERE q.workspace_id = s.ws AND q.status = 'queued' AND q.run_at <= now()\n                   ORDER BY q.priority DESC, q.run_at, q.id LIMIT $1) c\n               WHERE s.ws IS NOT NULL\n               UNION ALL\n               (SELECT q.id, q.workspace_id, q.priority, q.run_at FROM jobs q\n                WHERE q.workspace_id IS NULL AND q.status = 'queued' AND q.run_at <= now()\n                ORDER BY q.priority DESC, q.run_at, q.id LIMIT $1)\n           ),\n           running AS (\n               SELECT coalesce(workspace_id, '00000000-0000-0000-0000-000000000000') AS ws, count(*) AS n\n               FROM jobs WHERE status = 'running' GROUP BY 1\n           ),\n           ready AS (\n               SELECT q.id, q.priority, q.run_at,\n                      row_number() OVER (PARTITION BY q.workspace_id ORDER BY q.priority DESC, q.run_at, q.id)\n                          + coalesce(r.n, 0) AS turn\n               FROM candidates q\n               LEFT JOIN running r ON r.ws = coalesce(q.workspace_id, '00000000-0000-0000-0000-000000000000')\n           )\n           UPDATE jobs SET status = 'running', attempts = attempts + 1,\n                           locked_until = now() + make_interval(secs => $2)\n           WHERE id IN (SELECT j.id FROM ready t JOIN jobs j ON j.id = t.id\n                        WHERE j.status = 'queued'\n                        ORDER BY t.priority DESC, t.turn, t.run_at, t.id\n                        LIMIT $1\n                        FOR UPDATE OF j SKIP LOCKED)\n           RETURNING id, workspace_id AS \"workspace_id: WorkspaceId\", kind, payload, secret,\n                     attempts AS attempt, max_attempts",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "workspace_id: WorkspaceId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "workspace_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "payload",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "payload"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "secret",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "secret"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "attempt",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "attempts"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "max_attempts",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "max_attempts"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Float8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "4f6e7b1f5c4a7af1e668dea8e90fe3698fd541bf7480c9816d1705469ae240bd"
+}

@@ -1,0 +1,10 @@
+# Entertainment for weddings and private events. Seeds in this file: perspective, modules, extras and vocabulary.
+# Custom fields, pipeline stages, templates and rules arrive in M8.
+name = "Entertainment for weddings and private events"
+description = "For entertainment at weddings and private events. Enquiries from couples and planners, holds on dates, quotes, contracts with deposits, invoices, and commission if you book other acts."
+perspective = "sells"
+modules = ["crm", "bookings", "calendar", "messaging", "finance", "documents", "pitching"]
+extras = ["team", "commission"]
+[vocabulary.crm.talent]
+one = "Act"
+many = "Acts"

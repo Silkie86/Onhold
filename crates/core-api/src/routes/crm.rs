@@ -16,7 +16,7 @@ use uuid::Uuid;
 use super::{IdempotencyHeader, IfMatchHeader, PageQuery, WorkspaceHeader, with_etag};
 use crate::AppState;
 use crate::error::{ApiResult, ErrorBody};
-use crate::extract::{IfMatch, WsCtx};
+use crate::extract::{ClientMeta, IfMatch, WsCtx};
 use crate::services::contacts::{
     self, ContactDuplicateQuery, ContactPage, ContactPatch, ContactView, NewContact,
 };
@@ -34,12 +34,16 @@ use crate::services::talent::{
     self, NewTalent, TalentDuplicateQuery, TalentMemberInput, TalentMemberView, TalentPage,
     TalentPatch, TalentStatus, TalentView,
 };
+use crate::services::talent_calendars::{
+    self, CalendarConnectStart, CalendarConnected, CreatedConnectLink, FinishCalendarConnect,
+    IcalConnect, PublicCalendarConnect, StartCalendarConnect, TalentCalendarView, TalentCalendars,
+};
 use crate::services::views::{self, EntitySchema, SavedView, SavedViewInput};
 
 pub fn router() -> OpenApiRouter<AppState> {
     let imports = OpenApiRouter::new()
         .routes(routes!(list_imports, upload_import))
-        .layer(DefaultBodyLimit::max(imports::MAX_CSV_BYTES + 64 * 1024));
+        .layer(DefaultBodyLimit::max(crate::MAX_UPLOAD_BODY_BYTES));
     OpenApiRouter::new()
         .routes(routes!(list_talent, create_talent))
         .routes(routes!(get_talent, update_talent, delete_talent))
@@ -48,6 +52,15 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(talent_timeline))
         .routes(routes!(list_talent_members, add_talent_member))
         .routes(routes!(update_talent_member, remove_talent_member))
+        .routes(routes!(talent_calendars))
+        .routes(routes!(create_calendar_link))
+        .routes(routes!(revoke_calendar_link))
+        .routes(routes!(disconnect_talent_calendar))
+        .routes(routes!(sync_talent_calendar))
+        .routes(routes!(public_calendar_connect))
+        .routes(routes!(public_calendar_connect_start))
+        .routes(routes!(public_calendar_connect_ical))
+        .routes(routes!(public_calendar_connect_finish))
         .routes(routes!(list_organisations, create_organisation))
         .routes(routes!(
             get_organisation,
@@ -71,6 +84,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_import))
         .routes(routes!(dry_run_import))
         .routes(routes!(run_import))
+        .routes(routes!(undo_import))
 }
 
 // Talent -------------------------------------------------------------------------------
@@ -247,6 +261,140 @@ async fn remove_talent_member(
 ) -> ApiResult<StatusCode> {
     talent::remove_member(&state, &ctx, id, member_id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// Talent's own calendars --------------------------------------------------------------------
+
+/// The talent's connected calendars (busy times only) and the links that
+/// still work for connecting more.
+#[utoipa::path(get, path = "/talent/{id}/calendars", tag = "talent", params(WorkspaceHeader, ("id" = Uuid, Path)),
+    responses((status = 200, body = TalentCalendars), (status = 404, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn talent_calendars(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<TalentCalendars>> {
+    Ok(Json(talent_calendars::list(&state, &ctx, id).await?))
+}
+
+/// A link to send the talent (or each member of an act) so they can
+/// connect their own calendar without an OnHold account. Works for two
+/// weeks; shown once.
+#[utoipa::path(post, path = "/talent/{id}/calendar-links", tag = "talent", params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path)),
+    responses((status = 201, body = CreatedConnectLink), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn create_calendar_link(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<(StatusCode, Json<CreatedConnectLink>)> {
+    Ok((
+        StatusCode::CREATED,
+        Json(talent_calendars::create_link(&state, &ctx, id).await?),
+    ))
+}
+
+/// Stops a link working. Calendars already connected through it carry on.
+#[utoipa::path(delete, path = "/talent/{id}/calendar-links/{link_id}", tag = "talent",
+    params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path), ("link_id" = Uuid, Path)),
+    responses((status = 204), (status = 404, body = ErrorBody)), security(("session" = []), ("api_key" = [])))]
+async fn revoke_calendar_link(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path((id, link_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<StatusCode> {
+    talent_calendars::revoke_link(&state, &ctx, id, link_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Stops reading a calendar and forgets its busy times.
+#[utoipa::path(delete, path = "/talent/{id}/calendars/{calendar_id}", tag = "talent",
+    params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path), ("calendar_id" = Uuid, Path)),
+    responses((status = 204), (status = 404, body = ErrorBody)), security(("session" = []), ("api_key" = [])))]
+async fn disconnect_talent_calendar(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path((id, calendar_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<StatusCode> {
+    talent_calendars::disconnect(&state, &ctx, id, calendar_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Reads a calendar now rather than at its next turn.
+#[utoipa::path(post, path = "/talent/{id}/calendars/{calendar_id}/sync", tag = "talent",
+    params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path), ("calendar_id" = Uuid, Path)),
+    responses((status = 200, body = TalentCalendarView), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn sync_talent_calendar(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path((id, calendar_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<Json<TalentCalendarView>> {
+    Ok(Json(
+        talent_calendars::sync_now(&state, &ctx, id, calendar_id).await?,
+    ))
+}
+
+/// What a talent sees on opening their calendar link. Needs no account;
+/// the link is the key.
+#[utoipa::path(get, path = "/public/calendar-connect/{token}", tag = "public", params(("token" = String, Path)),
+    responses((status = 200, body = PublicCalendarConnect), (status = 404, body = ErrorBody)))]
+async fn public_calendar_connect(
+    State(state): State<AppState>,
+    ClientMeta(meta): ClientMeta,
+    Path(token): Path<String>,
+) -> ApiResult<Json<PublicCalendarConnect>> {
+    Ok(Json(
+        talent_calendars::public_get(&state, &token, meta).await?,
+    ))
+}
+
+/// Where to send the talent to let OnHold see when they are busy.
+#[utoipa::path(post, path = "/public/calendar-connect/{token}/start", tag = "public", params(("token" = String, Path)),
+    request_body = StartCalendarConnect,
+    responses((status = 200, body = CalendarConnectStart), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody),
+        (status = 409, body = ErrorBody)))]
+async fn public_calendar_connect_start(
+    State(state): State<AppState>,
+    ClientMeta(meta): ClientMeta,
+    Path(token): Path<String>,
+    Json(b): Json<StartCalendarConnect>,
+) -> ApiResult<Json<CalendarConnectStart>> {
+    Ok(Json(
+        talent_calendars::public_start(&state, &token, meta, b).await?,
+    ))
+}
+
+/// Connects a calendar by its private iCal address, once it reads.
+#[utoipa::path(post, path = "/public/calendar-connect/{token}/ical", tag = "public", params(("token" = String, Path)),
+    request_body = IcalConnect,
+    responses((status = 200, body = CalendarConnected), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody),
+        (status = 409, body = ErrorBody)))]
+async fn public_calendar_connect_ical(
+    State(state): State<AppState>,
+    ClientMeta(meta): ClientMeta,
+    Path(token): Path<String>,
+    Json(b): Json<IcalConnect>,
+) -> ApiResult<Json<CalendarConnected>> {
+    Ok(Json(
+        talent_calendars::public_ical(&state, &token, meta, b).await?,
+    ))
+}
+
+/// Finishes connecting with what Google or Microsoft sent back.
+#[utoipa::path(post, path = "/public/calendar-connect/finish", tag = "public",
+    request_body = FinishCalendarConnect,
+    responses((status = 200, body = CalendarConnected), (status = 400, body = ErrorBody), (status = 404, body = ErrorBody),
+        (status = 409, body = ErrorBody)))]
+async fn public_calendar_connect_finish(
+    State(state): State<AppState>,
+    ClientMeta(meta): ClientMeta,
+    Json(b): Json<FinishCalendarConnect>,
+) -> ApiResult<Json<CalendarConnected>> {
+    Ok(Json(
+        talent_calendars::public_finish(&state, meta, b).await?,
+    ))
 }
 
 // Organisations ------------------------------------------------------------------------------
@@ -677,5 +825,22 @@ async fn run_import(
     Ok((
         StatusCode::ACCEPTED,
         Json(imports::run(&state, &ctx, id, b).await?),
+    ))
+}
+
+/// Take away what a finished import created, in the background: records
+/// changed since, or in use elsewhere, are kept, and what it updated stays.
+/// Follow it at `GET /imports/{id}`.
+#[utoipa::path(post, path = "/imports/{id}/undo", tag = "imports", params(WorkspaceHeader, IdempotencyHeader, ("id" = Uuid, Path)),
+    responses((status = 202, body = ImportView), (status = 403, body = ErrorBody), (status = 404, body = ErrorBody), (status = 409, body = ErrorBody)),
+    security(("session" = []), ("api_key" = [])))]
+async fn undo_import(
+    State(state): State<AppState>,
+    WsCtx(ctx): WsCtx,
+    Path(id): Path<Uuid>,
+) -> ApiResult<(StatusCode, Json<ImportView>)> {
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(imports::undo(&state, &ctx, id).await?),
     ))
 }

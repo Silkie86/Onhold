@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO projects (id, workspace_id, kind, name, status, currency, owner_id, budget, notes, tags,\n                                 created_by, updated_by)\n           VALUES ($1, app_workspace_id(), $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Bpchar",
+        "Uuid",
+        "Jsonb",
+        "Text",
+        "TextArray",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2a5a5e40049107b4f6fef43983fc4a97857ad6b709d813fb3be1b7406c054868"
+}

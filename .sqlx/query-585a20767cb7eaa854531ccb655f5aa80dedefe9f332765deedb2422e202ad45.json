@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE settlements SET currency = $2, gross_minor = $3, commission_bps = $4, commission_minor = $5,\n                  expenses = $6, expenses_minor = $7, net_minor = $8, notes = $9, updated_by = $10\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bpchar",
+        "Int8",
+        "Int4",
+        "Int8",
+        "Jsonb",
+        "Int8",
+        "Int8",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "585a20767cb7eaa854531ccb655f5aa80dedefe9f332765deedb2422e202ad45"
+}

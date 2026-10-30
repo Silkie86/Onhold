@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounting_connections\n           SET import_status = 'failed', import_error = left($2, 1000)\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND import_status = 'running'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1a74c1bc155529219565b69ffdbd683d0d277d5bba8f8d740ab183ea5025fa4e"
+}

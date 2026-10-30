@@ -8,7 +8,10 @@ use core_api::services::automation::{
 };
 use core_api::services::bookings::{self, JOB_COMPLETE, JOB_EXPIRE_HOLD};
 use core_api::services::quotes::{self, JOB_EXPIRE as JOB_EXPIRE_QUOTE};
-use core_api::services::{imports, mail, webhooks};
+use core_api::services::{
+    accounting, calendar_push, documents, files, imports, inbox, integrations, invoices, mail,
+    sender_domains, stripe, talent_calendars, webhooks,
+};
 use core_db::jobs::{Claimed, LogLine};
 use core_domain::WorkspaceId;
 use core_integrations::http::DeliveryError;
@@ -55,7 +58,10 @@ impl From<ApiError> for JobError {
         // Bad input stays bad; database and other internal trouble may pass.
         let permanent = !matches!(
             err,
-            ApiError::Internal(_) | ApiError::Conflict { .. } | ApiError::PreconditionFailed { .. }
+            ApiError::Internal(_)
+                | ApiError::Conflict { .. }
+                | ApiError::PreconditionFailed { .. }
+                | ApiError::Unavailable { .. }
         );
         Self { message, permanent }
     }
@@ -136,11 +142,175 @@ impl Worker {
                 let out = mail::prepare_rule_mail(&self.app, job).await?;
                 self.send_mail(job, out, log).await
             }
+            files::JOB_READ => {
+                let id = uuid_field(&job.payload, "file_id")?;
+                files::read(&self.app, workspace(job)?, id).await?;
+                Ok(())
+            }
+            documents::JOB_RENDER => {
+                let id = uuid_field(&job.payload, "document_id")?;
+                let number = job
+                    .payload
+                    .get("version")
+                    .and_then(Value::as_i64)
+                    .and_then(|n| i32::try_from(n).ok())
+                    .ok_or_else(|| JobError::permanent("the job has no `version`"))?;
+                documents::render_version(&self.app, workspace(job)?, id, number).await?;
+                Ok(())
+            }
+            documents::JOB_SEAL => {
+                let id = uuid_field(&job.payload, "document_id")?;
+                let round = uuid_field(&job.payload, "round_id")?;
+                documents::seal_round(&self.app, workspace(job)?, id, round).await?;
+                Ok(())
+            }
+            invoices::JOB_OVERDUE => {
+                let id = uuid_field(&job.payload, "invoice_id")?;
+                invoices::mark_overdue(&self.app, workspace(job)?, id).await?;
+                Ok(())
+            }
+            stripe::JOB_EVENT => {
+                let id = job
+                    .payload
+                    .get("event_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| JobError::permanent("the job has no `event_id`"))?;
+                let outcome = stripe::process_event(&self.app, workspace(job)?, id).await?;
+                note(log, format!("Stripe event {id}: {outcome}"));
+                Ok(())
+            }
+            integrations::JOB_POLL => {
+                let id = uuid_field(&job.payload, "integration_id")?;
+                let outcome = integrations::poll(&self.app, workspace(job)?, id).await?;
+                note(log, outcome.to_string());
+                Ok(())
+            }
+            inbox::JOB_SEND => {
+                let id = uuid_field(&job.payload, "message_id")?;
+                let ws = workspace(job)?;
+                let last = job.attempt >= job.max_attempts;
+                match inbox::send(&self.app, ws, id, self.mailer.as_ref(), last).await {
+                    Ok(outcome) => {
+                        note(log, outcome.to_string());
+                        Ok(())
+                    }
+                    Err(e) => {
+                        let err = JobError::from(e);
+                        // Not tried again: the message shows as failed
+                        // rather than as sending for good.
+                        if (err.permanent || last)
+                            && let Err(e) = inbox::abandon(&self.app, ws, id, &err.message).await
+                        {
+                            tracing::error!(message_id = %id, error = %e, "could not mark a message failed");
+                        }
+                        Err(err)
+                    }
+                }
+            }
+            inbox::JOB_WAKE => {
+                let id = uuid_field(&job.payload, "thread_id")?;
+                let at = time_field(&job.payload, "at")?;
+                inbox::wake(&self.app, workspace(job)?, id, at).await?;
+                Ok(())
+            }
+            sender_domains::JOB_CHECK => {
+                let id = uuid_field(&job.payload, "domain_id")?;
+                let outcome = sender_domains::check(&self.app, workspace(job)?, id).await?;
+                note(log, outcome.to_string());
+                Ok(())
+            }
+            sender_domains::JOB_FORGET => {
+                let id = job
+                    .payload
+                    .get("provider_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| JobError::permanent("the job has no `provider_id`"))?;
+                sender_domains::forget(&self.app, id).await?;
+                Ok(())
+            }
+            talent_calendars::JOB_READ => {
+                let id = uuid_field(&job.payload, "calendar_id")?;
+                let outcome = talent_calendars::read(&self.app, workspace(job)?, id).await?;
+                note(log, outcome.to_string());
+                Ok(())
+            }
+            talent_calendars::JOB_REVOKE => {
+                let id = uuid_field(&job.payload, "calendar_id")?;
+                let outcome = talent_calendars::revoke(&self.app, workspace(job)?, id).await?;
+                note(log, outcome);
+                Ok(())
+            }
+            calendar_push::JOB_WRITE => {
+                let id = uuid_field(&job.payload, "push_id")?;
+                let booking = match job.payload.get("booking_id") {
+                    Some(_) => Some(uuid_field(&job.payload, "booking_id")?),
+                    None => None,
+                };
+                let outcome = calendar_push::write(&self.app, workspace(job)?, id, booking).await?;
+                note(log, outcome.to_string());
+                Ok(())
+            }
+            calendar_push::JOB_REVOKE => {
+                let id = uuid_field(&job.payload, "push_id")?;
+                let outcome = calendar_push::revoke(&self.app, workspace(job)?, id).await?;
+                note(log, outcome);
+                Ok(())
+            }
+            accounting::JOB_SYNC => {
+                let id = uuid_field(&job.payload, "connection_id")?;
+                let outcome = accounting::sync(&self.app, workspace(job)?, id).await?;
+                note(log, outcome.to_string());
+                Ok(())
+            }
+            accounting::JOB_REVOKE => {
+                let id = uuid_field(&job.payload, "connection_id")?;
+                let outcome = accounting::revoke(&self.app, workspace(job)?, id).await?;
+                note(log, outcome);
+                Ok(())
+            }
             JOB_WEBHOOK => self.deliver_webhook(job, log).await,
             imports::JOB_IMPORT => self.run_import(job, log).await,
+            imports::JOB_UNDO => self.undo_import(job, log).await,
             other => Err(JobError::permanent(format!(
                 "no handler for job kind `{other}`"
             ))),
+        }
+    }
+
+    /// Cleans up after a job that gave up for good without its handler
+    /// finishing: it timed out on its last attempt, or its worker stopped.
+    pub(crate) async fn gave_up(
+        &self,
+        workspace: Option<WorkspaceId>,
+        kind: &str,
+        payload: &Value,
+        error: &str,
+    ) {
+        if kind == inbox::JOB_SEND {
+            let (Some(workspace), Ok(id)) = (workspace, uuid_field(payload, "message_id")) else {
+                return;
+            };
+            if let Err(e) = inbox::abandon(&self.app, workspace, id, error).await {
+                tracing::error!(message_id = %id, error = %e, "could not mark a message failed");
+            }
+            return;
+        }
+        if kind != imports::JOB_IMPORT && kind != imports::JOB_UNDO {
+            return;
+        }
+        let (Some(workspace), Ok(id)) = (workspace, uuid_field(payload, "import_id")) else {
+            return;
+        };
+        if kind == imports::JOB_UNDO {
+            let message = format!("the undo stopped: {error}");
+            if let Err(e) = imports::abandon_undo(&self.app, workspace, id, &message).await {
+                tracing::error!(import_id = %id, error = %e, "could not end an undo");
+            }
+            return;
+        }
+        let message = format!("the import stopped: {error}");
+        if let Err(e) = imports::abandon(&self.app, workspace, id, &message).await {
+            tracing::error!(import_id = %id, error = %e, "could not mark an import failed");
         }
     }
 
@@ -157,6 +327,26 @@ impl Worker {
             let message = format!("the import stopped: {}", err.message);
             if let Err(e) = imports::abandon(&self.app, workspace, id, &message).await {
                 tracing::error!(job_id = %job.id, error = %e, "could not mark an import failed");
+            }
+        }
+        Err(err)
+    }
+
+    async fn undo_import(&self, job: &Claimed, log: &mut Vec<LogLine>) -> Result<(), JobError> {
+        let workspace = workspace(job)?;
+        let id = uuid_field(&job.payload, "import_id")?;
+        let by = uuid_field(&job.payload, "by").ok().map(core_domain::UserId);
+        let result =
+            imports::execute_undo(&self.app, workspace, id, by, self.settings.import_slice).await;
+        let Err(err) = result else {
+            return Ok(());
+        };
+        let err = JobError::from(err);
+        if err.permanent || job.attempt >= job.max_attempts {
+            note(log, "giving up; the import can be undone again");
+            let message = format!("the undo stopped: {}", err.message);
+            if let Err(e) = imports::abandon_undo(&self.app, workspace, id, &message).await {
+                tracing::error!(job_id = %job.id, error = %e, "could not end an undo");
             }
         }
         Err(err)

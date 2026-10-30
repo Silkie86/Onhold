@@ -11,6 +11,7 @@ import { useOffline, useSyncStatus } from "../data.ts";
 import type { OutboxItem } from "../offline/store.ts";
 import { type BookingStatus, STATUS_LABEL } from "../work.ts";
 import { Loading } from "./crm.tsx";
+import { KeepMailCard } from "./mail-device.tsx";
 
 const OPS: Record<OutboxItem["op"], string> = { create: "New", update: "Edited", delete: "Deleted", status: "Status" };
 
@@ -25,6 +26,8 @@ function kind(item: OutboxItem): { label: string; link?: { to: string; params: R
       return { label: "task", link: { to: "/tasks", params: {} } };
     case "availability":
       return { label: "marked time" };
+    case "reply":
+      return { label: "reply", link: { to: "/inbox", params: {} } };
     default: {
       const entity = ENTITIES[item.entity];
       return { label: entity.label.toLowerCase(), link: { to: "/crm/$entity/$id", params: { entity: entity.path, id: item.id } } };
@@ -100,6 +103,8 @@ export function SyncPage() {
         </Button>
       </Card>
 
+      <KeepMailCard />
+
       {attention.length > 0 && (
         <section aria-label="Needs attention" className="flex flex-col gap-3">
           <h2 className="font-semibold">Needs your decision</h2>
@@ -136,9 +141,12 @@ export function SyncPage() {
               ) : (
                 <>
                   <Alert>{item.error ?? "The server did not accept this change."}</Alert>
-                  <div className="flex justify-end">
+                  <div className="flex flex-wrap justify-end gap-2">
                     <Button variant="outline" onClick={() => void sync.resolve(item.seq as number, "theirs")}>
                       Discard this change
+                    </Button>
+                    <Button disabled={!status.online} onClick={() => void sync.retry(item.seq as number)}>
+                      Try again
                     </Button>
                   </div>
                 </>
@@ -153,7 +161,15 @@ export function SyncPage() {
         {waiting.length === 0 ? (
           <EmptyState title="Nothing waiting">Every change made on this device has reached the server.</EmptyState>
         ) : (
-          waiting.map((item) => <ChangeCard key={item.seq} item={item} />)
+          waiting.map((item) => (
+            <ChangeCard key={item.seq} item={item}>
+              {item.retryAt && (
+                <p className="text-sm text-muted-foreground">
+                  The server has not finished with this yet. It will be sent again shortly.
+                </p>
+              )}
+            </ChangeCard>
+          ))
         )}
       </section>
     </div>

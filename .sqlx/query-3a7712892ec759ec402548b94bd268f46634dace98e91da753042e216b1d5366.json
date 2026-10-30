@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM calendar_push_events WHERE workspace_id = app_workspace_id() AND push_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3a7712892ec759ec402548b94bd268f46634dace98e91da753042e216b1d5366"
+}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE integrations SET disconnected_at = NULL, connected_at = now()\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "80e8ce791cdb5a5a9e30986734dceb0cd989105e4c883233240d3022c7fe0e7e"
+}

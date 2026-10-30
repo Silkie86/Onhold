@@ -1,6 +1,7 @@
-// The device's copy of the CRM and bookings, and the queue of changes made offline, in
-// IndexedDB (which every Tauri web view has). One database per device,
-// partitioned by workspace; signing out deletes it.
+// The device's copy of the CRM and bookings, recent email when the person
+// asks for it, and the queue of changes made offline, in IndexedDB (which
+// every Tauri web view has). One database per device, partitioned by
+// workspace; signing out deletes it.
 
 import type { RecordJson } from "@onhold/ui";
 import { type DBSchema, type IDBPDatabase, deleteDB, openDB } from "idb";
@@ -13,6 +14,9 @@ export type WorkEntity = "enquiry" | "booking" | "task" | "availability";
 export const WORK_ENTITIES: WorkEntity[] = ["enquiry", "booking", "task", "availability"];
 
 export type StoredEntity = EntityName | WorkEntity;
+
+/** A reply written offline, queued with the record changes and sent in order. */
+export type QueuedEntity = StoredEntity | "reply";
 
 export interface StoredRecord {
   ws: string;
@@ -28,7 +32,7 @@ export type OutboxState = "pending" | "conflict" | "failed";
 export interface OutboxItem {
   seq?: number;
   ws: string;
-  entity: StoredEntity;
+  entity: QueuedEntity;
   op: OutboxOp;
   /** The record's id; `local-…` until a create reaches the server. */
   id: string;
@@ -46,28 +50,93 @@ export interface OutboxItem {
   error?: string;
   /** The server's copy, when someone else changed the record meanwhile. */
   server?: RecordJson;
+  /**
+   * How many times the server said it was still working on this change (or
+   * gave up waiting); 0 once it was sent and may have arrived. Once set,
+   * nothing is folded into it again: its key may belong to exactly this body.
+   */
+  tries?: number;
+  /**
+   * When it was first sent in a way that may have reached the server, which
+   * recognises its key only for so long (see `KEY_KEPT_MS`).
+   */
+  sentAt?: string;
+  /** Not sent again before this time. */
+  retryAt?: string;
+}
+
+/** One conversation kept on the device, text only (see `mail.ts`). */
+export interface StoredThread {
+  ws: string;
+  id: string;
+  /** The conversation as the API gives it, trimmed to what the device keeps. */
+  detail: unknown;
+  /** Its latest message, for keeping the newest and letting old ones go. */
+  at: string;
+  /** The thread's version when it was read. */
+  version: number;
+  /** How much room it takes, roughly, in bytes. */
+  bytes: number;
 }
 
 interface OfflineDb extends DBSchema {
   records: { key: [string, string, string]; value: StoredRecord; indexes: { by_list: [string, string] } };
   outbox: { key: number; value: OutboxItem; indexes: { by_ws: string } };
   meta: { key: string; value: unknown };
+  mail: { key: [string, string]; value: StoredThread; indexes: { by_ws: string } };
 }
 
 const DB_NAME = "onhold-offline";
+/** How long to wait for another window of the app to let go of an older version of the database. */
+const OPEN_WAIT_MS = 10_000;
 let opened: Promise<IDBPDatabase<OfflineDb>> | null = null;
+/** Signed out: nothing more is written to the device until the page loads again. */
+let shut = false;
 
 function db(): Promise<IDBPDatabase<OfflineDb>> {
-  opened ??= openDB<OfflineDb>(DB_NAME, 1, {
-    upgrade(d) {
-      const records = d.createObjectStore("records", { keyPath: ["ws", "entity", "id"] });
-      records.createIndex("by_list", ["ws", "entity"]);
-      const outbox = d.createObjectStore("outbox", { keyPath: "seq", autoIncrement: true });
-      outbox.createIndex("by_ws", "ws");
-      d.createObjectStore("meta");
+  if (shut) return Promise.reject(new DOMException("signed out", "InvalidStateError"));
+  if (opened) return opened;
+  const opening = openDB<OfflineDb>(DB_NAME, 2, {
+    // A newer version of the app opened in another window: make way for it.
+    blocking() {
+      void opening.then((d) => d.close());
+      if (opened === attempt) opened = null;
+    },
+    terminated() {
+      if (opened === attempt) opened = null;
+    },
+    upgrade(d, oldVersion) {
+      if (oldVersion < 1) {
+        const records = d.createObjectStore("records", { keyPath: ["ws", "entity", "id"] });
+        records.createIndex("by_list", ["ws", "entity"]);
+        const outbox = d.createObjectStore("outbox", { keyPath: "seq", autoIncrement: true });
+        outbox.createIndex("by_ws", "ws");
+        d.createObjectStore("meta");
+      }
+      if (oldVersion < 2) {
+        const mail = d.createObjectStore("mail", { keyPath: ["ws", "id"] });
+        mail.createIndex("by_ws", "ws");
+      }
     },
   });
-  return opened;
+  // An older version open in another window may hold the upgrade up: rather
+  // than wait for ever (and with it signing out), give up and try again later.
+  const attempt: Promise<IDBPDatabase<OfflineDb>> = withWait(opening);
+  attempt.catch(() => {
+    if (opened === attempt) opened = null;
+    void opening.then((d) => d.close()).catch(() => undefined);
+  });
+  opened = attempt;
+  return attempt;
+}
+
+/** `p`, or a failure once another window has held it up for too long. */
+function withWait<T>(p: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const wait = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new DOMException("another window holds the offline copy", "TimeoutError")), OPEN_WAIT_MS);
+  });
+  return Promise.race([p, wait]).finally(() => clearTimeout(timer));
 }
 
 export const LOCAL_PREFIX = "local-";
@@ -114,6 +183,95 @@ export async function setMeta(key: string, value: unknown): Promise<void> {
   await (await db()).put("meta", value, key);
 }
 
+// Email kept on the device ------------------------------------------------------------------
+
+/** Whether this device keeps recent email for `ws`. Off unless the person turns it on. */
+export const keepMailKey = (ws: string) => `${ws}:mail:keep`;
+
+export async function allMail(ws: string): Promise<StoredThread[]> {
+  return (await db()).getAllFromIndex("mail", "by_ws", ws);
+}
+
+export async function getMail(ws: string, id: string): Promise<StoredThread | undefined> {
+  return (await db()).get("mail", [ws, id]);
+}
+
+/**
+ * Keeps a conversation, but only while the device keeps email for its
+ * workspace: the check and the write are one transaction, so a refresh
+ * still running when the person turns it off cannot put mail back.
+ */
+export async function putMail(thread: StoredThread): Promise<boolean> {
+  const tx = (await db()).transaction(["meta", "mail"], "readwrite");
+  const keep = (await tx.objectStore("meta").get(keepMailKey(thread.ws))) === true;
+  if (keep) await tx.objectStore("mail").put(thread);
+  await tx.done;
+  return keep;
+}
+
+/** Every conversation kept on the device, whatever the workspace. */
+export async function allMailEverywhere(): Promise<StoredThread[]> {
+  return (await db()).getAll("mail");
+}
+
+export async function deleteMailRows(rows: { ws: string; id: string }[]): Promise<void> {
+  const tx = (await db()).transaction("mail", "readwrite");
+  await Promise.all([...rows.map((r) => tx.store.delete([r.ws, r.id])), tx.done]);
+}
+
+/**
+ * Forgets the copy kept for any workspace not in `workspaces` (the person
+ * left it, became talent there, or its plan no longer includes the apps):
+ * its records, any email kept and the choice to keep it, and everything else
+ * noted for it. Changes not yet sent stay, as when a session ends, in case
+ * the person gets it back; they hold only what the person wrote.
+ */
+export async function forgetWorkspacesExcept(workspaces: string[]): Promise<void> {
+  const d = await db();
+  const allowed = new Set(workspaces);
+  // Which workspaces the device holds anything for, a step per workspace
+  // rather than per record: this runs each time the app starts.
+  const present = new Set<string>();
+  const look = d.transaction(["records", "meta", "mail"], "readonly");
+  for (const store of ["records", "mail"] as const) {
+    let cursor = await look.objectStore(store).openKeyCursor();
+    while (cursor) {
+      const ws = cursor.key[0];
+      present.add(ws);
+      // Past every key of this workspace: an array sorts after any string.
+      cursor = await cursor.continue([ws, []] as never);
+    }
+  }
+  for (const key of await look.objectStore("meta").getAllKeys()) {
+    // Every workspace's own keys are `<ws>:…`; the device's owner is not.
+    const ws = /^([^:]+):/.exec(key)?.[1];
+    if (ws !== undefined) present.add(ws);
+  }
+  await look.done;
+  const gone = [...present].filter((ws) => !allowed.has(ws));
+  if (!gone.length) return;
+  const tx = d.transaction(["records", "meta", "mail"], "readwrite");
+  for (const ws of gone) {
+    const all = IDBKeyRange.bound([ws], [ws, []]);
+    await tx.objectStore("records").delete(all);
+    await tx.objectStore("mail").delete(all);
+    await tx.objectStore("meta").delete(IDBKeyRange.bound(`${ws}:`, `${ws}:￿`));
+  }
+  await tx.done;
+}
+
+export async function deleteMail(ws: string, ids: string[]): Promise<void> {
+  const tx = (await db()).transaction("mail", "readwrite");
+  await Promise.all([...ids.map((id) => tx.store.delete([ws, id])), tx.done]);
+}
+
+/** Forgets every conversation kept for `ws`. */
+export async function clearMail(ws: string): Promise<void> {
+  const tx = (await db()).transaction("mail", "readwrite");
+  for (const key of await tx.store.index("by_ws").getAllKeys(ws)) await tx.store.delete(key);
+  await tx.done;
+}
+
 export async function outbox(ws: string): Promise<OutboxItem[]> {
   const items = await (await db()).getAllFromIndex("outbox", "by_ws", ws);
   return items.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
@@ -128,33 +286,73 @@ export async function removeOutbox(seq: number): Promise<void> {
 }
 
 /**
+ * Changes a workspace's queue in one transaction: `change` is given the
+ * queue as it is now and returns it as it should be. Returns the new queue.
+ */
+export async function changeOutbox(ws: string, change: (queue: OutboxItem[]) => OutboxItem[]): Promise<OutboxItem[]> {
+  const tx = (await db()).transaction("outbox", "readwrite");
+  const before = (await tx.store.index("by_ws").getAll(ws)).sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  const after = change(before);
+  const kept = new Set(after.map((q) => q.seq));
+  for (const q of before) if (!kept.has(q.seq)) await tx.store.delete(q.seq as number);
+  // Only what `change` changed is written: what it handed back as it was, is.
+  const same = new Set(before);
+  const saved: OutboxItem[] = [];
+  for (const q of after) saved.push(same.has(q) ? q : { ...q, seq: await tx.store.put(q) });
+  await tx.done;
+  return saved;
+}
+
+/**
  * When the session ends without the person signing out here (it expired, or
  * was signed out from another device, perhaps because this one was lost):
- * the copy of the workspace goes, but changes not yet sent stay, marked with
- * whose they are, for that same person's next sign-in.
+ * the copy of the workspace and any email kept go, but changes not yet sent
+ * stay, marked with whose they are, for that same person's next sign-in, and
+ * so does the choice to keep email, which holds no mail itself.
  */
 export async function wipeAllButQueue(): Promise<void> {
   const d = await db();
   const owner = await d.get("meta", "owner");
-  const tx = d.transaction(["records", "meta"], "readwrite");
+  const choices: [string, unknown][] = [];
+  for (const key of await d.getAllKeys("meta")) {
+    if (key.endsWith(":mail:keep")) choices.push([key, await d.get("meta", key)]);
+  }
+  const tx = d.transaction(["records", "meta", "mail"], "readwrite");
   await tx.objectStore("records").clear();
+  await tx.objectStore("mail").clear();
   await tx.objectStore("meta").clear();
   if (owner !== undefined) await tx.objectStore("meta").put(owner, "owner");
+  for (const [key, value] of choices) await tx.objectStore("meta").put(value, key);
   await tx.done;
 }
 
-/** Makes sure the device holds only `userId`'s data, clearing another person's. */
+/**
+ * Makes sure the device holds only `userId`'s data, clearing another
+ * person's, and any copy no one claimed (written after a sign-out, say).
+ */
 export async function claimFor(userId: string): Promise<void> {
   const owner = await getMeta<string>("owner");
-  if (owner !== undefined && owner !== userId) await wipe();
+  let unclaimed = false;
+  if (owner === undefined) {
+    const d = await db();
+    // Queued changes too: the next person must not send someone else's.
+    for (const store of ["records", "outbox", "meta", "mail"] as const) unclaimed ||= (await d.count(store)) > 0;
+  }
+  if ((owner !== undefined && owner !== userId) || unclaimed) await wipe();
   await setMeta("owner", userId);
 }
 
-/** Everything on the device, for signing out. */
-export async function wipe(): Promise<void> {
-  if (opened) (await opened).close();
+/**
+ * Everything on the device. `forGood` when signing out: nothing still
+ * running on this page (a sync's last answer, say) can write a new copy
+ * after it, until the page loads again.
+ */
+export async function wipe(forGood = false): Promise<void> {
+  if (forGood) shut = true;
+  const open = opened;
   opened = null;
-  await deleteDB(DB_NAME);
+  if (open) (await open.catch(() => null))?.close();
+  await withWait(deleteDB(DB_NAME));
 }
 
 // Queuing changes ---------------------------------------------------------------------------
@@ -197,19 +395,31 @@ export function mergePatches(a: Record<string, unknown>, b: Record<string, unkno
  * creation, repeated edits become one, and deleting a record that never
  * reached the server simply forgets it. A booking's status move stays a step
  * of its own, in order, so edits after it are not folded into what came
- * before. Returns the queue as it should be.
+ * before. The change being sent (`sending`, its seq) and any that may have
+ * reached the server under its key stay exactly as they are; what comes
+ * after them is a step of its own, and such a change is never folded into
+ * what waits either. Returns the queue as it should be.
  */
-export function enqueue(queue: OutboxItem[], next: OutboxItem): OutboxItem[] {
+export function enqueue(queue: OutboxItem[], next: OutboxItem, sending?: number): OutboxItem[] {
   const same = (q: OutboxItem) => q.entity === next.entity && q.id === next.id && q.ws === next.ws && q.state === "pending";
-  const waiting = queue.filter(same);
+  const fixed = (q: OutboxItem) => (q.seq !== undefined && q.seq === sending) || q.tries !== undefined;
+  // A change that may already have reached the server goes as it is, after what waits.
+  if (fixed(next)) return [...queue, next];
+  const settled = queue.filter((q) => same(q) && fixed(q));
+  const waiting = queue.filter((q) => same(q) && !fixed(q));
   const last = waiting[waiting.length - 1];
   if (next.op === "update") {
-    if (!last) return [...queue, next];
+    if (!last) return settled.some((q) => q.op === "delete") ? queue : [...queue, next];
     if (last.op === "delete") return queue;
     if (last.op === "status") return [...queue, next];
     return queue.map((q) => (q === last ? { ...q, body: mergePatches(q.body, next.body) } : q));
   }
   if (next.op === "delete") {
+    if (settled.length) {
+      // What is on its way stays, and the delete follows it in place of what waits.
+      const rest = queue.filter((q) => !waiting.includes(q));
+      return settled.some((q) => q.op === "delete") ? rest : [...rest, next];
+    }
     if (waiting.some((q) => q.op === "create")) return queue.filter((q) => !same(q));
     const first = waiting[0];
     if (!first) return [...queue, next];
@@ -246,13 +456,39 @@ export function waitsForLocal(item: OutboxItem): boolean {
   return linksToLocal(item.body);
 }
 
+export const ORPHANED = "This links to a record made on this device that was discarded before it was sent, so it cannot be sent.";
+/** The same, when the record's creation was discarded because it may have reached OnHold already. */
+export const ORPHANED_MAYBE_THERE =
+  "This links to a record made on this device whose creation was discarded because it may be on OnHold already. If it is, make this change to it there, then discard this one.";
+
+/** The records made offline, not yet on the server, that fields link to. */
+export function localLinks(value: unknown): string[] {
+  return (JSON.stringify(value).match(new RegExp(LOCAL_LINK.source, "g")) ?? []).map((s) => s.slice(1, -1));
+}
+
+/**
+ * Marks as refused every waiting change that links to (or is a step for) a
+ * record made offline whose creation is no longer queued: it was discarded
+ * or deleted, so the change would wait for ever. Returns the queue as it
+ * should be.
+ */
+export function failOrphans(queue: OutboxItem[], error = ORPHANED): OutboxItem[] {
+  const creating = new Set(queue.filter((q) => q.op === "create" && isLocalId(q.id)).map((q) => q.id));
+  const gone = (id: string) => !creating.has(id);
+  return queue.map((q) => {
+    if (q.state !== "pending") return q;
+    const orphaned = localLinks(q.body).some(gone) || (q.op !== "create" && q.op !== "delete" && isLocalId(q.id) && gone(q.id));
+    return orphaned ? { ...q, state: "failed" as const, error } : q;
+  });
+}
+
 /**
  * After a change to a record is accepted, the changes queued after it for
  * the same record were made on top of it, not on top of anyone else's: they
  * move to the record's new version, so they are not mistaken for conflicts.
  * After a create (`from` undefined), everything queued for the record moves.
  */
-export function rebase(queue: OutboxItem[], entity: StoredEntity, id: string, from: number | undefined, to: number): OutboxItem[] {
+export function rebase(queue: OutboxItem[], entity: QueuedEntity, id: string, from: number | undefined, to: number): OutboxItem[] {
   return queue.map((q) =>
     q.entity === entity && q.id === id && q.state === "pending" && (from === undefined || q.version === from)
       ? { ...q, version: to }

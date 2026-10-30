@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (\n             SELECT 1 FROM payment_allocations a\n             JOIN accounting_links la\n               ON la.connection_id = $1 AND la.kind = 'allocation' AND la.local_id = a.id\n             WHERE a.workspace_id = app_workspace_id() AND a.invoice_id = $2\n               AND la.status <> 'imported'\n               AND (la.state = 'sending' OR (a.removed_at IS NOT NULL AND la.state = 'live'))\n           ) OR EXISTS (\n             -- Credit notes against it still on their way, or still applied\n             -- in the books though voided here.\n             SELECT 1 FROM invoices cn\n             JOIN accounting_links lc\n               ON lc.connection_id = $1 AND lc.kind = 'credit' AND lc.local_id = cn.id\n             WHERE cn.workspace_id = app_workspace_id() AND cn.kind = 'credit_note' AND cn.credits_invoice_id = $2\n               AND (lc.state = 'sending'\n                    OR (lc.state = 'live' AND (cn.status = 'void' OR cn.deleted_at IS NOT NULL)))\n           ) AS \"pending!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pending!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "263c24beb19c03baf746537bc13064f809dd8ab28cc60f47da915bd8076f6de6"
+}

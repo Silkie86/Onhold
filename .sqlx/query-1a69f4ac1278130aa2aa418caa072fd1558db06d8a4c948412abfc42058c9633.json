@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE bookings SET clash_override = false, override_reason = NULL, override_by = NULL,\n                  updated_by = $2\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1a69f4ac1278130aa2aa418caa072fd1558db06d8a4c948412abfc42058c9633"
+}

@@ -4,8 +4,8 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Alert, Button, Card, Input, Label, Spinner, relativeTime } from "@onhold/ui";
-import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { Alert, Button, Card, Input, Label, Spinner, applyBrandTheme, clearBranding, readBranding, relativeTime } from "@onhold/ui";
+import { type FormEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ApiFailure, api, ok, setCsrfToken, setWorkspace } from "../api.ts";
 import { GoTo } from "../go-to.tsx";
 import { isNetworkError } from "../offline/sync.ts";
@@ -22,12 +22,13 @@ export function safeRedirect(target: string | undefined): string {
   return target && target.startsWith("/") && !target.startsWith("//") ? target : "/";
 }
 
-function AuthCard({ title, children }: { title: string; children: ReactNode }) {
+function AuthCard({ title, logo, children }: { title: string; logo?: string | null; children: ReactNode }) {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm p-6">
+        {logo && <img src={logo} alt="" className="mb-4 h-10 w-auto max-w-48 object-contain brand-logo" />}
         <div className="mb-6 flex items-center gap-2">
-          <img src="/favicon.svg" alt="" className="size-7" />
+          {!logo && <img src="/favicon.svg" alt="" className="size-7" />}
           <h1 className="text-lg font-semibold">{title}</h1>
         </div>
         {children}
@@ -248,6 +249,15 @@ export function AcceptInvitationPage() {
     queryFn: () => ok(api.GET("/api/v1/invitations/lookup", { params: { query: { token: token ?? "" } } })),
     retry: false,
   });
+  const brand = preview.data ? readBranding(preview.data.branding) : null;
+  // The page wears the inviting workspace's look.
+  const look = JSON.stringify(brand ? { colour: brand.colour, theme: brand.theme } : null);
+  useLayoutEffect(() => {
+    const l = JSON.parse(look) as Parameters<typeof applyBrandTheme>[0] | null;
+    if (!l) return;
+    applyBrandTheme(l);
+    return () => clearBranding();
+  }, [look]);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -295,10 +305,12 @@ export function AcceptInvitationPage() {
   }
   const inv = preview.data;
   return (
-    <AuthCard title={`Join ${inv.workspace_name}`}>
+    <AuthCard title={`Join ${inv.workspace_name}`} logo={brand?.logo}>
       <form className="flex flex-col gap-4" onSubmit={accept}>
         <p className="text-sm text-muted-foreground">
-          You have been invited as {inv.role === "admin" || inv.role === "agent" ? "an" : "a"} {inv.role}, using {inv.email}.
+          {inv.role === "talent"
+            ? `${inv.workspace_name} invited you to see your dates: times, travel and documents in one place, free. You'll sign in as ${inv.email}.`
+            : `You have been invited as ${inv.role === "admin" || inv.role === "agent" ? "an" : "a"} ${inv.role}, using ${inv.email}.`}
         </p>
         {me.data ? (
           <p className="text-sm">Signed in as {me.data.user.email}.</p>

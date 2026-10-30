@@ -21,47 +21,100 @@ import {
 } from "@onhold/ui";
 import {
   Building2,
+  BellRing,
+  CalendarClock,
+  BookOpenCheck,
   CalendarCheck,
   CalendarDays,
   CalendarCog,
+  CreditCard,
   CheckSquare,
   ChevronsUpDown,
   Inbox,
+  ListChecks,
+  ListOrdered,
+  Mail,
+  MessageSquare,
+  AtSign,
   CloudOff,
   Download,
+  EyeOff,
   Contact,
+  ChartColumn,
+  FileSearch,
+  FileText,
   FileUp,
+  HandCoins,
+  Landmark,
+  Receipt,
   RefreshCw,
   LogOut,
   Menu as MenuIcon,
   Mic2,
   Monitor,
   Moon,
+  Paintbrush,
+  Palette,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
   Sun,
+  Target,
   Workflow,
   X,
+  UserRoundCheck,
+  Route as RouteIcon,
 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { ENTITIES, entityByPath } from "./api.ts";
-import { OfflineContext, searchEverything, useSyncStatus } from "./data.ts";
-import { claimFor } from "./offline/store.ts";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { ENTITIES, api, currentWorkspace, entityByPath, ok, setWorkspace } from "./api.ts";
+import { OfflineContext, fetchThreads, searchEverything, useSyncStatus } from "./data.ts";
+import { claimFor, forgetWorkspacesExcept } from "./offline/store.ts";
 import { OfflineSync } from "./offline/sync.ts";
 import { IS_APP, KEEPS_OFFLINE_COPY, serverUrl } from "./platform.ts";
+import { useWorkspaceBranding } from "./branding.ts";
 import { GoTo } from "./go-to.tsx";
 import { useInstallOffer } from "./install.ts";
-import { type Session, SessionContext, useMe, useSessionActions } from "./session.tsx";
+import { type Setup, useSetup } from "./setup.ts";
+import { type Session, SessionContext, keptForSession, useMe, useSessionActions } from "./session.tsx";
 
-const NAV: { group: string; items: { to: string; label: string; icon: ReactNode }[] }[] = [
+// Talent see their portal instead of the staff app; it loads only for them.
+const PortalShell = lazy(() => import("./pages/portal.tsx").then((m) => ({ default: m.PortalShell })));
+
+type NavItem = {
+  to: string;
+  label: string;
+  icon: ReactNode;
+  /** Shown only when the workspace uses this module or extra. */
+  module?: string;
+  /** Also shown, with the talent portal on, once talent and the workspace have written to each other there. */
+  portalMessages?: true;
+  extra?: string;
+  /** Named in the workspace's own words: [module, term]. */
+  word?: [string, string];
+  /** Lit only on this page itself, not the pages under it. */
+  exact?: boolean;
+};
+
+export const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Bookings",
     items: [
-      { to: "/calendar", label: "Calendar", icon: <CalendarDays /> },
-      { to: "/enquiries", label: "Enquiries", icon: <Inbox /> },
-      { to: "/bookings", label: "Bookings", icon: <CalendarCheck /> },
+      // Talent's messages from their portal arrive here too, with or without email.
+      { to: "/inbox", label: "Inbox", icon: <Mail />, module: "messaging", portalMessages: true },
+      { to: "/calendar", label: "Calendar", icon: <CalendarDays />, module: "calendar" },
+      { to: "/enquiries", label: "Enquiries", icon: <Inbox />, module: "bookings", word: ["bookings", "enquiry"] },
+      { to: "/bookings", label: "Bookings", icon: <CalendarCheck />, module: "bookings", word: ["bookings", "booking"] },
+      { to: "/projects", label: "Tours", icon: <RouteIcon />, module: "events" },
       { to: "/tasks", label: "Tasks", icon: <CheckSquare /> },
+    ],
+  },
+  {
+    group: "Money",
+    items: [
+      { to: "/finance/invoices", label: "Invoices", icon: <Receipt />, module: "finance" },
+      { to: "/finance/payments", label: "Payments", icon: <HandCoins />, module: "finance" },
+      { to: "/finance/reports", label: "Reports", icon: <ChartColumn />, module: "finance" },
     ],
   },
   {
@@ -69,22 +122,73 @@ const NAV: { group: string; items: { to: string; label: string; icon: ReactNode 
     items: [
       { to: "/crm/contacts", label: "Contacts", icon: <Contact /> },
       { to: "/crm/organisations", label: "Organisations", icon: <Building2 /> },
-      { to: "/crm/talent", label: "Talent", icon: <Mic2 /> },
+      { to: "/crm/talent", label: "Talent", icon: <Mic2 />, word: ["crm", "talent"] },
+      { to: "/pitching", label: "Pitching list", icon: <ListOrdered />, module: "pitching", exact: true },
+      { to: "/pitching/follow-ups", label: "Follow-ups due", icon: <CalendarClock />, module: "pitching" },
     ],
   },
   {
     group: "Data",
-    items: [{ to: "/imports", label: "Imports", icon: <FileUp /> }],
+    items: [
+      { to: "/documents", label: "Documents", icon: <FileText />, module: "documents" },
+      { to: "/documents/imports", label: "Import past PDFs", icon: <FileSearch />, module: "documents" },
+      { to: "/imports", label: "Imports", icon: <FileUp />, extra: "advanced" },
+    ],
   },
   {
     group: "Settings",
     items: [
-      { to: "/settings/fields", label: "Custom fields", icon: <SlidersHorizontal /> },
-      { to: "/settings/pipelines", label: "Pipelines", icon: <Workflow /> },
-      { to: "/settings/calendar", label: "Calendar settings", icon: <CalendarCog /> },
+      { to: "/settings/setup", label: "Your setup", icon: <ListChecks /> },
+      { to: "/settings/branding", label: "Branding", icon: <Palette /> },
+      { to: "/settings/portal", label: "Talent portal", icon: <UserRoundCheck /> },
+      { to: "/settings/email", label: "Email accounts", icon: <AtSign />, module: "messaging" },
+      { to: "/settings/texts", label: "Text messages", icon: <MessageSquare />, module: "messaging" },
+      { to: "/settings/follow-ups", label: "Follow-ups", icon: <BellRing /> },
+      { to: "/settings/pitching", label: "Pitching", icon: <Target />, module: "pitching" },
+      { to: "/settings/fields", label: "Custom fields", icon: <SlidersHorizontal />, extra: "advanced" },
+      { to: "/settings/pipelines", label: "Pipelines", icon: <Workflow />, extra: "advanced" },
+      { to: "/settings/calendar", label: "Calendar settings", icon: <CalendarCog />, module: "calendar" },
+      { to: "/settings/finance", label: "Invoicing", icon: <Landmark />, module: "finance" },
+      { to: "/settings/payments", label: "Card payments", icon: <CreditCard />, module: "finance" },
+      { to: "/settings/accounting", label: "Accounting", icon: <BookOpenCheck />, module: "finance" },
     ],
   },
 ];
+
+/**
+ * Whether the menu shows an item, given what the workspace set itself up to
+ * use, and whether there are conversations with talent in their portal.
+ */
+export function inNav(item: NavItem, setup: Setup, portalMessages = false): boolean {
+  const used = !item.module || setup.has(item.module) || (!!item.portalMessages && portalMessages && setup.has("portal"));
+  return used && (!item.extra || setup.hasExtra(item.extra)) && setup.shows(`nav:${item.to}`);
+}
+
+/**
+ * True when the talent portal is on without email and the inbox holds a
+ * conversation, which can only be with talent through their portal: it is
+ * then in the menu, so their answers are seen. Asked only in that case.
+ */
+function usePortalMessages(setup: Setup, sync: OfflineSync | null): boolean {
+  const ask = setup.has("portal") && !setup.has("messaging");
+  const threads = useQuery({
+    queryKey: ["threads", "any"],
+    queryFn: async () => (await fetchThreads(sync, { limit: 1 })).data,
+    enabled: ask,
+    staleTime: 5 * 60_000,
+  });
+  return ask && (threads.data?.items.length ?? 0) > 0;
+}
+
+/** OnHold's own team: the full theme, and visiting clients' workspaces. */
+const OPERATOR_NAV: { group: string; items: NavItem[] } = {
+  group: "OnHold team",
+  items: [
+    { to: "/settings/theme", label: "Theme studio", icon: <Paintbrush /> },
+    { to: "/settings/streamline", label: "Streamline this app", icon: <EyeOff /> },
+    { to: "/operator", label: "Client workspaces", icon: <ShieldCheck /> },
+  ],
+};
 
 /** Starts keeping the workspace on the device (apps only) for as long as it is open. */
 /** The queries that read the device's copy, refreshed when it changes. */
@@ -131,12 +235,14 @@ function useOfflineSync(workspaceId: string | undefined, userId: string): Offlin
       setSync(null);
     };
   }, [workspaceId, userId, qc]);
-  return sync;
+  // Just after a switch, until the effect has run, the engine is still the
+  // last workspace's: nothing may read or write its copy for this one.
+  return sync?.ws === workspaceId ? sync : null;
 }
 
 const THEME_KEY = "onhold.theme";
 
-function storedTheme(): Theme {
+export function storedTheme(): Theme {
   try {
     const t = localStorage.getItem(THEME_KEY);
     return t === "light" || t === "dark" ? t : "system";
@@ -148,6 +254,14 @@ function storedTheme(): Theme {
 export function AppShell() {
   const me = useMe();
   const location = useLocation();
+  // The copy of a workspace the person has left, became talent in, or whose
+  // plan dropped the apps, goes, whichever screen they now see.
+  const keptFor = me.data ? keptForSession(me.data)?.join(",") ?? null : null;
+  useEffect(() => {
+    if (KEEPS_OFFLINE_COPY && keptFor !== null) {
+      void forgetWorkspacesExcept(keptFor ? keptFor.split(",") : []).catch(() => undefined);
+    }
+  }, [keptFor]);
   if (me.isPending) {
     return (
       <div className="flex h-dvh items-center justify-center">
@@ -168,6 +282,13 @@ export function AppShell() {
     return (
       <div className="mx-auto max-w-md p-6 text-sm">
         You are signed in as {me.data.user.email} but are not a member of any workspace yet. Ask for an invitation.
+        {me.data.user.is_superadmin && (
+          <p className="mt-3">
+            <Link to="/operator" className="underline">
+              Open OnHold&apos;s team tools
+            </Link>
+          </p>
+        )}
       </div>
     );
   }
@@ -179,14 +300,50 @@ export function AppShell() {
       </div>
     );
   }
+  const current = me.data.workspaces.find((w) => w.id === currentWorkspace()) ?? me.data.workspaces[0];
+  if (current?.role === "talent" && !me.data.impersonation) {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex h-dvh items-center justify-center">
+            <Spinner className="size-6" />
+          </div>
+        }
+      >
+        <PortalShell me={me.data} />
+      </Suspense>
+    );
+  }
   return <SignedIn me={me.data} />;
 }
 
 function SignedIn({ me }: { me: Session["me"] }) {
-  const { workspace, switchWorkspace, signOut } = useSessionActions(me);
+  const sessionActions = useSessionActions(me);
+  const { workspace, signOut } = sessionActions;
   const current = workspace ?? me.workspaces[0];
   // The plan switch is for the apps; the installed website is the website.
-  const sync = useOfflineSync(current && (!IS_APP || current.apps_allowed) ? current.id : undefined, me.user.id);
+  // A visit by OnHold's team keeps nothing of the client's workspace on the device.
+  const visiting = me.impersonation ?? null;
+  // Leaving a visit, by the switcher or when the server ends it at its
+  // time, reloads: nothing of the client's workspace stays in memory.
+  const switchWorkspace = (id: string) => {
+    if (!visiting) return sessionActions.switchWorkspace(id);
+    void ok(api.DELETE("/api/v1/admin/impersonation")).then(() => {
+      setWorkspace(id);
+      window.location.assign("/");
+    }, () => undefined);
+  };
+  const wasVisiting = useRef(false);
+  useEffect(() => {
+    if (visiting) {
+      wasVisiting.current = true;
+      const timer = setTimeout(endVisit, Math.max(0, new Date(visiting.expires_at).getTime() - Date.now()));
+      return () => clearTimeout(timer);
+    }
+    if (wasVisiting.current) endVisit();
+  }, [visiting]);
+  const sync = useOfflineSync(current && !visiting && (!IS_APP || current.apps_allowed) ? current.id : undefined, me.user.id);
+  const logo = useWorkspaceBranding(current?.id ?? "", sync, !visiting);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(storedTheme);
@@ -223,7 +380,20 @@ function SignedIn({ me }: { me: Session["me"] }) {
     },
     [sync],
   );
-  const actions: PaletteAction[] = NAV.flatMap((g) =>
+  // The menu holds only what the workspace set itself up to use, in its own words.
+  const setup = useSetup(sync);
+  const portalMessages = usePortalMessages(setup, sync);
+  const shown = (items: NavItem[]) =>
+    items
+      .filter((i) => inNav(i, setup, portalMessages))
+      .map((i) => (i.word ? { ...i, label: setup.word(i.word[0], i.word[1], true) } : i));
+  // OnHold's own tools are never hidden; streamlining shows while visiting.
+  const operatorNav = { ...OPERATOR_NAV, items: OPERATOR_NAV.items.filter((i) => visiting || i.to !== "/settings/streamline") };
+  const menu = [
+    ...NAV.map((g) => ({ ...g, items: shown(g.items) })).filter((g) => g.items.length > 0),
+    ...(me.user.is_superadmin ? [operatorNav] : []),
+  ];
+  const actions: PaletteAction[] = menu.flatMap((g) =>
     g.items.map((i) => ({ id: i.to, title: `Go to ${i.label}`, group: "Pages", icon: i.icon })),
   );
   const paths: Record<string, string> = { Contacts: "contacts", Organisations: "organisations", Talent: "talent" };
@@ -236,17 +406,21 @@ function SignedIn({ me }: { me: Session["me"] }) {
     .slice(0, 2)
     .toUpperCase();
 
+  const groups = menu;
   const nav = (
-    <nav aria-label="Main" className="flex flex-col gap-4 p-3">
-      {NAV.map((g) => (
+    <nav aria-label="Main" className="flex flex-col gap-4 overflow-y-auto p-3">
+      {groups.map((g) => (
         <div key={g.group} className="flex flex-col gap-0.5">
           <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">{g.group}</p>
           {g.items.map((i) => (
             <Link
               key={i.to}
               to={i.to}
+              // Also when the link is the page already open.
+              onClick={() => setNavOpen(false)}
               className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent [&_svg]:size-4"
               activeProps={{ className: "bg-accent font-medium text-accent-foreground" }}
+              activeOptions={{ exact: i.exact ?? false, includeSearch: false }}
             >
               {i.icon}
               {i.label}
@@ -262,7 +436,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
       <OfflineContext.Provider value={sync}>
       <div className="flex h-dvh">
         <aside className="hidden w-56 shrink-0 flex-col border-r bg-muted/30 md:flex">
-          <WorkspaceSwitcher session={session} />
+          <WorkspaceSwitcher session={session} logo={logo} />
           {nav}
         </aside>
         {navOpen && (
@@ -270,7 +444,7 @@ function SignedIn({ me }: { me: Session["me"] }) {
             <button type="button" aria-label="Close menu" className="absolute inset-0 bg-black/40" onClick={() => setNavOpen(false)} />
             <aside className="relative flex h-full w-64 flex-col border-r bg-background">
               <div className="flex items-center justify-between pr-2">
-                <WorkspaceSwitcher session={session} />
+                <WorkspaceSwitcher session={session} logo={logo} />
                 <Button variant="ghost" size="icon" aria-label="Close menu" onClick={() => setNavOpen(false)}>
                   <X />
                 </Button>
@@ -280,6 +454,10 @@ function SignedIn({ me }: { me: Session["me"] }) {
           </div>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
+          {visiting && <VisitBanner name={current?.name ?? ""} expiresAt={visiting.expires_at} />}
+          {setup.known && !setup.done && (visiting || current?.role === "owner" || current?.role === "admin") && location.pathname !== "/settings/setup" && (
+            <SetupBanner />
+          )}
           <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3 sm:px-4">
             <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu" onClick={() => setNavOpen(true)}>
               <MenuIcon />
@@ -374,12 +552,15 @@ function SignedIn({ me }: { me: Session["me"] }) {
   );
 }
 
-function WorkspaceSwitcher({ session }: { session: Session }) {
+function WorkspaceSwitcher({ session, logo }: { session: Session; logo: string | null }) {
   const { me, workspace, switchWorkspace } = session;
   const label = (
-    <span className="flex min-w-0 flex-col text-left">
-      <span className="truncate text-sm font-semibold">{workspace.name}</span>
-      <span className="truncate text-xs text-muted-foreground capitalize">{workspace.role}</span>
+    <span className="flex min-w-0 items-center gap-2">
+      {logo && <img src={logo} alt="" className="h-8 w-auto max-w-24 shrink-0 object-contain brand-logo" />}
+      <span className="flex min-w-0 flex-col text-left">
+        <span className="truncate text-sm font-semibold">{workspace.name}</span>
+        <span className="truncate text-xs text-muted-foreground capitalize">{workspace.role}</span>
+      </span>
     </span>
   );
   if (me.workspaces.length < 2) {
@@ -415,7 +596,8 @@ function SyncIndicator() {
       : "Offline"
     : status.attention
       ? `${status.attention} need${status.attention === 1 ? "s" : ""} attention`
-      : status.syncing || status.pending
+      : // Not "up to date" before the first download has finished.
+        status.syncing || status.pending || !status.ready
         ? "Syncing…"
         : "Up to date";
   const warn = !status.online || status.attention > 0;
@@ -424,7 +606,7 @@ function SyncIndicator() {
       to="/sync"
       className={cn(
         "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs [&_svg]:size-3.5",
-        warn ? "border-amber-500/50 text-amber-700 dark:text-amber-400" : "text-muted-foreground",
+        warn ? "border-warning/50 text-warning" : "text-muted-foreground",
       )}
     >
       {status.online ? <RefreshCw className={cn(status.syncing && "animate-spin")} /> : <CloudOff />}
@@ -432,4 +614,60 @@ function SyncIndicator() {
       <span className="sr-only sm:hidden">{label}</span>
     </Link>
   );
+}
+
+/** Until the setup form is sent: everything shows, and this offers to trim it. */
+function SetupBanner() {
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-2 border-b bg-accent px-3 py-2 text-sm text-accent-foreground sm:px-4">
+      <ListChecks className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1">Tell us what you&apos;ll use OnHold for, and we&apos;ll set up your menus to match. You can change it any time.</span>
+      <Button size="sm" asChild>
+        <Link to="/settings/setup">Set up OnHold</Link>
+      </Button>
+    </div>
+  );
+}
+
+/** Shown on every page while OnHold's team is inside a client's workspace. */
+function VisitBanner({ name, expiresAt }: { name: string; expiresAt: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-2 bg-warning px-3 py-1.5 text-sm text-warning-foreground sm:px-4">
+      <ShieldCheck className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1">
+        You are visiting <strong>{name}</strong> as OnHold&apos;s team, until{" "}
+        {new Date(expiresAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}. Everything you do is in their audit log.
+      </span>
+      <Button
+        size="sm"
+        variant="outline"
+        className="bg-background/80 text-foreground"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            await ok(api.DELETE("/api/v1/admin/impersonation"));
+          } catch (err) {
+            // Still visiting: say so rather than leave as if it had ended.
+            setError(`The visit has not ended: ${err instanceof Error ? err.message : String(err)}`);
+            setBusy(false);
+            return;
+          }
+          endVisit();
+        }}
+      >
+        End visit
+      </Button>
+      {error && <span className="basis-full font-medium">{error}</span>}
+    </div>
+  );
+}
+
+/** Leaves a visit with nothing of the client's workspace left in memory. */
+function endVisit() {
+  setWorkspace(undefined);
+  window.location.assign("/operator");
 }

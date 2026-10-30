@@ -32,6 +32,8 @@ async fn an_invitation_creates_the_account_and_membership(pool: PgPool) {
         .ok();
     assert_eq!(preview.body["workspace_name"], "acme agency");
     assert_eq!(preview.body["role"], "agent");
+    // The page wears the workspace's look, and nothing else of its settings.
+    assert!(preview.body["branding"].is_object());
 
     let agent = app.accept_new(&token, "Agent Smith").await.in_workspace(ws);
     let me = app
@@ -462,7 +464,11 @@ async fn read_only_roles_cannot_change_anything(pool: PgPool) {
             "enquiry:read",
             "booking:read",
             "quote:read",
-            "task:read"
+            "task:read",
+            "project:read",
+            "document:read",
+            "invoice:read",
+            "inbox:read"
         ])
     );
     app.post("/api/v1/things")
@@ -531,6 +537,10 @@ async fn workspace_settings_update_with_versions(pool: PgPool) {
         json!({ "default_timezone": "Mars/Base" }),
         json!({ "enabled_modules": ["rocketry"] }),
         json!({ "branding": "red" }),
+        json!({ "branding": { "primary_color": "red" } }),
+        json!({ "branding": { "primary_color": "#abc; background: url(x)" } }),
+        json!({ "branding": { "logo": "https://example.com/logo.png" } }),
+        json!({ "branding": { "logo": "data:text/html;base64,PHNjcmlwdD4=" } }),
         json!({ "name": "  " }),
     ] {
         let res = app
@@ -547,6 +557,172 @@ async fn workspace_settings_update_with_versions(pool: PgPool) {
         actions.iter().filter(|a| *a == "workspace.updated").count(),
         1
     );
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_replaced_uploaded_logo_is_let_go(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let mut ids = Vec::new();
+    for name in ["one.png", "two.png"] {
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        png.extend_from_slice(name.as_bytes());
+        let res = app
+            .post(&format!("/api/v1/files?filename={name}"))
+            .signed_in(&owner)
+            .bytes("image/png", png)
+            .send()
+            .await;
+        assert!(res.status.is_success(), "{}", res.body);
+        ids.push(res.body["id"].as_str().unwrap().to_owned());
+    }
+    let attached = |id: String| {
+        let pool = app.owner.clone();
+        async move {
+            sqlx::query_scalar::<_, bool>(
+                "SELECT attached_at IS NOT NULL FROM files WHERE id = $1::uuid",
+            )
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+        }
+    };
+    for logo in [json!(ids[0]), json!(ids[1]), Value::Null] {
+        app.patch("/api/v1/workspace")
+            .signed_in(&owner)
+            .json(json!({ "branding": { "logo_file_id": logo } }))
+            .send()
+            .await
+            .ok();
+    }
+    // The first went when the second replaced it, the second when removed.
+    assert!(!attached(ids[0].clone()).await);
+    assert!(!attached(ids[1].clone()).await);
+    app.patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "logo_file_id": ids[1] } }))
+        .send()
+        .await
+        .ok();
+    assert!(attached(ids[1].clone()).await);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn branding_takes_a_colour_and_a_logo(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let logo = "data:image/png;base64,iVBORw0KGgo=";
+    let res = app
+        .patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "name": "Acme Talent", "branding": { "primary_color": "#C0392B", "logo": logo } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(res.body["name"], "Acme Talent");
+    assert_eq!(res.body["branding"]["primary_color"], "#C0392B");
+    assert_eq!(res.body["branding"]["logo"], logo);
+
+    // The audit log and events record that there is a logo, not the image.
+    let audit = app.get("/api/v1/audit").signed_in(&owner).send().await.ok();
+    let text = audit.body.to_string();
+    assert!(text.contains("(image)"), "{text}");
+    assert!(!text.contains("iVBORw0KGgo"), "{text}");
+
+    // Emails fetch it from a public address, as an image.
+    let ws = res.body["id"].as_str().unwrap().to_owned();
+    let img = app
+        .get(&format!("/api/v1/public/workspaces/{ws}/logo"))
+        .send()
+        .await
+        .ok();
+    assert_eq!(img.headers["content-type"], "image/png");
+    assert_eq!(img.headers["x-content-type-options"], "nosniff");
+    // Never an SVG, which could run script at OnHold's address.
+    app.patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "logo": "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" } }))
+        .send()
+        .await
+        .ok();
+    let svg = app
+        .get(&format!("/api/v1/public/workspaces/{ws}/logo"))
+        .send()
+        .await;
+    assert_eq!(svg.status, StatusCode::NOT_FOUND);
+
+    // Cleared again with nulls.
+    let res = app
+        .patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "primary_color": null, "logo": null } }))
+        .send()
+        .await
+        .ok();
+    assert!(res.body["branding"]["logo"].is_null());
+
+    // Too big for the branding (24 KiB).
+    let big = format!("data:image/png;base64,{}", "A".repeat(30_000));
+    app.patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "logo": big } }))
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn members_sign_their_own_emails(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let agent = app.add_member(&owner, "agent@acme.test", "agent").await;
+    let put = |who: &Client, path: &str, signature: Value| {
+        app.put(&format!("/api/v1/signatures/{path}"))
+            .signed_in(who)
+            .json(json!({ "signature": signature }))
+    };
+
+    let res = put(&owner, "workspace", json!("The Acme team\r\n"))
+        .send()
+        .await
+        .ok();
+    assert_eq!(res.body["workspace"], "The Acme team");
+    let res = put(&agent, "mine", json!("  Ali  \nAcme  "))
+        .send()
+        .await
+        .ok();
+    assert_eq!(res.body["mine"], "  Ali\nAcme");
+    assert_eq!(res.body["workspace"], "The Acme team");
+    assert_eq!(res.body["is_member"], true);
+    assert_eq!(res.body["can_edit_workspace"], false);
+
+    // Each member's is their own; only those who manage the workspace change its.
+    let mine = app
+        .get("/api/v1/signatures")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert_eq!(mine.body["mine"], Value::Null);
+    assert_eq!(mine.body["can_edit_workspace"], true);
+    put(&agent, "workspace", json!("Mine now"))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "permission_denied");
+    put(&agent, "mine", json!("x".repeat(2001)))
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+
+    // Empty removes it; an API key has no signature of its own.
+    let res = put(&agent, "mine", json!("")).send().await.ok();
+    assert_eq!(res.body["mine"], Value::Null);
+    let key = create_key(&app, &owner, json!(["workspace:read"])).await;
+    let res = app.get("/api/v1/signatures").bearer(&key).send().await.ok();
+    assert_eq!(res.body["mine"], Value::Null);
+    assert_eq!(res.body["is_member"], false);
+    assert_eq!(res.body["workspace"], "The Acme team");
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -586,6 +762,27 @@ async fn billing_details_need_billing_permissions(pool: PgPool) {
         seen_by_finance.body["billing_contact"]["email"],
         "accounts@acme.test"
     );
+
+    // Nor do the audit log, its export or webhooks give it away; they only
+    // say that it changed.
+    let audit = app.get("/api/v1/audit").signed_in(&admin).send().await.ok();
+    let text = audit.body.to_string();
+    assert!(!text.contains("accounts@acme.test"), "{text}");
+    assert!(text.contains("billing_contact_changed"), "{text}");
+    let csv = app
+        .get("/api/v1/audit/export")
+        .signed_in(&admin)
+        .send()
+        .await
+        .ok();
+    assert!(!csv.body.to_string().contains("accounts@acme.test"));
+    let leaked: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM outbox WHERE payload::text LIKE '%accounts@acme.test%'",
+    )
+    .fetch_one(&app.owner)
+    .await
+    .unwrap();
+    assert_eq!(leaked, 0);
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -725,6 +922,109 @@ async fn api_keys_cannot_exceed_their_creator(pool: PgPool) {
         .send()
         .await;
     res.expect(StatusCode::BAD_REQUEST, "invalid_input");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn api_keys_follow_their_creators_membership(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let admin = app.add_member(&owner, "admin@acme.test", "admin").await;
+    let id = app.user_id("admin@acme.test").await;
+    let key = create_key(
+        &app,
+        &admin,
+        json!(["member:read", "member:invite", "api_key:write"]),
+    )
+    .await;
+    // A key made by that key belongs to the admin too.
+    let child = app
+        .post("/api/v1/api-keys")
+        .bearer(&key)
+        .json(json!({ "name": "child", "permissions": ["member:read"] }))
+        .send()
+        .await;
+    assert_eq!(child.status, StatusCode::CREATED, "{}", child.body);
+    let child = child.body["secret"].as_str().unwrap().to_owned();
+
+    // Demoted: the key shrinks to what a viewer may do.
+    let etag = app
+        .get(&format!("/api/v1/members/{id}"))
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok()
+        .headers
+        .get("etag")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+    app.patch(&format!("/api/v1/members/{id}"))
+        .signed_in(&owner)
+        .header("if-match", &etag)
+        .json(json!({ "role": "viewer" }))
+        .send()
+        .await
+        .ok();
+    app.get("/api/v1/members").bearer(&key).send().await.ok();
+    app.post("/api/v1/invitations")
+        .bearer(&key)
+        .json(json!({ "email": "a@acme.test", "role": "admin" }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "permission_denied");
+
+    // Removed: neither key works any more.
+    app.delete(&format!("/api/v1/members/{id}"))
+        .signed_in(&owner)
+        .send()
+        .await;
+    for k in [&key, &child] {
+        app.get("/api/v1/members")
+            .bearer(k)
+            .send()
+            .await
+            .expect(StatusCode::UNAUTHORIZED, "invalid_api_key");
+    }
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn keys_made_by_keys_expire_with_them(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+    let expires = (chrono::Utc::now() + chrono::Duration::days(1)).to_rfc3339();
+    let parent = app
+        .post("/api/v1/api-keys")
+        .signed_in(&owner)
+        .json(json!({ "name": "short", "permissions": ["api_key:write"], "expires_at": expires }))
+        .send()
+        .await;
+    assert_eq!(parent.status, StatusCode::CREATED, "{}", parent.body);
+    let parent_expiry = parent.body["key"]["expires_at"]
+        .as_str()
+        .or_else(|| parent.body["expires_at"].as_str())
+        .unwrap()
+        .to_owned();
+    let parent = parent.body["secret"].as_str().unwrap().to_owned();
+
+    let later = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
+    for body in [
+        json!({ "name": "forever", "permissions": ["api_key:write"] }),
+        json!({ "name": "later", "permissions": ["api_key:write"], "expires_at": later }),
+    ] {
+        let res = app
+            .post("/api/v1/api-keys")
+            .bearer(&parent)
+            .json(body)
+            .send()
+            .await;
+        assert_eq!(res.status, StatusCode::CREATED, "{}", res.body);
+        let expiry = res.body["key"]["expires_at"]
+            .as_str()
+            .or_else(|| res.body["expires_at"].as_str())
+            .unwrap();
+        assert_eq!(expiry, parent_expiry);
+    }
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
@@ -1050,6 +1350,49 @@ async fn impersonation_is_time_boxed_and_audited(pool: PgPool) {
         .send()
         .await
         .ok();
+    // A key needs a member behind it; a visitor's would never work.
+    app.post("/api/v1/api-keys")
+        .signed_in(&in_customer)
+        .json(json!({ "name": "support", "permissions": ["member:read"] }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
+    // Nor would an import or its undoing, which the worker runs as the
+    // member who started it: refused up front rather than failing later.
+    let some_import = uuid::Uuid::new_v4();
+    app.post(&format!("/api/v1/imports/{some_import}/run"))
+        .signed_in(&in_customer)
+        .json(json!({ "columns": ["name"] }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
+    app.post(&format!("/api/v1/imports/{some_import}/undo"))
+        .signed_in(&in_customer)
+        .json(json!({}))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
+    // Nor a calendar link, which shows what its maker may see.
+    app.post("/api/v1/calendar/feeds")
+        .signed_in(&in_customer)
+        .json(json!({ "name": "Support's view" }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "not_a_member");
+    // A visitor has no signature of their own to set.
+    let sigs = app
+        .get("/api/v1/signatures")
+        .signed_in(&in_customer)
+        .send()
+        .await
+        .ok();
+    assert_eq!(sigs.body["is_member"], false);
+    app.put("/api/v1/signatures/mine")
+        .signed_in(&in_customer)
+        .json(json!({ "signature": "Support" }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "member_required");
     let me = app.get("/api/v1/auth/me").signed_in(&ops).send().await.ok();
     assert_eq!(
         me.body["impersonation"]["workspace_id"],
@@ -1112,4 +1455,460 @@ async fn ordinary_users_cannot_impersonate(pool: PgPool) {
         .send()
         .await
         .expect(StatusCode::FORBIDDEN, "superadmin_required");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn the_full_theme_is_for_operators_only(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (customer, owner) = app.workspace_with_owner("acme").await;
+    let theme = json!({ "light": { "primary": "#c0392b", "background": "#fffaf5" },
+                        "dark": { "primary": "#f1948a" }, "font": "serif", "radius": 12 });
+
+    // The workspace's own owner sets the basics, but not the theme.
+    app.patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "primary_color": "#c0392b", "theme": theme } }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "theme_is_operator_only");
+
+    // OnHold's team, visiting the workspace, does.
+    let ops = operator(&app).await;
+    app.post("/api/v1/admin/impersonation")
+        .signed_in(&ops)
+        .json(json!({ "workspace_id": customer, "reason": "onboarding: theme" }))
+        .send()
+        .await
+        .ok();
+    let in_customer = ops.clone().in_workspace(customer);
+    for bad in [
+        json!({ "light": { "primary": "red" } }),
+        json!({ "light": { "sidebar": "#ffffff" } }),
+        json!({ "font": "Comic Sans" }),
+        json!({ "radius": 99 }),
+        json!({ "script": "x" }),
+    ] {
+        let res = app
+            .patch("/api/v1/workspace")
+            .signed_in(&in_customer)
+            .json(json!({ "branding": { "theme": bad } }))
+            .send()
+            .await;
+        assert_eq!(res.status, StatusCode::BAD_REQUEST, "{bad} → {}", res.body);
+    }
+    let res = app
+        .patch("/api/v1/workspace")
+        .signed_in(&in_customer)
+        .json(json!({ "branding": { "theme": theme } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(res.body["branding"]["theme"]["font"], "serif");
+
+    // Members can still change the basics; the theme stays as it is.
+    let res = app
+        .patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "primary_color": "#123456", "theme": theme } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(res.body["branding"]["theme"]["radius"], 12);
+    app.patch("/api/v1/workspace")
+        .signed_in(&owner)
+        .json(json!({ "branding": { "primary_color": "#123456" } }))
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "theme_is_operator_only");
+}
+
+// Setup form ----------------------------------------------------------------------------
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn the_setup_form_shapes_the_workspace_and_reaches_operators(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+
+    // Before the form is sent, everything is on and the form is offered.
+    let before = app
+        .get("/api/v1/workspace")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert!(before.body["setup_at"].is_null());
+    assert_eq!(
+        before.body["extras"],
+        json!(["team", "commission", "advanced"])
+    );
+    let form = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert_eq!(form.body["questions"].as_array().unwrap().len(), 4);
+    assert_eq!(form.body["price_list"]["placeholder"], json!(true));
+
+    let answers = json!({ "roles": ["solo"], "features": ["bookings", "calendar", "invoicing"],
+                          "talent_kinds": ["djs"], "team": "just_me" });
+    let preview = app
+        .post("/api/v1/workspace/setup/preview")
+        .signed_in(&owner)
+        .json(answers.clone())
+        .send()
+        .await
+        .ok();
+    assert_eq!(
+        preview.body["modules"],
+        json!(["crm", "bookings", "calendar", "finance"])
+    );
+
+    let saved = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": answers, "comment": "  Can it track my rider?  " }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(saved.body["presets"], json!(["solo"]));
+    assert_eq!(
+        saved.body["enabled_modules"],
+        json!(["crm", "bookings", "calendar", "finance"])
+    );
+    assert_eq!(saved.body["extras"], json!([]));
+    assert_eq!(
+        saved.body["vocabulary"]["bookings"]["booking"]["many"],
+        json!("Gigs")
+    );
+    assert!(saved.body["setup_at"].is_string());
+
+    // The answers come back for editing; nothing is locked in.
+    let form = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert_eq!(form.body["answers"]["roles"], json!(["solo"]));
+    assert_eq!(
+        form.body["requests"][0]["body"],
+        json!("Can it track my rider?")
+    );
+    let again = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": { "roles": ["solo", "promoter"], "features": ["bookings", "events"], "team": "small" } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(again.body["perspective"], json!("both"));
+    assert_eq!(again.body["extras"], json!(["team"]));
+
+    // Unknown choices are refused; members who cannot change settings cannot send it.
+    app.put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": { "roles": ["wizard"] } }))
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+    let agent = app.add_member(&owner, "agent@acme.test", "agent").await;
+    let res = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&agent)
+        .json(json!({ "answers": {} }))
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::FORBIDDEN, "{}", res.body);
+    // They see the form, but not the owners' messages to OnHold.
+    let theirs = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&agent)
+        .send()
+        .await
+        .ok();
+    assert_eq!(theirs.body["requests"], json!([]));
+    let actions = app.audit_actions(ws).await;
+    assert!(actions.iter().any(|a| a == "setup_request.created"));
+
+    // Sending the same answers again changes nothing and logs nothing.
+    let logged = actions
+        .iter()
+        .filter(|a| *a == "workspace.setup_changed")
+        .count();
+    let current = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    let same = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": current.body["answers"] }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(same.body["version"], current.body["version"]);
+    assert_eq!(
+        app.audit_actions(ws)
+            .await
+            .iter()
+            .filter(|a| *a == "workspace.setup_changed")
+            .count(),
+        logged
+    );
+
+    // OnHold's team sees the setup and the comment, and marks it done.
+    let ops = operator(&app).await;
+    let list = app
+        .get("/api/v1/admin/workspaces")
+        .signed_in(&ops)
+        .send()
+        .await
+        .ok();
+    let acme = list
+        .body
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["slug"] == "acme")
+        .unwrap()
+        .clone();
+    assert_eq!(acme["presets"], json!(["solo", "promoter"]));
+    assert_eq!(acme["open_requests"], json!(1));
+    let requests = app
+        .get("/api/v1/admin/setup-requests")
+        .signed_in(&ops)
+        .send()
+        .await
+        .ok();
+    let id = requests.body[0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(requests.body[0]["author_email"], json!("owner@acme.test"));
+    let res = app
+        .post(&format!("/api/v1/admin/setup-requests/{id}/resolve"))
+        .signed_in(&ops)
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.body);
+    app.post(&format!("/api/v1/admin/setup-requests/{id}/resolve"))
+        .signed_in(&ops)
+        .send()
+        .await
+        .expect(StatusCode::NOT_FOUND, "not_found");
+    app.get("/api/v1/admin/setup-requests")
+        .signed_in(&owner)
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "superadmin_required");
+
+    // The price list is OnHold's to set, and checked.
+    let mut prices = app
+        .get("/api/v1/admin/price-list")
+        .signed_in(&ops)
+        .send()
+        .await
+        .ok()
+        .body;
+    prices["base"] = json!(2500);
+    prices["placeholder"] = json!(false);
+    let res = app
+        .put("/api/v1/admin/price-list")
+        .signed_in(&ops)
+        .json(prices)
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::NO_CONTENT, "{}", res.body);
+    let form = app
+        .get("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert_eq!(form.body["price_list"]["base"], json!(2500));
+    app.put("/api/v1/admin/price-list")
+        .signed_in(&ops)
+        .json(json!({ "currency": "GBP", "base": 100, "features": { "teleport": 5 }, "team": {} }))
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn operators_create_workspaces_from_presets(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let ops = operator(&app).await;
+    let res = app
+        .post("/api/v1/admin/workspaces")
+        .signed_in(&ops)
+        .json(
+            json!({ "slug": "djco", "name": "DJ Co", "country": "GB", "default_currency": "GBP",
+                      "default_timezone": "Europe/London", "owner_email": "dj@djco.test",
+                      "presets": ["solo"] }),
+        )
+        .send()
+        .await;
+    assert_eq!(res.status, StatusCode::CREATED, "{}", res.body);
+    let list = app
+        .get("/api/v1/admin/workspaces")
+        .signed_in(&ops)
+        .send()
+        .await
+        .ok();
+    let djco = list
+        .body
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["slug"] == "djco")
+        .unwrap()
+        .clone();
+    assert_eq!(djco["presets"], json!(["solo"]));
+    assert_eq!(djco["extras"], json!([]));
+    assert!(djco["setup"].is_null());
+    app.post("/api/v1/admin/workspaces")
+        .signed_in(&ops)
+        .json(
+            json!({ "slug": "nope", "name": "Nope", "country": "GB", "default_currency": "GBP",
+                      "default_timezone": "Europe/London", "owner_email": "x@nope.test",
+                      "presets": ["wizard"] }),
+        )
+        .send()
+        .await
+        .expect(StatusCode::BAD_REQUEST, "invalid_input");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn operators_streamline_a_workspace_and_it_survives_the_form(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let hide = json!({ "hidden": ["nav:/finance/reports", "section:booking.quotes", "field:contact.role"] });
+
+    // Members cannot; OnHold's team can, on a visit.
+    app.put("/api/v1/workspace/streamline")
+        .signed_in(&owner)
+        .json(hide.clone())
+        .send()
+        .await
+        .expect(StatusCode::FORBIDDEN, "streamlining_is_operator_only");
+    let ops = operator(&app).await;
+    app.post("/api/v1/admin/impersonation")
+        .signed_in(&ops)
+        .json(json!({ "workspace_id": ws, "reason": "onboarding: streamlining" }))
+        .send()
+        .await
+        .ok();
+    let visit = ops.clone().in_workspace(ws);
+    let options = app
+        .get("/api/v1/workspace/streamline")
+        .signed_in(&visit)
+        .send()
+        .await
+        .ok();
+    let fields = options.body["fields"].as_array().unwrap();
+    assert!(
+        fields
+            .iter()
+            .any(|f| f["entity"] == "contact" && f["key"] == "role")
+    );
+    assert!(
+        !fields
+            .iter()
+            .any(|f| f["entity"] == "contact" && f["key"] == "name"),
+        "required fields cannot be hidden"
+    );
+    // A required field, or one since removed, is dropped rather than refused.
+    let mut with_stale = hide.clone();
+    for extra in ["field:contact.name", "field:contact.nope"] {
+        with_stale["hidden"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!(extra));
+    }
+    let saved = app
+        .put("/api/v1/workspace/streamline")
+        .signed_in(&visit)
+        .json(with_stale)
+        .send()
+        .await
+        .ok();
+    assert_eq!(saved.body["hidden"].as_array().unwrap().len(), 3);
+    for bad in [
+        json!(["menu:/x"]),
+        json!(["field:"]),
+        json!(["nav:no-slash"]),
+    ] {
+        let res = app
+            .put("/api/v1/workspace/streamline")
+            .signed_in(&visit)
+            .json(json!({ "hidden": bad }))
+            .send()
+            .await;
+        assert_eq!(res.status, StatusCode::BAD_REQUEST, "{bad} → {}", res.body);
+    }
+
+    // The client's forms lose the field, and sending the form again keeps it hidden.
+    let schema = app
+        .get("/api/v1/schema/contact")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    let keys: Vec<&str> = schema.body["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["key"].as_str().unwrap())
+        .collect();
+    assert!(!keys.contains(&"role") && keys.contains(&"name"));
+    let again = app
+        .put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": { "roles": ["agency"], "features": ["bookings", "invoicing", "commission"] } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(again.body["hidden"].as_array().unwrap().len(), 3);
+    assert!(
+        app.audit_actions(ws)
+            .await
+            .iter()
+            .any(|a| a == "workspace.streamlined")
+    );
+
+    // Talent's commission shows only where commission is taken.
+    let talent = app
+        .get("/api/v1/schema/talent")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert!(
+        talent.body["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["key"] == "commission_percent")
+    );
+    app.put("/api/v1/workspace/setup")
+        .signed_in(&owner)
+        .json(json!({ "answers": { "roles": ["solo"], "features": ["bookings"] } }))
+        .send()
+        .await
+        .ok();
+    let talent = app
+        .get("/api/v1/schema/talent")
+        .signed_in(&owner)
+        .send()
+        .await
+        .ok();
+    assert!(
+        !talent.body["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["key"] == "commission_percent")
+    );
+    // And its pages use the workspace's words.
+    assert_eq!(talent.body["label_plural"], json!("My acts"));
 }

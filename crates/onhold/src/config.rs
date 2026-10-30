@@ -6,9 +6,18 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::Args;
 use core_api::Config;
+use core_api::config::ProxyHeaders;
+use core_api::config::{
+    AccountingConfig, MailboxConfig, MessagingConfig, PdfConfig, SenderDomainsConfig, StorageConfig,
+};
 use core_api::oidc::OidcProvider;
 use core_domain::crypto::Keyring;
+use core_integrations::dns::{Doh, DomainConnect};
+use core_integrations::domains::Resend;
 use core_integrations::mail::{LogMailer, Mailer, SmtpMailer};
+use core_integrations::oauth::OAuthApp;
+use core_integrations::storage::S3Config;
+use core_integrations::stripe::{StripeClient, StripeConfig};
 use url::Url;
 
 #[derive(Debug, Args)]
@@ -26,9 +35,11 @@ pub struct ApiArgs {
     #[arg(long, env = "COOKIE_SECURE", default_value_t = true, action = clap::ArgAction::Set, global = true)]
     cookie_secure: bool,
 
-    /// Take the client IP from `X-Forwarded-For`. Only behind a proxy that sets it.
-    #[arg(long, env = "TRUST_PROXY_HEADERS", default_value_t = false, action = clap::ArgAction::Set, global = true)]
-    trust_proxy_headers: bool,
+    /// Where the client IP comes from: `false` (the connection), `true` (the
+    /// last `X-Forwarded-For` entry, behind a proxy that appends to it) or
+    /// `cloudflare` (`CF-Connecting-IP`, when every request comes through Cloudflare).
+    #[arg(long, env = "TRUST_PROXY_HEADERS", default_value = "false", value_parser = proxy_headers, global = true)]
+    trust_proxy_headers: ProxyHeaders,
 
     /// Encryption keys for secrets at rest, `id:base64key[,id:base64key…]`.
     /// The first encrypts; all decrypt, so rotate by prepending a new key.
@@ -91,13 +102,204 @@ pub struct ApiArgs {
     /// Let webhooks reach private and internal addresses. Local development only.
     #[arg(long, env = "WEBHOOKS_ALLOW_PRIVATE", default_value_t = false, action = clap::ArgAction::Set, global = true)]
     webhooks_allow_private: bool,
+
+    /// Where uploaded files and printed PDFs are kept: `database` (in
+    /// Postgres), `directory` (under STORAGE_DIR) or `s3` (an S3-compatible
+    /// bucket such as Cloudflare R2, set with the S3_* variables).
+    #[arg(long, env = "STORAGE", default_value = "database", global = true)]
+    storage: String,
+    #[arg(long, env = "STORAGE_DIR", global = true)]
+    storage_dir: Option<std::path::PathBuf>,
+    /// `https://<account>.r2.cloudflarestorage.com`, `https://s3.<region>.amazonaws.com`…
+    #[arg(long, env = "S3_ENDPOINT", global = true)]
+    s3_endpoint: Option<Url>,
+    #[arg(long, env = "S3_BUCKET", global = true)]
+    s3_bucket: Option<String>,
+    /// `auto` for R2.
+    #[arg(long, env = "S3_REGION", default_value = "auto", global = true)]
+    s3_region: String,
+    #[arg(long, env = "S3_ACCESS_KEY_ID", global = true)]
+    s3_access_key_id: Option<String>,
+    #[arg(
+        long,
+        env = "S3_SECRET_ACCESS_KEY",
+        hide_env_values = true,
+        global = true
+    )]
+    s3_secret_access_key: Option<String>,
+
+    /// How documents become PDFs: `auto` (Chromium if installed, else a
+    /// plain layout), `chromium` (CHROMIUM_PATH, required) or `plain`.
+    #[arg(long, env = "PDF_RENDERER", default_value = "auto", global = true)]
+    pdf_renderer: String,
+    #[arg(long, env = "CHROMIUM_PATH", global = true)]
+    chromium_path: Option<std::path::PathBuf>,
+    /// Run Chromium without its sandbox. Only where the container cannot
+    /// give it one (it still has no network and no file access).
+    #[arg(long, env = "CHROMIUM_NO_SANDBOX", default_value_t = false, action = clap::ArgAction::Set, global = true)]
+    chromium_no_sandbox: bool,
+
+    /// The largest file one upload may be, in megabytes.
+    #[arg(long, env = "MAX_UPLOAD_MB", default_value_t = 25, global = true)]
+    max_upload_mb: usize,
+
+    /// The platform's Stripe secret key, for card payments through Stripe
+    /// Connect. Set it with STRIPE_CLIENT_ID and STRIPE_WEBHOOK_SECRET, or none.
+    #[arg(long, env = "STRIPE_SECRET_KEY", hide_env_values = true, global = true)]
+    stripe_secret_key: Option<String>,
+    /// The platform's Connect client id (`ca_…`).
+    #[arg(long, env = "STRIPE_CLIENT_ID", global = true)]
+    stripe_client_id: Option<String>,
+    /// The signing secret of the Connect webhook endpoint
+    /// (`<api>/api/v1/webhooks/stripe`, listening to connected accounts).
+    #[arg(
+        long,
+        env = "STRIPE_WEBHOOK_SECRET",
+        hide_env_values = true,
+        global = true
+    )]
+    stripe_webhook_secret: Option<String>,
+    /// OnHold's fee on each card payment, in hundredths of a percent (150 = 1.5%).
+    #[arg(
+        long,
+        env = "STRIPE_APPLICATION_FEE_BPS",
+        default_value_t = 0,
+        global = true
+    )]
+    stripe_application_fee_bps: u32,
+    /// Stripe's API, for a mock in tests.
+    #[arg(long, env = "STRIPE_API_BASE", default_value = core_integrations::stripe::API_BASE, global = true, hide = true)]
+    stripe_api_base: Url,
+    #[arg(long, env = "STRIPE_CONNECT_BASE", default_value = core_integrations::stripe::CONNECT_BASE, global = true, hide = true)]
+    stripe_connect_base: Url,
+
+    /// Xero, for keeping workspaces' books: an app from developer.xero.com
+    /// with the redirect URI `<PUBLIC_BASE_URL>/settings/accounting`.
+    #[arg(long, env = "XERO_CLIENT_ID", global = true)]
+    xero_client_id: Option<String>,
+    #[arg(
+        long,
+        env = "XERO_CLIENT_SECRET",
+        hide_env_values = true,
+        global = true
+    )]
+    xero_client_secret: Option<String>,
+    /// QuickBooks Online: an app from developer.intuit.com with the same
+    /// redirect URI.
+    #[arg(long, env = "QUICKBOOKS_CLIENT_ID", global = true)]
+    quickbooks_client_id: Option<String>,
+    #[arg(
+        long,
+        env = "QUICKBOOKS_CLIENT_SECRET",
+        hide_env_values = true,
+        global = true
+    )]
+    quickbooks_client_secret: Option<String>,
+    /// Use Intuit's sandbox companies (while the app is in development).
+    #[arg(long, env = "QUICKBOOKS_SANDBOX", default_value_t = false, action = clap::ArgAction::Set, global = true)]
+    quickbooks_sandbox: bool,
+
+    /// Where Twilio and Meta send texts that come in, when the API is not
+    /// reached at `<PUBLIC_BASE_URL>/api/v1`: the URL that ends in
+    /// `/hooks/messaging/`.
+    #[arg(long, env = "MESSAGING_HOOK_BASE", global = true)]
+    messaging_hook_base: Option<Url>,
+
+    /// How often each connected mailbox is read, in seconds.
+    #[arg(long, env = "MAIL_POLL_SECONDS", default_value_t = 120, global = true)]
+    mail_poll_seconds: u64,
+    /// How often each talent's connected calendar is read, in seconds.
+    #[arg(
+        long,
+        env = "CALENDAR_POLL_SECONDS",
+        default_value_t = 900,
+        global = true
+    )]
+    calendar_poll_seconds: u64,
+    /// How far back the first read of a newly connected mailbox goes, in days.
+    #[arg(
+        long,
+        env = "MAIL_FIRST_READ_DAYS",
+        default_value_t = 30,
+        global = true
+    )]
+    mail_first_read_days: i64,
+    /// Google's and Microsoft's endpoints, for stand-ins in tests.
+    #[arg(long, env = "GOOGLE_OAUTH_BASE", global = true, hide = true)]
+    google_oauth_base: Option<Url>,
+    #[arg(long, env = "GMAIL_API_BASE", default_value = core_integrations::gmail::API_BASE, global = true, hide = true)]
+    gmail_api_base: Url,
+    #[arg(long, env = "MICROSOFT_LOGIN_BASE", default_value = core_integrations::oauth::MICROSOFT_LOGIN, global = true, hide = true)]
+    microsoft_login_base: Url,
+    #[arg(long, env = "GRAPH_API_BASE", default_value = core_integrations::graph::API_BASE, global = true, hide = true)]
+    graph_api_base: Url,
+    #[arg(long, env = "GOOGLE_API_BASE", default_value = core_integrations::calendars::GOOGLE_API, global = true, hide = true)]
+    google_api_base: Url,
+
+    /// Resend's API key, so workspaces can send from their own domains.
+    /// `SMTP_URL` must then be Resend's SMTP server with the same account.
+    #[arg(long, env = "RESEND_API_KEY", hide_env_values = true, global = true)]
+    resend_api_key: Option<String>,
+    /// Where Resend sends workspaces' mail from: us-east-1, eu-west-1,
+    /// sa-east-1 or ap-northeast-1.
+    #[arg(
+        long,
+        env = "RESEND_REGION",
+        default_value = "eu-west-1",
+        global = true
+    )]
+    resend_region: String,
+    /// Resend's API and the DNS-over-HTTPS resolver, for stand-ins in tests.
+    #[arg(long, env = "RESEND_API_BASE", default_value = core_integrations::domains::RESEND_API, global = true, hide = true)]
+    resend_api_base: Url,
+    #[arg(long, env = "DOH_BASE", default_value = core_integrations::dns::DOH_BASE, global = true, hide = true)]
+    doh_base: Url,
+    /// OnHold's Domain Connect template (`docs/domain-connect/`): its
+    /// providerId. With DOMAIN_CONNECT_PRIVATE_KEY, owners whose DNS
+    /// provider has taken the template in can add the records in one step.
+    #[arg(long, env = "DOMAIN_CONNECT_PROVIDER_ID", global = true)]
+    domain_connect_provider_id: Option<String>,
+    #[arg(
+        long,
+        env = "DOMAIN_CONNECT_SERVICE_ID",
+        default_value = "sending",
+        global = true
+    )]
+    domain_connect_service_id: String,
+    /// The label of the public key's TXT records under the template's
+    /// syncPubKeyDomain.
+    #[arg(
+        long,
+        env = "DOMAIN_CONNECT_KEY_HOST",
+        default_value = "_dck1",
+        global = true
+    )]
+    domain_connect_key_host: String,
+    /// The RSA private key Domain Connect links are signed with, in PEM.
+    #[arg(
+        long,
+        env = "DOMAIN_CONNECT_PRIVATE_KEY",
+        hide_env_values = true,
+        global = true
+    )]
+    domain_connect_private_key: Option<String>,
+}
+
+fn proxy_headers(value: &str) -> Result<ProxyHeaders, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "false" | "" => Ok(ProxyHeaders::Off),
+        "true" => Ok(ProxyHeaders::Forwarded),
+        "cloudflare" => Ok(ProxyHeaders::Cloudflare),
+        _ => Err("use false, true or cloudflare".to_owned()),
+    }
 }
 
 /// Worker settings.
 #[derive(Debug, Args)]
 pub struct WorkerArgs {
     /// Outgoing mail server, e.g. `smtp://user:pass@smtp.example.com:587?tls=required`
-    /// or `smtp://localhost:1025` for Mailpit. Unset: emails are only logged.
+    /// or `smtp://localhost:1025` for Mailpit. Unset: emails are only logged,
+    /// links removed, and only allowed while `PUBLIC_BASE_URL` is plain HTTP.
     #[arg(long, env = "SMTP_URL", hide_env_values = true)]
     smtp_url: Option<String>,
 
@@ -108,13 +310,23 @@ pub struct WorkerArgs {
     /// Jobs this process runs at the same time.
     #[arg(long, env = "WORKER_CONCURRENCY", default_value_t = 8)]
     concurrency: usize,
+
+    /// Fetch the European Central Bank's daily reference exchange rates.
+    /// Off: invoices in another currency need a rate typed in.
+    #[arg(long, env = "FX_RATES", default_value_t = true, action = clap::ArgAction::Set)]
+    fx_rates: bool,
 }
 
 impl WorkerArgs {
-    pub fn mailer(&self) -> anyhow::Result<Arc<dyn Mailer>> {
+    /// The mail server. A deployment on https must have one: without it,
+    /// sign-in and invitation emails would never arrive.
+    pub fn mailer(&self, public_base_url: &Url) -> anyhow::Result<Arc<dyn Mailer>> {
         Ok(match &self.smtp_url {
             Some(url) => Arc::new(
                 SmtpMailer::from_url(url, &self.mail_from).map_err(|e| anyhow::anyhow!("{e}"))?,
+            ),
+            None if public_base_url.scheme() == "https" => anyhow::bail!(
+                "SMTP_URL is not set while PUBLIC_BASE_URL is https; set the mail server to send sign-in and invitation emails"
             ),
             None => {
                 tracing::warn!("SMTP_URL is not set; emails will be written to the log, not sent");
@@ -130,6 +342,7 @@ impl WorkerArgs {
         );
         Ok(core_worker::Settings {
             concurrency: self.concurrency,
+            fx_rates: self.fx_rates.then(core_worker::FxFeeds::default),
             ..Default::default()
         })
     }
@@ -149,6 +362,33 @@ impl ApiArgs {
             }
             None => Keyring::ephemeral(),
         };
+
+        // Mailboxes are connected through the same OAuth clients as sign-in.
+        let mut mailboxes = MailboxConfig {
+            gmail_api: self.gmail_api_base,
+            graph_api: self.graph_api_base,
+            google_api: self.google_api_base,
+            poll_every: Duration::from_secs(self.mail_poll_seconds.clamp(30, 3600)),
+            calendar_every: Duration::from_secs(self.calendar_poll_seconds.clamp(60, 6 * 3600)),
+            first_read_days: self.mail_first_read_days.clamp(0, 365),
+            ..MailboxConfig::default()
+        };
+        if let (Some(id), Some(secret)) = (&self.google_client_id, &self.google_client_secret) {
+            let app = OAuthApp::google(id.clone(), secret.clone());
+            mailboxes.google = Some(match &self.google_oauth_base {
+                Some(base) => app.at(base),
+                None => app,
+            });
+        }
+        if let (Some(id), Some(secret)) = (&self.microsoft_client_id, &self.microsoft_client_secret)
+        {
+            mailboxes.microsoft = Some(OAuthApp::microsoft_at(
+                id.clone(),
+                secret.clone(),
+                &self.microsoft_tenant,
+                self.microsoft_login_base.as_str(),
+            ));
+        }
 
         let mut oidc = Vec::new();
         match (self.google_client_id, self.google_client_secret) {
@@ -199,7 +439,135 @@ impl ApiArgs {
                 .collect()
         });
 
+        let storage = match self.storage.as_str() {
+            "database" => StorageConfig::Database,
+            "directory" => StorageConfig::Directory(
+                self.storage_dir
+                    .context("STORAGE=directory needs STORAGE_DIR")?,
+            ),
+            "s3" => StorageConfig::S3(S3Config {
+                endpoint: self.s3_endpoint.context("STORAGE=s3 needs S3_ENDPOINT")?,
+                bucket: self.s3_bucket.context("STORAGE=s3 needs S3_BUCKET")?,
+                region: self.s3_region,
+                access_key_id: self
+                    .s3_access_key_id
+                    .context("STORAGE=s3 needs S3_ACCESS_KEY_ID")?,
+                secret_access_key: self
+                    .s3_secret_access_key
+                    .context("STORAGE=s3 needs S3_SECRET_ACCESS_KEY")?,
+            }),
+            other => anyhow::bail!("STORAGE must be database, directory or s3, not `{other}`"),
+        };
+        let no_sandbox = self.chromium_no_sandbox;
+        let pdf = match self.pdf_renderer.as_str() {
+            "auto" => PdfConfig::Auto { no_sandbox },
+            "chromium" => PdfConfig::Chromium {
+                path: self
+                    .chromium_path
+                    .context("PDF_RENDERER=chromium needs CHROMIUM_PATH")?,
+                no_sandbox,
+            },
+            "plain" => PdfConfig::Plain,
+            other => anyhow::bail!("PDF_RENDERER must be auto, chromium or plain, not `{other}`"),
+        };
+        anyhow::ensure!(
+            (1..=100).contains(&self.max_upload_mb),
+            "MAX_UPLOAD_MB must be 1 to 100"
+        );
+        let stripe = match (
+            self.stripe_secret_key,
+            self.stripe_client_id,
+            self.stripe_webhook_secret,
+        ) {
+            (Some(key), Some(client_id), Some(webhook_secret)) => {
+                anyhow::ensure!(
+                    self.stripe_application_fee_bps <= 2000,
+                    "STRIPE_APPLICATION_FEE_BPS must be 0 to 2000"
+                );
+                let config = StripeConfig {
+                    api_base: self.stripe_api_base,
+                    connect_base: self.stripe_connect_base,
+                    application_fee_bps: self.stripe_application_fee_bps,
+                    ..StripeConfig::new(key, client_id, webhook_secret)
+                };
+                Some(StripeClient::new(config).map_err(|e| anyhow::anyhow!("{e}"))?)
+            }
+            (None, None, None) => None,
+            _ => anyhow::bail!(
+                "set all of STRIPE_SECRET_KEY, STRIPE_CLIENT_ID and STRIPE_WEBHOOK_SECRET, or none"
+            ),
+        };
+
+        let mut accounting = AccountingConfig::default();
+        match (self.xero_client_id, self.xero_client_secret) {
+            (Some(id), Some(secret)) => accounting.xero = Some(OAuthApp::xero(id, secret)),
+            (None, None) => {}
+            _ => anyhow::bail!("set both XERO_CLIENT_ID and XERO_CLIENT_SECRET, or neither"),
+        }
+        match (self.quickbooks_client_id, self.quickbooks_client_secret) {
+            (Some(id), Some(secret)) => {
+                accounting.quickbooks = Some(OAuthApp::quickbooks(id, secret));
+            }
+            (None, None) => {}
+            _ => anyhow::bail!(
+                "set both QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET, or neither"
+            ),
+        }
+        if self.quickbooks_sandbox {
+            accounting.quickbooks_api =
+                Url::parse(core_integrations::accounting::QUICKBOOKS_SANDBOX_API)?;
+        }
+
+        let sender_domains = match self.resend_api_key {
+            Some(key) => {
+                anyhow::ensure!(
+                    ["us-east-1", "eu-west-1", "sa-east-1", "ap-northeast-1"]
+                        .contains(&self.resend_region.as_str()),
+                    "RESEND_REGION must be us-east-1, eu-west-1, sa-east-1 or ap-northeast-1"
+                );
+                let domain_connect = match (
+                    self.domain_connect_provider_id,
+                    self.domain_connect_private_key,
+                ) {
+                    (Some(provider_id), Some(pem)) => Some(Arc::new(
+                        DomainConnect::new(
+                            provider_id,
+                            self.domain_connect_service_id,
+                            self.domain_connect_key_host,
+                            // Environments often keep a PEM on one line.
+                            &pem.replace("\\n", "\n"),
+                            self.webhooks_allow_private,
+                        )
+                        .map_err(|e| anyhow::anyhow!("DOMAIN_CONNECT_PRIVATE_KEY: {e}"))?,
+                    )),
+                    (None, None) => None,
+                    _ => anyhow::bail!(
+                        "set both DOMAIN_CONNECT_PROVIDER_ID and DOMAIN_CONNECT_PRIVATE_KEY, or neither"
+                    ),
+                };
+                Some(SenderDomainsConfig {
+                    resend: Resend::new(key, self.resend_region, self.resend_api_base)
+                        .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    doh: Doh::new(self.doh_base).map_err(|e| anyhow::anyhow!("{e}"))?,
+                    domain_connect,
+                })
+            }
+            None => None,
+        };
+
+        let mut messaging = MessagingConfig::new(&self.public_base_url);
+        if let Some(base) = self.messaging_hook_base {
+            anyhow::ensure!(
+                base.path().ends_with("/hooks/messaging/"),
+                "MESSAGING_HOOK_BASE must end in /hooks/messaging/"
+            );
+            messaging.hook_base = base.to_string();
+        }
+
         Ok(Config {
+            storage,
+            pdf,
+            max_upload_bytes: self.max_upload_mb * 1024 * 1024,
             cookie_secure: self.cookie_secure,
             trust_proxy_headers: self.trust_proxy_headers,
             session_ttl: Duration::from_secs(self.session_ttl_days * 24 * 3600),
@@ -208,6 +576,11 @@ impl ApiArgs {
             cors_origins,
             oidc,
             webhooks_allow_private: self.webhooks_allow_private,
+            stripe,
+            mailboxes,
+            accounting,
+            messaging,
+            sender_domains,
             ..Config::new(self.public_base_url, keyring)
         })
     }
@@ -239,6 +612,50 @@ mod tests {
         assert!(args(&[]).build(false).is_ok());
         assert!(args(&[KEY]).build(true).is_ok());
         assert!(args(&["--encryption-keys=k1:short"]).build(true).is_err());
+    }
+
+    #[test]
+    fn proxy_headers_are_trusted_only_when_named() {
+        let mode = |extra: &[&str]| {
+            let mut all = vec![KEY];
+            all.extend_from_slice(extra);
+            args(&all).build(true).expect("config").trust_proxy_headers
+        };
+        assert_eq!(mode(&[]), ProxyHeaders::Off);
+        assert_eq!(mode(&["--trust-proxy-headers=false"]), ProxyHeaders::Off);
+        assert_eq!(
+            mode(&["--trust-proxy-headers=true"]),
+            ProxyHeaders::Forwarded
+        );
+        assert_eq!(
+            mode(&["--trust-proxy-headers=cloudflare"]),
+            ProxyHeaders::Cloudflare
+        );
+        assert!(Cli::try_parse_from(["onhold", KEY, "--trust-proxy-headers=yes"]).is_err());
+    }
+
+    // The SMTP transport's connection pool needs a Tokio runtime, even to drop.
+    #[tokio::test]
+    async fn a_deployment_on_https_needs_a_mail_server() {
+        #[derive(Parser)]
+        struct WorkerCli {
+            #[command(flatten)]
+            worker: WorkerArgs,
+        }
+        let worker = |extra: &[&str]| {
+            let mut argv = vec!["onhold"];
+            argv.extend_from_slice(extra);
+            WorkerCli::try_parse_from(argv).expect("parses").worker
+        };
+        let https = Url::parse("https://app.example.com").expect("url");
+        let http = Url::parse("http://localhost:5173").expect("url");
+        assert!(worker(&[]).mailer(&https).is_err());
+        assert!(worker(&[]).mailer(&http).is_ok());
+        assert!(
+            worker(&["--smtp-url=smtp://localhost:1025"])
+                .mailer(&https)
+                .is_ok()
+        );
     }
 
     #[test]

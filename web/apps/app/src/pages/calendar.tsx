@@ -129,7 +129,8 @@ export function CalendarPage() {
             <ChevronRight />
           </Button>
         </div>
-        <p className="min-w-0 flex-1 truncate font-medium" aria-live="polite">
+        {/* Wide enough for the longest title, so a phone wraps it to its own line instead of cutting it off. */}
+        <p className="min-w-48 flex-1 font-medium" aria-live="polite">
           {title(view, day)}
         </p>
         {calendar.isFetching && <Spinner />}

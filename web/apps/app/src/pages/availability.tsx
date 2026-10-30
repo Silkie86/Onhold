@@ -1,5 +1,6 @@
 // A talent's marked time: holidays and other unavailable dates block
-// confirming bookings; tentative time only warns.
+// confirming bookings; tentative time only warns. Busy times read from the
+// talent's own calendars are listed too, and change only there.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Schemas } from "@onhold/api-client";
@@ -43,7 +44,9 @@ export function AvailabilityEditor({ talentId, canWrite }: { talentId: string; c
       </div>
       {adding && (
         <AvailabilityForm
-          talentId={talentId}
+          save={(body) =>
+            ok(api.POST("/api/v1/talent/{id}/availability", { params: { path: { id: talentId } }, body })).then(() => undefined)
+          }
           onDone={() => {
             setAdding(false);
             refresh();
@@ -66,7 +69,8 @@ export function AvailabilityEditor({ talentId, canWrite }: { talentId: string; c
                 </span>
                 {a.note && <span className="text-muted-foreground">{a.note}</span>}
               </span>
-              {canWrite && (
+              {/* Busy time from their own calendar changes there. */}
+              {canWrite && a.source !== "external" && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -92,7 +96,18 @@ export function AvailabilityEditor({ talentId, canWrite }: { talentId: string; c
   );
 }
 
-function AvailabilityForm({ talentId, onDone, onCancel }: { talentId: string; onDone: () => void; onCancel: () => void }) {
+export type NewAvailability = Schemas["NewAvailability"];
+
+/** Marks a stretch of time; `save` sends it (staff for a talent, or the talent in their portal). */
+export function AvailabilityForm({
+  save,
+  onDone,
+  onCancel,
+}: {
+  save: (body: NewAvailability) => Promise<void>;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
   const today = dayKey(new Date());
   const [kind, setKind] = useState<Kind>("unavailable");
   const [allDay, setAllDay] = useState(true);
@@ -116,12 +131,7 @@ function AvailabilityForm({ talentId, onDone, onCancel }: { talentId: string; on
           return;
         }
         try {
-          await ok(
-            api.POST("/api/v1/talent/{id}/availability", {
-              params: { path: { id: talentId } },
-              body: { kind, starts_at: startsAt, ends_at: endsAt, all_day: allDay, note: note || null },
-            }),
-          );
+          await save({ kind, starts_at: startsAt, ends_at: endsAt, all_day: allDay, note: note || null });
           onDone();
         } catch (err) {
           setError(err instanceof Error ? err.message : String(err));

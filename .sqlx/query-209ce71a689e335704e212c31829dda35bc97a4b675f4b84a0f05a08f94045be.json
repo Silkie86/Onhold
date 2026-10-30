@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE documents SET kind = $2, title = $3, related_entity = $4, related_id = $5, document_date = $6,\n                  expires_on = $7, notes = $8, tags = $9, custom = $10, updated_by = $11\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Date",
+        "Date",
+        "Text",
+        "TextArray",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "209ce71a689e335704e212c31829dda35bc97a4b675f4b84a0f05a08f94045be"
+}

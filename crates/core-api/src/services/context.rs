@@ -47,6 +47,8 @@ fn app_path(entity: &str, id: &str) -> String {
         "enquiry" => format!("/enquiries/{id}"),
         "booking" => format!("/bookings/{id}"),
         "task" => "/tasks".to_owned(),
+        "invoice" => format!("/finance/invoices/{id}"),
+        "document" => format!("/documents/{id}"),
         _ => format!("/things/{id}"),
     }
 }
@@ -72,8 +74,8 @@ pub(crate) fn is_entity(entity: &str) -> bool {
     entity == super::things::ENTITY || super::records::is_crm(entity) || WORK.contains(&entity)
 }
 
-/// The M4 records rules and templates can be about.
-pub(crate) const WORK: &[&str] = &["enquiry", "booking", "quote"];
+/// The M4 and M5 records rules and templates can be about.
+pub(crate) const WORK: &[&str] = &["enquiry", "booking", "quote", "invoice", "document"];
 
 /// A record as rules and templates see it, with its link.
 pub(crate) async fn load_object(
@@ -98,6 +100,14 @@ pub(crate) async fn load_object(
         super::quotes::load(tx, id)
             .await?
             .map(|v| super::quotes::to_json(&v))
+    } else if entity == super::invoices::ENTITY {
+        super::invoices::load(tx, id)
+            .await?
+            .map(|v| super::invoices::to_json(&v))
+    } else if entity == super::documents::ENTITY {
+        super::documents::load(tx, id)
+            .await?
+            .map(|v| super::documents::to_json(&v))
     } else {
         super::records::load_json(tx, entity, id).await?
     };
@@ -114,6 +124,8 @@ pub(crate) fn read_permission(entity: &str) -> core_domain::Permission {
         "enquiry" => P::EnquiryRead,
         "booking" => P::BookingRead,
         "quote" => P::QuoteRead,
+        "invoice" => P::InvoiceRead,
+        "document" => P::DocumentRead,
         _ => P::ThingRead,
     }
 }

@@ -260,13 +260,13 @@ fn commission(check: &mut Check, percent: Option<f64>) -> Option<i32> {
     Some(bps as i32)
 }
 
-async fn check_portal_user(tx: &mut Tx, check: &mut Check, user: Option<Uuid>) -> ApiResult<()> {
-    if let Some(u) = user
-        && core_db::members::get(tx, UserId(u)).await?.is_none()
-    {
-        check.issue("portal_user_id", "is not a member of this workspace");
-    }
-    Ok(())
+/// Who a record's portal opens for changes only through the portal's
+/// invitation (and ending access), which check the person and record it.
+fn refuse_portal_user(check: &mut Check) {
+    check.issue(
+        "portal_user_id",
+        "invite them to their portal from their record instead",
+    );
 }
 
 /// Checks a new record's values against each other and the custom field
@@ -307,7 +307,9 @@ pub(crate) async fn create_in_tx(
 ) -> ApiResult<TalentView> {
     let defs = super::fields::engine_defs(tx, ENTITY).await?;
     let (checked, mut check) = check_new(&new, &defs);
-    check_portal_user(tx, &mut check, new.portal_user_id).await?;
+    if new.portal_user_id.is_some() {
+        refuse_portal_user(&mut check);
+    }
     check.finish()?;
 
     let id = core_domain::ids::new_id();
@@ -406,7 +408,7 @@ pub(crate) async fn update_in_tx(
         custom: Value::Object(custom),
     };
     if checked.portal_user_id != current.portal_user_id {
-        check_portal_user(tx, &mut check, checked.portal_user_id).await?;
+        refuse_portal_user(&mut check);
     }
     check.finish()?;
 
@@ -447,14 +449,21 @@ pub(crate) async fn update_in_tx(
 pub async fn delete(state: &AppState, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
     ctx.authorize(Permission::TalentWrite)?;
     let mut tx = begin(state, ctx).await?;
-    delete_in_tx(&mut tx, ctx, id).await?;
+    delete_in_tx(&mut tx, ctx, id, None).await?;
     tx.commit().await?;
     Ok(())
 }
 
-pub(crate) async fn delete_in_tx(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<()> {
+pub(crate) async fn delete_in_tx(
+    tx: &mut Tx,
+    ctx: &Ctx,
+    id: Uuid,
+    event_extra: Option<Value>,
+) -> ApiResult<()> {
     let before = load(tx, id).await?.ok_or(ApiError::NotFound)?;
+    super::portal::end_access_in(tx, ctx, id).await?;
     core_db::talent::soft_delete(tx, id, ctx.user_id()).await?;
+    super::talent_calendars::disconnect_all(tx, ctx, Some(id), "talent_removed").await?;
     record(
         tx,
         ctx,
@@ -464,7 +473,7 @@ pub(crate) async fn delete_in_tx(tx: &mut Tx, ctx: &Ctx, id: Uuid) -> ApiResult<
             object_id: Some(id),
             before: Some(to_json(&before)),
             after: None,
-            event_extra: None,
+            event_extra,
         },
     )
     .await?;

@@ -40,16 +40,48 @@ const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 /// Largest request body the API accepts, except on upload routes.
 const MAX_BODY_BYTES: usize = 1024 * 1024;
 
-/// Largest body an upload route accepts: a CSV file plus its JSON wrapping.
-pub(crate) const MAX_UPLOAD_BODY_BYTES: usize = services::imports::MAX_CSV_BYTES + 64 * 1024;
+/// Largest body an upload route accepts: a CSV file plus its JSON wrapping,
+/// which escaping (line breaks, quotes) can make up to twice as long. The
+/// service checks the file itself against `MAX_CSV_BYTES`.
+pub(crate) const MAX_UPLOAD_BODY_BYTES: usize = 2 * services::imports::MAX_CSV_BYTES + 64 * 1024;
+
+/// Largest file upload body; the configured limit (25 MB by default) is
+/// checked by the service, within this.
+pub(crate) const MAX_FILE_BODY_BYTES: usize = 100 * 1024 * 1024;
 
 /// The body limit for a request: uploads get more room than everything else.
 fn body_limit(method: &axum::http::Method, path: &str) -> usize {
     if method == axum::http::Method::POST && path == "/api/v1/imports" {
         MAX_UPLOAD_BODY_BYTES
+    } else if method == axum::http::Method::POST && path == "/api/v1/files" {
+        MAX_FILE_BODY_BYTES
     } else {
         MAX_BODY_BYTES
     }
+}
+
+/// Path segments that are bearer secrets: the buyer's quote and invoice
+/// links, signing links, calendar feeds and talent's calendar-connect links.
+/// The database keeps only their hashes, so logs must not keep them either.
+const SECRET_SEGMENTS_AFTER: &[&str] = &[
+    "/public/quotes/",
+    "/public/invoices/",
+    "/public/sign/",
+    "/public/calendar/",
+    "/public/calendar-connect/",
+    "/hooks/messaging/",
+];
+
+/// The request path as it goes into logs, with secret segments replaced.
+fn log_path(path: &str) -> std::borrow::Cow<'_, str> {
+    for marker in SECRET_SEGMENTS_AFTER {
+        if let Some(i) = path.find(marker) {
+            let (head, secret) = path.split_at(i + marker.len());
+            let tail = secret.find('/').map_or("", |j| &secret[j..]);
+            return format!("{head}<redacted>{tail}").into();
+        }
+    }
+    path.into()
 }
 
 /// Refuses bodies over the route's limit: early from Content-Length, and
@@ -77,6 +109,8 @@ async fn limit_body(
     next.run(Request::from_parts(parts, body)).await
 }
 
+/// Keep well under a minute: `idem_claim` treats an idempotency claim older
+/// than that as abandoned by a request that was cut off.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Shared state handed to every handler.
@@ -88,16 +122,51 @@ pub struct AppState {
     pub oidc: oidc::SharedRegistry,
     /// Live event notifications for server-sent event streams.
     pub events: Arc<services::events::Hub>,
+    /// Where new files' bytes go.
+    pub storage: Arc<services::files::Storage>,
+    /// How documents become PDFs.
+    pub renderer: Arc<dyn core_pdf::write::Renderer>,
+}
+
+/// The PDF renderer the configuration asks for: Chromium when it can be
+/// found (or is named), else the plain-text layout.
+fn renderer(pdf: &config::PdfConfig) -> Arc<dyn core_pdf::write::Renderer> {
+    use core_pdf::write::{Chromium, PlainText};
+    match pdf {
+        config::PdfConfig::Plain => Arc::new(PlainText),
+        config::PdfConfig::Chromium { path, no_sandbox } => {
+            let mut c = Chromium::new(path.clone());
+            c.no_sandbox = *no_sandbox;
+            Arc::new(c)
+        }
+        config::PdfConfig::Auto { no_sandbox } => match Chromium::find() {
+            Some(mut c) => {
+                c.no_sandbox = *no_sandbox;
+                tracing::info!(browser = %c.program.display(), "documents print with Chromium");
+                Arc::new(c)
+            }
+            None => {
+                tracing::warn!(
+                    "no Chromium found: documents print in the plain layout (set CHROMIUM_PATH)"
+                );
+                Arc::new(PlainText)
+            }
+        },
+    }
 }
 
 impl AppState {
     pub fn new(db: PgPool, config: Config) -> Result<Self, error::ApiError> {
         let oidc = Arc::new(oidc::Registry::new(config.oidc.clone())?);
+        let storage = Arc::new(services::files::Storage::from_config(&config.storage)?);
+        let renderer = renderer(&config.pdf);
         Ok(Self {
             db,
             config: Arc::new(config),
             oidc,
             events: Arc::default(),
+            storage,
+            renderer,
         })
     }
 }
@@ -133,14 +202,25 @@ impl AppState {
         (name = "imports", description = "Bringing records in from spreadsheets"),
         (name = "enquiries", description = "Requests for talent, through the enquiry pipeline"),
         (name = "bookings", description = "Holds and bookings, with clash checks"),
+        (name = "travel", description = "Travel on a booking (flights, trains, rides, hotels), its buyouts and costs, and whether it pays"),
+        (name = "projects", description = "Tours, seasons, circuits and campaigns: their dates, crew, costs, whether they pay, and the itinerary"),
+        (name = "pitching", description = "Pitching: the workspace's regions, statuses and what it pitches"),
         (name = "quotes", description = "Priced offers the buyer accepts on the web"),
         (name = "calendar", description = "The calendar, availability and iCal feeds"),
         (name = "tasks", description = "To-dos on any record"),
+        (name = "documents", description = "Files, documents, e-signature and past PDFs"),
+        (name = "finance", description = "Finance settings, tax codes and exchange rates"),
+        (name = "invoices", description = "Invoices and credit notes"),
+        (name = "payments", description = "Payments received, refunds and payouts"),
+        (name = "settlements", description = "What each talent is owed for a booking"),
+        (name = "reports", description = "Revenue, what is owed, cash and the funnel"),
+        (name = "portal", description = "The talent portal: a talent's own dates, availability, documents and money, and who has access"),
         (name = "public", description = "Pages reached by secret link, without an account"),
         (name = "events", description = "What changed, in order: the sync feed"),
         (name = "webhooks", description = "Events pushed to your URLs"),
         (name = "jobs", description = "Background work"),
         (name = "messages", description = "Messages sent"),
+        (name = "inbox", description = "Connected mailboxes and the conversations in them"),
         (name = "admin", description = "Operator tools (superadmin)"),
         (name = "health", description = "Probes"),
     )
@@ -178,6 +258,15 @@ fn api_router() -> OpenApiRouter<AppState> {
             .merge(routes::things::router())
             .merge(routes::crm::router())
             .merge(routes::bookings::router())
+            .merge(routes::travel::router())
+            .merge(routes::projects::router())
+            .merge(routes::pitching::router())
+            .merge(routes::portal::router())
+            .merge(routes::documents::router())
+            .merge(routes::finance::router())
+            .merge(routes::stripe::router())
+            .merge(routes::inbox::router())
+            .merge(routes::messaging::router())
             .merge(routes::events::router())
             .merge(routes::webhooks::router())
             .merge(routes::jobs::router())
@@ -226,7 +315,7 @@ pub fn router(state: AppState) -> Router {
                             tracing::info_span!(
                                 "request",
                                 method = %req.method(),
-                                path = %req.uri().path(),
+                                path = %log_path(req.uri().path()),
                                 request_id,
                                 workspace_id = tracing::field::Empty,
                                 user_id = tracing::field::Empty,
@@ -279,7 +368,12 @@ fn cors(origins: &[String]) -> CorsLayer {
             HeaderName::from_static(idempotency::HEADER),
             REQUEST_ID_HEADER,
         ])
-        .expose_headers([header::ETAG, header::LOCATION, REQUEST_ID_HEADER])
+        .expose_headers([
+            header::ETAG,
+            header::LOCATION,
+            header::CONTENT_DISPOSITION,
+            REQUEST_ID_HEADER,
+        ])
         .max_age(Duration::from_secs(3600))
 }
 

@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id FROM payments WHERE workspace_id = app_workspace_id()\n             AND stripe_payment_intent = $1 AND kind = 'payment'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "payments",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5db884ec72aad9c5b8e316ca45ece1e9620fda51b6bd7d4134b6ebee4d111da2"
+}

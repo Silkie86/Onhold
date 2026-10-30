@@ -26,20 +26,23 @@ pub struct NewInvitation<'a> {
     pub token_hash: &'a [u8],
     pub expires_at: DateTime<Utc>,
     pub invited_by: Option<UserId>,
+    /// The talent record a portal invitation opens.
+    pub talent_id: Option<Uuid>,
 }
 
 pub async fn insert(conn: &mut PgConnection, new: NewInvitation<'_>) -> Result<Uuid> {
     let id = core_domain::ids::new_id();
     sqlx::query!(
-        r#"INSERT INTO invitations (id, workspace_id, email, role, token_hash, expires_at, invited_by)
-           VALUES ($1, $2, $3::text::citext, $4, $5, $6, $7)"#,
+        r#"INSERT INTO invitations (id, workspace_id, email, role, token_hash, expires_at, invited_by, talent_id)
+           VALUES ($1, $2, $3::text::citext, $4, $5, $6, $7, $8)"#,
         id,
         new.workspace.0,
         new.email,
         new.role as Role,
         new.token_hash,
         new.expires_at,
-        new.invited_by.map(|u| u.0)
+        new.invited_by.map(|u| u.0),
+        new.talent_id
     )
     .execute(conn)
     .await?;

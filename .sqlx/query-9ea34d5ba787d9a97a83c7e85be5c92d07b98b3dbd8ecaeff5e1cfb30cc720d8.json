@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE tax_codes SET name = $2, rate_bps = $3, kind = $4, note = $5, is_default = $6 AND NOT $8,\n                  position = $7, archived_at = CASE WHEN $8 THEN coalesce(archived_at, now()) END, updated_by = $9\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int4",
+        "Text",
+        "Text",
+        "Bool",
+        "Int4",
+        "Bool",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9ea34d5ba787d9a97a83c7e85be5c92d07b98b3dbd8ecaeff5e1cfb30cc720d8"
+}

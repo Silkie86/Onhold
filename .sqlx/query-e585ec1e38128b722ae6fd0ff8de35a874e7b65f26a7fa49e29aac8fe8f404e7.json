@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE signature_requests SET viewed_at = coalesce(viewed_at, now())\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e585ec1e38128b722ae6fd0ff8de35a874e7b65f26a7fa49e29aac8fe8f404e7"
+}

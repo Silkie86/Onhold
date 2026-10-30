@@ -36,6 +36,9 @@ pub enum ApiError {
     Invalid(Vec<Issue>),
     #[error("{message}")]
     Gone { code: &'static str, message: String },
+    /// A service OnHold relies on (such as Stripe) could not be reached; try again.
+    #[error("{message}")]
+    Unavailable { code: &'static str, message: String },
     #[error("internal error")]
     Internal(String),
 }
@@ -105,6 +108,13 @@ impl ApiError {
         Self::Invalid(vec![Issue::new(field, message)])
     }
 
+    pub fn unavailable(code: &'static str, message: impl Into<String>) -> Self {
+        Self::Unavailable {
+            code,
+            message: message.into(),
+        }
+    }
+
     pub fn unprocessable(code: &'static str, message: impl Into<String>) -> Self {
         Self::Unprocessable {
             code,
@@ -155,6 +165,9 @@ impl ApiError {
                 issues.first().map(|i| i.field.as_str()),
             ),
             ApiError::Gone { code, message } => (StatusCode::GONE, code, message.clone(), None),
+            ApiError::Unavailable { code, message } => {
+                (StatusCode::SERVICE_UNAVAILABLE, code, message.clone(), None)
+            }
             ApiError::Internal(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",

@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id AS \"id!\", at AS \"at!\" FROM (\n               SELECT id,\n                      (CASE WHEN $1 = 'issue_date' THEN issue_date ELSE due_date END)::timestamp AT TIME ZONE $2\n                          + make_interval(mins => $3::int) AS at\n               FROM invoices\n               WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL\n                 AND kind = 'invoice' AND status IN ('issued', 'part_paid', 'overdue')\n           ) t\n           WHERE at > $4 AND at <= $5\n           ORDER BY at, id\n           LIMIT $6",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "invoices",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "610bfaca82dd6fb148d3598cb987166558377cae2df9ee831b0519acf5d28d54"
+}

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO invoice_sequences (workspace_id, issuer_key, kind, value)\n           VALUES (app_workspace_id(), $1, $2, 1)\n           ON CONFLICT (workspace_id, issuer_key, kind) DO UPDATE SET value = invoice_sequences.value + 1\n           RETURNING value",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "value",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "invoice_sequences",
+            "name": "value"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "824e3bcaaf6743d5b4f1a0cd2f456ce336e69de0d86dd5cd5ad59747d22a94bb"
+}

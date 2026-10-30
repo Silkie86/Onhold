@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE threads SET contact_id = $2, organisation_id = $3, enquiry_id = $4, booking_id = $5\n           WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e95dbfb18364ae8cc27d443ad01d3b088da92954185066cfb9a638c421cf3c53"
+}

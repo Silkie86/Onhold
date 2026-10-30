@@ -1,0 +1,323 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, entity, filename, status, headers, row_count, mapping, options, created_count,\n                  updated_count, skipped_count, failed_count, processed, issues, error, version, created_at,\n                  updated_at, created_by AS \"created_by: UserId\", started_at, finished_at,\n                  undone_count, kept_count, undone_at, undo_error,\n                  (SELECT count(*) FROM import_records r\n                   WHERE r.workspace_id = imports.workspace_id AND r.import_id = imports.id)::int AS \"to_undo!\"\n           FROM imports WHERE workspace_id = app_workspace_id() AND id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "entity",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "entity"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "filename",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "filename"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "headers",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "headers"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "row_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "row_count"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "mapping",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "mapping"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "options",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "options"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "created_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "created_count"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "updated_count"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "skipped_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "skipped_count"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "failed_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "failed_count"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "processed",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "processed"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "issues",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "issues"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "error"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "version",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "created_by: UserId",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "started_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "finished_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "finished_at"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "undone_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "undone_count"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "kept_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "kept_count"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "undone_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "undone_at"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "undo_error",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "imports",
+            "name": "undo_error"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "to_undo!",
+        "type_info": "Int4",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "2cc2f6b15b687c7b6094b04ef774b2f2cf049a3f60a181407fdddce4a9018979"
+}

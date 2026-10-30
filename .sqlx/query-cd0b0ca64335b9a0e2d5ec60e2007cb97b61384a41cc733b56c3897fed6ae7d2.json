@@ -1,0 +1,42 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE invoices SET status = $2, number = $3, reference = $4, issue_date = $5, due_date = $6,\n                  issuer = $7, payer = $8, base_currency = $9, fx_rate = $10::text::numeric, fx_date = $11,\n                  fx_source = $12, base_total_minor = $13, updated_by = $14\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND status = 'draft'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "invoice_status",
+            "kind": {
+              "Enum": [
+                "draft",
+                "issued",
+                "part_paid",
+                "paid",
+                "overdue",
+                "credited",
+                "void"
+              ]
+            }
+          }
+        },
+        "Int8",
+        "Text",
+        "Date",
+        "Date",
+        "Jsonb",
+        "Jsonb",
+        "Bpchar",
+        "Text",
+        "Date",
+        "Text",
+        "Int8",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cd0b0ca64335b9a0e2d5ec60e2007cb97b61384a41cc733b56c3897fed6ae7d2"
+}

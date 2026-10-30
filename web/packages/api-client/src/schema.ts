@@ -4,6 +4,152 @@
  */
 
 export interface paths {
+    "/api/v1/accounting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The connection to the workspace's books, and which providers this
+         *     server can connect to.
+         */
+        get: operations["get_accounting"];
+        put?: never;
+        post?: never;
+        /** Stop sending to the books, and revoke OnHold's access to them. */
+        delete: operations["disconnect_accounting"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/failures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the books refused, and why. */
+        get: operations["accounting_failures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish connecting with what the provider sent back. */
+        post: operations["finish_accounting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import the invoices issued in the books before OnHold, as past invoices. */
+        post: operations["import_from_accounting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The accounts, items and tax rates in the books to choose from, read
+         *     from the books now.
+         */
+        get: operations["accounting_options"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Where sales and payments go in the books, and which tax rate each tax
+         *     code is there.
+         */
+        put: operations["update_accounting_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start connecting Xero or QuickBooks Online. */
+        post: operations["start_accounting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send to the books now, trying again what they refused. */
+        post: operations["sync_accounting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/impersonation": {
         parameters: {
             query?: never;
@@ -36,6 +182,58 @@ export interface paths {
         get: operations["job_summary"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/price-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The price list the setup form's estimate uses (minor units a month). */
+        get: operations["get_price_list"];
+        /** Replace the price list: `currency`, `base`, `features` and `team` amounts in minor units a month. */
+        put: operations["set_price_list"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/setup-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Requests and questions clients left in the setup form, open ones first. */
+        get: operations["list_setup_requests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/setup-requests/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a client's request dealt with. */
+        post: operations["resolve_setup_request"];
         delete?: never;
         options?: never;
         head?: never;
@@ -580,6 +778,61 @@ export interface paths {
         patch: operations["update_booking"];
         trace?: never;
     };
+    "/api/v1/bookings/{id}/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A deposit, balance or full invoice for a booking, from its accepted quote or fee. */
+        post: operations["invoice_booking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{id}/money": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether a booking pays: the fee and other income, less commission,
+         *     travel and other costs, in the fee's currency, with warnings.
+         */
+        get: operations["money_check"];
+        put?: never;
+        /** Add income (a buyout) or a cost to a booking. */
+        post: operations["create_line"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{id}/pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every document of a booking and its invoices, as one zip. */
+        get: operations["booking_pack"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bookings/{id}/quotes": {
         parameters: {
             query?: never;
@@ -595,6 +848,23 @@ export interface paths {
          *     talent's default fees unless lines are given.
          */
         post: operations["create_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{id}/settlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Draft a settlement for each talent on a booking that has none. */
+        post: operations["settle_booking"];
         delete?: never;
         options?: never;
         head?: never;
@@ -634,6 +904,24 @@ export interface paths {
         get: operations["booking_timeline"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bookings/{id}/travel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A booking's travel, in time order. */
+        get: operations["list_travel"];
+        put?: never;
+        /** Add a flight, train, ride or hotel to a booking. */
+        post: operations["create_travel"];
         delete?: never;
         options?: never;
         head?: never;
@@ -690,6 +978,94 @@ export interface paths {
         post?: never;
         /** Stop a calendar link working. */
         delete: operations["revoke_feed"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/pushes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your Google or Microsoft calendars that bookings are written into. */
+        get: operations["list_pushes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/pushes/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish connecting with what the provider sent back. */
+        post: operations["finish_push"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/pushes/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start connecting your Google or Microsoft calendar: OnHold makes a
+         *     calendar of its own there and keeps the bookings in it.
+         */
+        post: operations["start_push"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/pushes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop writing bookings, and remove OnHold's calendar from the account. */
+        delete: operations["disconnect_push"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/pushes/{id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Write the bookings into the calendar now. */
+        post: operations["sync_push"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -824,6 +1200,168 @@ export interface paths {
         patch: operations["update_field"];
         trace?: never;
     };
+    "/api/v1/document-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The templates documents can be made from. */
+        get: operations["document_templates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/document-templates/{key}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A built-in template's source, to start the workspace's own version from
+         *     (save it as a `document` template with the same key).
+         */
+        get: operations["document_template_source"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Documents, newest first. `q` searches titles, tags and the text inside PDFs. */
+        get: operations["list_documents"];
+        put?: never;
+        /** A document from an uploaded file. */
+        post: operations["create_document"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a document from a template (a contract, confirmation or advance
+         *     sheet from a booking) and print it.
+         */
+        post: operations["generate_document"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A document with its versions and signature requests. */
+        get: operations["get_document"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_document"];
+        options?: never;
+        head?: never;
+        /** Change what is recorded about a document. */
+        patch: operations["update_document"];
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A version's PDF (or uploaded file). */
+        get: operations["download_document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make a generated document again from its template, as a new version. */
+        post: operations["regenerate_document"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/signatures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send the current version for e-signature: each signer gets their own link. */
+        post: operations["request_signatures"];
+        /** Stop waiting for signatures. */
+        delete: operations["cancel_signatures"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A new version of an uploaded document from another uploaded file. */
+        post: operations["add_document_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/enquiries": {
         parameters: {
             query?: never;
@@ -920,6 +1458,217 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a file as the raw request body (up to 25 MB). It is kept for a
+         *     day unless a document or import uses it. A PDF's text is read in the
+         *     background so it can be searched.
+         */
+        post: operations["upload_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["download_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/files/{id}/reading": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fields suggested from a stored PDF's text, without importing it. */
+        get: operations["read_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_finance_settings"];
+        /** Replace the finance settings (needs `finance:config`). */
+        put: operations["update_finance_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/stripe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The workspace's Stripe connection (needs `finance:config`). */
+        get: operations["stripe_status"];
+        put?: never;
+        post?: never;
+        /** Disconnect the Stripe account, here and in Stripe. */
+        delete: operations["stripe_disconnect"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/stripe/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start connecting a Stripe account: send the admin to the returned URL. */
+        post: operations["stripe_connect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/stripe/connect/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish connecting with the `code` and `state` Stripe sent back. */
+        post: operations["stripe_connect_finish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/follow-ups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The ready-made follow-ups and whether each is on. */
+        get: operations["list_follow_ups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/follow-ups/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a ready-made follow-up on (installing its rules and any missing
+         *     templates) or off (deleting its rules; templates stay).
+         */
+        put: operations["set_follow_up"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fx-rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The reference exchange rate (ECB, crossed through the euro) on a day. */
+        get: operations["fx_rate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hooks/messaging/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Meta's check of a WhatsApp number's callback URL. */
+        get: operations["messaging_verify"];
+        put?: never;
+        /** Texts in, and what became of texts sent, from Twilio or Meta. */
+        post: operations["messaging_hook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/imports": {
         parameters: {
             query?: never;
@@ -995,6 +1744,372 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take away what a finished import created, in the background: records
+         *     changed since, or in use elsewhere, are kept, and what it updated stays.
+         *     Follow it at `GET /imports/{id}`.
+         */
+        post: operations["undo_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The workspace's own domains to send email from, and whether this server can verify them. */
+        get: operations["list_domains"];
+        put?: never;
+        /** Add a domain to send from. The answer lists the DNS records to add. */
+        post: operations["add_domain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/domains/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop sending from a domain and remove it. */
+        delete: operations["remove_domain"];
+        options?: never;
+        head?: never;
+        /** Choose the sending address, or whether to send from this domain. */
+        patch: operations["update_domain"];
+        trace?: never;
+    };
+    "/api/v1/inbox/domains/{id}/automatic-setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A signed link to the domain's DNS provider, where the owner approves the records in one step. */
+        post: operations["domain_automatic_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/domains/{id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Look for the domain's DNS records now. The result shows within a minute. */
+        post: operations["check_domain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/mailboxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which providers this server can connect, and the mailboxes the caller sees. */
+        get: operations["mail_setup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/mailboxes/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start connecting a Gmail or Microsoft mailbox: send the member to the returned URL. */
+        post: operations["mail_connect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/mailboxes/connect/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish connecting with the `code` and `state` the provider sent back. */
+        post: operations["mail_connect_finish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/mailboxes/imap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect any other mailbox by IMAP and SMTP. The servers are tried before it is saved. */
+        post: operations["mail_connect_imap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/mailboxes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop reading a mailbox and forget its sign-in. Its threads stay. */
+        delete: operations["disconnect_mailbox"];
+        options?: never;
+        head?: never;
+        /** Share a mailbox with the team, or rename it (its owner only). */
+        patch: operations["update_mailbox"];
+        trace?: never;
+    };
+    "/api/v1/inbox/mailboxes/{id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read a mailbox now rather than at its next turn. */
+        post: operations["sync_mailbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/numbers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The workspace's SMS and WhatsApp numbers. */
+        get: operations["list_numbers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/numbers/sms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect the workspace's Twilio number for SMS (checked with Twilio). */
+        post: operations["connect_sms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/numbers/whatsapp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect the workspace's WhatsApp number in Meta's Cloud API (checked with Meta). */
+        post: operations["connect_whatsapp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/numbers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop using a number and forget its credentials; its conversations stay. */
+        delete: operations["disconnect_number"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/texts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Text a contact or a number from the workspace's SMS or WhatsApp number. */
+        post: operations["start_text"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conversations, latest first. */
+        get: operations["list_threads"];
+        put?: never;
+        /** Write a new message, from a connected mailbox or OnHold's own sender. */
+        post: operations["compose_thread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/threads/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One conversation with its messages, oldest first. */
+        get: operations["get_thread"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Resolve, snooze, assign, mark read or link a conversation. */
+        patch: operations["update_thread"];
+        trace?: never;
+    };
+    "/api/v1/inbox/threads/{id}/enquiry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turn a conversation into an enquiry, adding the sender as a contact when needed. */
+        post: operations["thread_enquiry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/threads/{id}/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An attachment in a conversation. */
+        get: operations["thread_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/threads/{id}/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reply in a conversation. The message is queued and sent in the background. */
+        post: operations["reply_thread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invitations": {
         parameters: {
             query?: never;
@@ -1059,6 +2174,159 @@ export interface paths {
         post?: never;
         /** Withdraw an invitation that hasn't been accepted. */
         delete: operations["revoke_invitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_invoices"];
+        put?: never;
+        /** A new draft invoice. */
+        post: operations["create_invoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/historical": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record an invoice from before OnHold, as it was. */
+        post: operations["create_historical_invoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_invoice"];
+        put?: never;
+        post?: never;
+        /** Delete a draft. */
+        delete: operations["delete_invoice"];
+        options?: never;
+        head?: never;
+        /** Change a draft (or an issued invoice's tags, custom fields and notes). */
+        patch: operations["update_invoice"];
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The payments allocated to an invoice. */
+        get: operations["invoice_allocations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/credit-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A credit note against an issued invoice (all of it by default). */
+        post: operations["credit_invoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue a draft: number it, fix its parties and exchange rate, print its PDF. */
+        post: operations["issue_invoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["invoice_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email an issued invoice with its PDF and a link to view it. */
+        post: operations["send_invoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void an issued invoice nothing has been paid or credited on. */
+        post: operations["void_invoice"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1170,6 +2438,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/money-lines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change an income or cost line; every field is replaced. */
+        put: operations["update_line"];
+        post?: never;
+        delete: operations["delete_line"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organisations": {
         parameters: {
             query?: never;
@@ -1241,6 +2526,65 @@ export interface paths {
         patch: operations["update_organisation"];
         trace?: never;
     };
+    "/api/v1/organisations/{id}/pitches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An organisation's pitch log, latest first. */
+        get: operations["list_pitches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{id}/pitches/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A pitch template filled in for a person at the organisation and what is
+         *     pitched to them, to change before sending. Placeholders with nothing to
+         *     fill them stay in the text and are listed in `missing`.
+         */
+        post: operations["draft_pitch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organisations/{id}/pitches/unlogged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent email to the organisation sent from members' own mailboxes
+         *     outside OnHold and not in the log, newest first (at most five), to log
+         *     as pitches (`POST /pitches` with its `message_id`) or set aside.
+         */
+        get: operations["unlogged_mail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organisations/{id}/timeline": {
         parameters: {
             query?: never;
@@ -1256,6 +2600,222 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_payments"];
+        put?: never;
+        /** Record money received, allocated to the invoices it pays. */
+        post: operations["create_payment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_payment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}/allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Allocate what is left of a payment to an invoice. */
+        post: operations["allocate_payment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}/allocations/{allocation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["remove_allocation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return money from what is unallocated of a payment. */
+        post: operations["refund_payment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void a payment recorded in error; its invoices owe again. */
+        post: operations["void_payment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_pdf_imports"];
+        put?: never;
+        /** Start reading a batch of uploaded PDFs. */
+        post: operations["create_pdf_imports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-imports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_pdf_import"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-imports/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Keep the PDF as a document on a record, and for an invoice, as a past invoice. */
+        post: operations["confirm_pdf_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-imports/{id}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["discard_pdf_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-imports/{id}/rematch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read a ready import's text again, with the current issuer templates. */
+        post: operations["rematch_pdf_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Field patterns for issuers whose PDFs arrive often. */
+        get: operations["list_pdf_templates"];
+        put?: never;
+        post: operations["create_pdf_template"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pdf-templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["archive_pdf_template"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1295,6 +2855,678 @@ export interface paths {
         patch: operations["update_pipeline"];
         trace?: never;
     };
+    "/api/v1/pitches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log something done to win an organisation over, or an answer it gave.
+         *     It can be backdated.
+         */
+        post: operations["log_pitch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pitches/not-a-pitch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set an email in Sent aside as not a pitch, so it is not offered again. */
+        post: operations["not_a_pitch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pitches/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a pitch by email from OnHold, through your own mailbox if you
+         *     connected one, and log it. Its answers arrive in the inbox.
+         */
+        post: operations["send_pitch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pitches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_pitch"];
+        options?: never;
+        head?: never;
+        /**
+         * Change an entry: who, what, how, when, or the note. Its organisation and
+         *     whether it is an action or an answer stay.
+         */
+        patch: operations["update_pitch"];
+        trace?: never;
+    };
+    "/api/v1/pitching/follow-ups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Follow-ups due by today (or a few days ahead), soonest first: the
+         *     workspace's follow-up steps after pitches with no answer, asking what
+         *     came of one once its steps are done, and follow-up dates set by hand.
+         *     With `organisation_id`, that organisation's next, however far off.
+         */
+        get: operations["follow_ups_due"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pitching/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The pitching list: organisations to pitch something to (or anything,
+         *     with no item), where each stands with it, and the "best to pitch first"
+         *     ranking with its reasons. Those marked do not contact are never listed;
+         *     those resting after an answer, or waiting for one, come last, greyed.
+         */
+        get: operations["pitch_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pitching/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How you send a pitch, over the workspace's default, and the mailbox
+         *     sending from OnHold uses.
+         */
+        get: operations["get_me"];
+        /** Pick how you send a pitch; `null` follows the workspace's default. */
+        put: operations["set_me"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pitching/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's regions, statuses and what it pitches (OnHold's
+         *     defaults until it saves its own), with every country to place in a
+         *     region.
+         */
+        get: operations["get_settings"];
+        /**
+         * Replace the settings; a list left out stays as it is. Each country may
+         *     be in one region at most.
+         */
+        put: operations["update_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the portal opens with: whose dates these are and what the agency shares. */
+        get: operations["portal_home"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The talent's availability, busy times from their calendars, and the calendars themselves. */
+        get: operations["portal_availability"];
+        put?: never;
+        /** Mark a time unavailable or tentative. */
+        post: operations["add_portal_availability"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/availability/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a time the talent marked themselves. */
+        delete: operations["remove_portal_availability"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/calendar-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A link to connect the talent's own Google, Microsoft or iCal calendar. */
+        post: operations["portal_calendar_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The talent's upcoming dates (soonest first) or past ones (latest first). */
+        get: operations["portal_dates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/dates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A date with its times, travel and documents. */
+        get: operations["portal_date"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/dates/{id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm or decline a date. The agent gets a task saying so; the booking
+         *     itself stays the agency's to move.
+         */
+        post: operations["answer_portal_date"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Documents on the talent's dates (from three months back) and on their record. */
+        get: operations["portal_documents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/documents/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A document's current file. */
+        get: operations["download_portal_document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The talent's conversation with the agency, latest messages last.
+         *     Opening it marks it read.
+         */
+        get: operations["portal_messages"];
+        put?: never;
+        /** Write to the agency. The conversation shows in the agency's inbox. */
+        post: operations["send_portal_message"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/money": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The talent's statements: what each date paid them, and what was paid out. */
+        get: operations["portal_money"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The talent's own records: name, bio and where they are based. */
+        get: operations["portal_profiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/profile/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change their bio and where they are based. */
+        put: operations["update_portal_profile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/sharing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the talent shares when they are booked with their other workspaces. */
+        get: operations["portal_sharing"];
+        /**
+         * Share (or stop sharing) when they are booked, times only, with every
+         *     other workspace they are talent with.
+         */
+        put: operations["update_portal_sharing"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/project-crew/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a crew member; every field is replaced. */
+        put: operations["update_crew"];
+        post?: never;
+        delete: operations["remove_crew"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Projects with dates still to come first, soonest first. */
+        get: operations["list_projects"];
+        put?: never;
+        /** Start a project (a tour by default), optionally with its first dates. */
+        post: operations["create_project"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_project"];
+        put?: never;
+        post?: never;
+        /** Delete a project. Its dates stay, as bookings of their own. */
+        delete: operations["delete_project"];
+        options?: never;
+        head?: never;
+        patch: operations["update_project"];
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/crew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["add_crew"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make a booking one of the project's dates (moving it out of any other project). */
+        post: operations["add_date"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/dates/{booking_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Take a date out of the project; the booking itself stays. */
+        delete: operations["remove_date"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/itinerary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Day by day from the first journey to the last: dates with their running
+         *     order, journeys, where people sleep, and days off. Day sheets read it.
+         */
+        get: operations["project_itinerary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/money": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Income or a cost of the project as a whole: rehearsals, insurance, a
+         *     tour manager's wage, sponsorship. Change or remove it at `/money-lines/{id}`.
+         */
+        post: operations["add_project_line"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every date with whether it pays, the totals across the project in its
+         *     currency, the budget against what is booked or spent, the crew, and the
+         *     project's own travel and costs.
+         */
+        get: operations["project_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/travel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Travel that belongs to the project rather than one date: the drive
+         *     between two cities on a day off, the flight home. Change or remove it at
+         *     `/travel/{id}`.
+         */
+        post: operations["add_project_travel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/calendar-connect/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finishes connecting with what Google or Microsoft sent back. */
+        post: operations["public_calendar_connect_finish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/calendar-connect/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a talent sees on opening their calendar link. Needs no account;
+         *     the link is the key.
+         */
+        get: operations["public_calendar_connect"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/calendar-connect/{token}/ical": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connects a calendar by its private iCal address, once it reads. */
+        post: operations["public_calendar_connect_ical"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/calendar-connect/{token}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Where to send the talent to let OnHold see when they are busy. */
+        post: operations["public_calendar_connect_start"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/calendar/{file}": {
         parameters: {
             query?: never;
@@ -1304,6 +3536,55 @@ export interface paths {
         };
         /** An iCal feed (`<token>.ics`) for calendar apps to subscribe to. */
         get: operations["public_calendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/invoices/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["public_invoice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/invoices/{token}/pay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The payer pays by card: a Stripe payment page for what the invoice owes. */
+        post: operations["public_invoice_pay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/invoices/{token}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["public_invoice_pdf"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1360,6 +3641,58 @@ export interface paths {
         put?: never;
         /** Decline the quote behind a buyer's link. */
         post: operations["decline_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/sign/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What a signer's link shows. */
+        get: operations["public_signing"];
+        put?: never;
+        /** Sign (typing one's name) or decline. */
+        post: operations["public_sign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/sign/{token}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The PDF to sign (the signed copy once everyone has signed). */
+        get: operations["public_signing_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/workspaces/{id}/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A workspace's logo for emails; see [`svc::public_logo`]. */
+        get: operations["public_logo"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1449,6 +3782,40 @@ export interface paths {
         put?: never;
         /** Take back a sent quote before the buyer answers. */
         post: operations["withdraw_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/finance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Revenue, what is owed, cash and the enquiry funnel, in the base currency. */
+        get: operations["finance_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/{table}/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A report table, or the invoice or payment list, as CSV. */
+        get: operations["export_csv"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1549,6 +3916,145 @@ export interface paths {
         /** Search talent, organisations and contacts at once, best matches first. */
         get: operations["search"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_settlements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settlements/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_settlement"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_settlement"];
+        options?: never;
+        head?: never;
+        patch: operations["update_settlement"];
+        trace?: never;
+    };
+    "/api/v1/settlements/{id}/finalise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fix a settlement and print its statement. */
+        post: operations["finalise_settlement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settlements/{id}/payouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record paying the talent. */
+        post: operations["settlement_payout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settlements/{id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reopen_settlement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/signatures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your email signature and the workspace's. */
+        get: operations["get_signatures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/signatures/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set your email signature in this workspace: under what you send from
+         *     the inbox, and the quotes, invoices and signing requests you send.
+         */
+        put: operations["set_my_signature"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/signatures/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the workspace's email signature: used when a member has none, and
+         *     under emails rules send.
+         */
+        put: operations["set_workspace_signature"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1663,6 +4169,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/talent/{id}/calendar-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A link to send the talent (or each member of an act) so they can
+         *     connect their own calendar without an OnHold account. Works for two
+         *     weeks; shown once.
+         */
+        post: operations["create_calendar_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/calendar-links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stops a link working. Calendars already connected through it carry on. */
+        delete: operations["revoke_calendar_link"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/calendars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The talent's connected calendars (busy times only) and the links that
+         *     still work for connecting more.
+         */
+        get: operations["talent_calendars"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/calendars/{calendar_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stops reading a calendar and forgets its busy times. */
+        delete: operations["disconnect_talent_calendar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/calendars/{calendar_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reads a calendar now rather than at its next turn. */
+        post: operations["sync_talent_calendar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/talent/{id}/members": {
         parameters: {
             query?: never;
@@ -1692,6 +4290,45 @@ export interface paths {
         put: operations["update_talent_member"];
         post?: never;
         delete: operations["remove_talent_member"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who a talent's portal opens for, and any invitation still waiting. */
+        get: operations["get_portal_access"];
+        put?: never;
+        /** Invite the talent to their portal by email. A waiting invitation is replaced. */
+        post: operations["invite_to_portal"];
+        /** End the talent's portal access and cancel waiting invitations. */
+        delete: operations["remove_portal_access"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/talent/{id}/portal/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write to a talent through their portal; they get an email saying so.
+         *     Starts their conversation in the inbox if it has not begun.
+         */
+        post: operations["write_to_talent"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1746,6 +4383,39 @@ export interface paths {
         head?: never;
         /** Change a task, or mark it done (`status: "done"`) or open again. */
         patch: operations["update_task"];
+        trace?: never;
+    };
+    "/api/v1/tax-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tax codes; a workspace starts with its country's usual rates. */
+        get: operations["list_tax_codes"];
+        put?: never;
+        post: operations["create_tax_code"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tax-codes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["update_tax_code"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/templates": {
@@ -1867,6 +4537,23 @@ export interface paths {
         patch: operations["update_thing"];
         trace?: never;
     };
+    "/api/v1/travel/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a travel item; every field is replaced. */
+        put: operations["update_travel"];
+        post?: never;
+        delete: operations["delete_travel"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/views": {
         parameters: {
             query?: never;
@@ -1915,6 +4602,23 @@ export interface paths {
          *     `OnHold-Signature: t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>">`.
          */
         post: operations["create_webhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/stripe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stripe's events for connected accounts, signed with `Stripe-Signature`. */
+        post: operations["stripe_webhook"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2040,6 +4744,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspace/portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the workspace lets its talent see and do in the portal. */
+        get: operations["get_portal_settings"];
+        /** Change the portal's switches; every switch is replaced. */
+        put: operations["update_portal_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspace/roles": {
         parameters: {
             query?: never;
@@ -2050,6 +4772,66 @@ export interface paths {
         /** Roles, what each may do, and what the caller may do (for showing or hiding UI). */
         get: operations["roles"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspace/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The setup form ("what will you use OnHold for?"), its answers so far and what they set up. */
+        get: operations["get_setup"];
+        /**
+         * Set the workspace up from the form's answers. Modules left out are only
+         *     hidden, never deleted, and the form can be sent again at any time.
+         */
+        put: operations["save_setup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspace/setup/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What a set of answers would set up, without saving it. */
+        post: operations["preview_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspace/streamline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What OnHold's team hid in this workspace, and the fields that could be. */
+        get: operations["get_streamline"];
+        /**
+         * Hide menu items, page sections and optional fields to streamline the
+         *     app (OnHold's team only). Data is never deleted, and it survives the
+         *     client sending their setup form again.
+         */
+        put: operations["set_streamline"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2115,12 +4897,129 @@ export interface components {
             /** @description The buyer's name, as their acceptance. */
             name: string;
         };
+        Accounting: {
+            connection?: components["schemas"]["AccountingConnection"] | null;
+            /** @description QuickBooks can be connected on this server. */
+            quickbooks: boolean;
+            /** @description Xero can be connected on this server. */
+            xero: boolean;
+        };
+        AccountingChoice: {
+            id: string;
+            name: string;
+        };
+        /** @description The workspace's books. Never carries the grant. */
+        AccountingConnection: {
+            /** @description QuickBooks works out US sales tax itself: tax codes are only taxable or not. */
+            automatic_tax: boolean;
+            /** @description The account payments are paid into. */
+            bank_account?: string | null;
+            /** Format: date-time */
+            connected_at: string;
+            /** Format: uuid */
+            id: string;
+            import: components["schemas"]["AccountingImport"];
+            last_error?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            /** Format: date-time */
+            last_synced_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When what was paid in the books was last read back.
+             */
+            paid_checked_at?: string | null;
+            /** @description `xero` or `quickbooks`. */
+            provider: string;
+            /** @description Sending has started: where sales go is chosen. */
+            ready: boolean;
+            /**
+             * Format: int64
+             * @description Things the books refused, waiting to be put right.
+             */
+            refused: number;
+            /** @description Xero: the revenue account's code. QuickBooks: the service item. */
+            sales_account?: string | null;
+            /**
+             * Format: date
+             * @description What is issued on or after this day is sent; earlier invoices can be imported.
+             */
+            start_date: string;
+            /** @description `active`, `failing` (being retried) or `reconnect`. */
+            status: string;
+            /** @description The organisation (Xero) or company (QuickBooks). */
+            tenant_name: string;
+        };
+        AccountingFailure: {
+            /** Format: date-time */
+            at: string;
+            /** Format: int32 */
+            attempts: number;
+            error?: string | null;
+            /**
+             * @description `invoice` (or credit note), `allocation` (a payment), `credit` (a
+             *     credit note set against its invoice) or `contact`.
+             */
+            kind: string;
+            /** Format: uuid */
+            local_id: string;
+            /** @description The invoice's or credit note's number. */
+            reference?: string | null;
+        };
+        AccountingImport: {
+            error?: string | null;
+            /**
+             * Format: int32
+             * @description Past invoices brought in so far.
+             */
+            imported: number;
+            /** @description `none`, `running`, `done` or `failed`. */
+            status: string;
+        };
+        AccountingOptions: {
+            /** @description Accounts payments are paid into. */
+            banks: components["schemas"]["AccountingChoice"][];
+            /** @description Xero: revenue accounts. QuickBooks: service items. */
+            sales: components["schemas"]["AccountingChoice"][];
+            /** @description OnHold's tax codes and which of those each is. */
+            tax_codes: components["schemas"]["TaxCodeMapping"][];
+            /** @description Tax rates (Xero) or codes (QuickBooks). */
+            taxes: components["schemas"]["AccountingChoice"][];
+            /** @description Settings in the books worth changing for OnHold, in words. */
+            warnings: string[];
+        };
+        AccountingSettings: {
+            /** @description The account payments are paid into (Xero needs one to send payments). */
+            bank_account?: string | null;
+            /** @description Xero: a revenue account's code. QuickBooks: a service item's id. */
+            sales_account?: string | null;
+            /**
+             * Format: date
+             * @description What is issued on or after this day is sent. Default: unchanged.
+             */
+            start_date?: string | null;
+            tax_codes?: components["schemas"]["TaxCodeChoice"][];
+        };
+        AccountingStart: {
+            /**
+             * @description Send the person here; the provider sends them back to
+             *     `/settings/accounting` with `code`, `state` (and QuickBooks'
+             *     `realmId`), which the page passes to the finish call.
+             */
+            url: string;
+        };
         /** @description One action as planned or done, for the run log. */
         ActionResult: {
             detail?: Record<string, never>;
             error?: string | null;
             ok: boolean;
             type: string;
+        };
+        AddSenderDomain: {
+            /** @description The domain to send from, e.g. `acme.com` or `mail.acme.com`. */
+            domain: string;
+            /** @description The part before the @; `hello` if left out. */
+            local_part?: string | null;
         };
         /** @description A postal address. Every part is optional, but not all of them. */
         Address: {
@@ -2132,19 +5031,97 @@ export interface components {
             line1?: string | null;
             line2?: string | null;
             postcode?: string | null;
-            /** @description State, county or province. */
+            /** @description County, state or province (the world region is the organisation's own). */
             region?: string | null;
+        };
+        AdminSetupRequestView: {
+            author_email?: string | null;
+            author_name?: string | null;
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            resolved_at?: string | null;
+            workspace_id: components["schemas"]["WorkspaceId"];
+            workspace_name: string;
         };
         AdminWorkspaceView: {
             /** Format: date-time */
             created_at: string;
+            enabled_modules: string[];
+            extras: string[];
             id: components["schemas"]["WorkspaceId"];
             /** Format: int64 */
             member_count: number;
             name: string;
+            /**
+             * Format: int64
+             * @description Comments from the setup form not yet marked done.
+             */
+            open_requests: number;
             plan: string;
+            presets: string[];
+            /** @description The setup form's answers; absent until the client sends it. */
+            setup?: Record<string, never> | null;
+            /** Format: date-time */
+            setup_at?: string | null;
             slug: string;
             status: components["schemas"]["WorkspaceStatus"];
+        };
+        Ageing: {
+            current: components["schemas"]["Money"];
+            days_1_30: components["schemas"]["Money"];
+            days_31_60: components["schemas"]["Money"];
+            days_61_90: components["schemas"]["Money"];
+            over_90: components["schemas"]["Money"];
+        };
+        AgencyMessageInput: {
+            body?: string;
+        };
+        AllocationInput: {
+            /**
+             * Format: int64
+             * @description Default: what the invoice still owes, up to what is left of the payment.
+             */
+            amount_minor?: number | null;
+            /** Format: uuid */
+            invoice_id: string;
+        };
+        AllocationView: {
+            /** Format: int64 */
+            amount_minor: number;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            invoice_id: string;
+            invoice_reference?: string | null;
+            method: string;
+            /** Format: date */
+            paid_on: string;
+            /** Format: uuid */
+            payment_id: string;
+        };
+        AnswerInput: {
+            /** @description `confirmed` or `declined`. */
+            answer?: string;
+            /** @description A few words for the agent, e.g. why they cannot do it. */
+            note?: string | null;
+            /**
+             * Format: uuid
+             * @description Which of their talent records answers; needed only when several of
+             *     theirs are on the date.
+             */
+            talent_id?: string | null;
+        };
+        /** @description What someone ticked. */
+        Answers: {
+            features?: string[];
+            roles?: string[];
+            talent_kinds?: string[];
+            /** @description `just_me`, `small` or `large`. */
+            team?: string | null;
         };
         ApiKeyView: {
             /** Format: date-time */
@@ -2223,6 +5200,10 @@ export interface components {
              */
             next_before?: string | null;
         };
+        AutomaticSetup: {
+            /** @description Send the owner here to approve the records at their DNS provider. */
+            url: string;
+        };
         AutomationsState: {
             /** @description While paused no rule runs; events are still recorded and webhooks still sent. */
             paused: boolean;
@@ -2264,6 +5245,13 @@ export interface components {
             updated_at: string;
             /** Format: int64 */
             version: number;
+        };
+        BankAccount: {
+            /** @description The currency invoices in it are paid in. */
+            currency: string;
+            /** @description Account name, number, sort code, IBAN, SWIFT: as it should print. */
+            details: string;
+            label?: string | null;
         };
         BookingPage: {
             items: components["schemas"]["BookingView"][];
@@ -2373,6 +5361,14 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        /** @description One cost category: what was planned and what is booked or spent. */
+        BudgetLine: {
+            actual: components["schemas"]["Money"];
+            budget: components["schemas"]["Money"];
+            category: string;
+            /** @description Budget less actual; negative when over. */
+            remaining: components["schemas"]["Money"];
+        };
         /** @enum {string} */
         BulkAction: "delete" | "add_tags" | "remove_tags";
         BulkFailure: {
@@ -2393,10 +5389,85 @@ export interface components {
             /** @description Records left unchanged, and why. */
             failed: components["schemas"]["BulkFailure"][];
         };
+        CalendarConnectStart: {
+            /**
+             * @description Send the talent here; the provider sends them back to
+             *     `/connect-calendar` with `code` and `state`, which the page passes to
+             *     the finish call.
+             */
+            url: string;
+        };
+        /** @description What the talent sees once connected. */
+        CalendarConnected: {
+            /** @description The account connected, or the iCal link's host. */
+            account: string;
+            branding: Record<string, never>;
+            provider: string;
+            talent_name: string;
+            workspace_name: string;
+        };
+        CalendarPushStart: {
+            /**
+             * @description Send the member here; the provider sends them back to
+             *     `/settings/calendar` with `code` and `state`, which the page passes
+             *     to the finish call.
+             */
+            url: string;
+        };
+        /** @description A member's calendar that bookings go into. Never carries the grant. */
+        CalendarPushView: {
+            account: string;
+            /** Format: date-time */
+            connected_at: string;
+            /** Format: uuid */
+            id: string;
+            last_error?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            /** Format: date-time */
+            last_synced_at?: string | null;
+            /** @description `google` or `microsoft`. */
+            provider: string;
+            /** @description `active`, `failing` (being retried) or `reconnect`. */
+            status: string;
+            /**
+             * Format: uuid
+             * @description Only this talent's bookings, or every booking when absent.
+             */
+            talent_id?: string | null;
+            talent_name?: string | null;
+            /** Format: uuid */
+            user_id: string;
+        };
+        CalendarPushes: {
+            /** @description Your connected calendars. */
+            calendars: components["schemas"]["CalendarPushView"][];
+            /** @description Google calendars can be connected on this server. */
+            google: boolean;
+            /** @description Microsoft calendars can be connected on this server. */
+            microsoft: boolean;
+        };
         CalendarView: {
             /** @description Unavailable, tentative and available-only time in the window. */
             availability: components["schemas"]["AvailabilityView"][];
             bookings: components["schemas"]["BookingView"][];
+        };
+        CashRow: {
+            currency: string;
+            /** Format: int64 */
+            paid_out_minor: number;
+            /** Format: int64 */
+            received_minor: number;
+            /** Format: int64 */
+            refunded_minor: number;
+        };
+        /** @description One cell corrected before importing. */
+        CellEdit: {
+            /** @description The column, counting from 0. */
+            column: number;
+            /** @description The spreadsheet row (the header is row 1), as problems give it. */
+            row: number;
+            value: string;
         };
         /** @enum {string} */
         Channel: "email" | "phone" | "sms" | "whatsapp";
@@ -2409,20 +5480,35 @@ export interface components {
             op: components["schemas"]["Op"];
             passed: boolean;
         };
+        /** @description One tick box or choice. */
+        Choice: {
+            /** @description A fuller explanation of what it lets them do, behind an info button. */
+            details: string;
+            hint?: string | null;
+            key: string;
+            label: string;
+            /** @description Features worth ticking when this is ticked (a role's usual setup). */
+            suggests: string[];
+        };
         /** @description Something else taking a talent's time. */
         Clash: {
             /** Format: uuid */
             availability_id?: string | null;
             /**
              * @description Whether it stops the booking being confirmed: a confirmed booking or
-             *     unavailable time. Holds, pending bookings and tentative time only warn.
+             *     unavailable time. Holds, pending bookings and tentative time only warn,
+             *     as does busy time in the talent's own calendar lying within this
+             *     booking or another the talent has (most likely that booking itself).
              */
             blocking: boolean;
             /** Format: uuid */
             booking_id?: string | null;
             /** Format: date-time */
             ends_at: string;
-            /** @description `booking` or `availability`. */
+            /**
+             * @description `booking`, `availability`, or `elsewhere`: booked in another of the
+             *     person's workspaces, which they share their busy times with.
+             */
             kind: string;
             /** Format: date-time */
             starts_at: string;
@@ -2455,6 +5541,89 @@ export interface components {
             /** @description The workspace's slug, typed again to confirm. */
             confirm_slug: string;
         };
+        /**
+         * @description The colours a status dot can take, drawn from the theme so they read in
+         *     light and dark.
+         * @enum {string}
+         */
+        Colour: "green" | "amber" | "red" | "grey" | "blue" | "purple";
+        Compose: {
+            attachments?: string[];
+            body?: string | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            cc?: string[];
+            /** Format: uuid */
+            contact_id?: string | null;
+            /** Format: uuid */
+            enquiry_id?: string | null;
+            /**
+             * @description Send through OnHold, in the workspace's name, rather than from a
+             *     mailbox (`integration_id` must then be left out).
+             */
+            from_onhold?: boolean;
+            /**
+             * Format: uuid
+             * @description The mailbox to send from; default the sender's own, if connected.
+             */
+            integration_id?: string | null;
+            /** @description Add your signature (or the workspace's) under it. Default: yes. */
+            signature?: boolean;
+            /** @description Required unless the template gives one. */
+            subject?: string | null;
+            template_key?: string | null;
+            to: string[];
+        };
+        /** @enum {string} */
+        Confidence: "low" | "medium" | "high";
+        ConfirmPdfImport: {
+            /** Format: date */
+            document_date?: string | null;
+            /** Format: date */
+            expires_on?: string | null;
+            invoice?: components["schemas"]["HistoricalInvoice"] | null;
+            /** @description The kind of document (contract, invoice, rider…). */
+            kind: string;
+            related_entity?: string | null;
+            /** Format: uuid */
+            related_id?: string | null;
+            tags?: string[];
+            title?: string | null;
+        };
+        ConnectLinkView: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            created_by: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_used_at?: string | null;
+        };
+        ConnectSms: {
+            /** @description The Twilio account's SID (`AC…`). */
+            account_sid: string;
+            auth_token: string;
+            /** @description A number in that account, in international form (`+447700900123`). */
+            number: string;
+        };
+        ConnectStart: {
+            /**
+             * @description Send the admin here; Stripe sends them back to Settings → Payments
+             *     with `code` and `state`, which the page passes to the finish call.
+             */
+            url: string;
+        };
+        ConnectWhatsapp: {
+            /** @description A system user's permanent access token with `whatsapp_business_messaging`. */
+            access_token: string;
+            /** @description The Meta app's secret, which signs what Meta sends. */
+            app_secret: string;
+            /** @description The number's "Phone number ID" in WhatsApp Manager. */
+            phone_number_id: string;
+        };
         ContactDuplicateQuery: {
             emails?: string[];
             /**
@@ -2479,6 +5648,8 @@ export interface components {
             email_opt_in?: boolean | null;
             /** @description Replaces the addresses. */
             emails?: string[] | null;
+            /** @description Replaces the links. */
+            links?: string[] | null;
             name?: string | null;
             notes?: string | null;
             /**
@@ -2509,6 +5680,8 @@ export interface components {
             emails: string[];
             /** Format: uuid */
             id: string;
+            /** @description Web pages and social profiles, as full addresses. */
+            links: string[];
             name: string;
             notes?: string | null;
             /** Format: uuid */
@@ -2518,6 +5691,11 @@ export interface components {
             phone?: string | null;
             /** @description As entered; the first is the primary number. */
             phones: string[];
+            /**
+             * @description The numbers with their country code (+44…), where it can be told
+             *     from the number or the organisation's country; as entered otherwise.
+             */
+            phones_international: string[];
             preferred_channel?: components["schemas"]["Channel"] | null;
             /** @description Job title or role at the organisation. */
             role?: string | null;
@@ -2529,6 +5707,12 @@ export interface components {
             /** Format: int64 */
             version: number;
             whatsapp_opt_in: boolean;
+        };
+        CountryView: {
+            code: string;
+            /** @description The region OnHold's own split puts it in. */
+            default_region: string;
+            name: string;
         };
         CreateApiKeyRequest: {
             /** Format: date-time */
@@ -2641,6 +5825,8 @@ export interface components {
             perspective?: components["schemas"]["Perspective"] | null;
             plan?: string | null;
             plugin_slug?: string | null;
+            /** @description Presets to combine, e.g. `["solo", "promoter"]`. */
+            presets?: string[];
             /** @description Lowercase letters, digits and inner hyphens; permanent. */
             slug: string;
         };
@@ -2648,6 +5834,11 @@ export interface components {
             key: components["schemas"]["ApiKeyView"];
             /** @description The key itself. Shown once; store it somewhere safe. */
             secret: string;
+        };
+        CreatedConnectLink: {
+            link: components["schemas"]["ConnectLinkView"];
+            /** @description The link to send the talent. Shown once. */
+            url: string;
         };
         CreatedFeed: {
             feed: components["schemas"]["FeedView"];
@@ -2662,6 +5853,30 @@ export interface components {
             slug: string;
             workspace_id: components["schemas"]["WorkspaceId"];
         };
+        /**
+         * @description A crew member, as given when adding or changing one; changing replaces
+         *     every field.
+         */
+        CrewInput: {
+            email?: string | null;
+            name: string;
+            notes?: string | null;
+            phone?: string | null;
+            role?: string | null;
+        };
+        CrewView: {
+            email?: string | null;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            notes?: string | null;
+            phone?: string | null;
+            /** Format: uuid */
+            project_id: string;
+            role?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
         CurrentSessionView: {
             /** @description `browser` or `app`. */
             client: string;
@@ -2672,11 +5887,36 @@ export interface components {
             id: string;
             mfa_verified: boolean;
         };
+        DateLink: {
+            /** Format: uuid */
+            booking_id: string;
+        };
         /**
          * @description How to read day/month order in dates like `07/03/2027`.
          * @enum {string}
          */
         DateOrder: "dmy" | "mdy" | "ymd";
+        /** @description A date in the project, as the overview lists it. */
+        DateSummary: {
+            /** Format: uuid */
+            booking_id: string;
+            commission: components["schemas"]["Money"];
+            costs: components["schemas"]["Money"];
+            /** Format: date-time */
+            ends_at: string;
+            /** @description The date's own money check, in its fee's currency. */
+            income: components["schemas"]["Money"];
+            net: components["schemas"]["Money"];
+            net_in_currency?: components["schemas"]["Money"] | null;
+            /** Format: date-time */
+            starts_at: string;
+            status: components["schemas"]["BookingStatus"];
+            talent: string[];
+            timezone: string;
+            title: string;
+            venue?: string | null;
+            warnings: components["schemas"]["Warning"][];
+        };
         DecideAppSignInRequest: {
             /** @description True signs the app in as you; false refuses it. */
             approve: boolean;
@@ -2714,6 +5954,98 @@ export interface components {
             status_code?: number | null;
             succeeded: boolean;
             topic?: string | null;
+        };
+        DocumentDetail: components["schemas"]["DocumentView"] & {
+            signatures: components["schemas"]["SignatureView"][];
+            versions: components["schemas"]["VersionView"][];
+        };
+        DocumentFile: {
+            content_type: string;
+            filename: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            size_bytes: number;
+        };
+        /** @enum {string} */
+        DocumentKind: "invoice" | "credit_note" | "receipt" | "quote" | "purchase_order" | "statement" | "contract";
+        DocumentPage: {
+            items: components["schemas"]["DocumentView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        DocumentPatch: {
+            custom?: Record<string, never> | null;
+            /** Format: date */
+            document_date?: string | null;
+            /** Format: date */
+            expires_on?: string | null;
+            kind?: string | null;
+            notes?: string | null;
+            related_entity?: string | null;
+            /** Format: uuid */
+            related_id?: string | null;
+            tags?: string[] | null;
+            title?: string | null;
+        };
+        /**
+         * @description Document templates: the built-in ones, with the workspace's own wording
+         *     where it has saved a template with the same key, and its other ones.
+         */
+        DocumentTemplate: {
+            built_in: boolean;
+            /** @description The record it is made from. */
+            entity: string;
+            key: string;
+            /** @description What it makes. */
+            kind: string;
+            name: string;
+            /**
+             * Format: uuid
+             * @description The workspace's saved template, if it has changed or added one.
+             */
+            template_id?: string | null;
+        };
+        DocumentView: {
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** Format: int32 */
+            current_version: number;
+            custom: Record<string, never>;
+            /** Format: date */
+            document_date?: string | null;
+            /**
+             * Format: date
+             * @description For insurance, visas and the like: when it runs out.
+             */
+            expires_on?: string | null;
+            file?: components["schemas"]["DocumentFile"] | null;
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description contract, rider, invoice, credit_note, receipt, statement, confirmation,
+             *     advance_sheet, quote, purchase_order, insurance, other…
+             */
+            kind: string;
+            notes?: string | null;
+            related_entity?: string | null;
+            /** Format: uuid */
+            related_id?: string | null;
+            /** @description none, awaiting, signed or declined. */
+            signature_status: string;
+            /** @description generated, uploaded or imported. */
+            source: string;
+            /** @description The current version: `rendering`, `ready` or `failed`. */
+            status?: string | null;
+            tags: string[];
+            template_key?: string | null;
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
         };
         DraftPreviewRequest: {
             body: string;
@@ -2758,12 +6090,76 @@ export interface components {
             fail: number;
             /** @description The first problems (up to 200). */
             issues: components["schemas"]["ImportIssue"][];
+            /**
+             * @description Contacts an organisation import would add: the person each row
+             *     names, unless they are already there.
+             */
+            new_contacts: number;
             /** @description Organisations a contact import would create. */
             new_organisations: string[];
+            /**
+             * @description The first rows with problems (up to 100), corrections applied, to
+             *     correct or leave out.
+             */
+            problem_rows: components["schemas"]["ProblemRow"][];
+            /**
+             * @description How values that needed reading were read, each once with the rows
+             *     giving it (up to 100 read, and up to 100 that could not be):
+             *     `Amber` as a status, a sheet name as a region, `Holland` as the
+             *     Netherlands.
+             */
+            readings: components["schemas"]["ValueReading"][];
             /** @description The first records as they would be saved. */
             sample: Record<string, never>[];
             skip: number;
+            /**
+             * @description Rows that would write something, but are worth a look first (up to
+             *     100): notes saying a place closed or not to contact them, a contact
+             *     with no name or left out. Leave them out with `skip_rows`.
+             */
+            to_check: components["schemas"]["ProblemRow"][];
+            /** @description All the rows to check, of which `to_check` holds the first. */
+            to_check_total: number;
             update: number;
+        };
+        DueFollowUp: {
+            action?: string | null;
+            action_label?: string | null;
+            channel?: components["schemas"]["PitchChannel"] | null;
+            /**
+             * Format: uuid
+             * @description Who and what the last action was about.
+             */
+            contact_id?: string | null;
+            contact_name?: string | null;
+            /**
+             * Format: int64
+             * @description Days from the workspace's today: 0 today, less than 0 overdue.
+             */
+            due_in_days: number;
+            /**
+             * Format: date
+             * @description The day it is due, in the workspace's timezone.
+             */
+            due_on: string;
+            item?: components["schemas"]["ItemRef"] | null;
+            kind: components["schemas"]["FollowUpKind"];
+            /**
+             * Format: date-time
+             * @description When the last action was, for a step or no answer.
+             */
+            last_action_at?: string | null;
+            /** Format: uuid */
+            organisation_id: string;
+            organisation_name: string;
+            /**
+             * Format: int32
+             * @description For a step: which, from 1, and how many there are.
+             */
+            step?: number | null;
+            /** Format: int32 */
+            steps: number;
+            template_key?: string | null;
         };
         /** @description A record that may be the one being entered. */
         Duplicate: {
@@ -2912,6 +6308,11 @@ export interface components {
             seq: number;
             topic: string;
         };
+        Expense: {
+            /** Format: int64 */
+            amount_minor: number;
+            description: string;
+        };
         FeedView: {
             /** Format: date-time */
             created_at: string;
@@ -2977,8 +6378,256 @@ export interface components {
             /** @description `staff`, `portal` or `both`. */
             visibility: string;
         };
+        /** @description What people see of a file. */
+        FileView: {
+            content_type: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            filename: string;
+            /** Format: uuid */
+            id: string;
+            /** @description Pages look scanned: only OCR could read them. */
+            needs_ocr: boolean;
+            /** Format: int32 */
+            page_count?: number | null;
+            read_error?: string | null;
+            /** @description For PDFs: `pending` until its text is read, then `done` or `failed`. */
+            read_state: string;
+            /** @description Hex SHA-256 of the bytes. */
+            sha256: string;
+            /** Format: int64 */
+            size_bytes: number;
+        };
+        FinanceReport: {
+            ageing: components["schemas"]["Ageing"];
+            base_currency: string;
+            by_month: components["schemas"]["RevenueRow"][];
+            by_payer: components["schemas"]["RevenueRow"][];
+            by_talent: components["schemas"]["RevenueRow"][];
+            cash: components["schemas"]["CashRow"][];
+            /** Format: date */
+            from: string;
+            funnel: components["schemas"]["FunnelReport"];
+            outstanding: components["schemas"]["OutstandingRow"][];
+            /** Format: date */
+            to: string;
+        };
+        FinanceSettings: {
+            /** @description {line1, line2, city, region, postcode, country} */
+            address: Record<string, never>;
+            bank_accounts: components["schemas"]["BankAccount"][];
+            /** @description Reports and conversions are in this currency. */
+            base_currency: string;
+            company_number?: string | null;
+            credit_note_format: string;
+            email?: string | null;
+            invoice_footer?: string | null;
+            /** @description e.g. `INV-{YYYY}-{0000}`: {YYYY} {YY} {MM}, {0000} (padded) or {N}. */
+            invoice_format: string;
+            /**
+             * @description Who invoices the buyer: `agency` (the agency invoices and pays the
+             *     talent out), `talent` (the talent invoices; the agency invoices
+             *     them for commission) or `split` (deposit by the agency, balance by
+             *     the talent).
+             */
+            invoicing_model: string;
+            late_fee_text?: string | null;
+            /** @description The name invoices are issued in; default the workspace's name. */
+            legal_name?: string | null;
+            /** Format: int32 */
+            payment_terms_days: number;
+            phone?: string | null;
+            /** @description VAT, GST or sales tax number. */
+            tax_number?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        FinanceSettingsInput: {
+            address?: Record<string, never> | null;
+            bank_accounts?: components["schemas"]["BankAccount"][] | null;
+            company_number?: string | null;
+            credit_note_format?: string | null;
+            email?: string | null;
+            invoice_footer?: string | null;
+            invoice_format?: string | null;
+            invoicing_model?: string | null;
+            late_fee_text?: string | null;
+            legal_name?: string | null;
+            /** Format: int32 */
+            payment_terms_days?: number | null;
+            phone?: string | null;
+            tax_number?: string | null;
+        };
+        FinishAccounting: {
+            /** @description From the provider's redirect. */
+            code: string;
+            /** @description QuickBooks' company, from its redirect (`realmId`). */
+            realm_id?: string | null;
+            /** @description From the provider's redirect, as the start call made it. */
+            state: string;
+        };
+        FinishCalendarConnect: {
+            /** @description From the provider's redirect. */
+            code: string;
+            /** @description From the provider's redirect, as the start call made it. */
+            state: string;
+        };
+        FinishCalendarPush: {
+            /** @description From the provider's redirect. */
+            code: string;
+            /** @description From the provider's redirect, as the start call made it. */
+            state: string;
+        };
+        FinishConnect: {
+            /** @description From Stripe's redirect. */
+            code: string;
+            /** @description From Stripe's redirect, as the start call made it. */
+            state: string;
+        };
+        /** @description A ready-made follow-up and whether it is on. */
+        FollowUp: {
+            description: string;
+            key: string;
+            /** @description The workspace module it belongs to. */
+            module: string;
+            name: string;
+            /** @description Whether its rules are installed. */
+            on: boolean;
+            /** @description The rules installed for it, to edit them like any other rule. */
+            rule_ids: string[];
+        };
+        /**
+         * @description Why a follow-up is due.
+         * @enum {string}
+         */
+        FollowUpKind: "step" | "no_answer" | "date";
+        /**
+         * @description One follow-up after a pitch nobody has answered: so many days after the
+         *     last thing done, done this way. With a template it is a message to send;
+         *     without, a reminder (to ring them, say).
+         */
+        FollowUpStep: {
+            /** @description What doing it logs, a key from the workspace's actions. */
+            action: string;
+            /**
+             * Format: int32
+             * @description Days after the last action, 1 to 365.
+             */
+            after_days: number;
+            channel: components["schemas"]["PitchChannel"];
+            /** @description The pitch template to send, if it is a message. */
+            template_key?: string | null;
+        };
+        FunnelReport: {
+            /** Format: int64 */
+            enquiries: number;
+            /** Format: int64 */
+            lost: number;
+            /** Format: int64 */
+            open: number;
+            /** Format: int64 */
+            quoted: number;
+            /**
+             * Format: double
+             * @description Won out of enquiries decided (won or lost), 0 to 1.
+             */
+            win_rate?: number | null;
+            /** Format: int64 */
+            won: number;
+        };
+        /** @description A conversion rate with where it came from. */
+        FxQuote: {
+            /**
+             * Format: date
+             * @description The day the rate is for.
+             */
+            date: string;
+            from: string;
+            /** @description Units of `to` per unit of `from`. */
+            rate: components["schemas"]["Rate"];
+            /** @description same, ecb, booking or manual. */
+            source: string;
+            to: string;
+        };
+        GenerateDocument: {
+            /** Format: date */
+            document_date?: string | null;
+            /** @description Default: what the template makes, else `misc`. */
+            kind?: string | null;
+            /** @description The record it is made from (a booking for the built-in templates). */
+            related_entity: string;
+            /** Format: uuid */
+            related_id: string;
+            /**
+             * @description `document.contract`, `document.confirmation`, `document.advance_sheet`
+             *     or a workspace template's key.
+             */
+            template_key: string;
+            /** @description Default: the template's subject. */
+            title?: string | null;
+        };
         HealthBody: {
             status: string;
+        };
+        HideableFieldView: {
+            entity: string;
+            hidden: boolean;
+            key: string;
+            label: string;
+        };
+        HistoricalInvoice: {
+            /** Format: uuid */
+            booking_id?: string | null;
+            currency: string;
+            /**
+             * Format: uuid
+             * @description The PDF it came from, if any.
+             */
+            document_id?: string | null;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: date */
+            issue_date: string;
+            /** Format: uuid */
+            issuer_talent_id?: string | null;
+            /** @description Default invoice. */
+            kind?: string | null;
+            /** @description Default: one line for the whole amount, untaxed. */
+            line_items?: components["schemas"]["LineInput"][] | null;
+            notes?: string | null;
+            paid?: boolean;
+            /**
+             * Format: int64
+             * @description How much was paid (default: none; all of it when `paid` is true).
+             */
+            paid_minor?: number | null;
+            payer: components["schemas"]["Payer"];
+            /** @description Its own number as printed. */
+            reference: string;
+            tags?: string[];
+            /**
+             * Format: int64
+             * @description When there are no lines: the total, tax included.
+             */
+            total_minor?: number | null;
+        };
+        IcalConnect: {
+            /** @description Whose calendar this is, for a band or group: their name. */
+            person?: string | null;
+            /** @description The calendar's private iCal address (`https://` or `webcal://`). */
+            url: string;
+        };
+        ImapConnect: {
+            /** @description The address mail is sent as. */
+            address: string;
+            display_name?: string | null;
+            imap: components["schemas"]["MailServer"];
+            /** @description Often an app password made in the mail provider's settings. */
+            password: string;
+            smtp: components["schemas"]["MailServer"];
+            /** @description Default: the address. */
+            username?: string | null;
         };
         ImpersonationView: {
             /** Format: date-time */
@@ -2986,10 +6635,19 @@ export interface components {
             workspace_id: components["schemas"]["WorkspaceId"];
         };
         ImportIssue: {
+            /**
+             * @description Where the row is in its workbook when several sheets were read:
+             *     `Europe, row 5`.
+             */
+            at?: string | null;
             /** @description The field at fault, when there is one. */
             field?: string | null;
             message: string;
-            /** @description The spreadsheet row (the header is row 1). */
+            /**
+             * @description The row in the file as uploaded (the header is row 1). For a
+             *     workbook of several sheets read together, the row in the joined
+             *     table; `at` says where it is in its own sheet.
+             */
             row: number;
         };
         ImportOptions: {
@@ -3001,10 +6659,14 @@ export interface components {
             date_order?: components["schemas"]["DateOrder"] | null;
             /** @description For amounts with no currency; default the workspace's. */
             default_currency?: string | null;
+            /** @description Corrections made while checking: cells read as these values instead. */
+            edits?: components["schemas"]["CellEdit"][];
             /** @description What to do with a row that matches an existing record. */
             on_match?: components["schemas"]["OnMatch"];
             /** @description Let automation rules react to the imported records (default false). */
             run_rules?: boolean;
+            /** @description Spreadsheet rows to leave out. */
+            skip_rows?: number[];
             /** @description Tags added to every imported record. */
             tags?: string[];
         };
@@ -3021,10 +6683,33 @@ export interface components {
             import: components["schemas"]["ImportView"];
             /** @description The first rows, as text. */
             sample: string[][];
+            /** @description A workbook's sheets, and which of them are in the import. */
+            sheets: components["schemas"]["ImportSheet"][];
+            source?: components["schemas"]["ImportSource"] | null;
             /** @description The field each column most likely feeds (`null` when unsure). */
             suggested: (string | null)[];
             /** @description The fields columns can feed. */
             targets: components["schemas"]["ImportTarget"][];
+        };
+        /** @description One sheet of an uploaded workbook. */
+        ImportSheet: {
+            /**
+             * @description Its rows are imported, with its name in the `Sheet` column. A sheet
+             *     whose columns are unlike the first one's (notes, totals) is left out.
+             */
+            included: boolean;
+            name: string;
+            /** @description Rows under its header. */
+            rows: number;
+        };
+        /** @description An app whose export was recognised. */
+        ImportSource: {
+            /**
+             * @description `google`, `outlook`, `vcard`, `hubspot`, `salesforce`, `pipedrive`,
+             *     `mailchimp` or `linkedin`.
+             */
+            key: string;
+            label: string;
         };
         ImportTarget: {
             key: string;
@@ -3051,6 +6736,8 @@ export interface components {
             id: string;
             /** @description The first problems found (up to 1,000). */
             issues: components["schemas"]["ImportIssue"][];
+            /** Format: int32 */
+            kept: number;
             plan?: components["schemas"]["ImportPlan"] | null;
             /**
              * Format: int32
@@ -3063,12 +6750,69 @@ export interface components {
             skipped: number;
             /** Format: date-time */
             started_at?: string | null;
-            /** @description `uploaded`, `queued`, `running`, `done` or `failed`. */
+            /**
+             * @description `uploaded`, `queued`, `running`, `done` or `failed`; then `undoing`
+             *     and `undone` when it is undone.
+             */
             status: string;
+            /**
+             * Format: int32
+             * @description Records it created that are left to undo; none for imports from
+             *     before undoing existed.
+             */
+            to_undo: number;
+            /** @description Why the last undo gave up, if it did. */
+            undo_error?: string | null;
+            /**
+             * Format: int32
+             * @description Undoing it: records taken away, and those kept because they were
+             *     changed since or are in use.
+             */
+            undone: number;
+            /** Format: date-time */
+            undone_at?: string | null;
             /** Format: int32 */
             updated: number;
         };
+        IntegrationPatch: {
+            /** @description The name replies are sent under; `null` uses the account's own. */
+            display_name?: string | null;
+            /** @description Let everyone who can read the inbox see this mailbox's mail. */
+            shared?: boolean | null;
+        };
+        /** @description A connection as the settings page shows it. Never carries the grant. */
+        IntegrationView: {
+            /** @description The account that connected it, when it differs (a shared mailbox). */
+            account: string;
+            /** Format: date-time */
+            connected_at: string;
+            display_name?: string | null;
+            /** Format: uuid */
+            id: string;
+            last_error?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            /** Format: date-time */
+            last_synced_at?: string | null;
+            /** @description The address mail is read from and sent as. */
+            mailbox: string;
+            /** Format: uuid */
+            owner_id: string;
+            /** @description `google`, `microsoft` or `imap`. */
+            provider: string;
+            purposes: string[];
+            /** @description IMAP and SMTP servers, for an IMAP mailbox. */
+            servers?: Record<string, never> | null;
+            /** @description Everyone who can read the inbox sees its mail. */
+            shared: boolean;
+            /** @description `active`, `failing` (being retried) or `reconnect` (connect it again). */
+            status: string;
+            /** Format: int64 */
+            version: number;
+        };
         InvitationPreviewView: {
+            /** @description The workspace's logo, colour and theme. */
+            branding: Record<string, never>;
             email: string;
             role: components["schemas"]["Role"];
             workspace_name: string;
@@ -3088,6 +6832,144 @@ export interface components {
             revoked_at?: string | null;
             role: components["schemas"]["Role"];
         };
+        InvoiceBooking: {
+            /** @description Issue it straight away (default false: a draft to check first). */
+            issue?: boolean;
+            /**
+             * Format: uuid
+             * @description Default: what the workspace's invoicing model says.
+             */
+            issuer_talent_id?: string | null;
+            /** @description deposit, balance or full. */
+            purpose: string;
+        };
+        InvoiceLine: {
+            /**
+             * Format: int64
+             * @description Net of tax.
+             */
+            amount_minor: number;
+            description: string;
+            /** Format: double */
+            quantity: number;
+            /** Format: uuid */
+            talent_id?: string | null;
+            /** Format: uuid */
+            tax_code_id?: string | null;
+            tax_name?: string | null;
+            /** Format: int32 */
+            tax_rate_bps: number;
+            /** Format: int64 */
+            unit_minor: number;
+        };
+        InvoicePage: {
+            items: components["schemas"]["InvoiceView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        InvoicePatch: {
+            currency?: string | null;
+            custom?: Record<string, never> | null;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: date */
+            issue_date?: string | null;
+            line_items?: components["schemas"]["LineInput"][] | null;
+            notes?: string | null;
+            payer?: components["schemas"]["Payer"] | null;
+            purpose?: string | null;
+            tags?: string[] | null;
+            terms?: string | null;
+        };
+        /**
+         * @description Where an invoice stands. Issued means numbered and frozen; part paid,
+         *     paid, overdue and credited follow from the money allocated to it, and
+         *     void takes it out of the books while keeping its number.
+         * @enum {string}
+         */
+        InvoiceStatus: "draft" | "issued" | "part_paid" | "paid" | "overdue" | "credited" | "void";
+        InvoiceView: {
+            base_currency?: string | null;
+            base_total?: components["schemas"]["Money"] | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            booking_title?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            credited: components["schemas"]["Money"];
+            /** Format: uuid */
+            credits_invoice_id?: string | null;
+            currency: string;
+            custom: Record<string, never>;
+            /**
+             * Format: uuid
+             * @description The PDF made on issue.
+             */
+            document_id?: string | null;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: date */
+            fx_date?: string | null;
+            /** @description Units of the base currency per unit of the invoice's, fixed at issue. */
+            fx_rate?: string | null;
+            fx_source?: string | null;
+            /** @description Brought in from before OnHold, kept as it was. */
+            historical: boolean;
+            /** Format: uuid */
+            id: string;
+            /** Format: date */
+            issue_date?: string | null;
+            /** @description As printed, fixed at issue. */
+            issuer?: Record<string, never> | null;
+            /** @description workspace, or talent (invoicing in their own name). */
+            issuer_kind: string;
+            /** Format: uuid */
+            issuer_talent_id?: string | null;
+            /** @description invoice or credit_note. */
+            kind: string;
+            line_items: components["schemas"]["InvoiceLine"][];
+            notes?: string | null;
+            /** Format: int64 */
+            number?: number | null;
+            /** @description What is still owed: total less payments and credit notes. */
+            outstanding: components["schemas"]["Money"];
+            paid: components["schemas"]["Money"];
+            payer?: Record<string, never> | null;
+            /** Format: uuid */
+            payer_contact_id?: string | null;
+            /** @description organisation, talent or other. */
+            payer_kind: string;
+            payer_name: string;
+            /** Format: uuid */
+            payer_organisation_id?: string | null;
+            /** Format: uuid */
+            payer_talent_id?: string | null;
+            /** @description deposit, balance, full, commission or other. */
+            purpose: string;
+            /** @description As printed: `INV-2026-0042`. None for a draft. */
+            reference?: string | null;
+            /** Format: date-time */
+            sent_at?: string | null;
+            sent_to?: string | null;
+            status: components["schemas"]["InvoiceStatus"];
+            subtotal: components["schemas"]["Money"];
+            tags: string[];
+            tax: components["schemas"]["Money"];
+            tax_lines: components["schemas"]["TaxLine"][];
+            terms?: string | null;
+            total: components["schemas"]["Money"];
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            viewed_at?: string | null;
+            void_reason?: string | null;
+            /** Format: date-time */
+            voided_at?: string | null;
+        };
         /**
          * @description A problem with one input field, for validation errors that name the
          *     field at fault (`custom.budget`, `stages[2].key`, `actions[0].template`).
@@ -3095,6 +6977,77 @@ export interface components {
         Issue: {
             field: string;
             message: string;
+        };
+        IssueInvoice: {
+            /**
+             * Format: date
+             * @description Default: the payer's or workspace's payment terms after the issue date.
+             */
+            due_date?: string | null;
+            /**
+             * @description Units of the base currency per unit of the invoice's, when there is
+             *     no reference rate (or to use another).
+             */
+            fx_rate?: string | null;
+            /**
+             * Format: date
+             * @description Default today.
+             */
+            issue_date?: string | null;
+        };
+        /** @description Talent or a project to put on one of an organisation's lists. */
+        ItemInput: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["ItemKind"];
+        };
+        /**
+         * @description What a workspace pitches.
+         * @enum {string}
+         */
+        ItemKind: "talent" | "project";
+        /** @description Talent or a project on one of an organisation's lists. */
+        ItemRef: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["ItemKind"];
+            name: string;
+        };
+        Itinerary: {
+            crew: components["schemas"]["CrewView"][];
+            days: components["schemas"]["ItineraryDay"][];
+            name: string;
+            /** Format: uuid */
+            project_id: string;
+        };
+        /** @description A date on a day of the itinerary, with what the day sheet needs. */
+        ItineraryDate: {
+            all_day: boolean;
+            /** Format: uuid */
+            booking_id: string;
+            contact_name?: string | null;
+            /** Format: date-time */
+            ends_at: string;
+            notes?: string | null;
+            schedule: components["schemas"]["ScheduleItem"][];
+            /** Format: date-time */
+            starts_at: string;
+            status: components["schemas"]["BookingStatus"];
+            talent: string[];
+            timezone: string;
+            title: string;
+            venue?: string | null;
+        };
+        ItineraryDay: {
+            /** Format: date */
+            date: string;
+            dates: components["schemas"]["ItineraryDate"][];
+            /** @description Where people sleep tonight. */
+            hotels: components["schemas"]["TravelView"][];
+            /** @description `show` (a date is on), `travel` (moving, nothing on) or `off`. */
+            kind: string;
+            /** @description Journeys that leave this day (hotels not included). */
+            travel: components["schemas"]["TravelView"][];
         };
         JobDetail: {
             job: components["schemas"]["JobView"];
@@ -3158,7 +7111,15 @@ export interface components {
             status: components["schemas"]["JobStatus"];
         };
         /** @enum {string} */
-        Kind: "email" | "sms" | "whatsapp" | "notification" | "partial";
+        Kind: "email" | "sms" | "whatsapp" | "notification" | "partial" | "document";
+        KindGuess: {
+            kind: components["schemas"]["DocumentKind"];
+            /**
+             * Format: float
+             * @description The share of keyword evidence for this kind, 0 to 1.
+             */
+            score: number;
+        };
         /** @description A line with its amount worked out. */
         Line: {
             /** Format: int64 */
@@ -3197,6 +7158,32 @@ export interface components {
         MagicLinkRequest: {
             email: string;
         };
+        /**
+         * @description How the connection is protected.
+         * @enum {string}
+         */
+        MailSecurity: "tls" | "starttls" | "none";
+        /** @description An IMAP or SMTP server. */
+        MailServer: {
+            host: string;
+            /**
+             * Format: int32
+             * @description IMAP: 993 or 143. SMTP: 465, 587, 25 or 2525.
+             */
+            port: number;
+            security: components["schemas"]["MailSecurity"];
+        };
+        MailSetup: {
+            /** @description Gmail can be connected on this server. */
+            google: boolean;
+            /**
+             * @description The caller's own mailboxes and the shared ones; every mailbox for
+             *     those with `integration:manage`.
+             */
+            mailboxes: components["schemas"]["IntegrationView"][];
+            /** @description Outlook and Microsoft 365 can be connected on this server. */
+            microsoft: boolean;
+        };
         MeResponse: {
             impersonation?: components["schemas"]["ImpersonationView"] | null;
             session: components["schemas"]["CurrentSessionView"];
@@ -3215,32 +7202,85 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        MessageFileView: {
+            content_type: string;
+            filename: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            size_bytes: number;
+        };
         MessagePage: {
             messages: components["schemas"]["MessageView"][];
             /** Format: uuid */
             next_before?: string | null;
         };
         MessageView: {
-            /** Format: date-time */
-            at: string;
-            /** @description Sign-in and invitation links are replaced with `[link removed]`. */
-            body_html?: string | null;
-            body_text: string;
-            /** @description `email` for now. */
-            channel: string;
+            /**
+             * Format: uuid
+             * @description Who wrote it in OnHold.
+             */
+            author_id?: string | null;
+            /** @description An auto-reply, bounce or other machine-sent message. */
+            automatic: boolean;
+            /** @description Sent to a mailing list. */
+            bulk: boolean;
+            cc: string[];
+            /** @description `inbound` or `outbound`. */
+            direction: string;
             error?: string | null;
+            files: components["schemas"]["MessageFileView"][];
+            from_address?: string | null;
+            from_name?: string | null;
+            /**
+             * @description Sanitised: no scripts, styles, forms or remote images. Show it in a
+             *     sandboxed frame all the same.
+             */
+            html?: string | null;
             /** Format: uuid */
             id: string;
-            /** Format: uuid */
-            job_id?: string | null;
-            provider_message_id?: string | null;
-            /** Format: uuid */
-            rule_id?: string | null;
-            /** @description `sent` or `failed`. */
+            /** @description Where the sender asked answers to go, when not to `from_address`. */
+            reply_to?: string | null;
+            /** Format: date-time */
+            sent_at: string;
+            /** @description `received`, or for messages written here `queued`, `sent` or `failed`. */
             status: string;
             subject?: string | null;
             template_key?: string | null;
-            to: string;
+            text: string;
+            to: string[];
+        };
+        Messaging: {
+            channels: components["schemas"]["MessagingChannel"][];
+        };
+        MessagingChannel: {
+            /** @description Twilio's account SID; Meta's phone number id. */
+            account_id: string;
+            /** Format: date-time */
+            connected_at: string;
+            /** @description WhatsApp's verified name for the number. */
+            display_name?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description `sms` or `whatsapp`. */
+            kind: string;
+            last_error?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            /** @description `twilio` or `meta`. */
+            provider: string;
+            /** @description The number, in international form. */
+            sender: string;
+            /** @description `active`, or `failing` when the provider refused the account itself. */
+            status: string;
+            /** @description Meta's "Verify token" for that callback URL. */
+            verify_token?: string | null;
+            /**
+             * @description For setting up the provider (members who manage integrations
+             *     only): where it sends messages. Twilio: the number's "A message
+             *     comes in" webhook. Meta: the app's callback URL.
+             */
+            webhook_url?: string | null;
         };
         MfaVerifyRequest: {
             /** @description The 6-digit code from the authenticator app. */
@@ -3257,6 +7297,84 @@ export interface components {
              * @description Amount in the currency's smallest unit (pence, cents, yen).
              */
             minor: number;
+        };
+        /**
+         * @description Whether a booking pays: income less commission and costs, all in one
+         *     currency.
+         */
+        MoneyCheck: {
+            /** Format: uuid */
+            booking_id: string;
+            commission: components["schemas"]["MoneyItem"][];
+            costs: components["schemas"]["MoneyItem"][];
+            /** @description The fee's currency, or the workspace's when there is no fee. */
+            currency: string;
+            income: components["schemas"]["MoneyItem"][];
+            /** @description The income and cost lines themselves, to edit. */
+            lines: components["schemas"]["MoneyLineView"][];
+            /** @description What is left: income less commission and costs. */
+            net: components["schemas"]["Money"];
+            total_commission: components["schemas"]["Money"];
+            total_costs: components["schemas"]["Money"];
+            total_income: components["schemas"]["Money"];
+            warnings: components["schemas"]["Warning"][];
+        };
+        /** @description One amount in the money check, in the check's currency. */
+        MoneyItem: {
+            /** @description In the check's currency. */
+            amount: components["schemas"]["Money"];
+            /** @description `fee`, `commission`, `travel`, or a money line's category. */
+            category: string;
+            description: string;
+            original?: components["schemas"]["Money"] | null;
+            /**
+             * Format: uuid
+             * @description The travel item or money line it comes from.
+             */
+            source_id?: string | null;
+        };
+        /**
+         * @description A money line, as given when adding or changing one. Changing replaces
+         *     every field.
+         */
+        MoneyLineInput: {
+            amount: components["schemas"]["Money"];
+            category: string;
+            description: string;
+            /** @description `income` or `cost`. */
+            direction: string;
+            notes?: string | null;
+            /** Format: date */
+            spent_on?: string | null;
+        };
+        MoneyLineView: {
+            amount: components["schemas"]["Money"];
+            /** Format: uuid */
+            booking_id?: string | null;
+            /**
+             * @description Income: `buyout`, `merchandise`, `other`. Cost: `travel`,
+             *     `accommodation`, `ground`, `per_diem`, `crew`, `production`, `visa`,
+             *     `marketing`, `other`.
+             */
+            category: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            description: string;
+            /** @description `income` or `cost`. */
+            direction: string;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            /** Format: uuid */
+            project_id?: string | null;
+            /** Format: date */
+            spent_on?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
         };
         MyWorkspaceView: {
             /**
@@ -3329,6 +7447,8 @@ export interface components {
             custom?: Record<string, never>;
             email_opt_in?: boolean;
             emails?: string[];
+            /** @description Web pages and social profiles. A bare address gets `https://`. */
+            links?: string[];
             name: string;
             notes?: string | null;
             /** Format: uuid */
@@ -3339,6 +7459,33 @@ export interface components {
             sms_opt_in?: boolean;
             tags?: string[];
             whatsapp_opt_in?: boolean;
+        };
+        NewCreditNote: {
+            /** @description Issue it straight away (default true). */
+            issue?: boolean | null;
+            /** @description Default: every line of the invoice (a full credit). */
+            line_items?: components["schemas"]["LineInput"][] | null;
+            notes?: string | null;
+        };
+        NewDocument: {
+            custom?: Record<string, never> | null;
+            /** Format: date */
+            document_date?: string | null;
+            /** Format: date */
+            expires_on?: string | null;
+            /**
+             * Format: uuid
+             * @description An uploaded file (`POST /files`).
+             */
+            file_id: string;
+            kind: string;
+            notes?: string | null;
+            related_entity?: string | null;
+            /** Format: uuid */
+            related_id?: string | null;
+            tags?: string[];
+            /** @description Default: the file's name. */
+            title?: string | null;
         };
         NewEnquiry: {
             budget?: components["schemas"]["Money"] | null;
@@ -3379,25 +7526,152 @@ export interface components {
         NewImport: {
             /**
              * @description The file's text: CSV with a header row, separated by commas,
-             *     semicolons or tabs. Save spreadsheets as CSV (UTF-8).
+             *     semicolons or tabs, or contact cards (vCard, `.vcf`). Leave it out
+             *     when sending `workbook`.
              */
-            csv: string;
-            /** @description `talent`, `organisation` or `contact`. */
+            csv?: string;
+            /**
+             * @description `talent`, `organisation` or `contact`, or `auto` to work it out
+             *     from the file.
+             */
             entity: string;
             filename?: string | null;
+            /**
+             * @description An Excel workbook (`.xlsx`), base64: its first visible sheet with
+             *     anything on it is imported, with every other sheet that has the same
+             *     columns (the sheet's name in a `Sheet` column, and each row's fill
+             *     colour in a `Colour` column). Up to 7 MB.
+             */
+            workbook?: string | null;
+        };
+        NewInvoice: {
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** @description Default: the booking's fee currency, else the workspace's. */
+            currency?: string | null;
+            custom?: Record<string, never> | null;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: date */
+            issue_date?: string | null;
+            /**
+             * Format: uuid
+             * @description A talent issuing in their own name; default the workspace.
+             */
+            issuer_talent_id?: string | null;
+            line_items?: components["schemas"]["LineInput"][];
+            notes?: string | null;
+            payer?: components["schemas"]["Payer"] | null;
+            /** @description Default `other`. */
+            purpose?: string | null;
+            tags?: string[];
+            terms?: string | null;
         };
         NewOrganisation: {
             addresses?: components["schemas"]["Address"][];
+            buys_from_others?: string[];
             /** @description Custom field values by key. Missing fields take their defaults. */
             custom?: Record<string, never>;
             default_currency?: string | null;
+            do_not_contact?: boolean;
+            /** Format: date */
+            follow_up_on?: string | null;
+            interested_in?: components["schemas"]["ItemInput"][];
             name: string;
             notes?: string | null;
             org_type?: string | null;
             /** Format: int32 */
             payment_terms_days?: number | null;
+            potential_matches?: components["schemas"]["ItemInput"][];
+            /** @description A region key, to override the one its country gives. */
+            region?: string | null;
+            relationship?: components["schemas"]["Relationship"] | null;
+            /** @description A key of the workspace's pitching statuses. */
+            status?: string | null;
             tags?: string[];
             tax_id?: string | null;
+        };
+        NewPayment: {
+            /** @description Invoices it pays, in order. */
+            allocations?: components["schemas"]["AllocationInput"][];
+            amount: components["schemas"]["Money"];
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** @description Default bank_transfer. */
+            method?: string | null;
+            notes?: string | null;
+            /**
+             * Format: uuid
+             * @description Default: the first allocated invoice's payer.
+             */
+            organisation_id?: string | null;
+            /**
+             * Format: date
+             * @description Default today.
+             */
+            paid_on?: string | null;
+            reference?: string | null;
+        };
+        NewPayout: {
+            /**
+             * Format: int64
+             * @description Default: what is still owed to the talent.
+             */
+            amount_minor?: number | null;
+            method?: string | null;
+            /** Format: date */
+            paid_on?: string | null;
+            reference?: string | null;
+        };
+        NewPdfImports: {
+            /** @description Uploaded PDFs (`POST /files`), up to 200 at a time. */
+            file_ids: string[];
+        };
+        NewPitch: {
+            channel?: components["schemas"]["PitchChannel"] | null;
+            /** Format: uuid */
+            contact_id?: string | null;
+            /**
+             * Format: date-time
+             * @description When it happened; default now. Can be in the past.
+             */
+            happened_at?: string | null;
+            item?: components["schemas"]["ItemInput"] | null;
+            kind: components["schemas"]["PitchKind"];
+            /**
+             * Format: uuid
+             * @description For an action: the email in Sent it went as, from the organisation's
+             *     unlogged mail.
+             */
+            message_id?: string | null;
+            note?: string | null;
+            /** Format: uuid */
+            organisation_id: string;
+            /** @description The pitch template it was written from, if any. */
+            template_key?: string | null;
+            /** @description A key from the workspace's actions or outcomes, as `kind` says. */
+            type_key: string;
+        };
+        NewProject: {
+            /** @description Bookings that are its dates from the start. */
+            booking_ids?: string[];
+            budget?: {
+                [key: string]: number;
+            };
+            /** @description Default: the workspace's currency. */
+            currency?: string | null;
+            /** @description Default `tour`. */
+            kind?: string | null;
+            name: string;
+            notes?: string | null;
+            /**
+             * Format: uuid
+             * @description Default: the member creating it.
+             */
+            owner_id?: string | null;
+            /** @description Default `planning`. */
+            status?: string | null;
+            tags?: string[];
         };
         NewQuote: {
             /** @description Default: the booking's fee currency, else the first talent's, else the workspace's. */
@@ -3411,6 +7685,15 @@ export interface components {
              * @description Default: two weeks from today.
              */
             valid_until?: string | null;
+        };
+        NewRefund: {
+            /** Format: int64 */
+            amount_minor: number;
+            method?: string | null;
+            notes?: string | null;
+            /** Format: date */
+            paid_on?: string | null;
+            reference?: string | null;
         };
         NewTalent: {
             base_location?: string | null;
@@ -3443,6 +7726,14 @@ export interface components {
             related_id?: string | null;
             title: string;
         };
+        NewVersionFile: {
+            /** Format: uuid */
+            file_id: string;
+        };
+        NotAPitch: {
+            /** Format: uuid */
+            message_id: string;
+        };
         OidcProviderView: {
             display_name: string;
             name: string;
@@ -3471,40 +7762,79 @@ export interface components {
         OrganisationPatch: {
             /** @description Replaces the addresses. */
             addresses?: components["schemas"]["Address"][] | null;
+            /** @description Replaces the list. */
+            buys_from_others?: string[] | null;
             /** @description Only the keys sent change; `null` clears a value. */
             custom?: Record<string, never> | null;
             default_currency?: string | null;
+            do_not_contact?: boolean | null;
+            /** Format: date */
+            follow_up_on?: string | null;
+            /** @description Replaces the list. */
+            interested_in?: components["schemas"]["ItemInput"][] | null;
             name?: string | null;
             notes?: string | null;
             /** @description `null` clears it; likewise for the other optional fields. */
             org_type?: string | null;
             /** Format: int32 */
             payment_terms_days?: number | null;
+            /** @description Replaces the list. */
+            potential_matches?: components["schemas"]["ItemInput"][] | null;
+            /** @description `null` goes back to the country's region. */
+            region?: string | null;
+            relationship?: components["schemas"]["Relationship"] | null;
+            status?: string | null;
             /** @description Replaces the tags. */
             tags?: string[] | null;
             tax_id?: string | null;
         };
         OrganisationView: {
             addresses: components["schemas"]["Address"][];
+            /** @description Similar acts or things they buy from others. */
+            buys_from_others: string[];
+            /** @description The main address's city. */
+            city?: string | null;
             /**
              * Format: int64
              * @description Contacts at the organisation.
              */
             contact_count: number;
+            /** @description The country's name. */
+            country?: string | null;
+            /**
+             * @description The country's ISO code, worked out from the main address however it
+             *     was typed ("UK", "England", "Melbourne").
+             */
+            country_code?: string | null;
             /** Format: date-time */
             created_at: string;
             created_by?: components["schemas"]["UserId"] | null;
             /** @description Custom field values by key. */
             custom: Record<string, never>;
             default_currency?: string | null;
+            /** @description Never offered for pitching. */
+            do_not_contact: boolean;
+            /** Format: date */
+            follow_up_on?: string | null;
             /** Format: uuid */
             id: string;
+            /** @description What they asked about. */
+            interested_in: components["schemas"]["ItemRef"][];
             name: string;
             notes?: string | null;
             /** @description Free text: venue, promoter, brand, festival, agency… */
             org_type?: string | null;
             /** Format: int32 */
             payment_terms_days?: number | null;
+            /** @description What the workspace thinks would suit them. */
+            potential_matches: components["schemas"]["ItemRef"][];
+            /** @description The key of its world region: the one picked for it, or its country's. */
+            region?: string | null;
+            /** @description Whether the region was picked by hand rather than taken from the country. */
+            region_picked: boolean;
+            relationship?: components["schemas"]["Relationship"] | null;
+            /** @description A key of the workspace's pitching statuses; absent when not set. */
+            status?: string | null;
             tags: string[];
             /** @description VAT or other tax registration number. */
             tax_id?: string | null;
@@ -3516,10 +7846,141 @@ export interface components {
         };
         /** @enum {string} */
         Outcome: "open" | "won" | "lost";
+        /**
+         * @description What an answer means for pitching them again: good news, wait a while,
+         *     no for now, or never.
+         * @enum {string}
+         */
+        OutcomeTag: "good" | "wait" | "no" | "never";
+        OutstandingRow: {
+            base_outstanding?: components["schemas"]["Money"] | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** Format: int64 */
+            days_overdue: number;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: uuid */
+            invoice_id: string;
+            /** Format: date */
+            issue_date?: string | null;
+            outstanding: components["schemas"]["Money"];
+            payer: string;
+            reference?: string | null;
+            status: string;
+        };
+        /**
+         * @description A reason of the workspace's own: organisations with this tag are worth
+         *     so many points more (or fewer).
+         */
+        OwnReason: {
+            /**
+             * Format: int32
+             * @description -100 to 100.
+             */
+            points: number;
+            tag: string;
+        };
         PasswordChangeRequest: {
             /** @description Required when the account already has a password. */
             current_password?: string | null;
             new_password: string;
+        };
+        Payer: {
+            /** Format: uuid */
+            contact_id?: string | null;
+            /** @description For someone with no record: their name as it should print. */
+            name?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            /** Format: uuid */
+            talent_id?: string | null;
+        };
+        PaymentLink: {
+            /** @description Stripe's payment page; send the payer there. */
+            url: string;
+        };
+        PaymentPage: {
+            items: components["schemas"]["PaymentView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        PaymentView: {
+            /** @description Allocated to invoices or refunded. */
+            allocated: components["schemas"]["Money"];
+            allocations: components["schemas"]["AllocationView"][];
+            amount: components["schemas"]["Money"];
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** Format: uuid */
+            id: string;
+            /** @description payment (money in), refund or payout (money out to talent). */
+            kind: string;
+            method: string;
+            notes?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            organisation_name?: string | null;
+            /** Format: date */
+            paid_on: string;
+            reference?: string | null;
+            /** Format: uuid */
+            refund_of?: string | null;
+            /** Format: uuid */
+            settlement_id?: string | null;
+            /** Format: uuid */
+            talent_id?: string | null;
+            talent_name?: string | null;
+            /** @description What is left to allocate. */
+            unallocated: components["schemas"]["Money"];
+            /** Format: int64 */
+            version: number;
+            void_reason?: string | null;
+            /** Format: date-time */
+            voided_at?: string | null;
+        };
+        PdfImportView: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            document_id?: string | null;
+            error?: string | null;
+            /** Format: uuid */
+            file_id: string;
+            filename: string;
+            /**
+             * @description What reading found: `kinds` (likely kinds of document, best first),
+             *     `fields` (suggestions with the line each came from) and `templates`
+             *     (the workspace's issuer templates that applied).
+             */
+            found: Record<string, never>;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            invoice_id?: string | null;
+            /** @description Records it may belong to, best first: [{entity, id, name, reason}]. */
+            matches: Record<string, never>[];
+            /** @description Pages look scanned: only OCR can read them. */
+            needs_ocr: boolean;
+            /** Format: int32 */
+            page_count?: number | null;
+            /** Format: int64 */
+            size_bytes: number;
+            /** @description reading, ready, confirmed, discarded or failed. */
+            status: string;
+            /** Format: int64 */
+            version: number;
+        };
+        PdfTemplateView: {
+            definition: components["schemas"]["Template"];
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: int64 */
+            version: number;
         };
         PendingAppSignInView: {
             /** Format: date-time */
@@ -3531,11 +7992,16 @@ export interface components {
             ip?: string | null;
             user_agent?: string | null;
         };
+        PendingInvitation: {
+            email: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
         /**
          * @description A `resource:action` permission.
          * @enum {string}
          */
-        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write" | "enquiry:read" | "enquiry:write" | "booking:read" | "booking:write" | "booking:override" | "quote:read" | "quote:write" | "task:read" | "task:write";
+        Permission: "workspace:read" | "workspace:update" | "workspace:close" | "member:read" | "member:invite" | "member:update" | "member:remove" | "api_key:read" | "api_key:write" | "audit:read" | "billing:read" | "billing:write" | "config:write" | "thing:read" | "thing:write" | "event:read" | "webhook:read" | "webhook:write" | "job:read" | "job:write" | "talent:read" | "talent:write" | "organisation:read" | "organisation:write" | "contact:read" | "contact:write" | "enquiry:read" | "enquiry:write" | "booking:read" | "booking:write" | "booking:override" | "quote:read" | "quote:write" | "task:read" | "task:write" | "project:read" | "project:write" | "document:read" | "document:write" | "invoice:read" | "invoice:write" | "payment:write" | "report:read" | "finance:config" | "inbox:read" | "inbox:write" | "integration:manage" | "portal:use";
         /**
          * @description Whether the workspace represents talent (`sells`), books talent for its
          *     own events (`buys`), or both. Changes vocabulary and defaults, never the
@@ -3568,6 +8034,610 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        /** @description Something done to win them over: pitched, followed up, called… */
+        PitchAction: {
+            key: string;
+            label: string;
+        };
+        /** @description An answer that arrived in the inbox: the message and its conversation. */
+        PitchAnswer: {
+            /** @description How it came: email, text or WhatsApp. */
+            channel: components["schemas"]["PitchChannel"];
+            /** Format: uuid */
+            message_id: string;
+            /** Format: uuid */
+            thread_id: string;
+        };
+        /**
+         * @description How it was done or how the answer came.
+         * @enum {string}
+         */
+        PitchChannel: "email" | "phone" | "text" | "whatsapp" | "social" | "in_person" | "other";
+        /** @description A pitch template filled in, to change before it goes. */
+        PitchDraft: {
+            /** @description What sending it logs. */
+            action: string;
+            body: string;
+            /**
+             * @description Where it can go: the person's first email address, and first phone
+             *     number written internationally where its country is known.
+             */
+            email?: string | null;
+            /** @description Placeholders nothing filled in, left in the text to fill by hand. */
+            missing: string[];
+            phone?: string | null;
+            subject: string;
+            template_key: string;
+        };
+        PitchDraftRequest: {
+            /** Format: uuid */
+            contact_id?: string | null;
+            item?: components["schemas"]["ItemInput"] | null;
+            template_key: string;
+        };
+        /**
+         * @description Whether an entry is something done or an answer.
+         * @enum {string}
+         */
+        PitchKind: "action" | "outcome";
+        PitchList: {
+            /**
+             * @description More organisations matched than OnHold looks at in one go; narrow
+             *     the list with a filter to see them all.
+             */
+            capped: boolean;
+            item?: components["schemas"]["ItemRef"] | null;
+            items: components["schemas"]["PitchListRow"][];
+            /**
+             * Format: int64
+             * @description How many match in all.
+             */
+            total: number;
+        };
+        PitchListRow: {
+            but?: components["schemas"]["RankLine"] | null;
+            city?: string | null;
+            country_code?: string | null;
+            /** Format: date */
+            follow_up_on?: string | null;
+            name: string;
+            /** Format: uuid */
+            organisation_id: string;
+            pitch_status: components["schemas"]["PitchStatus"];
+            /** @description What counts for and against it, best first, but for the `but`. */
+            reasons: components["schemas"]["RankLine"][];
+            /** @description The region it is in, picked or from its country. */
+            region?: string | null;
+            relationship?: string | null;
+            rest_reason?: string | null;
+            /** @description Resting after an answer or waiting for one: shown greyed and last. */
+            resting: boolean;
+            /**
+             * Format: date
+             * @description Until when (none: not again, after an answer tagged never; or until
+             *     an answer that came back is logged).
+             */
+            resting_until?: string | null;
+            /** Format: int32 */
+            score: number;
+            /** @description Its status, a key from the pitching settings. */
+            status?: string | null;
+        };
+        /** @description A pitch sent from OnHold: its thread in the inbox, and whether it went. */
+        PitchMessage: {
+            /** Format: uuid */
+            id: string;
+            /** @description `queued`, `sent` or `failed`. */
+            status: string;
+            /** Format: uuid */
+            thread_id: string;
+        };
+        /** @description An answer to a pitch: "Interested", "Not now", "No answer"… */
+        PitchOutcome: {
+            key: string;
+            label: string;
+            /**
+             * Format: int32
+             * @description Days to leave them be after this answer before pitching the same
+             *     thing again, 0 for no wait; left out, the tag's usual wait. An answer
+             *     tagged never is never followed by another pitch of the same thing.
+             */
+            rest_days?: number | null;
+            tag: components["schemas"]["OutcomeTag"];
+        };
+        PitchPage: {
+            items: components["schemas"]["PitchView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        PitchPatch: {
+            channel?: components["schemas"]["PitchChannel"] | null;
+            /** Format: uuid */
+            contact_id?: string | null;
+            /** Format: date-time */
+            happened_at?: string | null;
+            item?: components["schemas"]["ItemInput"] | null;
+            note?: string | null;
+            template_key?: string | null;
+            type_key?: string | null;
+        };
+        PitchSend: {
+            /** @description Plain text; the sender's signature goes under it. */
+            body: string;
+            /** Format: uuid */
+            contact_id: string;
+            /**
+             * Format: uuid
+             * @description The mailbox to send from; default the sender's own, if connected.
+             */
+            integration_id?: string | null;
+            item?: components["schemas"]["ItemInput"] | null;
+            /** Format: uuid */
+            organisation_id: string;
+            subject: string;
+            /** @description The pitch template it was written from, if any. */
+            template_key?: string | null;
+            /** @description Default: the person's first email address. */
+            to?: string | null;
+            /**
+             * @description What it logs, a key from the workspace's actions; default the
+             *     template's, or the workspace's first action.
+             */
+            type_key?: string | null;
+        };
+        /**
+         * @description How a pitch is usually sent: from OnHold through the member's mailbox
+         *     (so it and the answers are logged by themselves), by opening it in
+         *     their own email app, or by copying it to paste anywhere.
+         * @enum {string}
+         */
+        PitchSendWith: "onhold" | "mail_app" | "copy";
+        /**
+         * @description Where an organisation stands with what is pitched.
+         * @enum {string}
+         */
+        PitchStatus: "booked" | "awaiting" | "interested" | "tried" | "pitched" | "match" | "not_pitched";
+        /**
+         * @description Wording to pitch with. `{firstName}`, `{item}`, `{link}`, `{yourName}`
+         *     and the rest of [`super::pitch_sending::PLACEHOLDERS`] are filled in.
+         */
+        PitchTemplate: {
+            /** @description What sending it logs, a key from the workspace's actions. */
+            action: string;
+            body: string;
+            key: string;
+            name: string;
+            subject: string;
+        };
+        PitchView: {
+            answer?: components["schemas"]["PitchAnswer"] | null;
+            /**
+             * Format: date-time
+             * @description For an action: when the organisation answered it, as an answer from
+             *     them arrived in the inbox.
+             */
+            answered_at?: string | null;
+            channel?: components["schemas"]["PitchChannel"] | null;
+            /**
+             * Format: uuid
+             * @description The person there it was with, if anyone in particular.
+             */
+            contact_id?: string | null;
+            contact_name?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** Format: date-time */
+            happened_at: string;
+            /** Format: uuid */
+            id: string;
+            item?: components["schemas"]["ItemRef"] | null;
+            kind: components["schemas"]["PitchKind"];
+            message?: components["schemas"]["PitchMessage"] | null;
+            note?: string | null;
+            /** Format: uuid */
+            organisation_id: string;
+            /**
+             * @description `manual`: logged by hand; `sent`: sent from OnHold; `spotted`:
+             *     logged from the member's own Sent mail.
+             */
+            source: string;
+            tag?: components["schemas"]["OutcomeTag"] | null;
+            /** @description The pitch template it was written from, if any. */
+            template_key?: string | null;
+            /** @description A key from the workspace's actions or outcomes. */
+            type_key: string;
+            /** @description Its label, while the workspace still lists it. */
+            type_label?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @description How the member sends a pitch, and what they would send it from. */
+        PitchingMe: {
+            /**
+             * @description The mailbox Send goes from: their own connected one. Without it,
+             *     OnHold sends in the workspace's name with answers going to them.
+             */
+            mailbox?: string | null;
+            send_with?: components["schemas"]["PitchSendWith"] | null;
+            /** @description The workspace's default, used when they picked nothing. */
+            workspace_send_with: components["schemas"]["PitchSendWith"];
+        };
+        PitchingMePatch: {
+            send_with?: components["schemas"]["PitchSendWith"] | null;
+        };
+        PitchingSettings: {
+            /** @description The kinds of thing logged as done. */
+            actions?: components["schemas"]["PitchAction"][];
+            /**
+             * @description The follow-ups after a pitch with no answer, in order. An answer
+             *     stops them.
+             */
+            follow_ups?: components["schemas"]["FollowUpStep"][];
+            /**
+             * Format: int32
+             * @description Days after the last follow-up before asking to log what came of it;
+             *     0 never asks.
+             */
+            give_up_after_days?: number;
+            items?: components["schemas"]["ItemKind"][];
+            /** @description The answers a pitch can get. */
+            outcomes?: components["schemas"]["PitchOutcome"][];
+            /** @description The workspace's own reasons, from tags. */
+            own_reasons?: components["schemas"]["OwnReason"][];
+            /** @description What each reason in the "best to pitch first" ranking is worth. */
+            ranking?: components["schemas"]["RankWeight"][];
+            regions?: components["schemas"]["Region"][];
+            /** @description How members send a pitch unless they pick otherwise. */
+            send_with?: components["schemas"]["PitchSendWith"];
+            statuses?: components["schemas"]["Status"][];
+            /** @description The wording members pitch with. */
+            templates?: components["schemas"]["PitchTemplate"][];
+        };
+        /**
+         * @description New settings. A list left out keeps what is stored, so a client from
+         *     before a list existed does not reset it.
+         */
+        PitchingSettingsInput: {
+            actions?: components["schemas"]["PitchAction"][] | null;
+            follow_ups?: components["schemas"]["FollowUpStep"][] | null;
+            /** Format: int32 */
+            give_up_after_days?: number | null;
+            items?: components["schemas"]["ItemKind"][] | null;
+            outcomes?: components["schemas"]["PitchOutcome"][] | null;
+            own_reasons?: components["schemas"]["OwnReason"][] | null;
+            ranking?: components["schemas"]["RankWeight"][] | null;
+            regions?: components["schemas"]["Region"][] | null;
+            send_with?: components["schemas"]["PitchSendWith"] | null;
+            statuses?: components["schemas"]["Status"][] | null;
+            templates?: components["schemas"]["PitchTemplate"][] | null;
+        };
+        PitchingSettingsView: components["schemas"]["PitchingSettings"] & {
+            /** @description Every country, for choosing which region each is in. */
+            countries: components["schemas"]["CountryView"][];
+            /** @description What a pitch template can say, filled in for each pitch. */
+            placeholders: components["schemas"]["Placeholder"][];
+            /** Format: date-time */
+            updated_at?: string | null;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /**
+             * Format: int64
+             * @description 0 until the workspace first saves its own.
+             */
+            version: number;
+        };
+        Placeholder: {
+            means: string;
+            /** @description Written in a template as `{name}`. */
+            name: string;
+        };
+        /** @description What the answers set up. */
+        Plan: {
+            extras: string[];
+            modules: string[];
+            perspective?: components["schemas"]["Perspective"] | null;
+            presets: string[];
+            vocabulary: Record<string, never>;
+        };
+        /** @description Who a talent record's portal opens for, and any invitation still waiting. */
+        PortalAccess: {
+            invitation?: components["schemas"]["PendingInvitation"] | null;
+            user?: components["schemas"]["PortalUser"] | null;
+        };
+        /** @description The talent's availability and busy times from their own calendars. */
+        PortalAvailability: {
+            /** @description Their connected calendars. */
+            calendars: components["schemas"]["TalentCalendarView"][];
+            /** @description Whether they may change it here. */
+            can_edit: boolean;
+            /** @description From a month ago to three years ahead. */
+            entries: components["schemas"]["AvailabilityView"][];
+        };
+        PortalCalendarLink: {
+            /**
+             * Format: uuid
+             * @description Which of their talent records; needed only when they have several.
+             */
+            talent_id?: string | null;
+        };
+        /** @description A talent record's conversation with the agency. */
+        PortalConversation: {
+            /** @description The latest messages, oldest first. */
+            messages: components["schemas"]["PortalMessage"][];
+            /**
+             * Format: uuid
+             * @description None for someone with no talent record open here.
+             */
+            talent_id?: string | null;
+            talent_name: string;
+        };
+        /** @description One of the talent's dates. */
+        PortalDate: {
+            all_day: boolean;
+            /** @description `confirmed` or `declined`, once they answered. */
+            answer?: string | null;
+            answer_note?: string | null;
+            /** Format: date-time */
+            answered_at?: string | null;
+            /** @description Whether they may answer (or change their answer) now. */
+            can_answer: boolean;
+            /** Format: date-time */
+            ends_at: string;
+            fee?: components["schemas"]["Money"] | null;
+            /**
+             * Format: date-time
+             * @description When a hold lapses by itself.
+             */
+            hold_expires_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description Who booked them (the promoter, brand or venue). */
+            organisation_name?: string | null;
+            /** @description Load-in, soundcheck, set times: `[{label, at}]`. */
+            schedule: unknown;
+            /** Format: date-time */
+            starts_at: string;
+            status: string;
+            /**
+             * Format: uuid
+             * @description Which of their talent records it is for.
+             */
+            talent_id: string;
+            talent_name: string;
+            /** @description The IANA zone the date's times are shown in. */
+            timezone: string;
+            title: string;
+            venue?: string | null;
+        };
+        /** @description A date with everything the talent needs for it. */
+        PortalDateDetail: {
+            documents: components["schemas"]["PortalDocument"][];
+            /** @description The date, once for each of their talent records on it. */
+            entries: components["schemas"]["PortalDate"][];
+            travel: components["schemas"]["PortalTravel"][];
+        };
+        PortalDocument: {
+            /** Format: date */
+            expires_on?: string | null;
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            /** @description `booking` or `talent`. */
+            related_entity: string;
+            /** Format: uuid */
+            related_id: string;
+            /** @description `none`, `awaiting`, `signed` or `declined`. */
+            signature_status: string;
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description What the portal opens with. */
+        PortalHome: {
+            /**
+             * Format: int64
+             * @description Dates waiting for their answer.
+             */
+            awaiting_answer: number;
+            /** @description The workspace's logo and colours, for the portal's look. */
+            branding: Record<string, never>;
+            settings: components["schemas"]["PortalSettings"];
+            /**
+             * @description The talent records opened for this person here (usually one; none
+             *     once the agency ends their access).
+             */
+            talent: components["schemas"]["PortalTalent"][];
+            /**
+             * Format: int64
+             * @description Messages from the agency they have not read yet.
+             */
+            unread_messages: number;
+            /**
+             * @description The website page where they can upgrade to the full app; none until
+             *     OnHold's team sets one, or when the agency hides locked features.
+             */
+            upgrade_url?: string | null;
+            workspace_name: string;
+        };
+        PortalInviteBody: {
+            email: string;
+        };
+        PortalMessage: {
+            author_name?: string | null;
+            body: string;
+            /** @description Written by the talent (else by someone at the agency). */
+            from_me: boolean;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            sent_at: string;
+        };
+        PortalMessageInput: {
+            body?: string;
+            /** Format: uuid */
+            talent_id?: string | null;
+        };
+        PortalNewAvailability: components["schemas"]["NewAvailability"] & {
+            /**
+             * Format: uuid
+             * @description Which of their talent records; needed only when they have several.
+             */
+            talent_id?: string | null;
+        };
+        PortalProfile: {
+            base_location?: string | null;
+            bio?: string | null;
+            can_edit: boolean;
+            name: string;
+            /** Format: uuid */
+            talent_id: string;
+            /** Format: int64 */
+            version: number;
+        };
+        PortalProfileInput: {
+            base_location?: string | null;
+            bio?: string | null;
+            /**
+             * Format: int64
+             * @description The record's version as read; a change made since is not overwritten.
+             */
+            version: number;
+        };
+        /**
+         * @description What a workspace lets its talent see and do in the portal. Everything
+         *     is a switch the owner or an admin sets; a cautious agency can start with
+         *     read-only dates.
+         */
+        PortalSettings: {
+            /**
+             * @description Confirm or decline a date; the agent is told either way.
+             * @default true
+             */
+            answer_dates: boolean;
+            /**
+             * @description Add and remove their own unavailable or tentative times, and connect
+             *     their own calendar.
+             * @default true
+             */
+            edit_availability: boolean;
+            /**
+             * @description Change their own bio and where they are based.
+             * @default true
+             */
+            edit_profile: boolean;
+            /**
+             * @description Hide the paid features shown locked in the free viewer.
+             * @default false
+             */
+            hide_locked: boolean;
+            /**
+             * @description Write to the agency from the portal; the conversation sits in the
+             *     agency's inbox.
+             * @default true
+             */
+            messages: boolean;
+            /**
+             * @description Contracts, advance sheets, riders and the like on their dates and record.
+             * @default true
+             */
+            show_documents: boolean;
+            /**
+             * @description Fees on their dates. Off until the agency turns it on.
+             * @default false
+             */
+            show_fees: boolean;
+            /**
+             * @description Holds (pencilled dates) as well as pending and confirmed ones.
+             * @default true
+             */
+            show_holds: boolean;
+            /**
+             * @description Their statements: what each date paid them, and what was paid out.
+             * @default false
+             */
+            show_money: boolean;
+            /**
+             * @description Flights, trains, rides and hotels on their dates (never what they cost).
+             * @default true
+             */
+            show_travel: boolean;
+        };
+        /** @description Whether the person lets their other workspaces see when they are booked. */
+        PortalSharing: {
+            /**
+             * Format: int64
+             * @description Other workspaces they are talent with.
+             */
+            other_workspaces: number;
+            share_busy: boolean;
+        };
+        PortalSharingInput: {
+            share_busy: boolean;
+        };
+        /** @description What a date paid the talent. */
+        PortalStatement: {
+            /** Format: uuid */
+            booking_id: string;
+            booking_title: string;
+            commission: components["schemas"]["Money"];
+            /**
+             * Format: uuid
+             * @description The statement's PDF, opened through the portal's documents.
+             */
+            document_id?: string | null;
+            expenses: components["schemas"]["Money"];
+            /** Format: date-time */
+            finalised_at?: string | null;
+            gross: components["schemas"]["Money"];
+            /** Format: uuid */
+            id: string;
+            net: components["schemas"]["Money"];
+            /** @description Paid out to them so far. */
+            paid: components["schemas"]["Money"];
+            /** Format: date-time */
+            starts_at: string;
+            /** Format: uuid */
+            talent_id: string;
+            talent_name: string;
+        };
+        PortalTalent: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        /** @description Travel as the talent sees it: where and when, never what it cost. */
+        PortalTravel: {
+            carrier?: string | null;
+            end_tz?: string | null;
+            /** Format: date-time */
+            ends_at?: string | null;
+            from_code?: string | null;
+            from_place?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description `flight`, `train`, `bus`, `car`, `ferry`, `taxi`, `hotel` or `other`. */
+            kind: string;
+            notes?: string | null;
+            number?: string | null;
+            reference?: string | null;
+            start_tz: string;
+            /** Format: date-time */
+            starts_at: string;
+            /** @description `planned`, `booked` or `cancelled`. */
+            status: string;
+            to_code?: string | null;
+            to_place?: string | null;
+            travellers: string[];
+        };
+        PortalUser: {
+            email: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
         Preview: {
             /** @description The rendered body (HTML for email). */
             body: string;
@@ -3594,6 +8664,163 @@ export interface components {
              * @description The same as `record_id` with `entity` `thing`.
              */
             thing_id?: string | null;
+        };
+        /**
+         * @description What OnHold charges, in minor units a month: a base price, plus each
+         *     ticked feature, plus the team size. Shown as an estimate only.
+         */
+        PriceList: {
+            /** Format: int32 */
+            base: number;
+            /** @description ISO 4217, e.g. `GBP`. */
+            currency: string;
+            /** @description Per feature key of the setup form. */
+            features: {
+                [key: string]: number;
+            };
+            /** @description Shown as example prices while pricing is not final. */
+            placeholder?: boolean;
+            /** @description Per team size (`just_me`, `small`, `large`). */
+            team: {
+                [key: string]: number;
+            };
+            /**
+             * @description The website page where people upgrade, e.g. from the talent portal's
+             *     "Unlock features". Plans are sold there, never inside the app.
+             *     Left out when unset, so a list saved without one still reads in a
+             *     release from before it existed.
+             */
+            upgrade_url?: string | null;
+        };
+        ProblemRow: {
+            /** @description Where it is in its workbook when several sheets were read. */
+            at?: string | null;
+            /** @description Its cells, in column order. */
+            cells: string[];
+            /** @description What is wrong with it. */
+            issues: components["schemas"]["ImportIssue"][];
+            /**
+             * @description The row in the file as uploaded (the header is row 1), as
+             *     corrections and `skip_rows` give it.
+             */
+            row: number;
+        };
+        ProjectOverview: {
+            budget: components["schemas"]["BudgetLine"][];
+            crew: components["schemas"]["CrewView"][];
+            dates: components["schemas"]["DateSummary"][];
+            lines: components["schemas"]["MoneyLineView"][];
+            net: components["schemas"]["Money"];
+            project: components["schemas"]["ProjectView"];
+            total_commission: components["schemas"]["Money"];
+            total_costs: components["schemas"]["Money"];
+            /**
+             * @description Across every date plus the project's own income and costs, in the
+             *     project's currency.
+             */
+            total_income: components["schemas"]["Money"];
+            /** @description Travel and money that belong to the project rather than one date. */
+            travel: components["schemas"]["TravelView"][];
+            warnings: components["schemas"]["Warning"][];
+        };
+        ProjectPage: {
+            items: components["schemas"]["ProjectView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        ProjectPatch: {
+            /** @description Replaces the whole budget. */
+            budget?: {
+                [key: string]: number;
+            } | null;
+            currency?: string | null;
+            kind?: string | null;
+            name?: string | null;
+            notes?: string | null;
+            /** Format: uuid */
+            owner_id?: string | null;
+            status?: string | null;
+            tags?: string[] | null;
+        };
+        ProjectView: {
+            /** @description Expected costs per cost category, in minor units of `currency`. */
+            budget: {
+                [key: string]: number;
+            };
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** @description What the project's sums are shown in. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description How many dates.
+             */
+            dates: number;
+            /**
+             * Format: date-time
+             * @description The first and last date's start.
+             */
+            first_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description `tour`, `season`, `circuit`, `exhibition`, `production`, `campaign` or `other`. */
+            kind: string;
+            /** Format: date-time */
+            last_at?: string | null;
+            name: string;
+            notes?: string | null;
+            /** Format: uuid */
+            owner_id?: string | null;
+            /** @description `planning`, `confirmed`, `under_way`, `done` or `cancelled`. */
+            status: string;
+            tags: string[];
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @description What the talent sees on opening their link. */
+        PublicCalendarConnect: {
+            /** @description The workspace's logo and colours, for a page in its own style. */
+            branding: Record<string, never>;
+            /** @description Calendars already connected for this talent, by whose they are. */
+            connected: components["schemas"]["PublicConnected"][];
+            google: boolean;
+            microsoft: boolean;
+            talent_name: string;
+            workspace_name: string;
+        };
+        PublicConnected: {
+            person?: string | null;
+            /** @description `google`, `microsoft` or `ical`. */
+            provider: string;
+            /** @description `active`, `failing` or `reconnect` (it needs connecting again). */
+            status: string;
+        };
+        PublicInvoice: {
+            /** @description How to pay, from the issuer's bank details. */
+            bank_account?: Record<string, never> | null;
+            branding: Record<string, never>;
+            /** @description The payer can pay by card (`POST /public/invoices/{token}/pay`). */
+            card_payments: boolean;
+            /** Format: date */
+            due_date?: string | null;
+            /** Format: date */
+            issue_date?: string | null;
+            issuer: Record<string, never>;
+            kind: string;
+            line_items: components["schemas"]["InvoiceLine"][];
+            outstanding: components["schemas"]["Money"];
+            payer: Record<string, never>;
+            reference: string;
+            status: components["schemas"]["InvoiceStatus"];
+            subtotal: components["schemas"]["Money"];
+            tax: components["schemas"]["Money"];
+            tax_lines: components["schemas"]["TaxLine"][];
+            total: components["schemas"]["Money"];
+            workspace_name: string;
         };
         PublicLine: {
             amount: components["schemas"]["Money"];
@@ -3629,6 +8856,29 @@ export interface components {
             valid_until?: string | null;
             venue?: string | null;
             workspace_name: string;
+        };
+        /** @description What a signer sees. */
+        PublicSigning: {
+            branding: Record<string, never>;
+            /** Format: date-time */
+            decided_at?: string | null;
+            document_title: string;
+            /** @description SHA-256 of the PDF being signed, in hex. */
+            sha256: string;
+            signed_name?: string | null;
+            signer_name: string;
+            /** @description pending, signed, declined, or cancelled (a newer version replaced it). */
+            status: string;
+            workspace_name: string;
+        };
+        Question: {
+            choices: components["schemas"]["Choice"][];
+            help?: string | null;
+            /** @description The `Answers` field it fills. */
+            key: string;
+            /** @description Tick any (true) or pick one (false). */
+            multiple: boolean;
+            title: string;
         };
         QueuedResponse: {
             /**
@@ -3702,13 +8952,114 @@ export interface components {
             /** Format: date-time */
             viewed_at?: string | null;
         };
+        /** @description One reason in the ranking, and what it is worth. */
+        RankLine: {
+            label: string;
+            /** Format: int32 */
+            points: number;
+            reason?: components["schemas"]["RankReason"] | null;
+        };
+        /**
+         * @description A reason one organisation is better to pitch than another, worth so
+         *     many points (less than 0 counts against).
+         * @enum {string}
+         */
+        RankReason: "asked_about" | "potential_match" | "booked_before" | "client" | "same_taste" | "nearby" | "said_yes" | "no_answer" | "said_no" | "no_way_to_reach";
+        /** @description What a reason is worth; 0 switches it off. */
+        RankWeight: {
+            /**
+             * Format: int32
+             * @description -100 to 100.
+             */
+            points: number;
+            reason: components["schemas"]["RankReason"];
+        };
+        /**
+         * @description A positive exchange rate with up to ten decimal places, kept exactly.
+         *     On the wire it is a decimal string, `"1.1734"`.
+         * @example 1.1734
+         */
+        Rate: string;
+        /**
+         * @description Search inside documents' text: the documents list does this with `q`;
+         *     this answers what a PDF says without making a document of it.
+         */
+        Reading: {
+            suggestions: components["schemas"]["Suggestions"];
+            templates: string[];
+        };
+        /** @description One DNS record to add. */
+        RecordView: {
+            /** @description The provider has found it. */
+            found: boolean;
+            /**
+             * @description The name as most DNS providers want it: relative to the zone, e.g.
+             *     `resend._domainkey` (or `resend._domainkey.mail` for a subdomain).
+             */
+            host: string;
+            /** @description The full name. */
+            name: string;
+            /** Format: int32 */
+            priority?: number | null;
+            /** @description What it is for: `DKIM`, `SPF` or `DMARC`. */
+            purpose: string;
+            /** @description `TXT`, `MX` or `CNAME`. */
+            type: string;
+            value: string;
+        };
         RecoveryCodesResponse: {
             /** @description Shown once. Each works once if the authenticator app is lost. */
             recovery_codes: string[];
         };
+        /** @description A part of the world, by the countries in it. */
+        Region: {
+            /** @description ISO country codes, upper case. Each country is in one region at most. */
+            countries: string[];
+            /** @description Lower case letters, digits and underscores: `europe`. */
+            key: string;
+            name: string;
+        };
+        /**
+         * @description Whether an organisation has worked with the workspace: a client has, a
+         *     prospect has not yet. It moves by itself as enquiries and confirmed
+         *     bookings come in, and never back.
+         * @enum {string}
+         */
+        Relationship: "client" | "prospect";
         ReplayRequest: {
             /** Format: uuid */
             event_id: string;
+        };
+        Reply: {
+            /** @description Files uploaded with `POST /files` to send with it. */
+            attachments?: string[];
+            /** @description The message, as plain text. Give this or `template_key`. */
+            body?: string | null;
+            cc?: string[];
+            /** @description Add your signature (or the workspace's) under it. Default: yes. */
+            signature?: boolean;
+            /**
+             * @description An email template to write it from, filled in with the thread's
+             *     contact, enquiry and booking.
+             */
+            template_key?: string | null;
+            /** @description Default: whoever wrote the latest message from outside. */
+            to?: string[] | null;
+        };
+        RequestSignatures: {
+            /** @description Who signs, in order. Default: the booking's contact. */
+            signers?: components["schemas"]["Signer"][];
+        };
+        RevenueRow: {
+            /** Format: uuid */
+            id?: string | null;
+            /** @description Net of credit notes, tax included (by talent: net of tax). */
+            invoiced: components["schemas"]["Money"];
+            /** Format: int64 */
+            invoices: number;
+            /** @description `2026-10`, a payer's name or a talent's name. */
+            key: string;
+            tax: components["schemas"]["Money"];
         };
         /**
          * @description A workspace membership role. A fixed set in v1.
@@ -3782,6 +9133,11 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        SaveSetupRequest: {
+            answers: components["schemas"]["Answers"];
+            /** @description A request or question for OnHold's team (up to 4,000 characters). */
+            comment?: string | null;
+        };
         SavedView: {
             /** @description Columns, sort, filters: whatever the list needs to restore itself. */
             config: Record<string, never>;
@@ -3849,7 +9205,7 @@ export interface components {
          *     the core fields' own shapes.
          * @enum {string}
          */
-        SchemaFieldType: "text" | "long_text" | "number" | "money" | "date" | "datetime" | "boolean" | "select" | "multi_select" | "url" | "email" | "phone" | "file" | "relation" | "percent" | "tags" | "email_list" | "phone_list" | "address_list" | "currency";
+        SchemaFieldType: "text" | "long_text" | "number" | "money" | "date" | "datetime" | "boolean" | "select" | "multi_select" | "url" | "email" | "phone" | "file" | "relation" | "percent" | "tags" | "email_list" | "phone_list" | "address_list" | "url_list" | "currency";
         SearchHit: {
             /** @description A second line to tell similar names apart. */
             detail?: string | null;
@@ -3865,12 +9221,69 @@ export interface components {
         };
         /** @description One choice of a select or multi-select field. */
         SelectOption: {
+            /** @description A colour for the choice's dot: green, amber, red, grey, blue or purple. */
+            colour?: string | null;
             label: string;
             value: string;
+        };
+        SendInvoice: {
+            /** @description Default: the payer contact's first email address. */
+            to?: string | null;
         };
         SendQuote: {
             /** @description Default: the booking contact's first email address. */
             to?: string | null;
+        };
+        SenderDomainPatch: {
+            /**
+             * @description Send the workspace's email from this domain (once verified). Turning
+             *     it on turns any other domain off.
+             */
+            in_use?: boolean | null;
+            /** @description The part before the @ of the sending address. */
+            local_part?: string | null;
+        };
+        /** @description What the settings page shows. */
+        SenderDomainSetup: {
+            /** @description This server can verify domains (its mail provider is set up for it). */
+            available: boolean;
+            domains: components["schemas"]["SenderDomainView"][];
+        };
+        SenderDomainView: {
+            /** @description The domain's DNS provider, when it can add the records itself. */
+            automatic_setup?: string | null;
+            /** Format: date-time */
+            checked_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            dmarc_record?: components["schemas"]["RecordView"] | null;
+            domain: string;
+            /** @description The address email is sent from once verified and in use. */
+            from_address: string;
+            /** Format: uuid */
+            id: string;
+            /** @description Chosen to send from. */
+            in_use: boolean;
+            local_part: string;
+            records: components["schemas"]["RecordView"][];
+            /**
+             * Format: date-time
+             * @description When it is removed if its records are still not found.
+             */
+            remove_after?: string | null;
+            /** @description Email is going out from it now. */
+            sending: boolean;
+            /** @description `pending` (waiting for its records), `verified` or `failed`. */
+            status: string;
+            /** Format: date-time */
+            verified_at?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        SentInvoice: {
+            invoice: components["schemas"]["InvoiceView"];
+            /** @description The payer's link to view and download it. Shown once. */
+            link: string;
         };
         SentQuote: {
             /** @description The buyer's link, to copy into another message if needed. Shown once. */
@@ -3904,6 +9317,157 @@ export interface components {
             mfa_required: boolean;
             user_id: components["schemas"]["UserId"];
         };
+        SetFollowUp: {
+            on: boolean;
+        };
+        SettlementPatch: {
+            /** Format: int32 */
+            commission_bps?: number | null;
+            expenses?: components["schemas"]["Expense"][] | null;
+            /** Format: int64 */
+            gross_minor?: number | null;
+            notes?: string | null;
+        };
+        SettlementView: {
+            /** Format: uuid */
+            booking_id: string;
+            booking_title: string;
+            commission: components["schemas"]["Money"];
+            /** Format: int32 */
+            commission_bps: number;
+            /** Format: uuid */
+            commission_invoice_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: uuid
+             * @description The statement.
+             */
+            document_id?: string | null;
+            expenses: components["schemas"]["Expense"][];
+            expenses_total: components["schemas"]["Money"];
+            /** Format: date-time */
+            finalised_at?: string | null;
+            gross: components["schemas"]["Money"];
+            /** Format: uuid */
+            id: string;
+            /** @description What the talent is owed. */
+            net: components["schemas"]["Money"];
+            notes?: string | null;
+            paid_out: components["schemas"]["Money"];
+            /** @description draft or final. */
+            status: string;
+            /** Format: uuid */
+            talent_id: string;
+            talent_name: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: int64 */
+            version: number;
+        };
+        SetupRequestView: {
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When OnHold's team marked it dealt with.
+             */
+            resolved_at?: string | null;
+        };
+        SetupView: {
+            /** @description The answers last sent, or what the workspace's presets suggest. */
+            answers: components["schemas"]["Answers"];
+            /** @description What is set up now. */
+            current: components["schemas"]["Plan"];
+            /**
+             * Format: date-time
+             * @description When the form was last sent; absent if never.
+             */
+            done_at?: string | null;
+            /** @description OnHold's prices for the estimate. */
+            price_list: components["schemas"]["PriceList"];
+            questions: components["schemas"]["Question"][];
+            /** @description This workspace's latest comments, newest first. */
+            requests: components["schemas"]["SetupRequestView"][];
+            /**
+             * Format: int64
+             * @description Send back as `If-Match` when saving.
+             */
+            version: number;
+        };
+        SignDecision: {
+            /** @description Must be true to sign: they agree to sign electronically. */
+            agree?: boolean;
+            reason?: string | null;
+            /** @description Sign (true) or decline (false). */
+            sign: boolean;
+            /** @description The signer's name, typed as their signature. Required to sign. */
+            signed_name?: string | null;
+        };
+        SignatureBody: {
+            /** @description Plain text; empty or absent removes it. */
+            signature?: string | null;
+        };
+        SignatureView: {
+            /** Format: date-time */
+            decided_at?: string | null;
+            decline_reason?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            sent_at: string;
+            signed_ip?: string | null;
+            signed_name?: string | null;
+            signed_user_agent?: string | null;
+            signer_email: string;
+            signer_name: string;
+            /** @description pending, signed, declined or cancelled. */
+            status: string;
+            /** Format: int32 */
+            version_number: number;
+            /** Format: date-time */
+            viewed_at?: string | null;
+        };
+        Signatures: {
+            /** @description You may change the workspace's. */
+            can_edit_workspace: boolean;
+            /**
+             * @description You are a member here, so may have your own (a visiting operator
+             *     or an API key has none).
+             */
+            is_member: boolean;
+            /** @description Yours, in this workspace. */
+            mine?: string | null;
+            /** @description The workspace's: used when a member has none, and on emails rules send. */
+            workspace?: string | null;
+        };
+        Signer: {
+            email: string;
+            name: string;
+        };
+        /** @description Where in the text a suggestion came from, so the screen can show it. */
+        Source: {
+            /** @description The label the value was found by, if any (`Invoice No.`). */
+            label?: string | null;
+            /**
+             * Format: int32
+             * @description From 1, within the page.
+             */
+            line: number;
+            /**
+             * Format: int32
+             * @description From 1.
+             */
+            page: number;
+            /** @description The template that found it, if any. */
+            template?: string | null;
+            /** @description The line as written. */
+            text: string;
+        };
         StageRequest: {
             allowed_next?: string[] | null;
             /** @description A CSS colour such as `#2f80ed`. */
@@ -3933,21 +9497,118 @@ export interface components {
             /** Format: int32 */
             sla_days?: number | null;
         };
+        StartAccounting: {
+            /** @description `xero` or `quickbooks`. */
+            provider: string;
+        };
         StartAppSignInRequest: {
             /** @description Shown when approving and in the session list, such as "Sam's MacBook". */
             device_name: string;
+        };
+        StartCalendarConnect: {
+            /** @description Whose calendar this is, for a band or group: their name. */
+            person?: string | null;
+            /** @description `google` or `microsoft`. */
+            provider: string;
+        };
+        StartCalendarPush: {
+            /** @description `google` or `microsoft`. */
+            provider: string;
+            /**
+             * Format: uuid
+             * @description Only this talent's bookings; every booking when absent.
+             */
+            talent_id?: string | null;
+        };
+        StartConnect: {
+            /** @description `google` or `microsoft`. */
+            provider: string;
+            /** @description A Microsoft 365 shared mailbox to connect through your own account. */
+            shared_mailbox?: string | null;
         };
         StartImpersonationRequest: {
             /** @description Recorded in the customer's audit log. */
             reason: string;
             workspace_id: components["schemas"]["WorkspaceId"];
         };
+        StartText: {
+            body?: string | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** @description `sms` or `whatsapp`. */
+            channel: string;
+            /**
+             * Format: uuid
+             * @description Who to text: a contact (their first number that can take texts) or
+             *     a number with its country code.
+             */
+            contact_id?: string | null;
+            /** Format: uuid */
+            enquiry_id?: string | null;
+            template_key?: string | null;
+            to?: string | null;
+        };
+        Status: {
+            colour: components["schemas"]["Colour"];
+            key: string;
+            label: string;
+            meaning: components["schemas"]["StatusMeaning"];
+        };
+        /**
+         * @description What a status says about where things stand, so OnHold can move it by
+         *     itself: an enquiry sets a `talking` one, a confirmed booking a `booked`
+         *     one.
+         * @enum {string}
+         */
+        StatusMeaning: "booked" | "talking" | "inactive" | "other";
         StatusRequest: {
             /** @description Confirm despite a clash (needs `booking:override`). */
             override_reason?: string | null;
             /** @description Why it was cancelled. */
             reason?: string | null;
             status: components["schemas"]["BookingStatus"];
+        };
+        StreamlineRequest: {
+            /** @description The full list of what to hide; anything left out shows again. */
+            hidden: string[];
+        };
+        StreamlineView: {
+            /** @description Every optional field that can be hidden; required ones always show. */
+            fields: components["schemas"]["HideableFieldView"][];
+            /** @description What is hidden now. */
+            hidden: string[];
+            /** Format: int64 */
+            version: number;
+        };
+        StripeStatus: {
+            account_id?: string | null;
+            /** @description Whether this OnHold server takes card payments at all. */
+            available: boolean;
+            /** @description Stripe lets the account take payments (it may want more details first). */
+            charges_enabled: boolean;
+            connected: boolean;
+            /** Format: date-time */
+            connected_at?: string | null;
+            default_currency?: string | null;
+            details_submitted: boolean;
+            /** Format: date-time */
+            disconnected_at?: string | null;
+            display_name?: string | null;
+            /** @description A live account rather than Stripe's test mode. */
+            livemode: boolean;
+        };
+        Suggestion: {
+            confidence: components["schemas"]["Confidence"];
+            /** @description A [`Field`] in snake case, or `custom.<key>` from a template. */
+            field: string;
+            source: components["schemas"]["Source"];
+            value: unknown;
+        };
+        Suggestions: {
+            /** @description Best first within each field; fields in [`Field`] order. */
+            fields: components["schemas"]["Suggestion"][];
+            /** @description Likely kinds of document, best first. */
+            kinds: components["schemas"]["KindGuess"][];
         };
         TagCount: {
             /**
@@ -3956,6 +9617,40 @@ export interface components {
              */
             count: number;
             tag: string;
+        };
+        /** @description A connected calendar as the agency sees it. Never carries the grant. */
+        TalentCalendarView: {
+            /** @description The account's address, or the iCal link's host. */
+            account: string;
+            /** Format: date-time */
+            connected_at: string;
+            /** Format: uuid */
+            id: string;
+            last_error?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            /** Format: date-time */
+            last_synced_at?: string | null;
+            /** @description A band member's name, as they gave it. */
+            person?: string | null;
+            /** @description `google`, `microsoft` or `ical`. */
+            provider: string;
+            /**
+             * @description `active`, `failing` (being retried) or `reconnect` (the talent needs
+             *     to connect it again).
+             */
+            status: string;
+            /** Format: uuid */
+            talent_id: string;
+        };
+        TalentCalendars: {
+            calendars: components["schemas"]["TalentCalendarView"][];
+            /** @description Google calendars can be connected on this server. */
+            google: boolean;
+            /** @description Links still working. Each is shown in full only once, when made. */
+            links: components["schemas"]["ConnectLinkView"][];
+            /** @description Microsoft calendars can be connected on this server. */
+            microsoft: boolean;
         };
         TalentDuplicateQuery: {
             /**
@@ -4116,11 +9811,107 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        TaxCodeChoice: {
+            /** @description None: let the books decide (Xero uses the account's default). */
+            remote?: string | null;
+            /** Format: uuid */
+            tax_code_id: string;
+        };
+        TaxCodeInput: {
+            /** @description Updates only: archive (true) or bring back (false). */
+            archived?: boolean | null;
+            is_default?: boolean;
+            kind?: components["schemas"]["TaxKind"] | null;
+            name: string;
+            note?: string | null;
+            /** Format: int32 */
+            position?: number | null;
+            /** Format: int32 */
+            rate_bps: number;
+        };
+        TaxCodeMapping: {
+            name: string;
+            /** Format: int32 */
+            rate_bps: number;
+            /** @description The tax rate (Xero) or code (QuickBooks) it is in the books. */
+            remote?: string | null;
+            /** Format: uuid */
+            tax_code_id: string;
+        };
+        TaxCodeView: {
+            archived: boolean;
+            /** Format: uuid */
+            id: string;
+            is_default: boolean;
+            kind: components["schemas"]["TaxKind"];
+            name: string;
+            /** @description Printed on invoices that use it. */
+            note?: string | null;
+            /** Format: int32 */
+            position: number;
+            /**
+             * Format: int32
+             * @description Hundredths of a percent: 2000 is 20%.
+             */
+            rate_bps: number;
+            /** Format: int64 */
+            version: number;
+        };
+        /**
+         * @description What kind of tax a code is. Zero, exempt, reverse-charge and
+         *     out-of-scope codes charge nothing but print different wording.
+         * @enum {string}
+         */
+        TaxKind: "standard" | "reduced" | "zero" | "exempt" | "reverse_charge" | "out_of_scope";
+        TaxLine: {
+            name: string;
+            /** Format: int64 */
+            net_minor: number;
+            note?: string | null;
+            /** Format: int32 */
+            rate_bps: number;
+            /** Format: uuid */
+            tax_code_id?: string | null;
+            /** Format: int64 */
+            tax_minor: number;
+        };
+        Template: {
+            /** @description For amounts without a currency mark. */
+            currency?: string | null;
+            date_order?: components["schemas"]["DateOrder"] | null;
+            /** @description None may appear. */
+            exclude_keywords?: string[];
+            /**
+             * @description A [`Field`] name or `custom.<key>`, to a regular expression. The
+             *     first capture group is the value; with none, the whole match.
+             */
+            fields?: {
+                [key: string]: components["schemas"]["TemplateField"];
+            };
+            /**
+             * @description All must appear in the document (ignoring case) for the template to
+             *     apply.
+             */
+            keywords: string[];
+            kind?: components["schemas"]["DocumentKind"] | null;
+            name: string;
+        };
+        TemplateField: string | {
+            pattern: string;
+            type?: components["schemas"]["ValueKind"] | null;
+        };
         TemplatePatchRequest: {
             body?: string | null;
             description?: string | null;
             name?: string | null;
             subject?: string | null;
+        };
+        /** @description A built-in template's source, to start a workspace's own from. */
+        TemplateSource: {
+            body: string;
+            key: string;
+            name: string;
+            subject: string;
         };
         TemplateView: {
             body: string;
@@ -4183,6 +9974,114 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
             updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+        };
+        ThreadDetail: {
+            /**
+             * @description The mailbox replies go out from; none when it was disconnected or
+             *     never was, and replies go through OnHold's own sender.
+             */
+            mailbox?: string | null;
+            /** @description Oldest first. */
+            messages: components["schemas"]["MessageView"][];
+            thread: components["schemas"]["ThreadView"];
+        };
+        ThreadEnquiry: {
+            /**
+             * @description The contact's name when one is made for the sender; default the name
+             *     in their email, else their address.
+             */
+            contact_name?: string | null;
+            /** @description Default: the thread's subject. */
+            title?: string | null;
+        };
+        ThreadEnquiryMade: {
+            /** @description A contact was made for the sender. */
+            contact_created: boolean;
+            /** Format: uuid */
+            contact_id: string;
+            /** Format: uuid */
+            enquiry_id: string;
+            thread: components["schemas"]["ThreadView"];
+        };
+        ThreadPage: {
+            items: components["schemas"]["ThreadView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        ThreadPatch: {
+            /**
+             * Format: uuid
+             * @description `null` unassigns.
+             */
+            assigned_to?: string | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            /**
+             * Format: uuid
+             * @description `null` unlinks; likewise for the other records. Linking a contact
+             *     also links their organisation, unless one is given.
+             */
+            contact_id?: string | null;
+            /** Format: uuid */
+            enquiry_id?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            /**
+             * Format: date-time
+             * @description When a snoozed thread comes back; setting it snoozes the thread.
+             */
+            snoozed_until?: string | null;
+            /** @description `open`, `snoozed` (with `snoozed_until`) or `resolved`. */
+            status?: string | null;
+            unread?: boolean | null;
+        };
+        ThreadView: {
+            /** Format: uuid */
+            assigned_to?: string | null;
+            /** Format: uuid */
+            booking_id?: string | null;
+            /** @description `email`, `sms` or `whatsapp`. */
+            channel: string;
+            /** Format: uuid */
+            contact_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            enquiry_id?: string | null;
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The mailbox it lives in; none for one sent through OnHold's own sender.
+             */
+            integration_id?: string | null;
+            /** Format: date-time */
+            last_inbound_at?: string | null;
+            /** Format: date-time */
+            last_message_at: string;
+            /** Format: date-time */
+            last_outbound_at?: string | null;
+            /** Format: int32 */
+            message_count: number;
+            /**
+             * Format: uuid
+             * @description The workspace's SMS or WhatsApp number it is on.
+             */
+            messaging_channel_id?: string | null;
+            /** Format: uuid */
+            organisation_id?: string | null;
+            /** @description The other people in it. */
+            participants: string[];
+            /** @description The start of the latest message. */
+            preview?: string | null;
+            /** Format: date-time */
+            snoozed_until?: string | null;
+            /** @description `open`, `snoozed` or `resolved`. */
+            status: string;
+            subject?: string | null;
+            unread: boolean;
             /** Format: int64 */
             version: number;
         };
@@ -4252,6 +10151,109 @@ export interface components {
             /** @description The same secret in base32, for typing in by hand. */
             secret: string;
         };
+        /**
+         * @description A travel item, as given when adding or changing one. Changing replaces
+         *     every field.
+         */
+        TravelInput: {
+            carrier?: string | null;
+            cost?: components["schemas"]["Money"] | null;
+            /** @description Default: the departure's zone. */
+            end_tz?: string | null;
+            /** Format: date-time */
+            ends_at?: string | null;
+            /** @description An IATA airport code; any case. */
+            from_code?: string | null;
+            from_place?: string | null;
+            kind: string;
+            notes?: string | null;
+            number?: string | null;
+            /** @description Default `us`. */
+            paid_by?: string | null;
+            reference?: string | null;
+            /** @description Default: the booking's zone. */
+            start_tz?: string | null;
+            /** Format: date-time */
+            starts_at: string;
+            /** @description Default `planned`. */
+            status?: string | null;
+            to_code?: string | null;
+            to_place?: string | null;
+            travellers?: string[];
+        };
+        TravelView: {
+            /**
+             * Format: uuid
+             * @description The booking it is for, or
+             */
+            booking_id?: string | null;
+            /** @description The airline, rail company, driver or hotel. */
+            carrier?: string | null;
+            cost?: components["schemas"]["Money"] | null;
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            end_tz?: string | null;
+            /**
+             * Format: date-time
+             * @description Arrival, or check-out for a hotel.
+             */
+            ends_at?: string | null;
+            /** @description IATA airport code. */
+            from_code?: string | null;
+            from_place?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description `flight`, `train`, `bus`, `car`, `ferry`, `taxi`, `hotel` or `other`. */
+            kind: string;
+            notes?: string | null;
+            /** @description A flight or train number, e.g. `BA 1442`. */
+            number?: string | null;
+            /** @description `us` (a cost against the fee) or `buyer` (the client provides it). */
+            paid_by: string;
+            /**
+             * Format: uuid
+             * @description the project it belongs to (travel on a day between dates).
+             */
+            project_id?: string | null;
+            /** @description The booking reference or confirmation code. */
+            reference?: string | null;
+            /** @description The IANA zone of the departure. */
+            start_tz: string;
+            /**
+             * Format: date-time
+             * @description Departure, or check-in for a hotel.
+             */
+            starts_at: string;
+            /** @description `planned`, `booked` or `cancelled`. */
+            status: string;
+            to_code?: string | null;
+            /** @description Where to; for a hotel, the hotel's address. */
+            to_place?: string | null;
+            travellers: string[];
+            /** Format: date-time */
+            updated_at: string;
+            updated_by?: components["schemas"]["UserId"] | null;
+            /** Format: int64 */
+            version: number;
+        };
+        /**
+         * @description An email the member sent the organisation from their own mailbox,
+         *     outside OnHold, that might be a pitch to log.
+         */
+        UnloggedMail: {
+            /** Format: uuid */
+            contact_id?: string | null;
+            contact_name?: string | null;
+            /** Format: uuid */
+            message_id: string;
+            /** Format: date-time */
+            sent_at: string;
+            subject?: string | null;
+            /** Format: uuid */
+            thread_id: string;
+            to: string[];
+        };
         UpdateMemberRequest: {
             role: components["schemas"]["Role"];
         };
@@ -4294,12 +10296,54 @@ export interface components {
             /** @description text, phone: the whole value must match this regular expression. */
             regex?: string | null;
         };
+        /**
+         * @description The kind of value a field holds.
+         * @enum {string}
+         */
+        ValueKind: "text" | "reference" | "date" | "money";
+        ValueReading: {
+            field: string;
+            /** @description What to do about it, when there is something to do. */
+            hint?: string | null;
+            /** @description What it was read as; `null` when it could not be, and is left out. */
+            read_as?: string | null;
+            rows: number;
+            text: string;
+        };
         /** @description One variable a template can use. */
         Variable: {
             description: string;
             field_type?: string | null;
             path: string;
         };
+        VersionView: {
+            /** Format: date-time */
+            created_at: string;
+            created_by?: components["schemas"]["UserId"] | null;
+            error?: string | null;
+            file?: components["schemas"]["DocumentFile"] | null;
+            /** Format: int32 */
+            number: number;
+            /** @description original, or signed (the original with its signing certificate). */
+            purpose: string;
+            /** @description SHA-256 of the PDF, in hex. */
+            sha256?: string | null;
+            status: string;
+        };
+        VoidInvoice: {
+            reason?: string | null;
+        };
+        VoidPayment: {
+            reason?: string | null;
+        };
+        Warning: {
+            /** @description `loss`, `high_costs`, `no_income`, `unconverted`, `unpriced`. */
+            code: string;
+            level: components["schemas"]["WarningLevel"];
+            message: string;
+        };
+        /** @enum {string} */
+        WarningLevel: "caution" | "loss";
         WebhookPatchRequest: {
             description?: string | null;
             enabled?: boolean | null;
@@ -4361,6 +10405,13 @@ export interface components {
             default_currency: string;
             default_timezone: string;
             enabled_modules: string[];
+            /** @description Finer switches inside modules: `team`, `commission`, `advanced`. */
+            extras: string[];
+            /**
+             * @description What OnHold's team hid on top of the setup: `nav:<path>`,
+             *     `section:<key>` and `field:<entity>.<key>`.
+             */
+            hidden: string[];
             /**
              * Format: int32
              * @description How many days a new hold lasts before it lapses; 0 means never.
@@ -4372,7 +10423,14 @@ export interface components {
             perspective: components["schemas"]["Perspective"];
             plan: string;
             plugin_slug?: string | null;
+            /** @description The presets the workspace combines, from its setup. */
+            presets: string[];
             require_staff_2fa: boolean;
+            /**
+             * Format: date-time
+             * @description When the setup form was last sent; absent until it has been.
+             */
+            setup_at?: string | null;
             slug: string;
             status: components["schemas"]["WorkspaceStatus"];
             /** Format: date-time */
@@ -4382,6 +10440,15 @@ export interface components {
              * @description Send back as `If-Match` when saving to avoid overwriting someone else's change.
              */
             version: number;
+            /** @description Its own words, per module: `{"crm": {"talent": {"one": "DJ", "many": "DJs"}}}`. */
+            vocabulary: Record<string, never>;
+        };
+        WrittenToTalent: {
+            /**
+             * Format: uuid
+             * @description The conversation in the inbox.
+             */
+            thread_id: string;
         };
     };
     responses: never;
@@ -4392,6 +10459,389 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Accounting"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disconnect_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accounting_failures: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingFailure"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finish_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishAccounting"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingConnection"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    import_from_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingConnection"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accounting_options: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingOptions"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_accounting_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingConnection"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartAccounting"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingStart"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    sync_accounting: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingConnection"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     start_impersonation: {
         parameters: {
             query?: never;
@@ -4466,6 +10916,132 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_price_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceList"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_price_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriceList"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_setup_requests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSetupRequestView"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resolve_setup_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5366,6 +11942,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description busy time from the talent's own calendar (`from_their_calendar`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
         };
     };
     update_availability: {
@@ -5404,6 +11989,15 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description busy time from the talent's own calendar (`from_their_calendar`) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5705,6 +12299,172 @@ export interface operations {
             };
         };
     };
+    invoice_booking: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceBooking"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    money_check: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoneyCheck"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_line: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoneyLineInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoneyLineView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    booking_pack: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_booking_quotes: {
         parameters: {
             query?: never;
@@ -5784,6 +12544,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    settle_booking: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"][];
                 };
             };
             409: {
@@ -5889,6 +12681,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimelinePage"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_travel: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelView"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_travel: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TravelInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             404: {
@@ -6047,6 +12930,233 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_pushes: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarPushes"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finish_push: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishCalendarPush"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarPushView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_push: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartCalendarPush"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarPushStart"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disconnect_push: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    sync_push: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarPushView"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6591,6 +13701,489 @@ export interface operations {
             };
         };
     };
+    document_templates: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentTemplate"][];
+                };
+            };
+        };
+    };
+    document_template_source: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateSource"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_documents: {
+        parameters: {
+            query?: {
+                /** @description Documents of one record. */
+                related_id?: string | null;
+                /** @description Comma-separated kinds. */
+                kind?: string | null;
+                /** @description Words in the title, tags or the PDF's text. */
+                q?: string | null;
+                /** @description Documents that run out on or before this day. */
+                expires_before?: string | null;
+                offset?: number | null;
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentPage"];
+                };
+            };
+        };
+    };
+    create_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewDocument"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    generate_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateDocument"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    download_document: {
+        parameters: {
+            query?: {
+                /** @description Default: the current version. */
+                version?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    regenerate_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    request_signatures: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestSignatures"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cancel_signatures: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_document_version: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewVersionFile"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_enquiries: {
         parameters: {
             query?: {
@@ -6965,6 +14558,525 @@ export interface operations {
             };
         };
     };
+    upload_file: {
+        parameters: {
+            query: {
+                /** @description The file's name, as it should be kept. */
+                filename: string;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": number[];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_file: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    download_file: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_file: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reading"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_finance_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceSettings"];
+                };
+            };
+        };
+    };
+    update_finance_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinanceSettingsInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceSettings"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stripe_status: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StripeStatus"];
+                };
+            };
+        };
+    };
+    stripe_disconnect: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StripeStatus"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stripe_connect: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectStart"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stripe_connect_finish: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StripeStatus"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_follow_ups: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FollowUp"][];
+                };
+            };
+        };
+    };
+    set_follow_up: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetFollowUp"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FollowUp"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    fx_rate: {
+        parameters: {
+            query: {
+                from: string;
+                /** @description Default: the base currency. */
+                to?: string | null;
+                /** @description Default today. */
+                on?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FxQuote"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    messaging_verify: {
+        parameters: {
+            query?: {
+                "hub.mode"?: string | null;
+                "hub.verify_token"?: string | null;
+                "hub.challenge"?: string | null;
+            };
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    messaging_hook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": string;
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_imports: {
         parameters: {
             query?: {
@@ -7167,6 +15279,1070 @@ export interface operations {
             };
         };
     };
+    undo_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportView"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_domains: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderDomainSetup"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_domain: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddSenderDomain"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderDomainView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_domain: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_domain: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SenderDomainPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderDomainView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    domain_automatic_setup: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomaticSetup"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    check_domain: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderDomainView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    mail_setup: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailSetup"];
+                };
+            };
+        };
+    };
+    mail_connect: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectStart"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    mail_connect_finish: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    mail_connect_imap: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImapConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disconnect_mailbox: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_mailbox: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    sync_mailbox: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_numbers: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Messaging"];
+                };
+            };
+        };
+    };
+    connect_sms: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectSms"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagingChannel"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    connect_whatsapp: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectWhatsapp"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagingChannel"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disconnect_number: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_text: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartText"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_threads: {
+        parameters: {
+            query?: {
+                /** @description `open`, `snoozed` or `resolved`. */
+                status?: string | null;
+                /** @description One mailbox's threads. */
+                integration_id?: string | null;
+                /** @description `email`, `sms` or `whatsapp`. */
+                channel?: string | null;
+                contact_id?: string | null;
+                organisation_id?: string | null;
+                enquiry_id?: string | null;
+                booking_id?: string | null;
+                assigned_to?: string | null;
+                /** @description Only threads linked to no contact, enquiry or booking. */
+                unlinked?: boolean;
+                unread?: boolean;
+                /** @description Matched against the subject and the people in it. */
+                q?: string | null;
+                offset?: number | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    compose_thread: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Compose"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_thread: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_thread: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    thread_enquiry: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadEnquiry"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadEnquiryMade"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    thread_file: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reply_thread: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reply"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_invitations: {
         parameters: {
             query?: never;
@@ -7340,6 +16516,478 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_invoices: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated statuses. */
+                status?: string | null;
+                /** @description invoice or credit_note. */
+                kind?: string | null;
+                booking_id?: string | null;
+                organisation_id?: string | null;
+                talent_id?: string | null;
+                /** @description Words in the reference, payer or tags. */
+                q?: string | null;
+                issued_from?: string | null;
+                issued_to?: string | null;
+                offset?: number | null;
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewInvoice"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_historical_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoricalInvoice"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicePatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    invoice_allocations: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllocationView"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    credit_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewCreditNote"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    issue_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueInvoice"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    invoice_pdf: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendInvoice"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SentInvoice"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    void_invoice: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidInvoice"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
                 };
             };
             409: {
@@ -7659,6 +17307,89 @@ export interface operations {
             };
         };
     };
+    update_line: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoneyLineInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoneyLineView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_line: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_organisations: {
         parameters: {
             query?: {
@@ -7950,6 +17681,147 @@ export interface operations {
             };
         };
     };
+    list_pitches: {
+        parameters: {
+            query?: {
+                offset?: number | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchPage"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    draft_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PitchDraftRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchDraft"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unlogged_mail: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnloggedMail"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     organisation_timeline: {
         parameters: {
             query?: {
@@ -7975,6 +17847,540 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TimelinePage"];
                 };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_payments: {
+        parameters: {
+            query?: {
+                /** @description payment, refund or payout. */
+                kind?: string | null;
+                booking_id?: string | null;
+                organisation_id?: string | null;
+                talent_id?: string | null;
+                /** @description Payments allocated to this invoice. */
+                invoice_id?: string | null;
+                from?: string | null;
+                to?: string | null;
+                offset?: number | null;
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentPage"];
+                };
+            };
+        };
+    };
+    create_payment: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPayment"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_payment: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    allocate_payment: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AllocationInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_allocation: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+                allocation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    refund_payment: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewRefund"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    void_payment: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidPayment"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_pdf_imports: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated: reading, ready, confirmed, discarded, failed. */
+                status?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"][];
+                };
+            };
+        };
+    };
+    create_pdf_imports: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPdfImports"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_pdf_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    confirm_pdf_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmPdfImport"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    discard_pdf_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rematch_pdf_import: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfImportView"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_pdf_templates: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTemplateView"][];
+                };
+            };
+        };
+    };
+    create_pdf_template: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Template"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTemplateView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    archive_pdf_template: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             404: {
                 headers: {
@@ -8182,6 +18588,1830 @@ export interface operations {
             };
         };
     };
+    log_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPitch"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    not_a_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotAPitch"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PitchSend"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_pitch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PitchPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    follow_ups_due: {
+        parameters: {
+            query?: {
+                /** @description Also those due in the next so many days, 0 to 60; default 0. */
+                days_ahead?: number | null;
+                /** @description Only this organisation's, and its next one however far off. */
+                organisation_id?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DueFollowUp"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pitch_list: {
+        parameters: {
+            query?: {
+                /** @description What is pitched: `talent` or `project`, with `item_id`. */
+                item_kind?: components["schemas"]["ItemKind"] | null;
+                item_id?: string | null;
+                /** @description Words in the name, type or tags. */
+                q?: string | null;
+                tag?: string | null;
+                /** @description A region key from the pitching settings. */
+                region?: string | null;
+                /** @description An ISO country code. */
+                country?: string | null;
+                city?: string | null;
+                /** @description A status key from the pitching settings. */
+                status?: string | null;
+                /** @description `client` or `prospect`. */
+                relationship?: string | null;
+                /** @description Only those standing this way with what is pitched. */
+                pitch_status?: components["schemas"]["PitchStatus"] | null;
+                /** @description Leave out organisations resting after an answer, or waiting for one. */
+                hide_resting?: boolean | null;
+                sort?: ("rank" | "name") | null;
+                offset?: number | null;
+                /** @description 1 to 200; default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchList"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_me: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchingMe"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_me: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PitchingMePatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchingMe"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchingSettingsView"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PitchingSettingsInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PitchingSettingsView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_home: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalHome"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_availability: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalAvailability"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_portal_availability: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalNewAvailability"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_portal_availability: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_calendar_link: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalCalendarLink"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedConnectLink"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_dates: {
+        parameters: {
+            query?: {
+                /** @description `upcoming` (default) or `past`. */
+                when?: ("upcoming" | "past") | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalDate"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_date: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalDateDetail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    answer_portal_date: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalDateDetail"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_documents: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalDocument"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    download_portal_document: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_messages: {
+        parameters: {
+            query?: {
+                /** @description Which of their talent records; needed only when they have several. */
+                talent_id?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalConversation"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_portal_message: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalMessageInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalMessage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_money: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalStatement"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_profiles: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalProfile"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_portal_profile: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalProfileInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalProfile"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    portal_sharing: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalSharing"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_portal_sharing: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalSharingInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalSharing"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_crew: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrewInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrewView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_crew: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_projects: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                offset?: number | null;
+                /** @description 1 to 200, default 50. */
+                limit?: number | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_project: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewProject"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_project: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_project: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_project: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_crew: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrewInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrewView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_date: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DateLink"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_date: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    project_itinerary: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Itinerary"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_project_line: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoneyLineInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoneyLineView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    project_overview: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOverview"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_project_travel: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TravelInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_calendar_connect_finish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishCalendarConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnected"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_calendar_connect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicCalendarConnect"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_calendar_connect_ical: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IcalConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnected"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_calendar_connect_start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartCalendarConnect"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarConnectStart"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     public_calendar: {
         parameters: {
             query?: never;
@@ -8200,6 +20430,109 @@ export interface operations {
                 };
                 content: {
                     "text/calendar": string;
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_invoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicInvoice"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_invoice_pay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentLink"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_invoice_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": number[];
                 };
             };
             404: {
@@ -8330,6 +20663,142 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_signing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSigning"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_sign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignDecision"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSigning"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_signing_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": number[];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_logo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": number[];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8639,6 +21108,77 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finance_report: {
+        parameters: {
+            query?: {
+                /** @description Default: the first of the month a year ago. */
+                from?: string | null;
+                /** @description Default: today. */
+                to?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceReport"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    export_csv: {
+        parameters: {
+            query?: {
+                /** @description Default: the first of the month a year ago. */
+                from?: string | null;
+                /** @description Default: today. */
+                to?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                /** @description invoices, payments, revenue_by_month, revenue_by_payer, revenue_by_talent or outstanding */
+                table: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8961,6 +21501,355 @@ export interface operations {
                 };
             };
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_settlements: {
+        parameters: {
+            query?: {
+                booking_id?: string | null;
+                talent_id?: string | null;
+                /** @description draft or final. */
+                status?: string | null;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"][];
+                };
+            };
+        };
+    };
+    get_settlement: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_settlement: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_settlement: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettlementPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finalise_settlement: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    settlement_payout: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPayout"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reopen_settlement: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettlementView"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_signatures: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Signatures"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_my_signature: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignatureBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Signatures"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_workspace_signature: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignatureBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Signatures"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9375,6 +22264,180 @@ export interface operations {
             };
         };
     };
+    create_calendar_link: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedConnectLink"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_calendar_link: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    talent_calendars: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalentCalendars"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disconnect_talent_calendar: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+                calendar_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    sync_talent_calendar: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+                calendar_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TalentCalendarView"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_talent_members: {
         parameters: {
             query?: never;
@@ -9526,6 +22589,203 @@ export interface operations {
                 content?: never;
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_portal_access: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalAccess"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    invite_to_portal: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalInviteBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalAccess"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_portal_access: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    write_to_talent: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgencyMessageInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WrittenToTalent"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9767,6 +23027,107 @@ export interface operations {
                 };
             };
             412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_tax_codes: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxCodeView"][];
+                };
+            };
+        };
+    };
+    create_tax_code: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxCodeInput"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxCodeView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_tax_code: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxCodeInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxCodeView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10289,6 +23650,89 @@ export interface operations {
             };
         };
     };
+    update_travel: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TravelInput"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_travel: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_views: {
         parameters: {
             query: {
@@ -10508,6 +23952,35 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stripe_webhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10892,6 +24365,69 @@ export interface operations {
             };
         };
     };
+    get_portal_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalSettings"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_portal_settings: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalSettings"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     roles: {
         parameters: {
             query?: never;
@@ -10909,6 +24445,199 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RolesResponse"];
+                };
+            };
+        };
+    };
+    get_setup: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupView"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    save_setup: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveSetupRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    preview_setup: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Answers"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_streamline: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamlineView"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_streamline: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Workspace-Id"?: string | null;
+                "If-Match"?: string | null;
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamlineRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

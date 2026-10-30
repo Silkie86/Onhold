@@ -104,17 +104,60 @@ pub struct Claimed {
 }
 
 /// Leases up to `limit` ready jobs for `lease`. Worker role.
+///
+/// Workspaces take turns: within a priority, each workspace's next job
+/// comes before anyone's second, counting the jobs it already has running,
+/// so a big import or a first mailbox read in one workspace cannot hold up
+/// timed work in the others. Only each workspace's next `limit` jobs are
+/// ranked, so a claim costs the same however long the backlog.
 pub async fn claim(conn: &mut PgConnection, limit: i64, lease: Duration) -> Result<Vec<Claimed>> {
     let lease_secs = lease.as_secs_f64();
     Ok(sqlx::query_as!(
         Claimed,
-        r#"UPDATE jobs SET status = 'running', attempts = attempts + 1,
+        r#"WITH RECURSIVE
+           -- Each workspace with queued jobs, found by skipping through
+           -- jobs_ready_workspace rather than reading every queued job.
+           spaces AS (
+               (SELECT workspace_id AS ws FROM jobs
+                WHERE status = 'queued' AND workspace_id IS NOT NULL
+                ORDER BY workspace_id LIMIT 1)
+               UNION ALL
+               SELECT (SELECT j.workspace_id FROM jobs j
+                       WHERE j.status = 'queued' AND j.workspace_id > s.ws
+                       ORDER BY j.workspace_id LIMIT 1)
+               FROM spaces s WHERE s.ws IS NOT NULL
+           ),
+           -- At most `limit` of each workspace's next jobs: no more of
+           -- any one can be taken.
+           candidates AS (
+               SELECT c.* FROM spaces s CROSS JOIN LATERAL (
+                   SELECT q.id, q.workspace_id, q.priority, q.run_at FROM jobs q
+                   WHERE q.workspace_id = s.ws AND q.status = 'queued' AND q.run_at <= now()
+                   ORDER BY q.priority DESC, q.run_at, q.id LIMIT $1) c
+               WHERE s.ws IS NOT NULL
+               UNION ALL
+               (SELECT q.id, q.workspace_id, q.priority, q.run_at FROM jobs q
+                WHERE q.workspace_id IS NULL AND q.status = 'queued' AND q.run_at <= now()
+                ORDER BY q.priority DESC, q.run_at, q.id LIMIT $1)
+           ),
+           running AS (
+               SELECT coalesce(workspace_id, '00000000-0000-0000-0000-000000000000') AS ws, count(*) AS n
+               FROM jobs WHERE status = 'running' GROUP BY 1
+           ),
+           ready AS (
+               SELECT q.id, q.priority, q.run_at,
+                      row_number() OVER (PARTITION BY q.workspace_id ORDER BY q.priority DESC, q.run_at, q.id)
+                          + coalesce(r.n, 0) AS turn
+               FROM candidates q
+               LEFT JOIN running r ON r.ws = coalesce(q.workspace_id, '00000000-0000-0000-0000-000000000000')
+           )
+           UPDATE jobs SET status = 'running', attempts = attempts + 1,
                            locked_until = now() + make_interval(secs => $2)
-           WHERE id IN (SELECT id FROM jobs
-                        WHERE status = 'queued' AND run_at <= now()
-                        ORDER BY priority DESC, run_at, id
+           WHERE id IN (SELECT j.id FROM ready t JOIN jobs j ON j.id = t.id
+                        WHERE j.status = 'queued'
+                        ORDER BY t.priority DESC, t.turn, t.run_at, t.id
                         LIMIT $1
-                        FOR UPDATE SKIP LOCKED)
+                        FOR UPDATE OF j SKIP LOCKED)
            RETURNING id, workspace_id AS "workspace_id: WorkspaceId", kind, payload, secret,
                      attempts AS attempt, max_attempts"#,
         limit,
@@ -199,21 +242,36 @@ pub async fn record_run(conn: &mut PgConnection, run: RunRecord<'_>) -> Result<(
     Ok(())
 }
 
+/// The error recorded on a job whose worker stopped mid-run.
+pub const WORKER_STOPPED: &str = "the worker stopped while running this job";
+
+/// A job [`reclaim_expired`] returned to the queue, or buried (`dead`).
+#[derive(Debug, Clone)]
+pub struct Reclaimed {
+    pub workspace_id: Option<WorkspaceId>,
+    pub kind: String,
+    pub payload: Value,
+    pub dead: bool,
+}
+
 /// Returns jobs whose worker died mid-run (lease expired) to the queue, or
 /// buries them if that was their last attempt. Worker role.
-pub async fn reclaim_expired(conn: &mut PgConnection) -> Result<u64> {
-    let done = sqlx::query!(
+pub async fn reclaim_expired(conn: &mut PgConnection) -> Result<Vec<Reclaimed>> {
+    Ok(sqlx::query_as!(
+        Reclaimed,
         r#"UPDATE jobs SET
                status = CASE WHEN attempts >= max_attempts THEN 'dead'::job_status ELSE 'queued' END,
                finished_at = CASE WHEN attempts >= max_attempts THEN now() END,
                locked_until = NULL,
                run_at = now(),
-               last_error = 'the worker stopped while running this job'
-           WHERE status = 'running' AND locked_until < now()"#
+               last_error = $1
+           WHERE status = 'running' AND locked_until < now()
+           RETURNING workspace_id AS "workspace_id: WorkspaceId", kind, payload,
+                     status = 'dead' AS "dead!""#,
+        WORKER_STOPPED
     )
-    .execute(conn)
-    .await?;
-    Ok(done.rows_affected())
+    .fetch_all(conn)
+    .await?)
 }
 
 /// Deletes jobs that finished well, and their run logs, after a while. Worker role.
@@ -223,6 +281,19 @@ pub async fn delete_succeeded_before(
 ) -> Result<u64> {
     let done = sqlx::query!(
         "DELETE FROM jobs WHERE status = 'succeeded' AND finished_at < $1",
+        before
+    )
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected())
+}
+
+/// Deletes jobs that ran out of attempts or were cancelled, and their run
+/// logs, after a while. Worker role.
+pub async fn delete_finished_before(conn: &mut PgConnection, before: DateTime<Utc>) -> Result<u64> {
+    let done = sqlx::query!(
+        r#"DELETE FROM jobs WHERE status IN ('dead', 'cancelled')
+             AND coalesce(finished_at, updated_at) < $1"#,
         before
     )
     .execute(conn)

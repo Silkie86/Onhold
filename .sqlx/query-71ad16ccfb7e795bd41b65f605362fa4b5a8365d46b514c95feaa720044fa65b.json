@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE thread_messages SET status = 'failed', error = left($2, 1000)\n           WHERE workspace_id = app_workspace_id() AND id = $1 AND direction = 'outbound'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "71ad16ccfb7e795bd41b65f605362fa4b5a8365d46b514c95feaa720044fa65b"
+}

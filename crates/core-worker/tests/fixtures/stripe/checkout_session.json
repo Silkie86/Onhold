@@ -1,0 +1,21 @@
+{
+  "id": "cs_test_a1OwlsCheckoutSession",
+  "object": "checkout.session",
+  "amount_subtotal": 120000,
+  "amount_total": 120000,
+  "cancel_url": "http://localhost:5173/invoice/TOKEN",
+  "client_reference_id": null,
+  "created": 1730050000,
+  "currency": "gbp",
+  "customer_email": "bea@grand.test",
+  "expires_at": 4102444800,
+  "livemode": false,
+  "metadata": {},
+  "mode": "payment",
+  "payment_intent": null,
+  "payment_method_types": ["card"],
+  "payment_status": "unpaid",
+  "status": "open",
+  "success_url": "http://localhost:5173/invoice/TOKEN?paid=1",
+  "url": "https://checkout.stripe.com/c/pay/cs_test_a1OwlsCheckoutSession#fidkdWxOYHwnPyd1blpxYHZxWjA0"
+}

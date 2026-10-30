@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (SELECT 1 FROM booking_talent WHERE workspace_id = app_workspace_id() AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM enquiry_talent WHERE workspace_id = app_workspace_id() AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM invoices WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL\n                              AND (issuer_talent_id = $1 OR payer_talent_id = $1))\n                   OR EXISTS (SELECT 1 FROM payments WHERE workspace_id = app_workspace_id() AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM settlements WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL\n                              AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM threads WHERE workspace_id = app_workspace_id() AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM availability WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL\n                              AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM talent_members WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL\n                              AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM talent_calendars WHERE workspace_id = app_workspace_id()\n                              AND disconnected_at IS NULL AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM calendar_pushes WHERE workspace_id = app_workspace_id()\n                              AND disconnected_at IS NULL AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM calendar_feeds WHERE workspace_id = app_workspace_id()\n                              AND revoked_at IS NULL AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM calendar_connect_links WHERE workspace_id = app_workspace_id()\n                              AND revoked_at IS NULL AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM invitations WHERE workspace_id = app_workspace_id()\n                              AND revoked_at IS NULL AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM talent WHERE workspace_id = app_workspace_id() AND id = $1\n                              AND portal_user_id IS NOT NULL)\n                   OR EXISTS (SELECT 1 FROM organisation_items WHERE workspace_id = app_workspace_id() AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM pitch_log WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL\n                              AND talent_id = $1)\n                   OR EXISTS (SELECT 1 FROM tasks WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL\n                              AND related_id = $1)\n                   OR EXISTS (SELECT 1 FROM documents WHERE workspace_id = app_workspace_id() AND deleted_at IS NULL\n                              AND related_id = $1)\n                   AS \"used!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "used!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "9f29f5c25023d8dee8848e773e8b4439e8b63be8b09e89f28e7cf576dd0b7863"
+}
