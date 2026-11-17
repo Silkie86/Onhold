@@ -1,7 +1,7 @@
 # One image, two roles: `onhold api` and `onhold worker` (plus `onhold migrate`).
 # Build from the repository root: docker build -f infra/Dockerfile .
 
-FROM rust:1.99.1-slim-bookworm AS builder
+FROM rust:1.100.0-slim-bookworm AS builder
 WORKDIR /src
 ENV SQLX_OFFLINE=true
 # CI passes `release-ci` (quicker to build); deploys use the full release.
